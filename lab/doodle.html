@@ -1,0 +1,562 @@
+<!doctype html>
+<!--
+  DOODLE MAP (lab front end; a sister of lines.html "Line Doodle", same sketchbook art, but playing OUR puzzle)
+
+  What the player sees: a taped sketchbook page with a hand-drawn map (g.cells, the dual map: one polygon per region
+  in the square [-1,1]^2 with exact adjacency). The square border and every border between two pieces are wobbly
+  felt-tip strokes that draw themselves in (each shared border drawn once). The map arrives ALREADY COLOURED: every
+  piece is filled with its pen (g.col; 4 chunky markers = the 4 elements, all uncapped from the start, each with its
+  own hatch pattern for colour-blind players). One piece, the hole (g.hole), is blank white with a pencilled "?".
+  A pencilled line on the page says "colour the blank piece".
+
+  What the player does (fast taps, one gesture):
+    1. tap a marker: picks pen b (it stays picked, so you can keep tapping pieces).
+    2. tap a coloured piece u with col[u] != b:
+         K = g.chainAt(u, b)  (the {col[u], b} chain through u: the group of pieces connected through those two pens)
+         - K.web          -> the ink smudges in and fades back; nothing changes (no g.swap call).
+         - otherwise      -> g.swap(K), exactly once: the felt-tip fills re-bloom outward from the tap through the
+                             group in BFS order (from the tapped piece across the shared borders). If no neighbour of
+                             u has pen b, the group is just u, so it simply recolours.
+       tap a piece that already has pen b: it wobbles (nothing changes).
+       Once the rim is down to 3 pens (g.won()), core refuses swaps; tapping a coloured piece then makes the "?" hop.
+    3. tap the blank piece with pen b: if some neighbour of the hole (g.rim) already has pen b, sparks fly on exactly
+       those shared borders and the pen bounces. If none does (only when g.won() and b === g.free()), the blank piece
+       fills with b, a "Coloured!" sticker pops, confetti; tap for a fresh sheet (g.reset()).
+  Idle ~10 s: a faint pencil circle around a piece u of g.good()[0] and the matching pen (the pen b with
+  g.chainAt(u, b) === that chain) bobs. After g.won(): the circle goes round the blank piece and g.free()'s pen bobs.
+  Margin (top left): tiny undo (g.undo) and restart (g.reset).
+
+  So every action is exactly one g.swap(K) or nothing. Every chain is reachable: for any chain K with pair {a, b} and
+  any u in K, pen (col[u] === a ? b : a) + piece u gives K. The logic block between LOGIC-START/END is DOM-free and is
+  smoke-tested in node (geometry, hit test, gesture mapping, a winning line).
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>Doodle Map</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;700&family=Patrick+Hand&display=swap" rel="stylesheet">
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; touch-action: none; -webkit-user-select: none; user-select: none;
+    -webkit-tap-highlight-color: transparent; background: #e6d2ad;
+    background-image: radial-gradient(rgba(140,100,50,.13) 1.2px, transparent 1.6px); background-size: 15px 15px;
+    font-family: Fredoka, 'Baloo 2', 'Arial Rounded MT Bold', 'Trebuchet MS', system-ui, sans-serif; color: #2b2d42; }
+  #cv { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; }
+  #pal { position: fixed; display: flex; align-items: flex-end; justify-content: center; pointer-events: none; }
+  .pen { pointer-events: auto; border: 0; background: none; padding: 0; margin: 0; cursor: pointer; position: relative;
+    transition: transform .2s cubic-bezier(.3,1.7,.5,1), opacity .3s, filter .3s; transform-origin: 50% 100%; }
+  .pen svg { display: block; width: 100%; height: 100%; overflow: visible; }
+  .pen .cap { transition: transform .45s cubic-bezier(.3,1.6,.5,1), opacity .45s; transform-box: fill-box; transform-origin: 50% 100%; }
+  .pen.open .cap { transform: translate(14px,-46px) rotate(38deg); opacity: 0; }
+  .pen.sel { transform: translateY(-16%) rotate(-6deg); }
+  .pen.shake { animation: shake .4s; }
+  .pen.hop { animation: hop .45s cubic-bezier(.3,1.8,.5,1); }
+  .pen.bob { animation: bob 1.1s ease-in-out infinite; }
+  @keyframes shake { 20% { transform: translateY(-10%) rotate(-12deg); } 45% { transform: translateY(-4%) rotate(10deg); } 70% { transform: rotate(-5deg); } }
+  @keyframes hop { 40% { transform: translateY(-14%); } }
+  @keyframes bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-12%) rotate(4deg); } }
+  #tools { position: fixed; left: 6px; top: 4px; display: flex; gap: 4px; }
+  #tools button { width: 36px; height: 34px; padding: 3px; border: 0; background: none; cursor: pointer; opacity: .75; }
+  #tools button:active { transform: scale(.9); }
+  #tools svg { width: 100%; height: 100%; display: block; }
+  #stamp { position: fixed; pointer-events: none; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    opacity: 0; transform: scale(.3) rotate(-25deg); transition: opacity .2s, transform .45s cubic-bezier(.3,1.8,.5,1); }
+  #stamp.on { opacity: 1; transform: scale(1) rotate(-8deg); }
+  #stamp .st { background: #fffdf5; border: 3px solid #2b2d42; border-radius: 18px; padding: .2em .6em; font-weight: 700;
+    box-shadow: 4px 5px 0 rgba(43,45,66,.85); white-space: nowrap; }
+  #stamp .nx { margin-top: .5em; font-size: .45em; font-weight: 500; background: #fff59d; padding: .25em .7em;
+    transform: rotate(5deg); box-shadow: 2px 3px 0 rgba(0,0,0,.15); }
+  @media (prefers-reduced-motion: reduce) { .pen, .pen .cap, #stamp { transition: none; } .pen.shake, .pen.hop, .pen.bob { animation: none; } }
+</style>
+</head>
+<body>
+<canvas id="cv"></canvas>
+<div id="tools">
+  <button id="undo" aria-label="undo"><svg viewBox="0 0 30 30" fill="none" stroke="#2b2d42" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M9 11 C13 6.5 22 7 23.5 14 C25 21 17 24.5 12 22"/><path d="M8.5 5.5 L8.6 11.4 L14.3 11.2"/></svg></button>
+  <button id="again" aria-label="restart"><svg viewBox="0 0 30 30" fill="none" stroke="#2b2d42" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M23 10.5 A9.2 9.2 0 1 0 24.5 17"/><path d="M24.2 4.8 L23.4 10.8 L17.6 9.6"/></svg></button>
+</div>
+<div id="pal"></div>
+<div id="stamp"><div class="st">Coloured!</div><div class="nx">tap for a fresh sheet</div></div>
+
+<script src="../levels.js"></script>
+<script src="../layout.js"></script>
+<script src="core.js"></script>
+<script>
+/*LOGIC-START*/
+const DM = (() => {
+  // map geometry in unit-square coords [0,1]^2 (cell x,y in [-1,1] -> (x+1)/2, (y+1)/2; y grows down the page)
+  function prep(g) {
+    const U = g.cells.map(c => c.map(p => [(p[0] + 1) / 2, (p[1] + 1) / 2]));
+    const key = p => p[0].toFixed(5) + ',' + p[1].toFixed(5), E = new Map();
+    U.forEach((c, i) => c.forEach((p, j) => {
+      const q = c[(j + 1) % c.length], a = key(p), b = key(q), k = a < b ? a + '|' + b : b + '|' + a;
+      if (!E.has(k)) E.set(k, { p, q, own: [] });
+      const e = E.get(k); if (!e.own.includes(i)) e.own.push(i);
+    }));
+    const segs = [], frame = [], pairSegs = new Map();
+    for (const e of E.values()) {
+      if (e.own.length === 2) {
+        const a = Math.min(...e.own), b = Math.max(...e.own), s = { a, b, p: e.p, q: e.q, len: Math.hypot(e.q[0] - e.p[0], e.q[1] - e.p[1]) };
+        segs.push(s); const k = a + '_' + b; if (!pairSegs.has(k)) pairSegs.set(k, []); pairSegs.get(k).push(segs.length - 1);
+      } else frame.push(e);
+    }
+    const info = U.map(P => {
+      let a = 0, cx = 0, cy = 0, per = 0, x0 = 1, y0 = 1, x1 = 0, y1 = 0;
+      for (let k = 0; k < P.length; k++) {
+        const p = P[k], q = P[(k + 1) % P.length], c = p[0] * q[1] - q[0] * p[1];
+        a += c; cx += (p[0] + q[0]) * c; cy += (p[1] + q[1]) * c; per += Math.hypot(q[0] - p[0], q[1] - p[1]);
+        x0 = Math.min(x0, p[0]); x1 = Math.max(x1, p[0]); y0 = Math.min(y0, p[1]); y1 = Math.max(y1, p[1]);
+      }
+      a /= 2; const P2 = pole(P, [x0, y0, x1, y1]);
+      return { area: Math.abs(a), c: P2.c, inr: P2.r, box: [x0, y0, x1, y1] };
+    });
+    return { U, segs, frame, pairSegs, info };
+  }
+  // the roomiest interior point (pole of inaccessibility, by grid search + refinement) and its distance to the border
+  function segD(x, y, p, q) { const dx = q[0] - p[0], dy = q[1] - p[1], L = dx * dx + dy * dy || 1e-12;
+    const t = Math.max(0, Math.min(1, ((x - p[0]) * dx + (y - p[1]) * dy) / L)); return Math.hypot(x - p[0] - t * dx, y - p[1] - t * dy); }
+  function edgeD(P, x, y) { let d = Infinity; for (let k = 0; k < P.length; k++) d = Math.min(d, segD(x, y, P[k], P[(k + 1) % P.length])); return d; }
+  function pole(P, b) {
+    let best = null, bd = -1, h = Math.max(b[2] - b[0], b[3] - b[1]) / 16;
+    for (let x = b[0] + h / 2; x < b[2]; x += h) for (let y = b[1] + h / 2; y < b[3]; y += h)
+      if (pip(P, x, y)) { const d = edgeD(P, x, y); if (d > bd) { bd = d; best = [x, y]; } }
+    if (!best) { best = P[0].slice(); bd = 0; }
+    for (let it = 0; it < 40; it++) { h *= 0.8; let moved = false;
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1], [.7, .7], [-.7, .7], [.7, -.7], [-.7, -.7]]) {
+        const x = best[0] + dx * h, y = best[1] + dy * h;
+        if (pip(P, x, y)) { const d = edgeD(P, x, y); if (d > bd) { bd = d; best = [x, y]; moved = true; } } }
+      if (!moved && h < 1e-4) break; }
+    return { c: best, r: bd };
+  }
+  function pip(P, x, y) {
+    let c = false;
+    for (let i = 0, j = P.length - 1; i < P.length; j = i++) {
+      const a = P[i], b = P[j];
+      if ((a[1] > y) !== (b[1] > y) && x < (b[0] - a[0]) * (y - a[1]) / (b[1] - a[1]) + a[0]) c = !c;
+    }
+    return c;
+  }
+  function faceAt(M, x, y) { // a tap a hair outside the square still counts (clamped)
+    if (x < -0.04 || x > 1.04 || y < -0.04 || y > 1.04) return -1;
+    x = Math.min(1 - 1e-6, Math.max(1e-6, x)); y = Math.min(1 - 1e-6, Math.max(1e-6, y));
+    for (let i = 0; i < M.U.length; i++) { const b = M.info[i].box;
+      if (x >= b[0] && x <= b[2] && y >= b[1] && y <= b[3] && pip(M.U[i], x, y)) return i; }
+    return -1;
+  }
+  const sharedSeg = (M, u, v) => { const L = M.pairSegs.get(Math.min(u, v) + '_' + Math.max(u, v)); if (!L) return null;
+    let best = L[0]; for (const s of L) if (M.segs[s].len > M.segs[best].len) best = s; return M.segs[best]; };
+  // the gesture: pen b (0..3, or -1 for none) + tapped piece u -> what happens (the UI then does at most one g.swap)
+  function move(g, b, u) {
+    if (u < 0) return { kind: 'none' };
+    if (b < 0) return { kind: 'nopen' };
+    if (u === g.hole) {
+      const hits = g.adj[g.hole].filter(v => g.col[v] === b);
+      return hits.length ? { kind: 'blocked', hits } : { kind: 'fill', b };
+    }
+    if (g.col[u] === b) return { kind: 'same' };
+    if (g.won()) return { kind: 'done' };
+    const K = g.chainAt(u, b);
+    if (!K) return { kind: 'none' };
+    return { kind: K.web ? 'web' : 'swap', K };
+  }
+  // BFS through the chain from the tapped piece: depth and parent per piece (for the bloom order)
+  function order(g, K, u) {
+    const dep = new Map([[u, 0]]), par = new Map([[u, -1]]); let front = [u];
+    while (front.length) { const nx = []; for (const v of front) for (const w of g.adj[v]) if (K.set.has(w) && !dep.has(w)) { dep.set(w, dep.get(v) + 1); par.set(w, v); nx.push(w); } front = nx; }
+    return { dep, par };
+  }
+  // the hint: a piece of g.good()[0] (the roomiest one) and the pen that picks out that chain there
+  function hint(g, M) {
+    if (g.won()) return { u: g.hole, b: g.free() };
+    const G = g.good(); if (!G.length) return null;
+    const K = G[0]; let u = K.vs[0];
+    for (const v of K.vs) if (M.info[v].inr > M.info[u].inr) u = v;
+    return { u, b: g.col[u] === K.pair[0] ? K.pair[1] : K.pair[0], K };
+  }
+  return { prep, pip, faceAt, move, order, hint, sharedSeg };
+})();
+/*LOGIC-END*/
+</script>
+<script>
+(() => {
+  const RM = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const g = LAB.game(), M = DM.prep(g);
+  const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
+  const palEl = document.getElementById('pal'), stamp = document.getElementById('stamp');
+  const INK = '#2b2d42', PENCIL = 'rgba(80,82,96,', PAPER = '#fffcf3';
+  // pen k = element k (fire, water, air, earth)
+  const PENS = [
+    { c: '#ff5d5d', d: '#c93636', a: Math.PI / 4 }, { c: '#3fa7f5', d: '#1f74b8', a: -Math.PI / 4 },
+    { c: '#ffc928', d: '#c9900a', a: 0 }, { c: '#3ccf6e', d: '#1f8f45', a: Math.PI / 2 }];
+  function rng(seed) { let a = seed >>> 0;
+    return () => { a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+
+  // ---------- state ----------
+  let pen = -1, holeCol = -1, won = false, wonAt = 0, drawStart = 0, drawTotal = 0, lastAct = performance.now();
+  let anim = [], wob = [], smudges = [], sparks = [], confetti = [], qHop = 0, hintOn = null, hintT0 = 0, cueWig = 0;
+
+  // ---------- layout ----------
+  let W = 0, H = 0, dpr = 1, PX = 0, PY = 0, PS = 0, PH = 0, RX = 0, RY = 0, RS = 0, CH = 0, penW = 0, penH = 0, paper = null, paths = [];
+  const ASP = 1.07;
+  function layout() {
+    W = innerWidth; H = innerHeight; dpr = Math.min(3, window.devicePixelRatio || 1);
+    cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+    const land = W > H * 1.15, top = 40;
+    if (land) {
+      penH = Math.max(70, Math.min(170, H * 0.34)); penW = penH * 0.3;
+      const palW = 4 * penW + 3 * penW * 0.35 + 24;
+      PS = Math.max(120, Math.min(W - palW - 24, (H - top - 12) / ASP)); PH = PS * ASP;
+      PX = Math.max(12, (W - palW - PS) / 2); PY = top + Math.max(0, (H - top - 12 - PH) / 2);
+      Object.assign(palEl.style, { left: (PX + PS + 12) + 'px', top: '0px', width: palW + 'px', height: (H / 2 + penH / 2) + 'px' });
+    } else {
+      penH = Math.max(56, Math.min(130, H * 0.16)); penW = penH * 0.3;
+      const palH = penH + 14;
+      PS = Math.max(120, Math.min(W - 20, (H - top - palH - 14) / ASP)); PH = PS * ASP;
+      PX = (W - PS) / 2; PY = top + Math.max(0, (H - top - palH - 14 - PH) / 2);
+      Object.assign(palEl.style, { left: '0px', width: W + 'px', top: (H - palH - 4) + 'px', height: palH + 'px' });
+    }
+    palEl.style.gap = (penW * 0.35) + 'px';
+    [...palEl.children].forEach(b => { b.style.width = penW + 'px'; b.style.height = penH + 'px'; });
+    const m = PS * 0.05; CH = PH - PS; RS = PS - 2 * m; RX = PX + m; RY = PY + CH + m;
+    Object.assign(stamp.style, { left: RX + 'px', top: RY + 'px', width: RS + 'px', height: RS + 'px', fontSize: Math.max(22, PS * 0.11) + 'px' });
+    makePaper(); makePaths(); makePatterns(); render();
+  }
+  const X = p => (RX + p[0] * RS) * dpr, Y = p => (RY + p[1] * RS) * dpr;
+  function makePaper() {
+    const c = document.createElement('canvas'), w = Math.round(PS * dpr), h = Math.round(PH * dpr); c.width = w; c.height = h;
+    const q = c.getContext('2d'); q.fillStyle = PAPER; q.fillRect(0, 0, w, h);
+    const R = rng(7);
+    for (let i = 0; i < w * h / 260; i++) { q.fillStyle = `rgba(120,100,60,${0.025 + R() * 0.05})`; q.fillRect(R() * w, R() * h, 1.2 * dpr, 1.2 * dpr); }
+    q.strokeStyle = 'rgba(80,140,200,.10)'; q.lineWidth = dpr;
+    for (let y = w * 0.035; y < h; y += w * 0.07) { q.beginPath(); q.moveTo(0, y); q.lineTo(w, y); q.stroke(); }
+    paper = c;
+  }
+  let pats = [];
+  function makePatterns() {
+    pats = PENS.map(P => {
+      const s = Math.round(9 * dpr), c = document.createElement('canvas'); c.width = c.height = s;
+      const q = c.getContext('2d'); q.strokeStyle = P.d; q.globalAlpha = 0.33; q.lineWidth = 1.6 * dpr; q.beginPath();
+      if (P.a === 0) { q.moveTo(0, s / 2); q.lineTo(s, s / 2); }
+      else if (P.a === Math.PI / 2) { q.moveTo(s / 2, 0); q.lineTo(s / 2, s); }
+      else if (P.a > 0) { for (const o of [-s, 0, s]) { q.moveTo(o, 0); q.lineTo(o + s, s); } }
+      else { for (const o of [-s, 0, s]) { q.moveTo(o, s); q.lineTo(o + s, 0); } }
+      q.stroke(); return ctx.createPattern(c, 'repeat');
+    });
+  }
+  function makePaths() {
+    paths = M.U.map(P => { const p = new Path2D(); P.forEach((q, i) => i ? p.lineTo(X(q), Y(q)) : p.moveTo(X(q), Y(q))); p.closePath(); return p; });
+  }
+  const cen = i => [X(M.info[i].c), Y(M.info[i].c)];
+  const reach = (i, x, y) => { let R = 0; for (const q of M.U[i]) R = Math.max(R, Math.hypot(X(q) - x, Y(q) - y)); return R + 2 * dpr; };
+
+  // ---------- hand-drawn ink (felt-tip wobble, slight overshoot past the corners) ----------
+  function inkify(a, b, R, over) {
+    const out = [], L = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1e-9, m = Math.max(2, Math.ceil(L / 0.006));
+    const nx = -(b[1] - a[1]) / L, ny = (b[0] - a[0]) / L, ph1 = R() * 9, ph2 = R() * 9, a1 = 0.0011 + R() * 0.0009;
+    const bow = (R() - 0.5) * Math.min(0.006, L * 0.05);
+    for (let k = 0; k <= m; k++) { const t = k / m, s = t * L;
+      const w = (k === 0 || k === m ? 0 : a1 * Math.sin(s * 41 + ph1) + 0.0007 * Math.sin(s * 97 + ph2)) + bow * Math.sin(Math.PI * t);
+      out.push([a[0] + t * (b[0] - a[0]) + nx * w, a[1] + t * (b[1] - a[1]) + ny * w]); }
+    const o1 = over * (0.4 + R()), o2 = over * (0.4 + R()), ux = (b[0] - a[0]) / L, uy = (b[1] - a[1]) / L;
+    out.unshift([a[0] - ux * o1, a[1] - uy * o1]); out.push([b[0] + ux * o2, b[1] + uy * o2]);
+    let len = 0; for (let i = 1; i < out.length; i++) len += Math.hypot(out[i][0] - out[i - 1][0], out[i][1] - out[i - 1][1]);
+    return { pts: out, len };
+  }
+  let ink = [], frameInk = [];
+  function prepInk(seed) {
+    const R = rng(seed), hc = M.info[g.hole].c;
+    const order = M.segs.map((s, i) => i).sort((i, j) => {
+      const d = s => Math.hypot((s.p[0] + s.q[0]) / 2 - hc[0], (s.p[1] + s.q[1]) / 2 - hc[1]);
+      return d(M.segs[i]) - d(M.segs[j]); });
+    const gap = 1.0 / Math.max(1, order.length);
+    ink = order.map((si, k) => { const s = M.segs[si], I = inkify(s.p, s.q, R, 0.006); I.t0 = 0.25 + k * gap; I.dur = 0.1 + I.len * 0.5; I.seg = si; return I; });
+    frameInk = [[[0, 0], [1, 0]], [[1, 0], [1, 1]], [[1, 1], [0, 1]], [[0, 1], [0, 0]]].map(([a, b], k) => {
+      const I = inkify(a, b, R, 0.02); I.t0 = k * 0.06; I.dur = 0.25; return I; });
+    drawTotal = Math.max(...ink.map(I => I.t0 + I.dur), 0.5);
+  }
+
+  // ---------- render ----------
+  const ease = t => 1 - Math.pow(1 - t, 3);
+  function drawPoly(pts, upto) {
+    ctx.beginPath(); let acc = 0; ctx.moveTo(X(pts[0]), Y(pts[0]));
+    for (let i = 1; i < pts.length; i++) {
+      const d = Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
+      if (acc + d > upto) { const t = (upto - acc) / d, q = [pts[i - 1][0] + t * (pts[i][0] - pts[i - 1][0]), pts[i - 1][1] + t * (pts[i][1] - pts[i - 1][1])];
+        ctx.lineTo(X(q), Y(q)); break; }
+      ctx.lineTo(X(pts[i]), Y(pts[i])); acc += d;
+    }
+    ctx.stroke();
+  }
+  function paint(i, c) {
+    if (c === -2) return;
+    if (c < 0) { ctx.fillStyle = '#ffffff'; ctx.fill(paths[i]); return; }
+    ctx.globalAlpha = 0.72; ctx.fillStyle = PENS[c].c; ctx.fill(paths[i]);
+    ctx.globalAlpha = 1; ctx.fillStyle = pats[c]; ctx.fill(paths[i]);
+  }
+  const colOf = i => i === g.hole ? holeCol : g.col[i];
+  function fillFace(i, now) {
+    const c = colOf(i); let an = anim[i], t = 0;
+    if (an) { t = (now - an.t0) / 130; /* quick bloom */ if (t >= 1) { anim[i] = null; an = null; } }
+    ctx.save();
+    const w = wob[i];
+    if (w) { const s = (now - w) / 380; if (s >= 1) wob[i] = 0; else ctx.translate(Math.sin(s * 34) * (1 - s) * 3.5 * dpr, Math.cos(s * 27) * (1 - s) * 1.5 * dpr); }
+    ctx.clip(paths[i]);
+    if (!an) paint(i, c);
+    else { paint(i, an.from); if (t > 0) { ctx.beginPath(); ctx.arc(an.x, an.y, ease(t) * an.R, 0, 7); ctx.clip(); paint(i, c); } }
+    ctx.restore();
+  }
+  function segMid(s) { return [(s.p[0] + s.q[0]) / 2, (s.p[1] + s.q[1]) / 2]; }
+  function render(now) {
+    now = now || performance.now();
+    ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, cv.width, cv.height);
+    const lw = Math.max(2.2, RS * 0.0095) * dpr;
+    // paper + tape
+    ctx.save(); ctx.shadowColor = 'rgba(80,50,20,.28)'; ctx.shadowBlur = 10 * dpr; ctx.shadowOffsetY = 4 * dpr;
+    ctx.fillStyle = PAPER; ctx.fillRect(PX * dpr, PY * dpr, PS * dpr, PH * dpr); ctx.restore();
+    ctx.drawImage(paper, PX * dpr, PY * dpr);
+    ctx.save(); ctx.translate((PX + PS / 2) * dpr, PY * dpr); ctx.rotate(-0.04);
+    ctx.fillStyle = 'rgba(255,236,160,.75)'; ctx.fillRect(-PS * 0.09 * dpr, -PS * 0.022 * dpr, PS * 0.18 * dpr, PS * 0.045 * dpr); ctx.restore();
+    // pencilled cue in the top margin
+    ctx.save(); const fs = Math.max(11, PS * 0.05);
+    ctx.font = `${fs * dpr}px 'Patrick Hand', 'Comic Sans MS', 'Chalkboard SE', cursive`; ctx.fillStyle = PENCIL + '.62)'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    const cw = cueWig && now - cueWig < 500 ? Math.sin((now - cueWig) / 40) * (1 - (now - cueWig) / 500) * 0.05 : 0;
+    ctx.translate((PX + PS / 2) * dpr, (PY + CH * 0.5 + PS * 0.035) * dpr); ctx.rotate(-0.015 + cw);
+    ctx.fillText('colour the blank piece', 0, 0); ctx.restore();
+    // fills
+    for (let i = 0; i < g.n; i++) fillFace(i, now);
+    // smudges (webs): the other pen's ink seeps in and fades back
+    smudges = smudges.filter(s => now - s.t0 < 750);
+    for (const s of smudges) {
+      const t = (now - s.t0) / 750, a = Math.sin(Math.PI * Math.min(1, t * 1.3)) * (1 - t * 0.4);
+      for (const v of s.vs) { const o = g.col[v] === s.pair[0] ? s.pair[1] : s.pair[0];
+        ctx.save(); ctx.clip(paths[v]); ctx.globalAlpha = 0.55 * a; ctx.fillStyle = PENS[o].c; ctx.fill(paths[v]);
+        ctx.globalAlpha = 0.18 * a; ctx.fillStyle = '#5a5050'; ctx.fill(paths[v]); ctx.restore(); }
+    }
+    // spark glow under the ink
+    sparks = sparks.filter(s => now - s.t0 < 1000);
+    if (sparks.length) {
+      ctx.save(); ctx.lineCap = 'round'; ctx.lineWidth = lw * 3.2; ctx.beginPath();
+      let al = 0;
+      for (const s of sparks) { al = Math.max(al, 1 - (now - s.t0) / 1000);
+        for (const v of s.hits) for (const si of M.pairSegs.get(Math.min(v, g.hole) + '_' + Math.max(v, g.hole)) || []) {
+          const e = M.segs[si]; ctx.moveTo(X(e.p), Y(e.p)); ctx.lineTo(X(e.q), Y(e.q)); } }
+      ctx.strokeStyle = `rgba(255,50,0,${0.65 * al * (RM ? 1 : 0.7 + 0.3 * Math.sin(now / 60))})`; ctx.stroke(); ctx.restore();
+    }
+    // ink
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = INK;
+    const td = RM ? Infinity : (now - drawStart) / 1000;
+    for (const I of frameInk.concat(ink)) {
+      const tt = td - I.t0; if (tt <= 0) continue;
+      const upto = tt >= I.dur ? Infinity : I.len * ease(tt / I.dur);
+      ctx.globalAlpha = 0.22; ctx.lineWidth = lw * 1.5; drawPoly(I.pts, upto);
+      ctx.globalAlpha = 0.93; ctx.lineWidth = lw; drawPoly(I.pts, upto);
+    }
+    ctx.globalAlpha = 1;
+    // the pencilled "?" on the blank piece
+    if (holeCol < 0) {
+      const h = M.info[g.hole], [cx, cy] = cen(g.hole), sz = Math.max(14 * dpr, h.inr * RS * dpr * 1.25);
+      let dy = 0, rot = -0.08, sc = 1;
+      if (!RM) {
+        if (qHop && now - qHop < 520) { const s = (now - qHop) / 520; dy = -Math.sin(Math.PI * s) * sz * 0.35; rot += Math.sin(s * 18) * 0.15 * (1 - s); }
+        if (g.won()) { sc = 1 + 0.1 * Math.sin(now / 160); rot += 0.06 * Math.sin(now / 230); }
+      }
+      ctx.save(); ctx.translate(cx, cy + dy); ctx.rotate(rot); ctx.scale(sc, sc);
+      ctx.font = `${sz}px 'Patrick Hand', 'Comic Sans MS', 'Chalkboard SE', cursive`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      const td2 = Math.min(1, Math.max(0, (now - drawStart) / 1000 - 0.15) * 3);
+      ctx.fillStyle = PENCIL + (0.75 * (RM ? 1 : td2)) + ')'; ctx.fillText('?', 0, sz * 0.04); ctx.restore();
+    }
+    // idle hint: a faint pencil circle
+    if (hintOn) {
+      const [cx, cy] = cen(hintOn.u), r = Math.max(14 * dpr, M.info[hintOn.u].inr * RS * dpr * 1.6), a = RM ? 1 : Math.min(1, (now - hintT0) / 600);
+      const R = rng(hintOn.u * 31 + 5); ctx.save(); ctx.strokeStyle = PENCIL + (0.55 * a) + ')'; ctx.lineWidth = 1.6 * dpr; ctx.beginPath();
+      const ph = R() * 6, sweep = 2 * Math.PI * (1.12) * (RM ? 1 : Math.min(1, (now - hintT0) / 500));
+      for (let k = 0; k <= 60; k++) { const th = ph + sweep * k / 60, rr = r * (1 + 0.06 * Math.sin(th * 3 + ph) + 0.04 * k / 60);
+        const x = cx + rr * Math.cos(th) * 1.08, y = cy + rr * Math.sin(th) * 0.92; k ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
+      ctx.stroke(); ctx.restore();
+    }
+    // sparks on the clashing borders
+    for (const s of sparks) {
+      const t = (now - s.t0) / 1000;
+      for (const v of s.hits) { const e = DM.sharedSeg(M, v, g.hole); if (!e) continue; const q = segMid(e);
+        spark(X(q), Y(q), lw * (t < 0.15 ? t / 0.15 : 1) * (1 - t * 0.5), now, v); }
+    }
+    // confetti
+    if (confetti.length) {
+      const live = [];
+      for (const c of confetti) {
+        const t = (now - c.t0) / 1000; if (t > 1.8) continue; live.push(c);
+        const x = c.x + c.vx * t, y = c.y + c.vy * t + 900 * dpr * t * t / 2;
+        ctx.save(); ctx.translate(x, y); ctx.rotate(c.r + t * c.vr); ctx.globalAlpha = Math.min(1, 2 * (1.8 - t));
+        ctx.strokeStyle = c.c; ctx.lineWidth = 3 * dpr; ctx.beginPath(); ctx.moveTo(-8 * dpr, 0); ctx.quadraticCurveTo(-4 * dpr, -6 * dpr, 0, 0); ctx.quadraticCurveTo(4 * dpr, 6 * dpr, 8 * dpr, 0); ctx.stroke(); ctx.restore();
+      }
+      confetti = live;
+    }
+  }
+  function spark(x, y, lw, now, seed) {
+    const s = lw * 2.4 * (RM ? 1 : 0.85 + 0.25 * Math.sin(now / 70 + seed)), rot = RM ? 0 : now / 300 + seed;
+    ctx.save(); ctx.translate(x, y); ctx.rotate(rot);
+    ctx.fillStyle = '#ffe14d'; ctx.strokeStyle = '#ff3d00'; ctx.lineWidth = Math.max(0.5, lw * 0.45); ctx.beginPath();
+    for (let k = 0; k < 8; k++) { const r = k % 2 ? s * 0.42 : s * 1.25, a = k * Math.PI / 4; k ? ctx.lineTo(r * Math.cos(a), r * Math.sin(a)) : ctx.moveTo(r, 0); }
+    ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.restore();
+  }
+  let looping = false;
+  function busy(now) {
+    if (confetti.length) return true;
+    if (RM) return sparks.length > 0 || smudges.length > 0;
+    return anim.some(a => a) || wob.some(w => w) || (now - drawStart) / 1000 < drawTotal + 0.1 || sparks.length > 0 || smudges.length > 0
+      || (qHop && now - qHop < 600) || (cueWig && now - cueWig < 550) || (hintOn && now - hintT0 < 700) || (g.won() && holeCol < 0);
+  }
+  function loop(now) { render(now); if (busy(now)) requestAnimationFrame(loop); else { looping = false; render(); } }
+  function kick() { if (!looping) { looping = true; requestAnimationFrame(loop); } }
+
+  // ---------- sound ----------
+  let AC = null;
+  function au() {
+    if (!AC) { try { AC = new (window.AudioContext || window.webkitAudioContext)(); } catch (_) { AC = null; } }
+    if (AC && AC.state === 'suspended') AC.resume(); return AC;
+  }
+  function env(q, t, a, peak, d) { q.gain.setValueAtTime(0.0001, t); q.gain.exponentialRampToValueAtTime(peak, t + a); q.gain.exponentialRampToValueAtTime(0.0001, t + d); }
+  function squeak(i, delay, vol) {
+    const A = AC; if (!A) return; const t = A.currentTime + (delay || 0), n = Math.floor(A.sampleRate * 0.13), b = A.createBuffer(1, n, A.sampleRate), d = b.getChannelData(0);
+    for (let k = 0; k < n; k++) d[k] = Math.random() * 2 - 1;
+    const s = A.createBufferSource(); s.buffer = b; const f = A.createBiquadFilter(); f.type = 'bandpass'; f.Q.value = 4;
+    f.frequency.setValueAtTime(1400 + i * 380, t); f.frequency.linearRampToValueAtTime(2300 + i * 380, t + 0.12);
+    const q = A.createGain(); env(q, t, 0.015, vol || 0.22, 0.13); s.connect(f); f.connect(q); q.connect(A.destination); s.start(t);
+  }
+  function tone(type, f0, f1, dur, peak, delay) {
+    const A = AC; if (!A) return; const t = A.currentTime + (delay || 0), o = A.createOscillator(), q = A.createGain();
+    o.type = type; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f1, t + dur);
+    env(q, t, 0.01, peak, dur); o.connect(q); q.connect(A.destination); o.start(t); o.stop(t + dur + 0.02);
+  }
+  const tink = () => { tone('sine', 1500, 800, 0.14, 0.07); tone('square', 900, 500, 0.06, 0.03, 0.05); };
+  const pop = () => { tone('triangle', 260, 900, 0.12, 0.2); tone('sine', 1200, 1600, 0.1, 0.06, 0.08); };
+  const fanfare = () => [523, 659, 784, 1047].forEach((f, i) => tone('triangle', f, f * 1.01, 0.22, 0.14, i * 0.09));
+  const thud = () => tone('sine', 180, 90, 0.12, 0.12);
+  const smear = () => { tone('sine', 420, 260, 0.35, 0.06); tone('triangle', 300, 330, 0.3, 0.04, 0.1); };
+
+  // ---------- pens ----------
+  function hatchIcon(a) {
+    if (a === 0) return '<path d="M12 72h16M12 79h16M12 86h16"/>';
+    if (a === Math.PI / 2) return '<path d="M14 66v26M20 66v26M26 66v26"/>';
+    if (a > 0) return '<path d="M12 70l12 12M12 80l12 12M18 66l10 10"/>';
+    return '<path d="M12 82l12-12M12 92l14-14M20 92l8-8"/>';
+  }
+  const penBtns = PENS.map((P, i) => {
+    const b = document.createElement('button'); b.className = 'pen'; b.setAttribute('aria-label', LAB.ELEM[i].name + ' pen');
+    b.innerHTML = `<svg viewBox="0 0 40 130" preserveAspectRatio="xMidYMax meet">
+      <path d="M12 30 L14 15 Q20 7 26 15 L28 30 Z" fill="${P.c}" stroke="${INK}" stroke-width="2.5" stroke-linejoin="round"/>
+      <rect x="8" y="28" width="24" height="12" rx="3" fill="#fffaf0" stroke="${INK}" stroke-width="2.5"/>
+      <rect x="6" y="38" width="28" height="88" rx="9" fill="${P.c}" stroke="${INK}" stroke-width="2.5"/>
+      <rect x="10" y="62" width="20" height="34" rx="4" fill="#fffaf0" stroke="${INK}" stroke-width="2"/>
+      <g stroke="${P.d}" stroke-width="2.4" opacity=".75">${hatchIcon(P.a)}</g>
+      <path d="M11 46 v10" stroke="#fff" stroke-width="3" stroke-linecap="round" opacity=".55"/>
+      <g class="cap"><rect x="5" y="2" width="30" height="42" rx="9" fill="${P.d}" stroke="${INK}" stroke-width="2.5"/>
+      <rect x="27" y="8" width="5" height="26" rx="2" fill="${P.c}" stroke="${INK}" stroke-width="1.5"/></g></svg>`;
+    b.addEventListener('pointerdown', e => { e.preventDefault(); au(); touch(); pen = i; syncPens(); squeak(i); });
+    palEl.appendChild(b); return b;
+  });
+  function syncPens() { penBtns.forEach((b, k) => b.classList.toggle('sel', k === pen)); }
+  function jolt(b, cls) { b.classList.remove('shake', 'hop'); void b.offsetWidth; b.classList.add(cls); }
+  penBtns.forEach(b => b.addEventListener('animationend', () => b.classList.remove('shake', 'hop')));
+  function uncap() { // all four pens come uncapped at the start of a sheet (a little pop each)
+    penBtns.forEach(b => b.classList.remove('open'));
+    penBtns.forEach((b, k) => setTimeout(() => b.classList.add('open'), RM ? 0 : 250 + k * 110));
+  }
+
+  // ---------- idle hint ----------
+  let idleT = 0;
+  function touch() {
+    lastAct = performance.now(); if (hintOn) { penBtns[hintOn.b] && penBtns[hintOn.b].classList.remove('bob'); hintOn = null; kick(); }
+    clearTimeout(idleT); idleT = setTimeout(showHint, 10000);
+  }
+  function showHint() {
+    if (won) return; const h = DM.hint(g, M); if (!h || h.b < 0) return;
+    hintOn = h; hintT0 = performance.now(); penBtns[h.b].classList.add('bob'); kick();
+  }
+
+  // ---------- sheets ----------
+  function fresh() {
+    won = false; holeCol = -1; stamp.classList.remove('on'); confetti = []; sparks = []; smudges = []; wob = [];
+    const seed = (Math.random() * 2 ** 31) | 0; prepInk(seed);
+    drawStart = performance.now();
+    // fills bloom in after the ink, outward from the blank piece
+    const dep = new Map([[g.hole, 0]]); let front = [g.hole];
+    while (front.length) { const nx = []; for (const v of front) for (const w of g.adj[v]) if (!dep.has(w)) { dep.set(w, dep.get(v) + 1); nx.push(w); } front = nx; }
+    anim = [];
+    if (!RM) for (let i = 0; i < g.n; i++) { const [x, y] = cen(i); anim[i] = { t0: drawStart + 350 + dep.get(i) * 110, x, y, R: reach(i, x, y), from: -2 }; }
+    uncap(); touch(); kick();
+  }
+
+  // ---------- play ----------
+  function bloomChain(K, u, ex, ey, now) {
+    const { dep, par } = DM.order(g, K, u); let maxD = 0;
+    for (const v of K.vs) {
+      const d = dep.get(v); maxD = Math.max(maxD, d);
+      let x, y;
+      if (v === u) { x = ex; y = ey; } else { const s = DM.sharedSeg(M, v, par.get(v)); const q = segMid(s); x = X(q); y = Y(q); }
+      // 'from' is the pen before the swap: the other pen of the pair
+      const from = g.col[v] === K.pair[0] ? K.pair[1] : K.pair[0];
+      anim[v] = RM ? null : { t0: now + d * 70, x, y, R: reach(v, x, y), from };
+    }
+    return maxD;
+  }
+  function tap(e) {
+    const now = performance.now(), ex = e.clientX * dpr, ey = e.clientY * dpr;
+    const u = DM.faceAt(M, (e.clientX - RX) / RS, (e.clientY - RY) / RS);
+    const mv = DM.move(g, pen, u);
+    switch (mv.kind) {
+      case 'none': return;
+      case 'nopen': penBtns.forEach((b, k) => setTimeout(() => jolt(b, 'hop'), RM ? 0 : k * 60)); wob[u] = now; thud(); break;
+      case 'same': wob[u] = now; thud(); break;
+      case 'done': qHop = now; cueWig = now; jolt(penBtns[pen], 'shake'); thud(); break;
+      case 'web': smudges.push({ vs: mv.K.vs, pair: mv.K.pair, t0: now }); jolt(penBtns[pen], 'shake'); smear(); break;
+      case 'swap': {
+        g.swap(mv.K);                                            // the one and only state change
+        const maxD = bloomChain(mv.K, u, ex, ey, now);
+        for (let d = 0; d <= Math.min(maxD, 3); d++) squeak(pen, d * 0.07, d ? 0.12 : 0.22);
+        if (g.won()) setTimeout(() => { qHop = performance.now(); kick(); }, 150 + maxD * 70);
+        break;
+      }
+      case 'blocked': sparks.push({ hits: mv.hits, t0: now }); qHop = now; jolt(penBtns[pen], 'shake'); tink(); break;
+      case 'fill': {
+        holeCol = mv.b; anim[g.hole] = RM ? null : { t0: now, x: ex, y: ey, R: reach(g.hole, ex, ey), from: -1 };
+        squeak(pen); win(); break;
+      }
+    }
+    kick();
+  }
+  function win() {
+    won = true; wonAt = performance.now(); clearTimeout(idleT);
+    setTimeout(() => { stamp.classList.add('on'); pop(); }, RM ? 0 : 160); setTimeout(fanfare, RM ? 0 : 260);
+    if (!RM) { const [cx, cy] = cen(g.hole);
+      for (let k = 0; k < 46; k++) {
+        const a = Math.random() * Math.PI * 2, v = (200 + Math.random() * 500) * dpr;
+        confetti.push({ x: cx, y: cy, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 300 * dpr, r: Math.random() * 6, vr: (Math.random() - 0.5) * 12, c: PENS[k % 4].c, t0: performance.now() + 120 });
+      } }
+  }
+  cv.addEventListener('pointerdown', e => {
+    e.preventDefault(); au(); touch();
+    if (won) { if (performance.now() - wonAt > 450) { g.reset(); fresh(); } return; }
+    tap(e);
+  });
+  document.getElementById('undo').addEventListener('pointerdown', e => {
+    e.preventDefault(); au(); touch();
+    if (won) { won = false; holeCol = -1; stamp.classList.remove('on'); confetti = []; anim[g.hole] = null; thud(); kick(); return; }
+    const before = g.col.slice(); g.undo(); const now = performance.now(); let k = 0;
+    for (let i = 0; i < g.n; i++) if (before[i] !== g.col[i]) { const [x, y] = cen(i); anim[i] = RM ? null : { t0: now + 40 * k++, x, y, R: reach(i, x, y), from: before[i] }; }
+    if (k) squeak(pen < 0 ? 0 : pen, 0, 0.12); else thud();
+    kick();
+  });
+  document.getElementById('again').addEventListener('pointerdown', e => { e.preventDefault(); au(); g.reset(); fresh(); squeak(2, 0, 0.12); });
+  addEventListener('resize', layout);
+  document.addEventListener('contextmenu', e => e.preventDefault());
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => kick());
+
+  layout(); fresh();
+})();
+</script>
+</body>
+</html>

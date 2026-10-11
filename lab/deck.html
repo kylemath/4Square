@@ -1,0 +1,548 @@
+<!doctype html>
+<!--
+  DECK: "Fill the Hole" as a card game.
+
+  What the player sees: a green felt table. In the middle is a summoning circle with an empty card slot (the HOLE).
+  Around it sit 5 face-up seat cards (the RIM, in g.rim's cyclic order, oriented like the real map), each showing its
+  element suit (fire, water, air, earth). Below, on a wooden rail, is the player's HAND: one card per useful chain.
+  A tiny miniature of the whole map sits in the top-right corner of the table.
+
+  Each card shows exactly what it does:
+    - corner pips: the chain's size (number of regions, like a rank) and the two element suits it swaps (a over b);
+    - a thumbnail of the map with the chain's regions lit in their colours (everything else dark);
+    - a band "a <-> b";
+    - a gem pentagon: what the 5 rim seats would become after playing it (g.preview(K)); changed gems get a white
+      ring, and the centre gem lights up in the hole's element when the card would win.
+
+  Mapping onto the puzzle:
+    - hand = dealOrder(g): every chain in g.chains with K.web === false (web chains are duds and are never dealt),
+      sorted rim-touching first (K.rimHits desc), then by size. At most 7 are in the hand; the rest sit in a small
+      draw pile on the left: tapping it riffles one card (the hand window rotates by one).
+    - LIFT a card (tap it once, or start dragging it): the miniature map glows that chain, the seats that would change
+      pulse with a badge of their new suit, and the hole slot glows if the card would win.
+    - PLAY a card (tap the lifted card again, or drag it up onto the felt) = g.swap(K) for exactly that card's chain K.
+      The card flies into the circle, every rim seat whose element changed flips over to its new suit, the miniature
+      updates (the chain flashes), and a fresh hand is dealt from the new g.chains.
+    - WIN: when g.won() (rim shows only 3 suits) the slot is summoned: a card flips in showing g.free(). Tap to deal
+      again (g.reset()). Small undo / restart buttons top-left (g.undo / g.reset).
+    - Duds and invalid gestures: a card dropped back on the rail springs back with a soft thud; tapping a seat or the
+      empty slot wiggles it (seats are not played; cards are).
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>Deck</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #0b2016; touch-action: none;
+    user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent;
+    font-family: Georgia, "Times New Roman", serif; }
+  #felt { position: fixed; inset: 0; overflow: hidden;
+    background: radial-gradient(ellipse at 50% 36%, #2f8553 0%, #1c5c38 42%, #0d2c1c 100%); }
+  #felt::before { content: ''; position: absolute; inset: 0; pointer-events: none; opacity: .5;
+    background: repeating-linear-gradient(45deg, rgba(255,255,255,.018) 0 1px, transparent 1px 3px),
+                repeating-linear-gradient(-45deg, rgba(0,0,0,.05) 0 1px, transparent 1px 4px); }
+  #rail { position: absolute; left: 0; right: 0; bottom: 0; pointer-events: none;
+    background: repeating-linear-gradient(91deg, rgba(0,0,0,.13) 0 2px, transparent 2px 11px, rgba(255,220,170,.05) 11px 12px, transparent 12px 23px),
+                linear-gradient(#70411e, #4a2810 35%, #2c1607);
+    border-top: 2px solid #c9a24a; box-shadow: 0 -6px 18px rgba(0,0,0,.45), inset 0 2px 0 rgba(255,230,160,.25); }
+  #circle { position: absolute; pointer-events: none; overflow: visible; }
+  #circle .rune { transform-origin: 0 0; animation: spin 60s linear infinite; }
+  #circle .rune2 { transform-origin: 0 0; animation: spin 90s linear infinite reverse; }
+  #circle.won .rune, #circle.won .rune2 { animation-duration: 6s; }
+  #circle.ready .glow { opacity: .55; }
+  #circle .glow { opacity: 0; transition: opacity .2s; }
+  #circle .ln { stroke: var(--rc, #d9b45a); transition: stroke .5s; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .seat, #slot { position: absolute; perspective: 700px; }
+  .fl { position: absolute; inset: 0; border-radius: 13%/10%; padding: 7%;
+    background: linear-gradient(135deg, #fff1b0, #b8862b 35%, #f5d77a 60%, #7d5414);
+    box-shadow: 0 5px 12px rgba(0,0,0,.5); transform-style: preserve-3d; }
+  .fc { width: 100%; height: 100%; border-radius: 10%/7%; display: flex; align-items: center; justify-content: center;
+    background: radial-gradient(circle at 35% 28%, var(--p), var(--c) 48%, var(--d)); box-shadow: inset 0 0 0 1px rgba(0,0,0,.35); }
+  .fc svg { width: 64%; height: 64%; overflow: visible; filter: drop-shadow(0 2px 2px rgba(0,0,0,.45)); }
+  .seat .bd { position: absolute; right: -14%; top: -10%; width: 44%; aspect-ratio: 1; border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, #fff, var(--to) 45%, var(--td)); border: 2px solid #fff3c4;
+    opacity: 0; transform: scale(.3); transition: opacity .18s, transform .22s cubic-bezier(.3,1.6,.5,1); pointer-events: none; }
+  .seat.will .bd { opacity: 1; transform: scale(1); }
+  .seat.will .fl { animation: willp .7s ease-in-out infinite alternate; }
+  @keyframes willp { from { box-shadow: 0 0 0 2px var(--to), 0 0 8px var(--to); } to { box-shadow: 0 0 0 3px #fff, 0 0 22px var(--to); } }
+  #slot .well { position: absolute; inset: 0; border-radius: 13%/10%; border: 2px dashed rgba(240,210,130,.7);
+    background: radial-gradient(circle, rgba(0,0,0,.45), rgba(0,0,0,.15)); transition: box-shadow .25s; }
+  #slot .q { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    color: rgba(240,210,130,.55); font-size: calc(var(--sw) * .55); }
+  #slot.hint .well { box-shadow: 0 0 0 3px var(--to), 0 0 26px 6px var(--to); }
+  #slot .fl { opacity: 0; }
+  #slot.won .fl { opacity: 1; box-shadow: 0 0 30px 8px var(--to), 0 6px 14px rgba(0,0,0,.5); }
+
+  .card { position: absolute; left: 0; top: 0; width: var(--cw); height: var(--ch); border-radius: 8%/5.5%;
+    padding: calc(var(--cw) * .035);
+    background: linear-gradient(135deg, #fff3b8, #c39332 30%, #f7dc84 55%, #8a5d17 85%, #e9c96a);
+    box-shadow: 0 6px 14px rgba(0,0,0,.55); will-change: transform; cursor: grab; touch-action: none;
+    transition: transform .3s cubic-bezier(.2,.85,.3,1.12), opacity .25s, box-shadow .2s; }
+  .card .face { width: 100%; height: 100%; border-radius: 6.5%/4.5%; overflow: hidden; pointer-events: none; }
+  .card svg { width: 100%; height: 100%; display: block; }
+  .card.up { box-shadow: 0 0 0 2px #fff6cf, 0 0 24px rgba(255,220,120,.75), 0 16px 26px rgba(0,0,0,.6); }
+  .card.drag { transition: none; cursor: grabbing; }
+  .rk { font: bold 15px Georgia, serif; fill: #f6dc8c; text-anchor: middle; paint-order: stroke; stroke: #000; stroke-width: 2px; }
+
+  #pile { position: absolute; cursor: pointer; }
+  #pile .back { position: absolute; inset: 0; border-radius: 8%/5.5%; border: 2px solid #d8b45c;
+    background: repeating-linear-gradient(45deg, #6e1420 0 5px, #8b1c2b 5px 10px); box-shadow: 0 3px 8px rgba(0,0,0,.5); }
+  #pile .back::after { content: ''; position: absolute; inset: 14%; border: 1.5px solid rgba(255,225,150,.6); border-radius: 6%; }
+
+  #mini { position: absolute; border-radius: 10%; padding: 3px; transform-origin: 100% 0; transition: transform .35s cubic-bezier(.2,.8,.3,1.2);
+    background: linear-gradient(135deg, #fff1b0, #b8862b 35%, #f5d77a 60%, #7d5414); box-shadow: 0 4px 12px rgba(0,0,0,.5); }
+  #mini svg { width: 100%; height: 100%; display: block; border-radius: 9%; background: #120d08; }
+  #mini.big { transform: scale(1.35); }
+  #mini polygon, #mini circle.v { transition: fill .35s, opacity .2s; stroke: #0b0703; stroke-width: .014; }
+  #mini polygon.rim { stroke: #f2d27a; stroke-width: .03; }
+  #mini svg.lift polygon:not(.on), #mini svg.lift circle.v:not(.on) { opacity: .22; }
+  #mini polygon.on, #mini circle.v.on { stroke: #fff; stroke-width: .035; }
+  #mini polygon.zap, #mini circle.v.zap { animation: zap .7s ease-out; }
+  @keyframes zap { 0% { stroke: #fff; stroke-width: .09; } 100% { stroke-width: .014; } }
+
+  #cue { position: absolute; left: 8px; right: 8px; text-align: center; color: #f3dfa0; pointer-events: none;
+    text-shadow: 0 1px 2px #000, 0 0 10px rgba(0,0,0,.6); font-style: italic; line-height: 1.15; transition: transform .2s; }
+  #cue.pop { animation: pop .4s; }
+  @keyframes pop { 40% { transform: scale(1.12); color: #fff; } }
+  #btns { position: absolute; left: 6px; top: 6px; display: flex; gap: 6px; z-index: 900; }
+  #btns button { width: 34px; height: 34px; border-radius: 50%; border: 2px solid #c9a24a; background: rgba(20,12,6,.65);
+    color: #f3dfa0; font: 18px/1 system-ui, sans-serif; padding: 0; cursor: pointer; }
+  #btns button:disabled { opacity: .3; }
+  .wig { animation: wig .35s; }
+  @keyframes wig { 25% { transform: rotate(-6deg); } 75% { transform: rotate(6deg); } }
+  .spark { position: absolute; width: 18px; height: 18px; pointer-events: none; z-index: 950; }
+  @media (prefers-reduced-motion: reduce) {
+    .card, #mini, .seat .bd { transition-duration: 1ms !important; }
+    #circle .rune, #circle .rune2, .seat.will .fl, .wig, #cue.pop { animation: none !important; }
+  }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <linearGradient id="gold" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff3b8"/><stop offset=".35" stop-color="#b8862b"/><stop offset=".6" stop-color="#f5d77a"/><stop offset="1" stop-color="#7d5414"/></linearGradient>
+  <radialGradient id="gem0" cx=".35" cy=".3" r=".75"><stop offset="0" stop-color="#fff"/><stop offset=".25" stop-color="#ff7a52"/><stop offset=".7" stop-color="#ef5a3c"/><stop offset="1" stop-color="#8e1c17"/></radialGradient>
+  <radialGradient id="gem1" cx=".35" cy=".3" r=".75"><stop offset="0" stop-color="#fff"/><stop offset=".25" stop-color="#5ab4ff"/><stop offset=".7" stop-color="#3d8fe8"/><stop offset="1" stop-color="#1b4f91"/></radialGradient>
+  <radialGradient id="gem2" cx=".35" cy=".3" r=".75"><stop offset="0" stop-color="#fff"/><stop offset=".25" stop-color="#ffe066"/><stop offset=".7" stop-color="#e8c547"/><stop offset="1" stop-color="#8a6510"/></radialGradient>
+  <radialGradient id="gem3" cx=".35" cy=".3" r=".75"><stop offset="0" stop-color="#fff"/><stop offset=".25" stop-color="#5cff8a"/><stop offset=".7" stop-color="#4caf50"/><stop offset="1" stop-color="#1a6b2a"/></radialGradient>
+</defs></svg>
+<div id="felt">
+  <svg id="circle"></svg>
+  <div id="slot"><div class="well"></div><div class="q">?</div><div class="fl"><div class="fc"></div></div></div>
+  <div id="mini"></div>
+  <div id="rail"></div>
+  <div id="pile"></div>
+  <div id="cue"></div>
+  <div id="btns"><button id="bUndo" aria-label="Undo">&#8630;</button><button id="bReset" aria-label="Restart">&#8635;</button></div>
+</div>
+<script src="../levels.js"></script>
+<script src="../layout.js"></script>
+<script src="core.js"></script>
+<script>
+(function () {
+  'use strict';
+  const g = LAB.game();
+  const E = LAB.ELEM, IC = LAB.ICON;
+
+  // <pure> --- DOM-free helpers (smoke-tested in node) ---
+  const HAND_MAX = 7;
+  // every non-web chain, rim-touching first, then bigger first (stable by key)
+  function dealOrder(g) {
+    return g.chains.filter(K => !K.web).sort((A, B) =>
+      (B.rimHits > 0) - (A.rimHits > 0) || B.rimHits - A.rimHits || B.size - A.size || (A.key < B.key ? -1 : 1));
+  }
+  // the hand is a window of HAND_MAX cards starting at `off` (riffling rotates it); the rest is the draw pile
+  function dealt(order, off) {
+    if (order.length <= HAND_MAX) return { hand: order.slice(), pile: [] };
+    const o = ((off % order.length) + order.length) % order.length;
+    const r = order.slice(o).concat(order.slice(0, o));
+    return { hand: r.slice(0, HAND_MAX), pile: r.slice(HAND_MAX) };
+  }
+  // seat angles (radians, screen coords) for the rim, in cyclic order, rotated to match the map around the hole
+  function seatAngles(g) {
+    const k = g.rim.length, step = 2 * Math.PI / k, P = g.centre || g.pos, h = P[g.hole];
+    const real = g.rim.map(u => Math.atan2(P[u][1] - h[1], P[u][0] - h[0]));
+    let turn = 0; for (let i = 0; i < k; i++) { let d = real[(i + 1) % k] - real[i]; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; turn += d; }
+    const s = turn >= 0 ? 1 : -1;
+    let sx = 0, sy = 0; real.forEach((a, i) => { sx += Math.cos(a - s * step * i); sy += Math.sin(a - s * step * i); });
+    const a0 = Math.atan2(sy, sx);
+    return g.rim.map((_, i) => a0 + s * step * i);
+  }
+  // table geometry for a W x H frame: card size, hand line, ring of seats sized and centred so that no seat hits the
+  // miniature map (top-right, or top-left if that fits better) or the undo/restart buttons (the other top corner)
+  function geom(W, H, k, ANG) {
+    const ch = Math.max(70, Math.min(H * 0.31, W * 0.6, 240)), cw = ch / 1.45;
+    const handY = H - ch / 2 - Math.max(6, ch * 0.06);       // centre line of the fan
+    const railTop = H - ch * 0.62;
+    const cueH = Math.max(14, Math.min(20, H * 0.035));
+    const cueY = handY - ch * 0.84 - cueH * 1.3 - 4;         // above a lifted card
+    const th = cueY, cx = W / 2;
+    const mini = Math.max(52, Math.min(W * 0.28, th * 0.3, 210));
+    const hit = (a, b) => a[0] < b[2] && b[0] < a[2] && a[1] < b[3] && b[1] < a[3];
+    let best = null;
+    for (let sc = 1; sc >= 0.5 && !best; sc -= 0.05) {
+      const R = Math.max(26, Math.min(W * 0.3, th * 0.34) * sc), sw = Math.min(R * 0.62, 112), sh = sw * 1.32;
+      const up = Math.max(...ANG.map(t => -R * Math.sin(t))) + sh / 2, dn = Math.max(...ANG.map(t => R * Math.sin(t))) + sh / 2;
+      const cy = Math.max(up + 2, up + (th - up - dn) / 2);
+      const boxes = ANG.map(t => { const x = cx + R * Math.cos(t), y = cy + R * Math.sin(t); return [x - sw / 2, y - sh / 2, x + sw / 2, y + sh / 2]; });
+      for (const side of [1, -1]) {
+        const m = side > 0 ? [W - 6 - mini, 6, W - 6, 6 + mini] : [6, 6, 6 + mini, 6 + mini];
+        const b = side > 0 ? [6, 6, 80, 42] : [W - 80, 6, W - 6, 42];
+        if (sc <= 0.51 || !boxes.some(q => hit(q, m) || hit(q, b))) { best = { R, sw, sh, cy, side }; break; }
+      }
+    }
+    const pileW = k > HAND_MAX ? cw * 0.62 : 0;
+    return Object.assign(best, { W, H, ch, cw, handY, railTop, cueY, cueH, cx, mini, pileW, drop: handY - ch * 0.62 });
+  }
+  // fanned hand positions: [{x, y, rot}] card centres
+  function fan(n, G) {
+    const left = G.pileW ? G.pileW + 14 : 6, avail = G.W - left - 6 - G.cw;
+    const step = n > 1 ? Math.min(G.cw * 1.04, avail / (n - 1)) : 0, span = step * (n - 1);
+    const x0 = left + G.cw / 2 + (avail - span) / 2, spread = step < G.cw ? Math.min(16, n * 2.4) : Math.min(6, n);
+    const out = [];
+    for (let i = 0; i < n; i++) { const t = n > 1 ? i / (n - 1) * 2 - 1 : 0; out.push({ x: x0 + step * i, y: G.handY + t * t * G.ch * 0.07, rot: t * spread }); }
+    return out;
+  }
+  // </pure>
+
+  // ---------------- art helpers ----------------
+  const icon = (e, x, y, s, c) => `<path d="${IC[e]}" transform="translate(${x} ${y}) scale(${s / 24})" ` +
+    (e === 2 ? `fill="none" stroke="${c}" stroke-width="2.7" stroke-linecap="round"` : `fill="${c}"`) + '/>';
+  const free = rimCols => { const s = new Set(rimCols); for (let e = 0; e < g.NC; e++) if (!s.has(e)) return e; return -1; };
+  const ANG = seatAngles(g);
+  const PTS = g.cells ? g.cells.map(poly => poly.map(p => p[0].toFixed(3) + ',' + p[1].toFixed(3)).join(' ')) : null;
+  function mapMarkup(fillOf, cls) {           // the map in viewBox -1..1
+    if (PTS) return PTS.map((p, u) => `<polygon points="${p}" data-u="${u}" fill="${fillOf(u)}" class="${cls ? cls(u) : ''}"/>`).join('');
+    return g.edges.map(([a, b]) => `<line x1="${g.pos[a][0]}" y1="${g.pos[a][1]}" x2="${g.pos[b][0]}" y2="${g.pos[b][1]}" stroke="#5a4a2a" stroke-width=".02"/>`).join('') +
+      g.pos.map((p, u) => `<circle class="v ${cls ? cls(u) : ''}" cx="${p[0]}" cy="${p[1]}" r=".09" data-u="${u}" fill="${fillOf(u)}"/>`).join('');
+  }
+  const VB = PTS ? '-1.02 -1.02 2.04 2.04' : '-1.15 -1.15 2.3 2.3';
+
+  function cardSVG(K) {
+    const [a, b] = K.pair, pv = g.preview(K), now = g.rimColours(), nw = g.rim.map(u => pv.col[u]);
+    const fillOf = u => u === g.hole ? '#000' : K.set.has(u) ? E[g.col[u]].hex : '#2b241c';
+    let s = '<svg viewBox="0 0 100 145">';
+    s += `<rect x="18" y="6" width="66" height="66" rx="6" fill="#0b0806" stroke="url(#gold)" stroke-width="1.6"/>`;
+    s += `<svg x="19.5" y="7.5" width="63" height="63" viewBox="${VB}">${mapMarkup(fillOf)}</svg>`;
+    const corner = `<text x="9.5" y="16" class="rk">${K.size}</text>` + icon(a, 3, 19, 13, E[a].neon) + icon(b, 3, 34, 13, E[b].neon);
+    s += corner + `<g transform="rotate(180 50 72.5)">${corner}</g>`;
+    // a <-> b band
+    s += icon(a, 30, 75, 10, E[a].neon) + icon(b, 60, 75, 10, E[b].neon) +
+      '<path d="M43 78.5h14M54 76l3 2.5-3 2.5M46 82.5l-3 0M43 82.5h14M46 80l-3 2.5 3 2.5" stroke="#f3dfa0" stroke-width="1.1" fill="none" stroke-linecap="round" stroke-linejoin="round"/>';
+    // gem pentagon: the rim after this card
+    const cx = 50, cy = 113, r = 19;
+    s += `<polygon points="${ANG.map(t => (cx + r * Math.cos(t)).toFixed(1) + ',' + (cy + r * Math.sin(t)).toFixed(1)).join(' ')}" fill="rgba(0,0,0,.35)" stroke="url(#gold)" stroke-width=".9"/>`;
+    ANG.forEach((t, i) => {
+      const x = cx + r * Math.cos(t), y = cy + r * Math.sin(t), ch = nw[i] !== now[i];
+      s += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="6.3" fill="url(#gem${nw[i]})" stroke="${ch ? '#fff' : '#3a2a10'}" stroke-width="${ch ? 1.8 : .8}"/>`;
+    });
+    if (pv.won) {
+      const f = free(nw);
+      s += `<circle cx="${cx}" cy="${cy}" r="10" fill="${E[f].neon}" opacity=".35"/><circle cx="${cx}" cy="${cy}" r="7" fill="url(#gem${f})" stroke="#fff" stroke-width="1.4"/>` +
+        `<path d="M${cx} ${cy - 13}v5M${cx} ${cy + 8}v5M${cx - 13} ${cy}h5M${cx + 8} ${cy}h5" stroke="#fff" stroke-width="1.2" stroke-linecap="round"/>`;
+    } else s += `<circle cx="${cx}" cy="${cy}" r="5" fill="#000" stroke="#8a7036" stroke-width=".9" stroke-dasharray="1.6 1.4"/>`;
+    return s + '</svg>';
+  }
+
+  // ---------------- sound (after first gesture) ----------------
+  let AC = null;
+  function tone(f0, f1, dur, type, vol, delay) {
+    if (!AC) return;
+    try {
+      const t = AC.currentTime + (delay || 0), o = AC.createOscillator(), v = AC.createGain();
+      o.type = type || 'sine'; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f1, t + dur);
+      v.gain.setValueAtTime(vol || .05, t); v.gain.exponentialRampToValueAtTime(.0001, t + dur);
+      o.connect(v); v.connect(AC.destination); o.start(t); o.stop(t + dur + .02);
+    } catch (e) {}
+  }
+  function snap(vol) {
+    if (!AC) return;
+    try {
+      const n = AC.sampleRate * .06 | 0, buf = AC.createBuffer(1, n, AC.sampleRate), d = buf.getChannelData(0);
+      for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / n, 4);
+      const src = AC.createBufferSource(), f = AC.createBiquadFilter(), v = AC.createGain();
+      f.type = 'bandpass'; f.frequency.value = 2200; v.gain.value = vol || .25;
+      src.buffer = buf; src.connect(f); f.connect(v); v.connect(AC.destination); src.start();
+    } catch (e) {}
+  }
+  const sfx = {
+    tick: () => snap(.08), lift: () => { snap(.12); tone(660, 880, .07, 'triangle', .025); },
+    play: () => snap(.35), flip: i => tone(392 * Math.pow(1.122, i), 523 * Math.pow(1.122, i), .14, 'triangle', .045),
+    thud: () => tone(150, 90, .16, 'sine', .08),
+    win: () => [0, 4, 7, 12, 16, 19].forEach((s, i) => tone(392 * Math.pow(2, s / 12), 392 * Math.pow(2, s / 12) * 1.01, .5, 'triangle', .05, i * .08)),
+  };
+  addEventListener('pointerdown', () => { if (!AC) try { AC = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} else if (AC.state === 'suspended') AC.resume(); }, true);
+
+  // ---------------- DOM ----------------
+  const RM = matchMedia('(prefers-reduced-motion: reduce)').matches, T = ms => RM ? 0 : ms;
+  const $ = id => document.getElementById(id);
+  const felt = $('felt'), circle = $('circle'), slot = $('slot'), mini = $('mini'), rail = $('rail'), pile = $('pile'), cue = $('cue');
+  const seats = g.rim.map(() => {
+    const el = document.createElement('div'); el.className = 'seat';
+    el.innerHTML = '<div class="fl"><div class="fc"></div></div><div class="bd"></div>';
+    felt.insertBefore(el, mini); return { el, fl: el.querySelector('.fl'), fc: el.querySelector('.fc') };
+  });
+  function paintFace(fc, e) {
+    fc.style.setProperty('--p', E[e].pastel); fc.style.setProperty('--c', E[e].hex); fc.style.setProperty('--d', E[e].dark);
+    fc.innerHTML = `<svg viewBox="0 0 24 24">${icon(e, 0, 0, 24, 'rgba(255,255,255,.93)')}</svg>`;
+  }
+  let shown = g.rimColours();
+  shown.forEach((e, i) => paintFace(seats[i].fc, e));
+
+  mini.innerHTML = `<svg viewBox="${VB}">${mapMarkup(u => '#000', u => g.rim.includes(u) ? 'rim' : '')}</svg>`;
+  const miniSvg = mini.firstChild, miniEl = [...miniSvg.querySelectorAll('[data-u]')];
+  function paintMini(zap) {
+    miniEl.forEach(el => {
+      const u = +el.dataset.u;
+      el.setAttribute('fill', u === g.hole ? '#000' : E[g.col[u]].hex);
+      if (zap && zap.has(u)) { el.classList.remove('zap'); void el.getBoundingClientRect(); el.classList.add('zap'); }
+    });
+  }
+  paintMini();
+
+  let G = null;
+  function drawCircle() {
+    const R = G.R, pts = ANG.map(t => [R * Math.cos(t), R * Math.sin(t)]), k = pts.length;
+    const star = pts.map((_, i) => pts[(i * 2) % k]).map(p => p.join(',')).join(' ');
+    const runes = [0, 1, 2, 3].map(e => [0, 1].map(j => { const t = (e + 4 * j) * Math.PI / 4, rr = R * 1.18; return icon(e, rr * Math.cos(t) - 6, rr * Math.sin(t) - 6, 12, 'rgba(240,210,130,.28)'); }).join('')).join('');
+    circle.setAttribute('width', 4 * R); circle.setAttribute('height', 4 * R);
+    circle.setAttribute('viewBox', `${-2 * R} ${-2 * R} ${4 * R} ${4 * R}`);
+    circle.style.left = (G.cx - 2 * R) + 'px'; circle.style.top = (G.cy - 2 * R) + 'px';
+    circle.innerHTML = `<circle class="glow" r="${R * 1.32}" fill="rgba(255,236,170,.25)"/>` +
+      `<g class="rune"><circle class="ln" r="${R * 1.3}" fill="none" stroke-width="1.5" stroke-dasharray="2 6" opacity=".7"/>${runes}</g>` +
+      `<g class="rune2"><circle class="ln" r="${R * 1.07}" fill="none" stroke-width="1" opacity=".5"/></g>` +
+      `<polygon class="ln" points="${star}" fill="none" stroke-width="1.3" opacity=".45"/>` +
+      `<circle class="ln" r="${R * 0.55}" fill="rgba(0,0,0,.18)" stroke-width="1.2" opacity=".6"/>`;
+  }
+
+  // ---------------- hand ----------------
+  const cards = new Map();   // key -> { el, K, pending }
+  let wonAt = 0, order = [], pileList = [], offset = 0, lifted = null, busy = false, wonShown = false, drag = null;
+
+  function place(el, x, y, rot, sc, z) {
+    el.style.transform = `translate(${x - G.cw / 2}px,${y - G.ch / 2}px) rotate(${rot}deg) scale(${sc})`;
+    if (z != null) el.style.zIndex = z;
+  }
+  function deckPos() { return pileList.length ? { x: 6 + G.pileW / 2, y: G.handY } : { x: G.W / 2, y: G.H + G.ch }; }
+  function layoutHand() {
+    const P = fan(order.length, G);
+    order.forEach((k, i) => {
+      const c = cards.get(k); if (!c || c.pending || (drag && drag.c === c)) return;
+      const up = lifted === k;
+      c.el.classList.toggle('up', up);
+      place(c.el, P[i].x, P[i].y - (up ? G.ch * 0.34 : 0), up ? 0 : P[i].rot, up ? 1.07 : 1, up ? 100 : 10 + i);
+      c.home = P[i];
+    });
+  }
+  function makeCard(K) {
+    const el = document.createElement('div'); el.className = 'card';
+    const [a, b] = K.pair;
+    el.innerHTML = `<div class="face" style="background:linear-gradient(150deg,${E[a].dark} 0%,#21180f 40%,#21180f 60%,${E[b].dark} 100%)">${cardSVG(K)}</div>`;
+    felt.insertBefore(el, $('btns'));
+    const c = { el, K, pending: true };
+    el.addEventListener('pointerdown', ev => down(ev, c));
+    return c;
+  }
+  function deal() {
+    const all = dealOrder(g), d = dealt(all, offset);
+    pileList = d.pile; G.pileW = pileList.length ? G.cw * 0.62 : 0;
+    const keep = new Set(d.hand.map(K => K.key));
+    for (const [k, c] of cards) if (!keep.has(k)) { cards.delete(k); toPile(c); }
+    const dp = deckPos(); let j = 0;
+    d.hand.forEach(K => {
+      let c = cards.get(K.key);
+      if (c) { c.K = K; return; }
+      c = makeCard(K); cards.set(K.key, c);
+      c.el.style.transition = 'none'; c.el.style.opacity = '0'; place(c.el, dp.x, dp.y, -25, .8, 5);
+      void c.el.getBoundingClientRect();
+      setTimeout(() => { c.el.style.transition = ''; c.el.style.opacity = '1'; c.pending = false; layoutHand(); sfx.tick(); }, T(70 * j++) + 16);
+    });
+    order = d.hand.map(K => K.key);
+    drawPile(); layoutHand();
+    return T(70 * j) + 320;
+  }
+  function toPile(c) {
+    const dp = deckPos(); c.el.style.pointerEvents = 'none'; c.el.style.opacity = '0';
+    place(c.el, dp.x, dp.y, -25, .8, 5); setTimeout(() => c.el.remove(), T(320) + 20);
+  }
+  function sweep() {
+    let i = 0;
+    for (const [, c] of cards) {
+      const el = c.el, h = c.home || { x: G.W / 2, y: G.handY, rot: 0 };
+      el.style.pointerEvents = 'none';
+      setTimeout(() => { el.style.opacity = '0'; place(el, h.x, h.y + G.ch * 1.1, h.rot * 2, .9); }, T(25 * i++));
+      setTimeout(() => el.remove(), T(25 * i + 360) + 20);
+    }
+    cards.clear(); order = []; pileList = []; drawPile();
+  }
+  function drawPile() {
+    const k = Math.min(3, pileList.length);
+    pile.style.display = k ? '' : 'none';
+    if (!k) return;
+    pile.style.left = '6px'; pile.style.width = G.pileW + 'px'; pile.style.height = G.pileW * 1.45 + 'px';
+    pile.style.top = (G.handY - G.pileW * 0.725) + 'px';
+    pile.innerHTML = Array.from({ length: k }, (_, i) => `<div class="back" style="transform:translate(${i * 2}px,${-i * 3}px) rotate(${(i - 1) * 3}deg)"></div>`).join('');
+  }
+  pile.addEventListener('pointerdown', ev => {
+    ev.stopPropagation(); if (busy || wonShown) return;
+    offset++; lift(null); deal(); snap(.18);
+  });
+
+  // ---------------- lift / preview ----------------
+  function lift(k) {
+    lifted = k;
+    const c = k && cards.get(k), K = c && c.K;
+    miniSvg.classList.toggle('lift', !!K);
+    miniEl.forEach(el => el.classList.toggle('on', !!K && K.set.has(+el.dataset.u)));
+    slot.classList.remove('hint');
+    seats.forEach(s => s.el.classList.remove('will'));
+    if (K) {
+      const pv = g.preview(K), nw = g.rim.map(u => pv.col[u]);
+      nw.forEach((e, i) => {
+        if (e === shown[i]) return;
+        const s = seats[i]; s.el.classList.add('will');
+        s.el.style.setProperty('--to', E[e].neon); s.el.style.setProperty('--td', E[e].dark);
+      });
+      if (pv.won) { slot.classList.add('hint'); slot.style.setProperty('--to', E[free(nw)].neon); }
+      setCue('Tap again or drag it up to play');
+    } else setCue();
+    layoutHand();
+  }
+
+  // ---------------- gestures ----------------
+  function down(ev, c) {
+    ev.stopPropagation(); ev.preventDefault();
+    if (busy || wonShown || c.pending) return;
+    try { c.el.setPointerCapture(ev.pointerId); } catch (e) {}
+    const was = lifted === c.K.key;
+    if (!was) { lift(c.K.key); sfx.lift(); }
+    drag = { c, id: ev.pointerId, x0: ev.clientX, y0: ev.clientY, moved: false, was };
+  }
+  felt.addEventListener('pointermove', ev => {
+    if (!drag || ev.pointerId !== drag.id) return;
+    const dx = ev.clientX - drag.x0, dy = ev.clientY - drag.y0;
+    if (!drag.moved && Math.hypot(dx, dy) < 9) return;
+    drag.moved = true;
+    const c = drag.c, h = c.home; c.el.classList.add('drag');
+    place(c.el, h.x + dx, h.y - G.ch * 0.34 + dy, 0, 1.1, 200);
+    circle.classList.toggle('ready', ev.clientY < G.drop);
+  });
+  function up(ev) {
+    if (!drag || ev.pointerId !== drag.id) return;
+    const d = drag; drag = null; d.c.el.classList.remove('drag'); circle.classList.remove('ready');
+    if (d.moved) {
+      if (ev.clientY < G.drop) play(d.c);
+      else { sfx.thud(); layoutHand(); }
+    } else if (d.was) play(d.c);
+  }
+  felt.addEventListener('pointerup', up);
+  felt.addEventListener('pointercancel', ev => { if (drag && ev.pointerId === drag.id) { drag.c.el.classList.remove('drag'); drag = null; circle.classList.remove('ready'); layoutHand(); } });
+  felt.addEventListener('pointerdown', ev => {
+    if (busy) return;
+    if (wonShown) { if (Date.now() - wonAt > 700) g.reset(); return; }
+    const t = ev.target.closest('.seat, #slot');
+    if (t) { wiggle(t); sfx.thud(); setCue(t === slot ? 'Leave just 3 suits on the ring first' : 'Play a card from your hand', true); }
+    if (lifted) lift(null);
+  });
+  function wiggle(el) { el.classList.remove('wig'); void el.offsetWidth; el.classList.add('wig'); setTimeout(() => el.classList.remove('wig'), 400); }
+  $('bUndo').addEventListener('pointerdown', ev => { ev.stopPropagation(); if (!busy && g.history.length) g.undo(); });
+  $('bReset').addEventListener('pointerdown', ev => { ev.stopPropagation(); if (!busy && (g.history.length || wonShown)) g.reset(); });
+  $('btns').addEventListener('pointerup', ev => ev.stopPropagation());
+
+  // ---------------- play ----------------
+  function play(c) {
+    if (busy || g.won()) return;
+    busy = true; lift(null);
+    const K = c.K; cards.delete(K.key); order = order.filter(k => k !== K.key);
+    c.el.style.pointerEvents = 'none'; c.el.style.transition = `transform ${T(280)}ms cubic-bezier(.2,.8,.3,1), opacity ${T(220)}ms ${T(200)}ms`;
+    place(c.el, G.cx, G.cy, 0, .55, 300); c.el.style.opacity = '0';
+    sfx.play();
+    setTimeout(() => { c.el.remove(); g.swap(K); }, T(300));
+  }
+  function flipSeat(i, e, delay) {          // one-piece flip; the face changes at the edge-on moment
+    const s = seats[i], dur = T(380);
+    setTimeout(() => {
+      s.fl.animate([{ transform: 'rotateY(0deg)', easing: 'ease-in' }, { transform: 'rotateY(90deg)', offset: .4 },
+        { transform: 'rotateY(-90deg) scale(1.12)', offset: .4001, easing: 'cubic-bezier(.2,.9,.3,1.3)' }, { transform: 'rotateY(0deg) scale(1)' }], { duration: dur });
+      setTimeout(() => { paintFace(s.fc, e); sfx.flip(i); }, dur * .4);
+    }, delay);
+  }
+  g.on((g, info) => {
+    const now = g.rimColours(); let j = 0;
+    now.forEach((e, i) => { if (e !== shown[i]) flipSeat(i, e, T(90 * j++)); });
+    shown = now;
+    lifted = null; lift(null);
+    if (info.type === 'swap') {
+      busy = true;
+      paintMini(info.chain.set);
+      mini.classList.add('big'); setTimeout(() => mini.classList.remove('big'), T(900));
+      sweep(); offset = 0;
+      setTimeout(() => {
+        if (g.won()) { win(); busy = false; }
+        else setTimeout(() => { busy = false; }, deal());
+      }, T(520 + 90 * j));
+    } else {
+      paintMini(); unwin(); sweep(); offset = 0; busy = true;
+      setTimeout(() => setTimeout(() => { busy = false; }, deal()), T(260));
+    }
+  });
+
+  // ---------------- win ----------------
+  function win() {
+    wonShown = true; wonAt = Date.now();
+    const f = g.free();
+    slot.style.setProperty('--to', E[f].neon); slot.classList.remove('hint'); slot.classList.add('won');
+    const fl = slot.querySelector('.fl'); paintFace(fl.firstChild, f);
+    fl.animate([{ transform: 'rotateY(180deg) scale(.4)' }, { transform: 'rotateY(0deg) scale(1.25)', offset: .7 }, { transform: 'rotateY(0deg) scale(1)' }], { duration: T(700), easing: 'ease-out' });
+    circle.classList.add('won'); circle.style.setProperty('--rc', E[f].neon);
+    sfx.win();
+    setCue(`The hole takes ${E[f].name}! Tap to deal again`, true);
+    if (RM) return;
+    for (let i = 0; i < 22; i++) {
+      const sp = document.createElement('div'); sp.className = 'spark';
+      sp.innerHTML = `<svg viewBox="0 0 24 24" width="18" height="18">${icon(f, 0, 0, 24, E[f].neon)}</svg>`;
+      sp.style.left = (G.cx - 9) + 'px'; sp.style.top = (G.cy - 9) + 'px'; felt.appendChild(sp);
+      const t = i / 22 * Math.PI * 2 + Math.random() * .3, r = G.R * (1.3 + Math.random() * 1.2);
+      sp.animate([{ transform: 'translate(0,0) scale(.3)', opacity: 1 }, { transform: `translate(${r * Math.cos(t)}px,${r * Math.sin(t)}px) scale(${.7 + Math.random()}) rotate(${Math.random() * 360}deg)`, opacity: 0 }],
+        { duration: 900 + Math.random() * 500, easing: 'cubic-bezier(.1,.8,.3,1)', fill: 'forwards' }); setTimeout(() => sp.remove(), 1450);
+    }
+  }
+  function unwin() {
+    wonShown = false; slot.classList.remove('won', 'hint'); circle.classList.remove('won'); circle.style.removeProperty('--rc'); setCue();
+  }
+
+  // ---------------- cue ----------------
+  const CUE = 'Play cards until the ring shows just 3 suits';
+  function setCue(t, popIt) {
+    cue.textContent = t || (wonShown ? cue.textContent : CUE);
+    if (popIt) { cue.classList.remove('pop'); void cue.offsetWidth; cue.classList.add('pop'); }
+  }
+
+  // ---------------- layout ----------------
+  function resize() {
+    const W = innerWidth, H = innerHeight;
+    G = geom(W, H, dealOrder(g).length, ANG);
+    document.documentElement.style.setProperty('--cw', G.cw + 'px'); document.documentElement.style.setProperty('--ch', G.ch + 'px');
+    rail.style.height = (H - G.railTop) + 'px';
+    drawCircle();
+    seats.forEach((s, i) => {
+      const t = ANG[i], x = G.cx + G.R * Math.cos(t), y = G.cy + G.R * Math.sin(t);
+      Object.assign(s.el.style, { left: (x - G.sw / 2) + 'px', top: (y - G.sh / 2) + 'px', width: G.sw + 'px', height: G.sh + 'px' });
+    });
+    const ssw = G.sw * 0.82;
+    slot.style.setProperty('--sw', ssw + 'px');
+    Object.assign(slot.style, { left: (G.cx - ssw / 2) + 'px', top: (G.cy - ssw * 0.66) + 'px', width: ssw + 'px', height: ssw * 1.32 + 'px' });
+    Object.assign(mini.style, { width: G.mini + 'px', height: G.mini + 'px', top: '6px', left: G.side > 0 ? (W - 6 - G.mini) + 'px' : '6px', transformOrigin: G.side > 0 ? '100% 0' : '0 0' });
+    Object.assign($('btns').style, G.side > 0 ? { left: '6px', right: 'auto' } : { right: '6px', left: 'auto' });
+    Object.assign(cue.style, { top: G.cueY + 'px', fontSize: G.cueH * 0.8 + 'px' });
+    drawPile(); layoutHand();
+  }
+  addEventListener('resize', resize);
+  resize(); setCue(); deal();
+})();
+</script>
+</body>
+</html>

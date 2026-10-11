@@ -1,0 +1,753 @@
+<!doctype html>
+<!--
+  WEDDING TABLES (lab front end, round 3: a sibling of zoo.html, same "pens" mechanic, a wedding reception)
+
+  What the player sees: an evening reception under string lights. Four round tables, each with its own tablecloth
+  colour, hem pattern and centrepiece: Roses (blush cloth, scalloped hem, red rose), Bluebells (blue cloth, dotted
+  hem, drooping bells), Sunflowers (gold cloth, striped hem, sunflower), Ferns (sage cloth, leafy hem, fern sprig).
+  Every map region except the hole is a named guest with a little portrait on a gold chair; the table a guest sits
+  at is its element. The map itself is never drawn. The hidden relation: guests who are neighbours on the map have a
+  FEUD and never share a table (the legal colouring). Feuds only show when you pick a guest up: crackling red sparks
+  run to each of their rivals (who scowl), the guests who would get bumped light up, and a gossip line names the
+  feud ("Kev vs Doris: the potato salad recipe").
+
+  The bride's grandmother (the hole) arrives late. She feuds with five guests (g.rim, wearing a red pin); the banner
+  shows Gran and the five portraits she won't sit with, each on a disc of the table they sit at now. Each table has a
+  little place card with Gran and a tick (none of her five sit there) or a cross. Goal: make one table tick.
+  g.won() is exactly "some table holds none of the five" (her five are always 2+1+1+1 over the tables; a win is
+  2+2+1), and g.free() is that table: Gran walks over, sits, glasses clink, confetti.
+
+  The move (one gesture = exactly one g.swap(K), or nothing): drag/flick guest u from table A to table B (or tap u,
+  then tap table B). K = g.chainAt(u, B), the {A, B} chain through u. u sits at B; every rival of u already at B
+  storms off to A ("Well!"); every rival of those at A storms over to B; and so on: the members of K scrape their
+  chairs between A and B one BFS layer at a time from u. A guest with no rival at B just moves (a single-region
+  chain), so every chain on the map is reachable by moving any one of its members. If K.web is true (both whole
+  tables would trade seats, which changes nothing) g.swap is NOT called: both tables stand up, shuffle, sit back
+  down, and the wedding planner facepalms. Undo (g.undo) and start over (g.reset) are the two small buttons.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>Wedding Tables</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;1,600&family=Nunito:wght@700;800&display=swap" rel="stylesheet">
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #241c38; touch-action: none;
+    -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
+  svg { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
+    font-family: Nunito, 'Avenir Next', 'Trebuchet MS', system-ui, sans-serif; }
+  .serif { font-family: 'Playfair Display', Georgia, 'Times New Roman', serif; }
+  #ui { position: fixed; right: 6px; top: 6px; display: flex; flex-direction: column; gap: 6px; z-index: 2; }
+  #ui button { width: 30px; height: 30px; border-radius: 50%; border: 2px solid #b48a2c; background: #fbf3e2; color: #5b3a4f;
+    font: 700 16px/1 system-ui, sans-serif; padding: 0; cursor: pointer; box-shadow: 0 2px 0 #b48a2c; }
+  #ui button:active { transform: translateY(2px); box-shadow: none; }
+  .gst { cursor: grab; }
+  .mo, .mg, .brow, .gst .ring, .gst .halo { display: none; }
+  .grump .ms, .bump .ms, .party .ms, .hope .ms { display: none; }
+  .grump .mg, .grump .brow { display: inline; }
+  .grump.bump .mg, .hope .mg, .hope .brow { display: none; }
+  .bump .mo, .party .mo, .hope .mo { display: inline; }
+  .gst.lit .ring { display: inline; animation: pulse .6s ease-in-out infinite alternate; }
+  .gst.held .halo, .gst.sel .halo { display: inline; }
+  .bob { transform-box: fill-box; transform-origin: 50% 95%; animation: breathe 3s ease-in-out infinite; }
+  .gst.lit .bob, .gst.grump .bob, #gran.grump .bob { animation: huff .2s ease-in-out infinite alternate; }
+  .gst.party .bob, #gran.party .bob, #gran.hope .bob { animation: jump .4s ease-in-out infinite alternate; }
+  #gran .gchair { display: none; } #gran.seated .gchair { display: inline; }
+  .tbl .hi { opacity: 0; transition: opacity .15s; }
+  .tbl.hover .hi { opacity: 1; }
+  .bulb { animation: twinkle 2.4s ease-in-out infinite alternate; }
+  .glowing .bulb { animation-duration: .5s; }
+  .flL, .flR { transform-box: fill-box; transform-origin: 50% 100%; }
+  .flL { animation: clinkL .45s ease-in-out 4 alternate; }
+  .flR { animation: clinkR .45s ease-in-out 4 alternate; }
+  .palm { animation: fadeio 1.9s ease-in-out forwards; }
+  @keyframes breathe { from { transform: scale(1, 1); } to { transform: scale(1.025, .975); } }
+  @keyframes huff { from { transform: rotate(-6deg); } to { transform: rotate(6deg); } }
+  @keyframes jump { from { transform: translateY(0); } to { transform: translateY(-.3px); } }
+  @keyframes pulse { from { opacity: .45; } to { opacity: 1; } }
+  @keyframes twinkle { from { opacity: .55; } to { opacity: 1; } }
+  @keyframes clinkL { from { transform: rotate(-4deg); } to { transform: rotate(14deg); } }
+  @keyframes clinkR { from { transform: rotate(4deg); } to { transform: rotate(-14deg); } }
+  @keyframes fadeio { 0% { opacity: 0; } 15%, 80% { opacity: 1; } 100% { opacity: 0; } }
+  @media (prefers-reduced-motion: reduce) {
+    .bob, .gst.lit .bob, .gst.grump .bob, .gst.party .bob, #gran .bob, .bulb, .flL, .flR { animation: none !important; }
+    .gst.lit .ring { animation: none; }
+  }
+</style>
+</head>
+<body>
+<svg id="s" xmlns="http://www.w3.org/2000/svg" aria-label="Wedding reception seating"></svg>
+<div id="ui"><button id="undo" title="Undo" aria-label="Undo">&#8630;</button><button id="again" title="Start over" aria-label="Start over">&#8634;</button></div>
+<script src="../levels.js"></script>
+<script src="../layout.js"></script>
+<script src="core.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  // ---------------------------------------------------------------- pure helpers (also used by the node smoke test)
+  const TABLE = [
+    { name: 'Roses', cloth: '#f7d3d3', shade: '#e9b3b6', hem: '#c93a55', dark: '#7d1a30' },
+    { name: 'Bluebells', cloth: '#d3e3f7', shade: '#aec8ea', hem: '#2f69c4', dark: '#173d7a' },
+    { name: 'Sunflowers', cloth: '#f9eab4', shade: '#ecd27d', hem: '#d69a10', dark: '#7a5406' },
+    { name: 'Ferns', cloth: '#d6ebcc', shade: '#b3d6a3', hem: '#3f8a3a', dark: '#1f5a22' },
+  ];
+
+  // the hall: a banner strip on top, then the tables on the best grid (2x2 on a phone, 4x1 when wide, ...)
+  function layoutHall(W, H, NC, counts) {
+    const wide = W > H * 1.25;
+    const gh = Math.round(Math.max(66, Math.min(118, wide ? H * 0.2 : H * 0.16)));
+    const pad = Math.max(4, Math.min(12, W * 0.02)), top = gh + 10, aw = W - 2 * pad, ah = H - top - pad;
+    let best = null;
+    for (let cols = 1; cols <= NC; cols++) {
+      const rows = Math.ceil(NC / cols), S = Math.min(aw / cols, ah / rows) / 2;
+      if (!best || S > best.S * 1.04 || (cols === 2 && S > best.S * .96)) best = { cols, rows, S };
+    }
+    // a staggered "zigzag" (tables alternate sides along the long axis) uses a tall phone or a wide strip better
+    const tall = ah >= aw, P = tall ? ah : aw, Q = tall ? aw : ah, gap = S => (P - 2 * S) / Math.max(1, NC - 1);
+    let lo = 0, hi = Math.min(Q / 2, P / 2);
+    for (let i = 0; i < 30; i++) {
+      const S = (lo + hi) / 2, d = gap(S);
+      if (d >= S && Math.hypot(Q - 2 * S, d) >= 2 * S) lo = S; else hi = S;
+    }
+    const zig = NC >= 3 && lo > best.S * 1.06;
+    const tables = [];
+    let cols = best.cols, rows = best.rows, swags = [];
+    if (zig) {
+      cols = 1; rows = 1;
+      for (let k = 0; k < NC; k++) {
+        const a = lo + k * gap(lo), b = k % 2 ? Q - lo : lo;
+        tables.push(tall ? { k, cx: pad + b, cy: top + a, S: lo } : { k, cx: pad + a, cy: top + b, S: lo });
+      }
+    } else {
+      const cw = aw / cols, ch = ah / rows;
+      for (let k = 0; k < NC; k++) {
+        const r = Math.floor(k / cols), inRow = Math.min(cols, NC - r * cols), c = k - r * cols;
+        const off = (aw - inRow * cw) / 2;
+        tables.push({ k, cx: pad + off + (c + .5) * cw, cy: top + (r + .5) * ch, S: Math.min(cw, ch) / 2 });
+      }
+      for (let r = 1; r < rows; r++) swags.push(top + r * ch - 6);
+    }
+    // one guest size for the whole hall, so that the fullest table still seats everyone in a ring
+    const S = Math.min(...tables.map(t => t.S)), m = Math.max(3, ...counts);
+    let r = Math.min(S * .25, 44);
+    for (let i = 0; i < 8; i++) { const Rc = S - r * 1.35; r = Math.min(S * .25, 44, Math.PI * Rc / (1.08 * m)); }
+    r = Math.max(7, r);
+    tables.forEach(t => { t.Rc = t.S - r * 1.35; t.Rt = Math.max(t.Rc - r * .5, t.S * .3); });
+    return { W, H, gh, tables, r, cols, rows, swags, zig };
+  }
+
+  // seat angle i of m around a table (top first; even counts straddle the top)
+  function seatAngle(i, m) { return -Math.PI / 2 + 2 * Math.PI * i / m + (m % 2 ? 0 : Math.PI / m); }
+  function seatXY(t, i, m) { const a = seatAngle(i, m); return [t.cx + t.Rc * Math.cos(a), t.cy + t.Rc * Math.sin(a)]; }
+  // where a newcomer arriving from angle th takes a chair (so the rest of the table shuffles by one chair at most)
+  function seatIndexFor(th, m) {
+    let bi = 0, bd = Infinity;
+    for (let i = 0; i < m; i++) { let d = Math.abs(seatAngle(i, m) - th) % (2 * Math.PI); d = Math.min(d, 2 * Math.PI - d); if (d < bd) { bd = d; bi = i; } }
+    return bi;
+  }
+
+  // the cascade: the members of chain K in BFS layers from the guest who was moved
+  function cascade(g, K, u) {
+    const seen = new Set([u]), layers = [[u]];
+    let front = [u];
+    while (front.length) {
+      const nx = [];
+      for (const v of front) for (const w of g.adj[v]) if (K.set.has(w) && !seen.has(w)) { seen.add(w); nx.push(w); }
+      if (nx.length) layers.push(nx);
+      front = nx;
+    }
+    return layers;
+  }
+
+  // gesture -> chain: moving guest u to table B means chain g.chainAt(u, B); nothing when B is its own table
+  function moveFor(g, u, B) {
+    if (u === g.hole || B == null || B < 0 || B >= g.NC || B === g.col[u]) return null;
+    const K = g.chainAt(u, B);
+    if (!K) return null;
+    return { K, web: K.web, from: g.col[u], to: B, layers: cascade(g, K, u) };
+  }
+
+  // which table does a release at (x, y) mean? The table whose seating circle it is in, or the nearest; a clear
+  // swipe that stays at its own table but points at another one counts for that one (forgiving flicks on a phone).
+  function tableFor(L, x, y, from, dx, dy) {
+    if (y < L.gh - 4) return null;
+    let best = null, bd = Infinity;
+    L.tables.forEach(t => { const d = Math.hypot(x - t.cx, y - t.cy) - t.S; if (d < bd) { bd = d; best = t.k; } });
+    const len = Math.hypot(dx || 0, dy || 0);
+    if (best === from && from != null && len > Math.max(28, L.r * 1.2)) {
+      const P = L.tables[from]; let bc = 0.5, alt = null;
+      L.tables.forEach(q => {
+        if (q.k === from) return;
+        const vx = q.cx - P.cx, vy = q.cy - P.cy, c = (vx * dx + vy * dy) / (Math.hypot(vx, vy) * len);
+        if (c > bc) { bc = c; alt = q.k; }
+      });
+      if (alt != null) return alt;
+    }
+    return best;
+  }
+
+  const REASONS = ['the karaoke incident', 'who caught the bouquet in 2019', 'a borrowed lawnmower, never returned',
+    'the potato salad recipe', 'an ex. Obviously.', 'pineapple on pizza', 'a parking space, 1998', 'the family group chat',
+    'a Monopoly game. Never again.', 'one massive spoiler', 'the garden fence', 'a reply-all email',
+    'who is the favourite grandchild', 'a casserole dish, still missing', 'the Great Fondue Spill', 'an unfollow',
+    'a bridesmaid demotion', 'the last slice of cake', 'naming a dog after the other one', 'a very loud speech, 2016',
+    'a timeshare', 'the Christmas cracker joke', 'a wedding cake tasting, uninvited', 'the inflatable flamingo'];
+  const reasonFor = (u, w) => REASONS[(Math.min(u, w) * 31 + Math.max(u, w) * 17) % REASONS.length];
+
+  window.TABLES = { TABLE, layoutHall, seatAngle, seatXY, seatIndexFor, cascade, moveFor, tableFor, reasonFor, REASONS };
+  if (window.TABLES_TEST) return;
+
+  // ---------------------------------------------------------------- the reception
+  const g = LAB.game();
+  const NC = g.NC, hole = g.hole, rimSet = new Set(g.rim);
+  const RM = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const NS = 'http://www.w3.org/2000/svg';
+  const svg = document.getElementById('s');
+  const el = (tag, attrs, parent, html) => {
+    const e = document.createElementNS(NS, tag);
+    for (const a in attrs) e.setAttribute(a, (a === 'width' || a === 'height' || a === 'r') && attrs[a] < 0 ? 0 : attrs[a]);
+    if (html != null) e.innerHTML = html;
+    if (parent) parent.appendChild(e);
+    return e;
+  };
+  const f2 = x => (+x).toFixed(2);
+
+  // centrepieces, unit size (about -1..1); four different shapes as well as colours
+  function flower(k) {
+    const G = '#3f8a3a', GD = '#1f5a22';
+    if (k === 0) return `<g fill="${G}" stroke="${GD}" stroke-width=".05"><path d="M-.2 .45Q-.85 .35-.95 .85Q-.4 .95-.2 .45Z"/><path d="M.2 .45Q.85 .35 .95 .85Q.4 .95 .2 .45Z"/></g>` +
+      `<circle r=".66" fill="#d8455e" stroke="#7d1a30" stroke-width=".07"/><path d="M.05 0A.1 .1 0 1 1 .02-.14A.24 .24 0 0 1 .2 .16A.38 .38 0 0 1-.36 .1A.5 .5 0 0 1 .3-.42" fill="none" stroke="#7d1a30" stroke-width=".07" stroke-linecap="round"/>`;
+    if (k === 1) {
+      const bell = (x, y, s) => `<path transform="translate(${x} ${y}) scale(${s})" d="M-.2-.38Q0-.48 .2-.38Q.24-.1 .26 .08L.13 .02L0 .12L-.13 .02L-.26 .08Q-.24-.1-.2-.38Z" fill="#3f7fe0" stroke="#173d7a" stroke-width=".07" stroke-linejoin="round"/>`;
+      return `<path d="M-.75 .9Q-.6-.55 .55-.75" fill="none" stroke="${G}" stroke-width=".1" stroke-linecap="round"/><ellipse cx="-.35" cy=".75" rx=".32" ry=".1" fill="${G}" transform="rotate(-50 -.35 .75)"/>` +
+        bell(-.52, .1, 1.05) + bell(-.2, -.38, 1.15) + bell(.25, -.42, 1.1) + bell(.62, -.38, .95);
+    }
+    if (k === 2) {
+      let d = ''; for (let i = 0; i < 12; i++) { const a = i * Math.PI / 6, b = a + .2, c = a - .2;
+        d += `M${f2(.45 * Math.cos(b))} ${f2(.45 * Math.sin(b))}L${f2(.95 * Math.cos(a))} ${f2(.95 * Math.sin(a))}L${f2(.45 * Math.cos(c))} ${f2(.45 * Math.sin(c))}Z`; }
+      let s = ''; for (let i = 0; i < 7; i++) { const a = i * 2.4; s += `<circle cx="${f2(.22 * Math.cos(a) * Math.sqrt(i / 7))}" cy="${f2(.22 * Math.sin(a) * Math.sqrt(i / 7))}" r=".045"/>`; }
+      return `<path d="${d}" fill="#f6c21c" stroke="#8a5d06" stroke-width=".06" stroke-linejoin="round"/><circle r=".44" fill="#7a4a18" stroke="#4a2a0a" stroke-width=".06"/><g fill="#c48a3a">${s}</g>`;
+    }
+    let lv = ''; for (let i = 0; i < 4; i++) { const y = .55 - i * .38, s = 1 - i * .18;
+      lv += `<ellipse cx="${f2(-.32 * s)}" cy="${f2(y)}" rx="${f2(.34 * s)}" ry=".13" transform="rotate(${-28} ${f2(-.32 * s)} ${f2(y)})"/><ellipse cx="${f2(.32 * s)}" cy="${f2(y)}" rx="${f2(.34 * s)}" ry=".13" transform="rotate(${28} ${f2(.32 * s)} ${f2(y)})"/>`; }
+    return `<path d="M0 .95V-.95" stroke="${GD}" stroke-width=".09" stroke-linecap="round"/><g fill="#4fa64a" stroke="${GD}" stroke-width=".05">${lv}<ellipse cy="-.9" rx=".12" ry=".2"/></g>`;
+  }
+
+  // ---- the guests: one per region (the hole is Gran)
+  const NAMES = ['Bob', 'Mabel', 'Priya', 'Kev', 'Doris', 'Tariq', 'Fiona', 'Lou', 'Gus', 'Rosa', 'Nigel', 'Jade', 'Omar',
+    'Bea', 'Marco', 'Wendy', 'Derek', 'Suki', 'Pip', 'Hank', 'Lena', 'Raj', 'Cleo', 'Vince', 'Ada', 'Theo', 'Nell', 'Ivan',
+    'Joy', 'Sven', 'Mo', 'Greta', 'Felix', 'Kat'];
+  const SKIN = ['#f6d3b3', '#e8b48a', '#c98b5e', '#9c6440', '#6e4428', '#f2c6a0'];
+  const HAIRC = ['#2b1d16', '#6b3f1f', '#c8873a', '#e6c46a', '#8e8a92', '#a33b20', '#1d1d24'];
+  const OUTFIT = ['#3a4a7a', '#7a2f4f', '#2f6b5a', '#5b3a7a', '#c25a3a', '#2b2b35', '#b0466e', '#3f7a9a'];
+  const HAIR = ['short', 'long', 'bun', 'curly', 'bald', 'pony', 'quiff', 'bob'];
+  const INK = '#2e2230';
+
+  function faceMarkup() {
+    return `<circle cx="-.3" cy="-.08" r=".09" fill="#ff8fa3" opacity=".55"/><circle cx=".3" cy="-.08" r=".09" fill="#ff8fa3" opacity=".55"/>` +
+      `<g fill="${INK}"><circle cx="-.18" cy="-.24" r=".065"/><circle cx=".18" cy="-.24" r=".065"/></g>` +
+      `<path class="brow" d="M-.3-.42L-.08-.34M.3-.42L.08-.34" stroke="${INK}" stroke-width=".07" stroke-linecap="round" fill="none"/>` +
+      `<g stroke="${INK}" stroke-width=".06" stroke-linecap="round" fill="none"><path class="ms" d="M-.12-.04Q0 .06 .12-.04"/><path class="mg" d="M-.12 .03Q0-.07 .12 .03"/></g>` +
+      `<ellipse class="mo" cy="-.0" rx=".08" ry=".09" fill="#8a2a3a" stroke="${INK}" stroke-width=".04"/>`;
+  }
+
+  const CHAIR = `<g stroke="#b48a2c" stroke-width=".1" fill="none"><rect x="-.74" y="-1.02" width="1.48" height="1.95" rx=".55" fill="#fbf3e2" fill-opacity=".14"/><path d="M-.36-.98V.9M0-1.02V.9M.36-.98V.9" stroke-width=".05" opacity=".7"/></g>`; // a gold chiavari chair
+  // spec: { skin, hair, hc, outfit, suit, glasses, beard, gran }
+  function personMarkup(P, chair) {
+    const hc = P.hc, H = `fill="${hc}"`;
+    let back = '', front = '';
+    const cap = `<path ${H} d="M-.55-.2Q-.62-.82 0-.8Q.62-.82 .55-.2Q.45-.52 .05-.56Q-.4-.54-.55-.2Z"/>`;
+    switch (P.hair) {
+      case 'short': front = cap; break;
+      case 'long': back = `<path ${H} d="M-.6-.25Q-.66-.88 0-.86Q.66-.88 .6-.25L.66 .42Q.45 .5 .32 .3H-.32Q-.45 .5-.66 .42Z"/>`; front = cap; break;
+      case 'bun': front = cap + `<circle ${H} cy="-.9" r=".22"/>`; break;
+      case 'curly': { let c = ''; for (let i = 0; i < 9; i++) { const a = Math.PI * (1.02 + i * .12); c += `<circle cx="${f2(.5 * Math.cos(a))}" cy="${f2(.5 * Math.sin(a) - .22)}" r=".2"/>`; } front = `<g ${H}>${c}</g>`; break; }
+      case 'bald': front = `<g ${H}><ellipse cx="-.52" cy="-.3" rx=".08" ry=".16"/><ellipse cx=".52" cy="-.3" rx=".08" ry=".16"/></g>`; break;
+      case 'pony': back = `<ellipse ${H} cx=".66" cy="-.15" rx=".16" ry=".34" transform="rotate(-20 .66 -.15)"/>`; front = cap; break;
+      case 'quiff': front = cap + `<path ${H} d="M-.35-.6Q-.25-1.05 .45-.9Q.2-.8 .5-.5Q.1-.75-.35-.6Z"/>`; break;
+      case 'bob': back = `<path ${H} d="M-.62-.2Q-.66-.86 0-.84Q.66-.86 .62-.2L.62 .12H-.62Z"/>`; front = `<path ${H} d="M-.55-.18Q-.6-.8 0-.78Q.6-.8 .55-.18Q.2-.52-.55-.18Z"/>`; break;
+    }
+    const chairM = chair ? CHAIR : '';
+    const body = `<path d="M-.86 1Q-.86 .38 0 .32Q.86 .38 .86 1Z" fill="${P.outfit}" stroke="${INK}" stroke-width=".05"/>` +
+      (P.suit ? `<path d="M-.22 .36L0 .8L.22 .36Z" fill="#fff"/><path d="M-.15 .45L0 .52L.15 .45L.15 .62L0 .55L-.15 .62Z" fill="${P.tie}"/>`
+        : `<path d="M-.32 .36Q0 .7 .32 .36" fill="${P.skin}"/>` + (P.gran ? `<g fill="#fffaf0" stroke="#c9c1b3" stroke-width=".02">${[-.28, -.14, 0, .14, .28].map((x, i) => `<circle cx="${x}" cy="${f2(.42 + .14 * Math.cos(x * 4))}" r=".065"/>`).join('')}</g>` : ''));
+    const head = `<rect x="-.12" y=".08" width=".24" height=".3" fill="${P.skin}"/><circle cy="-.2" r=".54" fill="${P.skin}" stroke="${INK}" stroke-width=".04"/>`;
+    const glasses = P.glasses ? `<g fill="none" stroke="${INK}" stroke-width=".045"><circle cx="-.19" cy="-.24" r=".14"/><circle cx=".19" cy="-.24" r=".14"/><path d="M-.05-.25H.05"/></g>` : '';
+    const beard = P.beard ? `<path d="M-.48-.2Q-.45 .32 0 .36Q.45 .32 .48-.2Q.3 .05 0 .06Q-.3 .05-.48-.2Z" fill="${hc}"/><path class="ms" d="M-.1-.03Q0 .03 .1-.03" stroke="#fff" stroke-width=".04" fill="none" opacity=".6"/>` : '';
+    return chairM + back + body + head + `<g transform="translate(0 -.2)">${faceMarkup()}</g>` + beard + glasses + front;
+  }
+  const PIN = `<g transform="translate(-.52 .62)"><path d="M-.1 .05L-.2 .4L0 .28L.2 .4L.1 .05Z" fill="#9c1c2e"/><circle r=".17" fill="#e8384f" stroke="#7a1020" stroke-width=".05"/><circle r=".06" fill="#ffd0d6"/></g>`;
+  const GRAN = { skin: '#f3d2bb', hair: 'bun', hc: '#dcd9e2', outfit: '#9b7fc2', suit: false, glasses: true, beard: false, gran: true };
+
+  function planner() { // the wedding planner, facepalming (clipboard and headset)
+    return `<rect x=".5" y=".25" width=".42" height=".55" rx=".05" fill="#c99a5a" stroke="${INK}" stroke-width=".04"/><rect x=".56" y=".33" width=".3" height=".42" fill="#fff"/>` +
+      `<path d="M-.86 1Q-.86 .38 0 .32Q.86 .38 .86 1Z" fill="#2b2b35"/><circle cy="-.2" r=".54" fill="#e8b48a" stroke="${INK}" stroke-width=".04"/>` +
+      `<path fill="#2b1d16" d="M-.55-.2Q-.62-.82 0-.8Q.62-.82 .55-.2Q.45-.52 .05-.56Q-.4-.54-.55-.2Z"/><path d="M-.56-.2Q-.6-.9 0-.86Q.6-.9 .56-.2" fill="none" stroke="#444" stroke-width=".06"/>` +
+      `<path d="M-.12 .08Q0 .0 .12 .08" stroke="${INK}" stroke-width=".05" fill="none"/>` +
+      `<ellipse cx="-.02" cy="-.26" rx=".38" ry=".2" fill="#e8b48a" stroke="${INK}" stroke-width=".04" transform="rotate(-12 0 -.26)"/><path d="M-.3 .7Q-.5 .2-.32-.18" stroke="#2b2b35" stroke-width=".22" fill="none" stroke-linecap="round"/>`;
+  }
+
+  // ---- DOM layers
+  el('defs', {}, svg, `<radialGradient id="bg" cx="50%" cy="30%" r="80%"><stop offset="0" stop-color="#4a3a68"/><stop offset="1" stop-color="#1c1630"/></radialGradient>` +
+    `<radialGradient id="glow"><stop offset="0" stop-color="#ffe7a0" stop-opacity=".8"/><stop offset="1" stop-color="#ffe7a0" stop-opacity="0"/></radialGradient>` +
+    TABLE.map((T, k) => `<radialGradient id="cl${k}" cx="45%" cy="38%" r="70%"><stop offset="0" stop-color="#fffdf8"/><stop offset=".55" stop-color="${T.cloth}"/><stop offset="1" stop-color="${T.shade}"/></radialGradient>`).join('') +
+    `<filter id="sh" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="#0b0716" flood-opacity=".45"/></filter>` +
+    `<filter id="spk" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="1.2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>`);
+  const gBg = el('g', {}, svg), gTables = el('g', {}, svg), gCards = el('g', {}, svg), gSpark = el('g', { 'pointer-events': 'none', filter: 'url(#spk)' }, svg);
+  const gGst = el('g', {}, svg), gBanner = el('g', {}, svg), gTop = el('g', {}, svg), gFx = el('g', { 'pointer-events': 'none' }, svg);
+
+  const A = []; // guests: { v, g, ring, nm, P, name, x, y, tw, slot }
+  let k = 0;
+  for (let v = 0; v < g.n; v++) {
+    if (v === hole) continue;
+    const P = { skin: SKIN[(k * 5 + 1) % SKIN.length], hair: HAIR[(k * 3) % HAIR.length], hc: HAIRC[(k * 4 + 1) % HAIRC.length],
+      outfit: OUTFIT[(k * 3 + 2) % OUTFIT.length], suit: k % 3 !== 1, tie: ['#c93a55', '#d69a10', '#2f69c4', '#3f8a3a'][k % 4],
+      glasses: k % 5 === 2, beard: k % 7 === 3 };
+    if (P.hair === 'bald') P.suit = true;
+    const name = NAMES[k % NAMES.length] + (k >= NAMES.length ? ' ' + (1 + Math.floor(k / NAMES.length)) : '');
+    const G = el('g', { class: 'gst' }, gGst);
+    G.innerHTML = `<circle class="halo" r="1.15" fill="#fff6d6" fill-opacity=".35" stroke="#ffd36a" stroke-width=".14"/>` +
+      `<circle class="ring" r="1.18" fill="none" stroke-width=".18" stroke-dasharray=".35 .2"/>` +
+      `<g class="bob">${personMarkup(P, true)}${rimSet.has(v) ? PIN : ''}</g>` +
+      `<text class="nm" y="1.42" text-anchor="middle" font-size=".5" font-weight="800" fill="#fff6e6" stroke="#241c38" stroke-width=".16" paint-order="stroke">${name}</text>`;
+    A[v] = { v, g: G, ring: G.querySelector('.ring'), nm: G.querySelector('.nm'), P, name, x: 0, y: 0, tw: null };
+    k++;
+  }
+  const disp = g.col.slice(); // the table each guest is SHOWN at (lags g.col while a cascade plays)
+  const GRANID = -2;
+  let order = []; // seating order around each table (guest ids, and GRANID once Gran sits)
+  function initOrder() { order = Array.from({ length: NC }, () => []); for (let v = 0; v < g.n; v++) if (v !== hole) order[disp[v]].push(v); }
+  initOrder();
+  function seatMove(v, from, to) {
+    const i = order[from].indexOf(v); if (i >= 0) order[from].splice(i, 1);
+    const T = L.tables[to], F = L.tables[from] || { cx: T.cx, cy: L.gh };
+    const j = seatIndexFor(Math.atan2(F.cy - T.cy, F.cx - T.cx), order[to].length + 1);
+    order[to].splice(j, 0, v);
+  }
+
+  let L = null; // layout
+  const counts = () => order.map(o => o.length);
+  const sizing = () => order.map(o => Math.max(o.length, Math.ceil((g.n - 1) / NC) + 2)); // room for one more chair
+
+  function drawStatic() {
+    const W = innerWidth, H = innerHeight;
+    svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+    L = layoutHall(W, H, NC, sizing());
+    gBg.innerHTML = ''; gTables.innerHTML = '';
+    el('rect', { width: W, height: H, fill: 'url(#bg)' }, gBg);
+    // faint parquet
+    let pq = ''; const st = 34; for (let y = L.gh; y < H; y += st) for (let x = ((y / st) % 2) * st / 2; x < W; x += st) pq += `M${x} ${y}l${st / 2} ${st / 2}`;
+    el('path', { d: pq, stroke: '#fff', 'stroke-opacity': .035, 'stroke-width': 1.2 }, gBg);
+    // string lights: swags along the top and between table rows
+    const swag = (y0, sag) => {
+      const n = Math.max(1, Math.round(W / 190)), seg = W / n;
+      let wire = '', bulbs = '';
+      for (let s = 0; s < n; s++) {
+        const x0 = s * seg, x1 = x0 + seg;
+        wire += `M${x0} ${y0}Q${x0 + seg / 2} ${y0 + sag * 2} ${x1} ${y0}`;
+        const nb = Math.max(4, Math.round(seg / 24));
+        for (let i = 1; i < nb; i++) {
+          const t = i / nb, x = x0 + seg * t, y = y0 + sag * 4 * t * (1 - t);
+          bulbs += `<g class="bulb" style="animation-delay:${((s * 7 + i * 3) % 11) * -.23}s"><circle cx="${x.toFixed(1)}" cy="${(y + 3).toFixed(1)}" r="9" fill="url(#glow)"/><circle cx="${x.toFixed(1)}" cy="${(y + 3).toFixed(1)}" r="2.6" fill="#fff1c2"/></g>`;
+        }
+      }
+      el('path', { d: wire, fill: 'none', stroke: '#6d5a83', 'stroke-width': 1.3 }, gBg);
+      el('g', {}, gBg, bulbs);
+    };
+    swag(L.gh + 1, Math.min(22, H * .03));
+    L.swags.forEach(y => swag(y, Math.min(16, H * .02)));
+    L.tables.forEach(t => drawTable(t));
+    drawBanner(); drawCards(); place(true);
+    if (won && granSlot && !granTw) setGran(granSlot[0], granSlot[1], L.r * 1.05);
+  }
+
+  function drawTable(t) {
+    const T = TABLE[t.k], G = el('g', { class: 'tbl' }, gTables), R = t.Rt;
+    el('circle', { cx: t.cx, cy: t.cy, r: t.S - 2, fill: T.hem, 'fill-opacity': .08, class: 'hi', stroke: T.hem, 'stroke-width': 3, 'stroke-dasharray': '6 6' }, G);
+    el('circle', { cx: t.cx, cy: t.cy + 3, r: R + 2, fill: '#0b0716', opacity: .35 }, G);
+    el('circle', { cx: t.cx, cy: t.cy, r: R, fill: `url(#cl${t.k})`, stroke: T.hem, 'stroke-width': 2 }, G);
+    // hem pattern: scallops / dots / stripes / leafy zigzag
+    let d = ''; const n = Math.max(14, Math.round(2 * Math.PI * R / 13));
+    for (let i = 0; i < n; i++) {
+      const a = 2 * Math.PI * i / n, b = 2 * Math.PI * (i + 1) / n, ca = Math.cos(a), sa = Math.sin(a);
+      if (t.k === 0) { const r1 = R * .9; d += `M${f2(t.cx + r1 * ca)} ${f2(t.cy + r1 * sa)}A${f2(R * .25)} ${f2(R * .25)} 0 0 0 ${f2(t.cx + r1 * Math.cos(b))} ${f2(t.cy + r1 * Math.sin(b))}`; }
+      else if (t.k === 1) { const r1 = R * .88; d += `M${f2(t.cx + r1 * ca - 2)} ${f2(t.cy + r1 * sa)}a2 2 0 1 0 4 0a2 2 0 1 0-4 0`; }
+      else if (t.k === 2) { d += `M${f2(t.cx + R * .82 * ca)} ${f2(t.cy + R * .82 * sa)}L${f2(t.cx + R * .97 * ca)} ${f2(t.cy + R * .97 * sa)}`; }
+      else { const m = (a + b) / 2; d += `M${f2(t.cx + R * .82 * ca)} ${f2(t.cy + R * .82 * sa)}L${f2(t.cx + R * .94 * Math.cos(m))} ${f2(t.cy + R * .94 * Math.sin(m))}L${f2(t.cx + R * .82 * Math.cos(b))} ${f2(t.cy + R * .82 * Math.sin(b))}`; }
+    }
+    el('path', { d, fill: t.k === 1 ? T.hem : 'none', stroke: T.hem, 'stroke-width': t.k === 2 ? 3 : 1.6, 'stroke-linecap': 'round', opacity: .75 }, G);
+    // centrepiece: a little vase and the flower
+    const fs = R * .36;
+    el('ellipse', { cx: t.cx, cy: t.cy - R * .08 + fs * .9, rx: fs * .7, ry: fs * .2, fill: '#0b0716', opacity: .12 }, G);
+    el('g', { transform: `translate(${f2(t.cx)} ${f2(t.cy - R * .12)}) scale(${f2(fs)})` }, G, flower(t.k));
+    t.el = G;
+  }
+
+  // ---- the banner: Gran + "won't sit with" the five
+  let gGran = null, granPos = null, portraits = [], banner = null;
+  function drawBanner() {
+    gBanner.innerHTML = ''; gTop.innerHTML = '';
+    const gh = L.gh, W = L.W, lr = gh * .3, ax = gh * .48;
+    el('rect', { x: 4, y: 4, width: W - 8, height: gh - 8, rx: 12, fill: '#fbf5ea', stroke: '#c9a34a', 'stroke-width': 2, filter: 'url(#sh)' }, gBanner);
+    el('rect', { x: 8, y: 8, width: W - 16, height: gh - 16, rx: 9, fill: 'none', stroke: '#c9a34a', 'stroke-width': .8, 'stroke-dasharray': '2 3' }, gBanner);
+    el('circle', { cx: ax, cy: gh * .5, r: lr * 1.3, fill: '#efe2f6', stroke: '#9b7fc2', 'stroke-width': 2 }, gBanner);
+    granPos = { x: ax, y: gh * .5, r: lr };
+    const bx = ax + lr * 1.6, bw = W - bx - 44, by = 8, bh = gh - 16;
+    const fs = Math.max(10, Math.min(16, bh * .18, bw / (goalText().length * .5)));
+    const msg = el('text', { x: bx + bw / 2, y: by + fs + 2, 'text-anchor': 'middle', 'font-size': fs, 'font-weight': 700, 'font-style': 'italic', fill: '#5b3a4f', class: 'serif' }, gBanner);
+    banner = { msg, bw }; setMsg(goalText());
+    const n = g.rim.length, avail = bh - fs - 8, pr = Math.max(7, Math.min(avail * .36, (bw - 8) / n * .38));
+    portraits = g.rim.map((v, i) => {
+      const cx = bx + bw * (i + .5) / n, cy = by + fs + 4 + avail / 2;
+      const G = el('g', { transform: `translate(${f2(cx)} ${f2(cy)})` }, gBanner);
+      const disc = el('circle', { r: pr * 1.22, 'stroke-width': 2.2 }, G);
+      el('g', { transform: `scale(${f2(pr * .92)})` }, G, `<g transform="translate(0 .05)">${personMarkup(A[v].P, false)}</g>`);
+      el('path', { d: `M${-pr * 1.05} ${-pr * 1.05}L${pr * 1.05} ${pr * 1.05}`, stroke: '#d8424f', 'stroke-width': Math.max(1.5, pr * .14), opacity: .55, 'stroke-linecap': 'round' }, G);
+      const ico = el('g', { transform: `translate(${f2(pr * .95)} ${f2(-pr * .85)}) scale(${f2(pr * .42)})` }, G);
+      return { v, disc, ico };
+    });
+    gGran = el('g', { id: 'gran' }, gTop, `<g class="bob"><g class="gchair">${CHAIR}</g>${personMarkup(GRAN, false)}<g transform="translate(.42 -.78) rotate(20)"><ellipse rx=".42" ry=".12" fill="#9b7fc2"/><circle cx=".1" cy="-.06" r=".1" fill="#f6b6c1"/></g></g>`);
+    setGran(granPos.x, granPos.y, granPos.r);
+    if (won) gGran.classList.add('party', 'seated');
+  }
+  function goalText() { return L.W > 440 ? 'Gran needs a table with none of these:' : L.W > 320 ? 'Gran won\'t sit with:' : 'Gran won\'t sit with'; }
+  function setMsg(t) {
+    const m = banner.msg; m.textContent = t; m.removeAttribute('textLength');
+    try { if (m.getComputedTextLength() > banner.bw - 8) { m.setAttribute('textLength', banner.bw - 8); m.setAttribute('lengthAdjust', 'spacingAndGlyphs'); } } catch (_) {}
+  }
+  function setGran(x, y, r) { gGran.setAttribute('transform', `translate(${x.toFixed(1)} ${y.toFixed(1)}) scale(${r.toFixed(2)})`); }
+
+  // ---- place cards: a tick if none of Gran's five sit at that table, else a cross; plus the banner discs
+  function rivalsAt(t) { return g.rim.filter(v => disp[v] === t).length; }
+  function drawCards() {
+    gCards.innerHTML = '';
+    L.tables.forEach(t => {
+      const ok = rivalsAt(t.k) === 0, w = Math.max(30, t.Rt * .78), h = w * .44, x = t.cx - w / 2, y = t.cy + t.Rt * .38;
+      const G = el('g', { filter: 'url(#sh)' }, gCards);
+      el('rect', { x, y, width: w, height: h, rx: 4, fill: ok ? '#eaf8df' : '#fffaf0', stroke: ok ? '#3f8a3a' : '#c9a34a', 'stroke-width': ok ? 2.2 : 1.4 }, G);
+      el('g', { transform: `translate(${f2(x + h * .55)} ${f2(y + h * .52)}) scale(${f2(h * .4)})` }, G, personMarkup(GRAN, false));
+      const cx = x + w - h * .55, cy = y + h / 2, s = h * .34;
+      el('circle', { cx, cy, r: s, fill: ok ? '#3f9a3a' : '#d8424f' }, G);
+      el('path', { d: ok ? `M${cx - s * .5} ${cy}l${s * .35} ${s * .38}l${s * .6} ${-s * .75}` : `M${cx - s * .42} ${cy - s * .42}l${s * .84} ${s * .84}M${cx + s * .42} ${cy - s * .42}l${-s * .84} ${s * .84}`,
+        stroke: '#fff', 'stroke-width': Math.max(1.6, s * .3), fill: 'none', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }, G);
+    });
+    portraits.forEach(P => { const t = disp[P.v]; P.disc.setAttribute('fill', TABLE[t].cloth); P.disc.setAttribute('stroke', TABLE[t].hem); P.ico.innerHTML = `<circle r="1.05" fill="#fffaf0" stroke="${TABLE[t].hem}" stroke-width=".14"/><g transform="scale(.82)">${flower(t)}</g>`; });
+  }
+
+  // ---- motion
+  const now = () => performance.now();
+  function tweenTo(a, x, y, dur, hop, delay) {
+    if (RM) { dur = Math.min(dur, 120); hop = 0; }
+    a.tw = { fx: a.x, fy: a.y, tx: x, ty: y, t0: now() + (delay || 0), dur, hop: hop || 0 };
+  }
+  let granSlot = null;
+  function place(snap, movers) {
+    const q = layoutHall(L.W, L.H, NC, sizing());
+    L.r = q.r; L.tables.forEach(t => { t.Rc = q.tables[t.k].Rc; });
+    L.tables.forEach(t => {
+      const o = order[t.k], m = o.length;
+      o.forEach((v, i) => {
+        const S = seatXY(t, i, m);
+        if (v === GRANID) { granSlot = S; return; }
+        const a = A[v]; a.slot = S;
+        if (v === held) return;
+        if (snap) { a.x = S[0]; a.y = S[1]; a.tw = null; }
+        else if (Math.hypot(a.x - S[0], a.y - S[1]) > .5) { const mv = movers && movers.has(v); tweenTo(a, S[0], S[1], mv ? 460 : 320, mv ? L.r * 1.2 : 0); }
+      });
+    });
+    A.forEach(a => { if (a) a.nm.style.display = L.r >= 14 ? '' : 'none'; });
+  }
+  function frame() {
+    const t = now();
+    A.forEach(a => {
+      if (!a) return;
+      let x = a.x, y = a.y, lift = 0, jit = 0;
+      if (a.tw && t >= a.tw.t0) {
+        const p = Math.min(1, (t - a.tw.t0) / a.tw.dur), e = p < .5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2;
+        x = a.x = a.tw.fx + (a.tw.tx - a.tw.fx) * e; y = a.y = a.tw.fy + (a.tw.ty - a.tw.fy) * e;
+        lift = a.tw.hop * Math.sin(Math.PI * p); jit = a.tw.hop ? Math.sin(p * 40) * 1.2 : 0; // chair scrape judder
+        if (p >= 1) a.tw = null;
+      }
+      const s = L.r * (a.v === held ? 1.15 : 1);
+      a.g.setAttribute('transform', `translate(${(x + jit).toFixed(1)} ${(y - lift).toFixed(1)}) scale(${s.toFixed(2)})`);
+    });
+    if (granTw) {
+      const p = Math.min(1, (t - granTw.t0) / granTw.dur);
+      if (p >= 0) {
+        const e = p < .5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2, step = RM ? 0 : Math.abs(Math.sin(Math.PI * p * 5)) * granTw.h;
+        setGran(granTw.fx + (granTw.tx - granTw.fx) * e, granTw.fy + (granTw.ty - granTw.fy) * e - step, granTw.fr + (granTw.tr - granTw.fr) * e);
+        if (p >= 1) { granTw = null; if (onGranDone) { const f = onGranDone; onGranDone = null; f(); } }
+      }
+    }
+    sparks(t); fx();
+    requestAnimationFrame(frame);
+  }
+
+  // feud sparks from the held / selected guest to each rival
+  let sparkT = 0;
+  function sparks(t) {
+    const u = held != null ? held : sel;
+    if (u == null || busy) { if (gSpark.childNodes.length) gSpark.innerHTML = ''; return; }
+    if (t - sparkT < (RM ? 400 : 70)) return;
+    sparkT = t;
+    const a = A[u], s = L.r * .55;
+    let d = '', bolts = '';
+    rivals(u).forEach(w => {
+      const b = A[w], dx = b.x - a.x, dy = b.y - a.y, len = Math.hypot(dx, dy); if (len < 1) return;
+      const nx = -dy / len, ny = dx / len, n = Math.max(3, Math.round(len / 16));
+      d += `M${a.x.toFixed(1)} ${a.y.toFixed(1)}`;
+      for (let i = 1; i < n; i++) { const j = (Math.random() - .5) * s * .9; d += `L${(a.x + dx * i / n + nx * j).toFixed(1)} ${(a.y + dy * i / n + ny * j).toFixed(1)}`; }
+      d += `L${b.x.toFixed(1)} ${b.y.toFixed(1)}`;
+      const bx = b.x + L.r * .8, by = b.y - L.r * .9, z = L.r * .4;
+      bolts += `M${bx} ${by - z}l${-z * .5} ${z}h${z * .45}l${-z * .3} ${z * .9}l${z * .9}-${z * 1.2}h${-z * .45}l${z * .3}-${z * .7}Z`;
+    });
+    gSpark.innerHTML = `<path d="${d}" fill="none" stroke="#ff4d5e" stroke-width="2.4" stroke-linejoin="round" opacity=".85"/><path d="${d}" fill="none" stroke="#ffe08a" stroke-width=".9" opacity=".9"/><path d="${bolts}" fill="#ffd23f" stroke="#c0392b" stroke-width="1"/>`;
+  }
+
+  // the gossip line (just under the banner) while you hold someone
+  let gGossip = null;
+  function gossip(text) {
+    if (gGossip) { gGossip.remove(); gGossip = null; }
+    if (!text) return;
+    const fs = Math.max(11, Math.min(15, L.W / 30)), y = L.gh + fs * .3 + 6;
+    gGossip = el('g', {}, gFx);
+    const bg = el('rect', { y: y - 2, height: fs * 1.55, rx: fs * .77, fill: '#2e2240', stroke: '#ff8a8a', 'stroke-width': 1.2, opacity: .95 }, gGossip);
+    const tx = el('text', { x: L.W / 2, y: y + fs * 1.05, 'text-anchor': 'middle', 'font-size': fs, 'font-weight': 800, fill: '#fff1d6' }, gGossip);
+    tx.textContent = text;
+    let w = 0; try { w = tx.getComputedTextLength(); } catch (_) { w = text.length * fs * .5; }
+    const maxw = L.W - 24; if (w > maxw) { tx.setAttribute('textLength', maxw); tx.setAttribute('lengthAdjust', 'spacingAndGlyphs'); w = maxw; }
+    bg.setAttribute('x', L.W / 2 - w / 2 - fs * .7); bg.setAttribute('width', w + fs * 1.4);
+  }
+
+  // speech puffs riding on a guest
+  function puff(v, text, ms) {
+    const a = A[v]; const G = el('g', { transform: 'translate(0 -1.4)' }, a.g);
+    const w = .34 * text.length + .55;
+    el('rect', { x: -w / 2, y: -.44, width: w, height: .66, rx: .33, fill: '#fff', stroke: '#c9a34a', 'stroke-width': .06 }, G);
+    const t = el('text', { y: .06, 'text-anchor': 'middle', 'font-size': .44, 'font-weight': 800, fill: '#7a1d36' }, G); t.textContent = text;
+    setTimeout(() => G.remove(), RM ? ms * .6 : ms);
+  }
+
+  // confetti and petals
+  const parts = [];
+  function burst(x, y, n, cols) {
+    if (RM) n = Math.min(n, 10);
+    for (let i = 0; i < n; i++) {
+      const a = Math.random() * Math.PI * 2, sp = 1.5 + Math.random() * 3.5, c = cols[i % cols.length];
+      const e = el('path', { d: i % 3 === 0 ? 'M0 3C-4-1-2-5 0-2C2-5 4-1 0 3Z' : i % 3 === 1 ? 'M-3-1.5h6v3h-6z' : 'M0-3Q3 0 0 3Q-3 0 0-3Z', fill: c }, gFx);
+      parts.push({ e, x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 3, r: Math.random() * 360, life: 1 });
+    }
+  }
+  function fx() {
+    for (let i = parts.length - 1; i >= 0; i--) {
+      const p = parts[i]; p.x += p.vx; p.y += p.vy; p.vy += .13; p.vx *= .99; p.r += 6; p.life -= .011;
+      if (p.life <= 0) { p.e.remove(); parts.splice(i, 1); continue; }
+      p.e.setAttribute('transform', `translate(${p.x.toFixed(1)} ${p.y.toFixed(1)}) rotate(${p.r.toFixed(0)}) scale(${(1.4 * p.life + .4).toFixed(2)})`);
+      p.e.setAttribute('opacity', Math.min(1, p.life * 2).toFixed(2));
+    }
+  }
+
+  // ---- sound (only after the first gesture)
+  let ac = null;
+  function tone(f, d, type, vol, slide, at) {
+    if (!ac) return;
+    const t = ac.currentTime + (at || 0), o = ac.createOscillator(), v = ac.createGain();
+    o.type = type || 'sine'; o.frequency.setValueAtTime(f, t); if (slide) o.frequency.exponentialRampToValueAtTime(slide, t + d);
+    v.gain.setValueAtTime(0, t); v.gain.linearRampToValueAtTime(vol || .12, t + .01); v.gain.exponentialRampToValueAtTime(.001, t + d);
+    o.connect(v).connect(ac.destination); o.start(t); o.stop(t + d + .02);
+  }
+  function scrape(at) { // a chair dragged on parquet: filtered noise with a wobble
+    if (!ac) return;
+    const t = ac.currentTime + (at || 0), d = .22, buf = ac.createBuffer(1, Math.floor(ac.sampleRate * d), ac.sampleRate), ch = buf.getChannelData(0);
+    for (let i = 0; i < ch.length; i++) ch[i] = (Math.random() * 2 - 1) * (1 + Math.sin(i / 90)) * .5;
+    const s = ac.createBufferSource(), bp = ac.createBiquadFilter(), v = ac.createGain();
+    s.buffer = buf; bp.type = 'bandpass'; bp.frequency.setValueAtTime(900, t); bp.frequency.linearRampToValueAtTime(500, t + d); bp.Q.value = 3;
+    v.gain.setValueAtTime(0, t); v.gain.linearRampToValueAtTime(.18, t + .02); v.gain.exponentialRampToValueAtTime(.001, t + d);
+    s.connect(bp).connect(v).connect(ac.destination); s.start(t); s.stop(t + d);
+  }
+  const sfx = {
+    pick: () => tone(660, .08, 'sine', .09, 880),
+    sit: () => { scrape(); tone(520, .12, 'sine', .08, 700, .12); },
+    huff: () => { scrape(); tone(240, .16, 'triangle', .12, 160); },
+    meh: () => { tone(330, .18, 'triangle', .1, 300); tone(290, .26, 'triangle', .1, 230, .2); },
+    drop: () => tone(300, .08, 'sine', .07, 240),
+    clink: () => { tone(2637, .5, 'sine', .07); tone(3520, .4, 'sine', .05, 0, .01); },
+    win: () => [523, 659, 784, 1047, 784, 1047, 1319].forEach((f, i) => tone(f, .28, 'triangle', .1, 0, .5 + i * .12)),
+  };
+
+  // ---- holding: rivals scowl, sparks fly, the would-be cascade lights up, the gossip names the feud
+  let held = null, sel = null, busy = false, won = false, granTw = null, onGranDone = null, hoverTable = null;
+  function rivals(v) { return g.adj[v].filter(w => w !== hole); }
+  function clearMarks() {
+    A.forEach(a => { if (a) a.g.classList.remove('grump', 'lit', 'held', 'sel', 'bump'); });
+    L.tables.forEach(t => t.el.classList.remove('hover'));
+    if (gGran) gGran.classList.remove('grump', 'hope');
+    gossip(null);
+  }
+  function mark(u, B) {
+    clearMarks();
+    if (u == null) return;
+    A[u].g.classList.add(u === held ? 'held' : 'sel');
+    const rv = rivals(u);
+    rv.forEach(w => A[w].g.classList.add('grump'));
+    if (rimSet.has(u)) gGran.classList.add('grump');
+    const m = moveFor(g, u, B);
+    let w = null;
+    if (m) {
+      L.tables[B].el.classList.add('hover');
+      m.K.vs.forEach(x => { if (x === u) return; A[x].g.classList.add('lit'); A[x].ring.setAttribute('stroke', TABLE[g.col[x] === m.from ? m.to : m.from].hem); });
+      if (!m.web && g.preview(m.K).won) { gGran.classList.remove('grump'); gGran.classList.add('hope'); }
+      w = rv.find(x => disp[x] === B);
+      if (w == null) { gossip(`${A[u].name} has no feuds at the ${TABLE[B].name} table`); return; }
+    }
+    if (w == null) w = rv[0];
+    gossip(w == null ? `${A[u].name} gets on with everyone!` : `${A[u].name} vs ${A[w].name}: ${reasonFor(u, w)}`);
+  }
+
+  // ---- the move: one gesture -> one g.swap(K)
+  const HUFF = ['Well!', 'Hmph!', 'I never!', 'Fine!', 'Ugh.', 'Rude!'];
+  function doMove(u, B) {
+    const m = moveFor(g, u, B);
+    clearMarks(); held = null; sel = null;
+    if (!m) { place(false); sfx.drop(); return; }
+    busy = true;
+    if (m.web) { // both whole tables would just trade seats: nothing really changes. The planner facepalms.
+      const P = L.tables[m.from], Q = L.tables[m.to];
+      place(false);
+      m.K.vs.forEach((w, i) => {
+        const a = A[w], other = g.col[w] === m.from ? Q : P;
+        const tx = a.slot[0] + (other.cx - a.slot[0]) * .25, ty = a.slot[1] + (other.cy - a.slot[1]) * .25;
+        setTimeout(() => { tweenTo(a, tx, ty, 380, L.r * .4); }, 200 + i * 18);
+        setTimeout(() => { tweenTo(a, a.slot[0], a.slot[1], 420, L.r * .2); }, 850 + i * 18);
+      });
+      const pl = el('g', { class: 'palm', transform: `translate(${f2((P.cx + Q.cx) / 2)} ${f2((P.cy + Q.cy) / 2)}) scale(${f2(L.r * 1.5)})` }, gFx,
+        `<circle r="1.25" fill="#fbf5ea" stroke="#c9a34a" stroke-width=".08"/>${planner()}`);
+      setTimeout(() => pl.remove(), 2000);
+      setTimeout(() => { sfx.meh(); gossip('Planner: so... both tables just swapped seats. Same thing.'); }, 600);
+      setTimeout(() => { gossip(null); busy = false; }, 2300);
+      return;
+    }
+    g.swap(m.K);
+    const STEP = RM ? 60 : 340;
+    m.layers.forEach((layer, i) => setTimeout(() => {
+      layer.forEach(w => { seatMove(w, disp[w], g.col[w]); disp[w] = g.col[w]; });
+      place(false, new Set(layer));
+      drawCards();
+      if (i === 0) sfx.sit();
+      else { sfx.huff(); layer.forEach((w, j) => { A[w].g.classList.add('bump'); puff(w, HUFF[(w + i + j) % HUFF.length], 900); setTimeout(() => A[w].g.classList.remove('bump'), 800); }); }
+    }, i * STEP));
+    setTimeout(() => { busy = false; if (g.won()) win(); }, m.layers.length * STEP + 420);
+  }
+
+  function win() {
+    won = true; busy = true;
+    const F = g.free(), t = L.tables[F];
+    setMsg('Gran has found her table!');
+    gGran.classList.add('party');
+    order[F].splice(seatIndexFor(Math.atan2(granPos.y - t.cy, granPos.x - t.cx), order[F].length + 1), 0, GRANID);
+    place(false);
+    granTw = { fx: granPos.x, fy: granPos.y, fr: granPos.r, tx: granSlot[0], ty: granSlot[1], tr: L.r * 1.05, t0: now(), dur: RM ? 200 : 1500, h: Math.max(6, L.r * .25) };
+    onGranDone = () => {
+      sfx.clink(); sfx.win(); svg.classList.add('glowing'); gGran.classList.add('seated');
+      const s = t.Rt * .3, G = el('g', { transform: `translate(${f2(t.cx)} ${f2(t.cy - t.Rt * .1)})` }, gFx);
+      const flute = `<path d="M-.18-1.1H.18L.12-.35Q0-.15-.12-.35Z" fill="#fff6c8" fill-opacity=".9" stroke="#b48a2c" stroke-width=".05"/><path d="M-.14-.95H.14L.1-.4Q0-.25-.1-.4Z" fill="#f6d36a"/><path d="M0-.2V.35M-.22 .38H.22" stroke="#b48a2c" stroke-width=".07" stroke-linecap="round"/>`;
+      el('g', { transform: `translate(${-s * .45} 0) scale(${s})` }, G, `<g class="flL">${flute}</g>`);
+      el('g', { transform: `translate(${s * .45} 0) scale(${s})` }, G, `<g class="flR">${flute}</g>`);
+      burst(t.cx, t.cy - t.Rt * .3, 60, [TABLE[F].hem, '#ffffff', '#ffd84a', '#f6b6c1', '#9b7fc2']);
+      A.forEach(a => { if (a) a.g.classList.add('party'); });
+      setTimeout(() => sfx.clink(), 450);
+      setTimeout(() => { setMsg('A toast to Gran! Tap to plan another'); busy = false; G.remove(); }, 1900);
+    };
+  }
+
+  function restart() {
+    won = false; granTw = null; onGranDone = null; busy = false;
+    order.forEach(o => { const i = o.indexOf(GRANID); if (i >= 0) o.splice(i, 1); });
+    A.forEach(a => { if (a) a.g.classList.remove('party'); });
+    svg.classList.remove('glowing');
+    setMsg(goalText());
+    gGran.classList.remove('party', 'seated');
+    setGran(granPos.x, granPos.y, granPos.r);
+    g.reset();
+    place(false);
+  }
+
+  // undo / reset (and any other outside change): everyone walks back to where they really sit
+  g.on((_, info) => {
+    if (info.type === 'swap') return;
+    const moved = new Set();
+    for (let v = 0; v < g.n; v++) if (v !== hole && disp[v] !== g.col[v]) { seatMove(v, disp[v], g.col[v]); disp[v] = g.col[v]; moved.add(v); }
+    clearMarks(); held = sel = null;
+    place(false, moved); drawCards();
+    if (moved.size) sfx.sit();
+  });
+
+  // ---- input (pointer events: drag, swipe or flick; or tap a guest then tap a table)
+  let down = null;
+  function pt(e) { const b = svg.getBoundingClientRect(); return [e.clientX - b.left, e.clientY - b.top]; }
+  function guestAt(x, y) {
+    let best = null, bd = Math.max(L.r * 1.2, 22);
+    A.forEach(a => { if (!a) return; const d = Math.hypot(a.x - x, a.y - y); if (d < bd) { bd = d; best = a.v; } });
+    return best;
+  }
+  svg.addEventListener('pointerdown', e => {
+    if (!ac) { try { ac = new (window.AudioContext || window.webkitAudioContext)(); } catch (_) { ac = null; } }
+    else if (ac.state === 'suspended') ac.resume();
+    if (won && !busy) { restart(); return; }
+    if (busy) return;
+    const [x, y] = pt(e), u = guestAt(x, y);
+    if (u == null) {
+      if (sel != null) { const B = tableFor(L, x, y, null, 0, 0); if (B != null && B !== disp[sel]) { doMove(sel, B); return; } }
+      sel = null; clearMarks(); return;
+    }
+    try { svg.setPointerCapture(e.pointerId); } catch (_) {}
+    down = { u, x0: x, y0: y, moved: false, hist: [[x, y, now()]], wasSel: sel === u };
+    held = u; sel = null; A[u].tw = null; sfx.pick(); gGst.appendChild(A[u].g);
+    mark(u, null);
+  });
+  svg.addEventListener('pointermove', e => {
+    if (!down) return;
+    const [x, y] = pt(e), a = A[down.u];
+    if (!down.moved && Math.hypot(x - down.x0, y - down.y0) > 8) down.moved = true;
+    if (!down.moved) return;
+    a.x = x; a.y = y - L.r * .4;
+    down.hist.push([x, y, now()]); if (down.hist.length > 6) down.hist.shift();
+    const B = tableFor(L, x, y, disp[down.u], x - down.x0, y - down.y0);
+    if (B !== hoverTable) { hoverTable = B; mark(down.u, B); }
+  });
+  function release(e, cancel) {
+    if (!down) return;
+    const d = down; down = null; hoverTable = null;
+    const [x, y] = pt(e);
+    if (cancel) { held = null; clearMarks(); place(false); return; }
+    if (!d.moved) { // a tap: select (show the feuds), then tap a table to send them there
+      held = null;
+      if (d.wasSel) { sel = null; clearMarks(); } else { sel = d.u; mark(d.u, null); }
+      return;
+    }
+    const from = disp[d.u];
+    let B = tableFor(L, x, y, from, x - d.x0, y - d.y0);
+    if (B === from) { // a flick: project a little along its speed
+      const h = d.hist, h0 = h[0], dt = Math.max(30, h[h.length - 1][2] - h0[2]);
+      let px = (x - h0[0]) / dt * 140, py = (y - h0[1]) / dt * 140; const pl = Math.hypot(px, py), cap = Math.max(60, L.r * 3);
+      if (pl > cap) { px *= cap / pl; py *= cap / pl; }
+      B = tableFor(L, x + px, y + py, from, x - d.x0 + px, y - d.y0 + py);
+    }
+    doMove(d.u, B);
+  }
+  svg.addEventListener('pointerup', e => release(e, false));
+  svg.addEventListener('pointercancel', e => release(e, true));
+
+  document.getElementById('undo').onclick = () => { if (!busy && !won) g.undo(); };
+  document.getElementById('again').onclick = () => { if (!busy || won) restart(); };
+
+  let rt = 0;
+  addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(drawStatic, 60); });
+  drawStatic();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

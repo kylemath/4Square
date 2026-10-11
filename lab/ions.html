@@ -1,0 +1,688 @@
+<!doctype html>
+<!--
+  ION CHANNELS (lab front end, round 3: a sibling of Petting Zoo's "pens" representation, in a living cell)
+
+  What the player sees: a dark, softly glowing cell split into four membrane chambers (Tide, Ember, Amber, Iris: four
+  hues, four internal textures, four particle shapes: round, triangle, square, diamond). Every map region except the
+  hole is an ion drifting with Brownian motion inside its chamber; the chamber it lives in is its element, and an ion
+  always takes its chamber's colour and shape. The map is never drawn. The hidden relation: two ions that are
+  neighbours on the map repel each other (like charges) and can never share a chamber (the legal colouring). It is only
+  shown when it matters: while you hold an ion, faint field lines run from it to every ion it repels.
+
+  The signal (the hole) is a large five-armed molecule waiting at a receptor in the outer membrane. It is repelled by
+  five ions (g.rim), which carry a small white star; the tip of each of its five arms shows the shape and colour of the
+  chamber that ion is in right now (so 2+1+1+1 at the start, and the goal is two pairs and a single, 2+2+1). Each chamber
+  has a receptor badge: a bright open ring when none of the five are inside, a dim disc with a count when blocked.
+  Goal: free one chamber. g.won() is exactly "some chamber holds none of the five", and g.free() is that chamber: a
+  channel opens from the receptor into it, the signal travels down and docks with a bioluminescent pulse.
+
+  The move (one gesture = exactly one g.swap(K), or nothing): drag/flick ion u from chamber A into chamber B (or tap u,
+  then tap chamber B). K = g.chainAt(u, B), the {A, B} chain through u. A channel opens between A and B; u streams
+  through it, the ions in B that repel u are pushed out through the same channel into A, the ions in A that repel those
+  are pushed into B, and so on: the members of K cross one BFS layer at a time (from u), each changing colour and shape
+  as it passes the middle of the channel, then they settle back into Brownian jitter. A lone ion that repels nobody in
+  B just moves (single-region chain), so every chain is reachable by moving any one of its members. If K.web is true
+  (chambers A and B would exchange all their ions, which changes nothing) g.swap is NOT called: the channel opens, both
+  chambers surge towards it, and the system relaxes back to the same equilibrium. Undo (g.undo) and restart (g.reset)
+  are the two small glass buttons; after a win, a tap restarts.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>Ion Channels</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #03070d; touch-action: none;
+    -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
+  canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; cursor: grab; }
+  #ui { position: fixed; right: 6px; top: 6px; display: flex; flex-direction: column; gap: 6px; z-index: 2; }
+  #ui button { width: 30px; height: 30px; border-radius: 50%; border: 1px solid rgba(160, 220, 255, .35);
+    background: rgba(20, 40, 60, .55); color: #bfe8ff; font: 700 15px/1 system-ui, sans-serif; padding: 0; cursor: pointer;
+    box-shadow: 0 0 10px rgba(90, 200, 255, .18), inset 0 0 6px rgba(160, 230, 255, .15); }
+  #ui button:active { transform: scale(.92); }
+</style>
+</head>
+<body>
+<canvas id="c" aria-label="Ion channels"></canvas>
+<div id="ui"><button id="undo" title="Undo" aria-label="Undo">&#8630;</button><button id="again" title="Start over" aria-label="Start over">&#8634;</button></div>
+<script src="../levels.js"></script>
+<script src="../layout.js"></script>
+<script src="core.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  // ---------------------------------------------------------------- pure helpers (also used by the node smoke test)
+  const KIND = [
+    { name: 'Tide', col: '#3ef0b4', rgb: [62, 240, 180], deep: '#0d4a3c' },
+    { name: 'Ember', col: '#ff5f8f', rgb: [255, 95, 143], deep: '#4d1028' },
+    { name: 'Amber', col: '#ffbd3a', rgb: [255, 189, 58], deep: '#4a3208' },
+    { name: 'Iris', col: '#8f93ff', rgb: [143, 147, 255], deep: '#1d1f5a' },
+  ];
+
+  // chambers as a 2x2 cell (1xNC when very wide, 2+1 for 3), under the receptor band; ion radius from capacity
+  function layoutCell(W, H, NC, cap) {
+    const wide = W > H * 1.25;
+    const gh = Math.round(Math.max(76, Math.min(150, wide ? H * 0.22 : H * 0.18)));
+    const pad = Math.max(10, Math.min(20, W * 0.035)), gap = Math.max(8, Math.min(18, W * 0.03));
+    const top = gh + 8, ah = Math.max(40, H - top - pad), aw = W - 2 * pad;
+    const cols = (wide && aw / ah > 2.3) ? NC : Math.min(2, NC), rows = Math.ceil(NC / cols);
+    const ch = [];
+    for (let k = 0; k < NC; k++) {
+      const r = Math.floor(k / cols), inRow = Math.min(cols, NC - r * cols), c = k - r * cols;
+      const cw = (aw - (inRow - 1) * gap) / inRow, chh = (ah - (rows - 1) * gap) / rows;
+      const x = pad + c * (cw + gap), y = top + r * (chh + gap);
+      ch.push({ k, x, y, w: cw, h: chh, cx: x + cw / 2, cy: y + chh / 2, rx: Math.max(12, cw / 2 - 3), ry: Math.max(12, chh / 2 - 3) });
+    }
+    const area = Math.min(...ch.map(c => Math.PI * c.rx * c.ry));
+    const r = Math.max(4, Math.min(18, Math.sqrt(0.45 * area / Math.max(1, cap)) / 2.6));
+    return { W, H, gh, pad, top, aw, ah, ch, r };
+  }
+
+  // the two ends of the channel between chambers A and B (on A's membrane, on B's membrane)
+  function pores(L, A, B) {
+    const a = L.ch[A], b = L.ch[B], dx = b.cx - a.cx, dy = b.cy - a.cy, d = Math.hypot(dx, dy) || 1, ux = dx / d, uy = dy / d;
+    const ta = 1 / Math.hypot(ux / a.rx, uy / a.ry), tb = 1 / Math.hypot(ux / b.rx, uy / b.ry);
+    return [[a.cx + ux * ta, a.cy + uy * ta], [b.cx - ux * tb, b.cy - uy * tb]];
+  }
+
+  // the cascade: the members of chain K in BFS layers from the ion that was moved
+  function cascade(g, K, u) {
+    const seen = new Set([u]), layers = [[u]];
+    let front = [u];
+    while (front.length) {
+      const nx = [];
+      for (const v of front) for (const w of g.adj[v]) if (K.set.has(w) && !seen.has(w)) { seen.add(w); nx.push(w); }
+      if (nx.length) layers.push(nx);
+      front = nx;
+    }
+    return layers;
+  }
+
+  // gesture -> chain: moving ion u into chamber B means chain g.chainAt(u, B); nothing when B is its own chamber
+  function moveFor(g, u, B) {
+    if (u === g.hole || B == null || B < 0 || B >= g.NC || B === g.col[u]) return null;
+    const K = g.chainAt(u, B);
+    if (!K) return null;
+    return { K, web: K.web, from: g.col[u], to: B, layers: cascade(g, K, u) };
+  }
+
+  // which chamber does a release at (x, y) mean? Inside or nearest; a swipe that stays in its own chamber but
+  // clearly points at another one counts for that one (forgiving flicks on a small tile).
+  function chamberFor(L, x, y, from, dx, dy) {
+    if (y < L.gh - 6) return null;
+    let best = null, bd = Infinity;
+    L.ch.forEach(p => {
+      const ex = Math.max(p.x - x, 0, x - p.x - p.w), ey = Math.max(p.y - y, 0, y - p.y - p.h), d = Math.hypot(ex, ey);
+      if (d < bd) { bd = d; best = p.k; }
+    });
+    const len = Math.hypot(dx || 0, dy || 0);
+    if (best === from && from != null && len > Math.max(28, L.r * 2)) {
+      const P = L.ch[from]; let bc = 0.5, alt = null;
+      L.ch.forEach(q => {
+        if (q.k === from) return;
+        const vx = q.cx - P.cx, vy = q.cy - P.cy, c = (vx * dx + vy * dy) / (Math.hypot(vx, vy) * len);
+        if (c > bc) { bc = c; alt = q.k; }
+      });
+      if (alt != null) return alt;
+    }
+    return best;
+  }
+
+  window.IONS = { KIND, layoutCell, pores, cascade, moveFor, chamberFor };
+  if (window.IONS_TEST) return;
+
+  // ---------------------------------------------------------------- the cell
+  const g = LAB.game();
+  const NC = g.NC, hole = g.hole, rimSet = new Set(g.rim), NR = g.rim.length;
+  const RM = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+  const FONT = "Quicksand, 'Avenir Next', 'Segoe UI', system-ui, sans-serif";
+  const now = () => performance.now();
+  const rgba = (k, a) => `rgba(${KIND[k].rgb[0]},${KIND[k].rgb[1]},${KIND[k].rgb[2]},${Math.max(0, Math.min(1, a)).toFixed(3)})`;
+  const TAU = Math.PI * 2;
+
+  // unit glyph paths (radius about 1)
+  function glyph(c, k, s) {
+    c.beginPath();
+    if (k === 0) c.arc(0, 0, s, 0, TAU);
+    else if (k === 1) { c.moveTo(0, -1.2 * s); c.lineTo(1.1 * s, .75 * s); c.lineTo(-1.1 * s, .75 * s); c.closePath(); }
+    else if (k === 2) { const q = .86 * s, rr = .25 * s; c.moveTo(-q + rr, -q); c.arcTo(q, -q, q, q, rr); c.arcTo(q, q, -q, q, rr); c.arcTo(-q, q, -q, -q, rr); c.arcTo(-q, -q, q, -q, rr); c.closePath(); }
+    else { c.moveTo(0, -1.22 * s); c.lineTo(1.0 * s, 0); c.lineTo(0, 1.22 * s); c.lineTo(-1.0 * s, 0); c.closePath(); }
+  }
+  function star(c, x, y, s, pts) {
+    c.beginPath();
+    for (let i = 0; i < 2 * pts; i++) { const a = -Math.PI / 2 + i * Math.PI / pts, rr = i % 2 ? s * .42 : s; c[i ? 'lineTo' : 'moveTo'](x + rr * Math.cos(a), y + rr * Math.sin(a)); }
+    c.closePath();
+  }
+
+  // pre-rendered sprites: a soft glow and a crisp core per kind (drawn scaled each frame)
+  const SP = 128, SC = SP / 2 / 2.6; // sprite px, core radius inside the sprite
+  const glowSpr = [], coreSpr = [];
+  for (let k = 0; k < 4; k++) {
+    const a = document.createElement('canvas'); a.width = a.height = SP; const c = a.getContext('2d');
+    const gr = c.createRadialGradient(SP / 2, SP / 2, 0, SP / 2, SP / 2, SP / 2);
+    gr.addColorStop(0, rgba(k, .75)); gr.addColorStop(.3, rgba(k, .28)); gr.addColorStop(.6, rgba(k, .08)); gr.addColorStop(1, rgba(k, 0));
+    c.fillStyle = gr; c.fillRect(0, 0, SP, SP); glowSpr.push(a);
+    const b = document.createElement('canvas'); b.width = b.height = SP; const d = b.getContext('2d');
+    d.translate(SP / 2, SP / 2);
+    const cg = d.createRadialGradient(-SC * .35, -SC * .4, SC * .1, 0, 0, SC * 1.25);
+    cg.addColorStop(0, '#ffffff'); cg.addColorStop(.35, KIND[k].col); cg.addColorStop(1, KIND[k].deep);
+    glyph(d, k, SC); d.fillStyle = cg; d.fill();
+    d.lineWidth = SC * .1; d.strokeStyle = 'rgba(255,255,255,.75)'; d.stroke();
+    coreSpr.push(b);
+  }
+
+  // ---- state
+  const P = []; // ions: { v, x, y, vx, vy, s, tr, px, py }
+  let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  for (let v = 0; v < g.n; v++) if (v !== hole) P[v] = { v, x: 0, y: 0, vx: 0, vy: 0, s: .85 + rnd() * .3, tr: null, ph: rnd() * TAU };
+  const disp = g.col.slice(); // the chamber each ion is SHOWN in (lags g.col while a cascade plays)
+  let L = null, bg = null, dpr = 1, R = 10;
+  const chan = new Map(); // open channels 'A-B' -> { A, B, t0, t1 }
+  const pulses = [], rings = [], notes = [];
+  let winTok = 0, held = null, sel = null, busy = false, won = false, hoverCh = null, hope = false;
+  const mol = { x: 0, y: 0, R: 10, hx: 0, hy: 0, hR: 10, phase: 'wait', t0: 0, path: null, F: -1 };
+
+  function counts() { const c = new Array(NC).fill(0); for (let v = 0; v < g.n; v++) if (v !== hole) c[disp[v]]++; return c; }
+  function capacity() { return Math.max(Math.max(...counts()) + 1, Math.ceil((g.n - 1) / NC) + 2); }
+  function rivalsIn(k) { return g.rim.filter(v => disp[v] === k).length; }
+  function scatter(v) {
+    const C = L.ch[disp[v]], a = rnd() * TAU, d = Math.sqrt(rnd()) * .6;
+    P[v].x = C.cx + Math.cos(a) * d * (C.rx - R); P[v].y = C.cy + Math.sin(a) * d * (C.ry - R);
+  }
+
+  function relayout() {
+    const W = innerWidth, H = innerHeight;
+    dpr = Math.min(2, window.devicePixelRatio || 1);
+    cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+    L = layoutCell(W, H, NC, capacity()); R = L.r;
+    mol.hR = L.gh * .15; mol.hx = Math.max(L.gh * .5, mol.hR * 2.6); mol.hy = L.gh * .5;
+    if (mol.phase === 'wait') { mol.x = mol.hx; mol.y = mol.hy; mol.R = mol.hR; }
+    else { const C = L.ch[mol.F]; mol.x = C.cx; mol.y = C.cy; mol.R = R * 2; mol.phase = 'docked'; mol.path = null; }
+    for (let v = 0; v < g.n; v++) if (v !== hole) { P[v].tr = null; scatter(v); }
+    drawBg();
+  }
+
+  // ---- static background: deep cytoplasm, outer membrane, chamber fills and textures
+  function drawBg() {
+    bg = document.createElement('canvas'); bg.width = cv.width; bg.height = cv.height;
+    const c = bg.getContext('2d'); c.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const W = L.W, H = L.H;
+    let gr = c.createRadialGradient(W * .5, H * .55, 0, W * .5, H * .55, Math.max(W, H) * .8);
+    gr.addColorStop(0, '#0b1a24'); gr.addColorStop(.6, '#060d16'); gr.addColorStop(1, '#020509');
+    c.fillStyle = gr; c.fillRect(0, 0, W, H);
+    let s = 3;
+    const rr = () => (s = (s * 16807) % 2147483647) / 2147483647;
+    for (let i = 0; i < (W * H) / 900; i++) { c.fillStyle = `rgba(150,210,255,${(rr() * .08).toFixed(3)})`; c.beginPath(); c.arc(rr() * W, rr() * H, rr() * 1.6 + .3, 0, TAU); c.fill(); }
+    // outer cell membrane (a bilayer) with the receptor cup under the signal
+    const ox = L.pad * .45, oy = L.top - L.pad * .55, ow = W - ox * 2, oh = H - oy - L.pad * .45, orr = Math.min(40, ow * .12);
+    const round = (d) => { c.beginPath(); c.roundRect ? c.roundRect(ox - d, oy - d, ow + 2 * d, oh + 2 * d, orr + d) : c.rect(ox - d, oy - d, ow + 2 * d, oh + 2 * d); };
+    c.fillStyle = 'rgba(40,90,110,.10)'; round(0); c.fill();
+    c.lineWidth = 7; c.strokeStyle = 'rgba(110,200,230,.07)'; round(0); c.stroke();
+    c.lineWidth = 1.1; c.strokeStyle = 'rgba(140,220,245,.32)'; round(-2.5); c.stroke(); round(2.5); c.stroke();
+    // chambers
+    L.ch.forEach(C => {
+      const k = C.k;
+      c.save(); c.beginPath(); c.ellipse(C.cx, C.cy, C.rx, C.ry, 0, 0, TAU); c.clip();
+      gr = c.createRadialGradient(C.cx, C.cy - C.ry * .2, 0, C.cx, C.cy, Math.max(C.rx, C.ry));
+      gr.addColorStop(0, rgba(k, .16)); gr.addColorStop(.75, rgba(k, .06)); gr.addColorStop(1, rgba(k, .14));
+      c.fillStyle = gr; c.fillRect(C.x, C.y, C.w, C.h);
+      c.strokeStyle = rgba(k, .13); c.fillStyle = rgba(k, .10); c.lineWidth = 1;
+      s = 11 + k * 31; const n = Math.round(C.rx * C.ry / 160), q = Math.max(9, Math.min(18, C.rx / 5));
+      if (k === 0) for (let i = 0; i < n; i++) { c.beginPath(); c.arc(C.x + rr() * C.w, C.y + rr() * C.h, 1.5 + rr() * 4, 0, TAU); c.stroke(); }
+      else if (k === 1) { c.beginPath(); for (let y = C.y; y < C.y + C.h + q; y += q) { for (let x = C.x - q; x < C.x + C.w + q; x += q) { const o = ((y - C.y) / q) % 2 ? q / 2 : 0; c.moveTo(x + o, y); c.lineTo(x + o + q / 2, y - q * .85); c.lineTo(x + o + q, y); } } c.stroke(); }
+      else if (k === 2) { c.beginPath(); for (let x = C.x; x < C.x + C.w; x += q) { c.moveTo(x, C.y); c.lineTo(x, C.y + C.h); } for (let y = C.y; y < C.y + C.h; y += q) { c.moveTo(C.x, y); c.lineTo(C.x + C.w, y); } c.globalAlpha = .7; c.stroke(); c.globalAlpha = 1; }
+      else { c.beginPath(); for (let i = -C.h; i < C.w + C.h; i += q) { c.moveTo(C.x + i, C.y); c.lineTo(C.x + i + C.h * .7, C.y + C.h); c.moveTo(C.x + i, C.y + C.h); c.lineTo(C.x + i + C.h * .7, C.y); } c.globalAlpha = .55; c.stroke(); c.globalAlpha = 1; }
+      c.restore();
+    });
+  }
+
+  // ---- motion: Brownian jitter, soft crowding, a membrane that keeps each ion in its chamber
+  function physics(dt, t) {
+    const NOISE = R * (RM ? 14 : 80), DAMP = Math.exp(-2.6 * dt);
+    const ions = P.filter(Boolean);
+    for (const p of ions) {
+      if (p.v === held || (p.tr && t >= p.tr.t0)) continue;
+      p.vx = p.vx * DAMP + (Math.random() - .5) * 2 * NOISE * dt;
+      p.vy = p.vy * DAMP + (Math.random() - .5) * 2 * NOISE * dt;
+    }
+    const D = R * 2.5;
+    for (let i = 0; i < ions.length; i++) {
+      const a = ions[i]; if (a.tr && t >= a.tr.t0) continue;
+      for (let j = i + 1; j < ions.length; j++) {
+        const b = ions[j]; if (disp[a.v] !== disp[b.v] || (b.tr && t >= b.tr.t0)) continue;
+        const dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy);
+        if (d < D && d > .01) { const f = (D - d) / D * R * 45 * dt, ux = dx / d, uy = dy / d; a.vx -= ux * f; a.vy -= uy * f; b.vx += ux * f; b.vy += uy * f; }
+      }
+      if (mol.phase === 'docked' && disp[a.v] === mol.F) {
+        const dx = a.x - mol.x, dy = a.y - mol.y, d = Math.hypot(dx, dy), M = mol.R * 1.7 + R;
+        if (d < M && d > .01) { const f = (M - d) / M * R * 60 * dt; a.vx += dx / d * f; a.vy += dy / d * f; }
+      }
+    }
+    for (const p of ions) {
+      if (p.v === held || (p.tr && t >= p.tr.t0)) continue;
+      const C = L.ch[disp[p.v]], ax = Math.max(4, C.rx - R * 1.4), ay = Math.max(4, C.ry - R * 1.4);
+      const ex = (p.x - C.cx) / ax, ey = (p.y - C.cy) / ay, e = Math.hypot(ex, ey);
+      if (e > 1) { const tx = C.cx + ex / e * ax, ty = C.cy + ey / e * ay, k = Math.min(1, 14 * dt); p.vx += (tx - p.x) * k * 4; p.vy += (ty - p.y) * k * 4; }
+      const sp = Math.hypot(p.vx, p.vy), cap = R * 40; if (sp > cap) { p.vx *= cap / sp; p.vy *= cap / sp; }
+      p.x += p.vx * dt; p.y += p.vy * dt;
+    }
+  }
+
+  // ---- channel transits
+  const ease = p => p < .5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2;
+  function openChannel(A, B, t0, t1) {
+    const key = Math.min(A, B) + '-' + Math.max(A, B), c = chan.get(key);
+    if (c && c.t1 > now()) { c.t1 = Math.max(c.t1, t1); return; }
+    chan.set(key, { A: Math.min(A, B), B: Math.max(A, B), t0, t1 });
+  }
+  function sendThrough(v, B, delay, dur, direct) {
+    const p = P[v], A = disp[v], [pa, pb] = pores(L, A, B), C = L.ch[B];
+    const f = .3 + Math.random() * .3, jx = (Math.random() - .5) * C.rx * .5, jy = (Math.random() - .5) * C.ry * .5;
+    const d = [pb[0] + (C.cx - pb[0]) * f + jx * (1 - f), pb[1] + (C.cy - pb[1]) * f + jy * (1 - f)];
+    p.tr = { t0: now() + delay, dur: RM ? Math.min(dur, 200) : dur, s: null, a: pa, b: pb, d, to: B, direct, flipped: false };
+    openChannel(A, B, now() + delay - 200, now() + delay + dur + 250);
+  }
+  function transits(t) {
+    P.forEach(p => {
+      if (!p || !p.tr || t < p.tr.t0) return;
+      const T = p.tr; if (!T.s) T.s = [p.x, p.y];
+      const f = Math.min(1, (t - T.t0) / T.dur); p.px = p.x; p.py = p.y;
+      if (T.direct) { const e = ease(f); p.x = T.s[0] + (T.d[0] - T.s[0]) * e; p.y = T.s[1] + (T.d[1] - T.s[1]) * e; if (!T.flipped) { T.flipped = true; disp[p.v] = T.to; } }
+      else {
+        let x, y;
+        if (f < .36) { const e = ease(f / .36); x = T.s[0] + (T.a[0] - T.s[0]) * e; y = T.s[1] + (T.a[1] - T.s[1]) * e; }
+        else if (f < .64) { const e = (f - .36) / .28; x = T.a[0] + (T.b[0] - T.a[0]) * e; y = T.a[1] + (T.b[1] - T.a[1]) * e; }
+        else { const e = 1 - Math.pow(1 - (f - .64) / .36, 2); x = T.b[0] + (T.d[0] - T.b[0]) * e; y = T.b[1] + (T.d[1] - T.b[1]) * e; }
+        p.x = x; p.y = y;
+        if (f >= .5 && !T.flipped) { T.flipped = true; disp[p.v] = T.to; sfx.pass(T.to); }
+      }
+      if (f >= 1) {
+        const dx = T.d[0] - T.b[0], dy = T.d[1] - T.b[1], d = Math.hypot(dx, dy) || 1;
+        p.vx = dx / d * R * 3; p.vy = dy / d * R * 3; p.tr = null; p.px = undefined;
+      }
+    });
+  }
+
+  // ---- sound (only after the first gesture)
+  let ac = null;
+  function tone(f, d, type, vol, slide, at) {
+    if (!ac) return;
+    const t = ac.currentTime + (at || 0), o = ac.createOscillator(), v = ac.createGain();
+    o.type = type || 'sine'; o.frequency.setValueAtTime(f, t); if (slide) o.frequency.exponentialRampToValueAtTime(slide, t + d);
+    v.gain.setValueAtTime(0, t); v.gain.linearRampToValueAtTime(vol || .1, t + .015); v.gain.exponentialRampToValueAtTime(.001, t + d);
+    o.connect(v).connect(ac.destination); o.start(t); o.stop(t + d + .03);
+  }
+  const PENT = [392, 440, 523, 587];
+  let lastPass = 0;
+  const sfx = {
+    pick: () => tone(700, .07, 'sine', .06, 900),
+    pass: k => { const t = now(); if (t - lastPass < 45) return; lastPass = t; tone(PENT[k] * 2, .22, 'sine', .07, PENT[k] * 2.2); },
+    open: () => { tone(180, .35, 'sine', .08, 360); },
+    push: i => tone(330 + i * 60, .12, 'triangle', .06, 250 + i * 50),
+    dud: () => { tone(220, .3, 'sine', .08, 260); tone(260, .45, 'sine', .07, 210, .28); },
+    drop: () => tone(300, .08, 'sine', .05, 240),
+    win: () => { [523, 659, 784, 988, 1175, 1568].forEach((f, i) => tone(f, 1.2, 'sine', .07, 0, i * .09)); tone(130, 1.6, 'sine', .1, 196, 0); },
+  };
+
+  // ---- the move: one gesture -> one g.swap(K)
+  function doMove(u, B) {
+    const m = moveFor(g, u, B);
+    held = null; sel = null; hoverCh = null; hope = false;
+    if (!m) { sfx.drop(); return; }
+    busy = true;
+    const t = now();
+    if (m.web) { // the two chambers would simply exchange everything: the system relaxes to the same state
+      const [pa, pb] = pores(L, m.from, m.to);
+      openChannel(m.from, m.to, t, t + 1500);
+      sfx.open(); setTimeout(sfx.dud, 500);
+      m.K.vs.forEach((w, i) => setTimeout(() => {
+        const p = P[w], q = disp[w] === m.from ? pa : pb;
+        p.vx += (q[0] - p.x) * 2.4; p.vy += (q[1] - p.y) * 2.4;
+      }, 120 + i * 18));
+      notes.push({ x: (pa[0] + pb[0]) / 2, y: (pa[1] + pb[1]) / 2, text: 'equilibrium', t0: t + 500, dur: 1500 });
+      setTimeout(() => { busy = false; }, 1500);
+      return;
+    }
+    g.swap(m.K);
+    sfx.open();
+    const STEP = RM ? 80 : 320, DUR = 720, GAP = RM ? 20 : 70;
+    const dropIn = (() => { const C = L.ch[m.to], p = P[u]; return Math.hypot((p.x - C.cx) / C.rx, (p.y - C.cy) / C.ry) < .95; })();
+    let end = 0;
+    m.layers.forEach((layer, i) => layer.forEach((w, j) => {
+      const delay = i * STEP + j * GAP;
+      sendThrough(w, g.col[w], delay, DUR, i === 0 && dropIn);
+      end = Math.max(end, delay + DUR);
+      if (i > 0) {
+        const by = m.layers[i - 1].find(x => g.adj[x].includes(w));
+        setTimeout(() => { pulses.push({ a: by, b: w, t0: now(), dur: 600 }); if (j === 0) sfx.push(i); }, delay);
+      }
+    }));
+    setTimeout(() => { busy = false; refit(); if (g.won()) win(); }, end + 250);
+  }
+  function refit() { // ions get a little smaller when a chamber gets crowded
+    const r = layoutCell(L.W, L.H, NC, capacity()).r; if (Math.abs(r - L.r) > .3) { L.r = r; }
+  }
+
+  function win() {
+    won = true; busy = true;
+    const F = g.free(), C = L.ch[F];
+    mol.F = F; mol.phase = 'travel'; mol.t0 = now();
+    // the receptor channel runs along the outer membrane, then down a gap between chambers, then in
+    const ty = L.top - 4;
+    if (C.y <= L.top + 1) mol.path = [[mol.hx, mol.hy], [mol.hx, ty], [C.cx, ty], [C.cx, C.cy - C.ry * .98], [C.cx, C.cy]];
+    else {
+      const left = C.cx < L.W / 2, gx = left ? Math.min(L.W - L.pad / 2, C.x + C.w + 4) : Math.max(L.pad / 2, C.x - 4);
+      mol.path = [[mol.hx, mol.hy], [mol.hx, ty], [gx, ty], [gx, C.cy], [left ? C.cx + C.rx * .98 : C.cx - C.rx * .98, C.cy], [C.cx, C.cy]];
+    }
+    const T = RM ? 300 : 1700;
+    mol.dur = T;
+    const tok = ++winTok;
+    setTimeout(() => {
+      if (tok !== winTok) return;
+      mol.phase = 'docked'; mol.x = C.cx; mol.y = C.cy; mol.R = R * 2; mol.t0 = now();
+      sfx.win();
+      for (let i = 0; i < (RM ? 1 : 4); i++) rings.push({ x: C.cx, y: C.cy, t0: now() + i * 260, dur: 2200, k: F });
+      setTimeout(() => { if (tok === winTok) busy = false; }, 900);
+    }, T);
+  }
+
+  function restart() {
+    winTok++; won = false; busy = false; mol.phase = 'wait'; mol.path = null; mol.x = mol.hx; mol.y = mol.hy; mol.R = mol.hR; mol.F = -1;
+    rings.length = 0;
+    g.reset();
+  }
+
+  // undo / reset (and any other outside change): every ion that is in the wrong chamber streams home
+  g.on((_, info) => {
+    if (info.type === 'swap') return;
+    held = sel = null; hoverCh = null;
+    let i = 0;
+    for (let v = 0; v < g.n; v++) if (v !== hole && disp[v] !== g.col[v]) { sendThrough(v, g.col[v], i * (RM ? 15 : 55), 650, false); i++; }
+    if (i) { sfx.open(); busy = true; setTimeout(() => { busy = false; refit(); }, i * (RM ? 15 : 55) + 800); }
+  });
+
+  // ---- drawing
+  function membrane(C, t, grow) {
+    const n = 72;
+    ctx.beginPath();
+    for (let i = 0; i <= n; i++) {
+      const a = i / n * TAU, w = 1 + (RM ? 0 : .012 * Math.sin(5 * a + t * .0009 + C.k * 2) + .008 * Math.sin(9 * a - t * .0013 + C.k)) + grow;
+      const x = C.cx + Math.cos(a) * C.rx * w, y = C.cy + Math.sin(a) * C.ry * w;
+      i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+    }
+    ctx.closePath();
+  }
+  function drawIon(p, scale) {
+    const k = disp[p.v], s = R * p.s * (scale || 1), G = s * 2.6;
+    ctx.drawImage(coreSpr[k], p.x - G, p.y - G, G * 2, G * 2);
+  }
+  function bezierTube(a, b, w, k1, k2, alpha, t) {
+    const gr = ctx.createLinearGradient(a[0], a[1], b[0], b[1]);
+    gr.addColorStop(0, rgba(k1, .55 * alpha)); gr.addColorStop(1, rgba(k2, .55 * alpha));
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = `rgba(2,8,14,${(.85 * alpha).toFixed(3)})`; ctx.lineWidth = w; ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.strokeStyle = gr; ctx.lineWidth = w + 6; ctx.globalAlpha = .25; ctx.stroke(); ctx.globalAlpha = 1;
+    const dx = b[0] - a[0], dy = b[1] - a[1], d = Math.hypot(dx, dy) || 1, nx = -dy / d * w / 2, ny = dx / d * w / 2;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(a[0] + nx, a[1] + ny); ctx.lineTo(b[0] + nx, b[1] + ny); ctx.moveTo(a[0] - nx, a[1] - ny); ctx.lineTo(b[0] - nx, b[1] - ny); ctx.stroke();
+    // flowing sparks along the tube
+    ctx.fillStyle = `rgba(230,250,255,${(.5 * alpha).toFixed(3)})`;
+    for (let i = 0; i < 4; i++) { const f = ((t * .0012 + i / 4) % 1); ctx.beginPath(); ctx.arc(a[0] + dx * f, a[1] + dy * f, 1.4, 0, TAU); ctx.fill(); }
+    ctx.globalCompositeOperation = 'source-over';
+  }
+
+  function drawMolecule(t, x, y, Rm, glowBoost) {
+    const br = 1 + (RM ? 0 : .04 * Math.sin(t * (hope ? .012 : .003))), rot = RM ? 0 : t * .00015;
+    const hueA = (t * .02) % 360;
+    ctx.save(); ctx.globalCompositeOperation = 'lighter';
+    let gr = ctx.createRadialGradient(x, y, 0, x, y, Rm * 3.2);
+    const a0 = (hope ? .5 : .28) + (glowBoost || 0);
+    gr.addColorStop(0, `hsla(${hueA},90%,85%,${a0})`); gr.addColorStop(.4, `hsla(${hueA + 60},90%,70%,${a0 * .3})`); gr.addColorStop(1, 'hsla(0,0%,100%,0)');
+    ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(x, y, Rm * 3.2, 0, TAU); ctx.fill();
+    ctx.restore();
+    // arms
+    const tips = [];
+    for (let i = 0; i < NR; i++) { const a = -Math.PI / 2 + i * TAU / NR + rot; tips.push([x + Math.cos(a) * Rm * 2.35 * br, y + Math.sin(a) * Rm * 2.35 * br, a]); }
+    ctx.strokeStyle = 'rgba(235,245,255,.55)'; ctx.lineWidth = Math.max(1.2, Rm * .14); ctx.lineCap = 'round';
+    tips.forEach(([tx, ty, a]) => { ctx.beginPath(); ctx.moveTo(x + Math.cos(a) * Rm * .8, y + Math.sin(a) * Rm * .8); ctx.quadraticCurveTo(x + Math.cos(a + .25) * Rm * 1.6, y + Math.sin(a + .25) * Rm * 1.6, tx, ty); ctx.stroke(); });
+    // ring core
+    ctx.beginPath();
+    for (let i = 0; i < 6; i++) { const a = rot * 2 + i * TAU / 6; ctx[i ? 'lineTo' : 'moveTo'](x + Math.cos(a) * Rm * br, y + Math.sin(a) * Rm * br); }
+    ctx.closePath();
+    gr = ctx.createRadialGradient(x - Rm * .3, y - Rm * .3, 0, x, y, Rm * 1.1);
+    gr.addColorStop(0, '#ffffff'); gr.addColorStop(.6, `hsl(${hueA},70%,82%)`); gr.addColorStop(1, `hsl(${hueA + 70},60%,55%)`);
+    ctx.fillStyle = gr; ctx.fill(); ctx.lineWidth = Math.max(1, Rm * .08); ctx.strokeStyle = '#fff'; ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,.9)'; star(ctx, x, y, Rm * .45, 5); ctx.fill();
+    return tips;
+  }
+
+  function drawBand(t) {
+    const gh = L.gh;
+    if (mol.phase === 'wait' || mol.phase === 'travel') {
+      // receptor cup in the outer membrane
+      ctx.strokeStyle = 'rgba(150,230,255,.5)'; ctx.lineWidth = 2;
+      const cy = L.top - L.pad * .55;
+      ctx.beginPath(); ctx.moveTo(mol.hx - mol.hR * 1.3, cy); ctx.quadraticCurveTo(mol.hx, cy - mol.hR * 1.0, mol.hx + mol.hR * 1.3, cy); ctx.stroke();
+    }
+    if (mol.phase === 'wait') {
+      const tips = drawMolecule(t, mol.x, mol.y, mol.R, 0);
+      const mr = Math.max(6, mol.R * .5);
+      g.rim.forEach((v, i) => {
+        const [tx, ty] = tips[i], k = disp[v], G = mr * 2.6, lit = (held === v || sel === v);
+        ctx.globalCompositeOperation = 'lighter'; ctx.drawImage(glowSpr[k], tx - G * (lit ? 1.6 : 1.1), ty - G * (lit ? 1.6 : 1.1), G * (lit ? 3.2 : 2.2), G * (lit ? 3.2 : 2.2)); ctx.globalCompositeOperation = 'source-over';
+        ctx.drawImage(coreSpr[k], tx - G, ty - G, G * 2, G * 2);
+      });
+    }
+    // goal line
+    const x0 = mol.hx + mol.hR * 3.1, x1 = L.W - 44, w = x1 - x0;
+    if (w > 60) {
+      let l1, l2;
+      if (won) { l1 = mol.phase === 'docked' ? 'Signal received' : 'A channel opens…'; l2 = mol.phase === 'docked' && !busy ? 'tap to play again' : ''; }
+      else { l1 = 'Free a chamber for the signal'; l2 = 'none of its 5 ✦ ions may be inside'; }
+      let f1 = Math.max(10, Math.min(20, gh * .17)); ctx.font = `700 ${f1}px ${FONT}`;
+      while (f1 > 9 && ctx.measureText(l1).width > w) { f1 -= .5; ctx.font = `700 ${f1}px ${FONT}`; }
+      ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
+      ctx.fillStyle = won ? '#fff6c8' : '#d8f3ff';
+      ctx.fillText(l1, x0, gh * (l2 ? .4 : .5));
+      if (l2) {
+        let f2 = Math.max(9, f1 * .72); ctx.font = `500 ${f2}px ${FONT}`;
+        while (f2 > 8 && ctx.measureText(l2).width > w) { f2 -= .5; ctx.font = `500 ${f2}px ${FONT}`; }
+        if (ctx.measureText(l2).width <= w) { ctx.fillStyle = 'rgba(190,225,240,.7)'; ctx.fillText(l2, x0, gh * .4 + f1 * .5 + f2 * .85); }
+      }
+    }
+  }
+
+  function drawBadge(C, t) {
+    const n = rivalsIn(C.k), a = -Math.PI * .28, x = C.cx + Math.cos(a) * C.rx * .99, y = C.cy + Math.sin(a) * C.ry * .99;
+    const b = Math.max(9, Math.min(16, R * .95));
+    if (mol.phase === 'docked' && C.k === mol.F) return;
+    ctx.beginPath(); ctx.arc(x, y, b, 0, TAU);
+    if (n === 0) {
+      ctx.save(); ctx.globalCompositeOperation = 'lighter';
+      const gr = ctx.createRadialGradient(x, y, 0, x, y, b * 2.4); gr.addColorStop(0, 'rgba(255,250,220,.6)'); gr.addColorStop(1, 'rgba(255,250,220,0)');
+      ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(x, y, b * 2.4, 0, TAU); ctx.fill(); ctx.restore();
+      ctx.beginPath(); ctx.arc(x, y, b, 0, TAU); ctx.fillStyle = '#0a1a22'; ctx.fill();
+      ctx.lineWidth = 2.2; ctx.strokeStyle = '#fff6c8'; ctx.stroke();
+      ctx.fillStyle = '#fff6c8'; star(ctx, x, y, b * .6, 5); ctx.fill();
+    } else {
+      ctx.fillStyle = 'rgba(8,14,20,.9)'; ctx.fill(); ctx.lineWidth = 1.5; ctx.strokeStyle = rgba(C.k, .45); ctx.stroke();
+      ctx.fillStyle = 'rgba(220,235,245,.85)'; star(ctx, x - b * .32, y, b * .38, 5); ctx.fill();
+      ctx.font = `700 ${b * 1.05}px ${FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(n, x + b * .38, y + b * .05);
+    }
+  }
+
+  function draw(t) {
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.drawImage(bg, 0, 0, L.W, L.H);
+    // chamber membranes
+    L.ch.forEach(C => {
+      const hot = hoverCh === C.k, home = mol.phase === 'docked' && mol.F === C.k;
+      ctx.globalCompositeOperation = 'lighter';
+      if (hot || home) { membrane(C, t, 0); ctx.fillStyle = rgba(C.k, hot ? .1 + .05 * Math.sin(t * .01) : .08); ctx.fill(); }
+      membrane(C, t, 0); ctx.lineWidth = hot ? 9 : 6; ctx.strokeStyle = rgba(C.k, hot ? .22 : .1); ctx.stroke();
+      ctx.lineWidth = 1.2; ctx.strokeStyle = rgba(C.k, hot ? .95 : .55);
+      membrane(C, t, -2.2 / C.rx); ctx.stroke(); membrane(C, t, 2.2 / C.rx); ctx.stroke();
+      ctx.globalCompositeOperation = 'source-over';
+    });
+    // open channels
+    for (const [key, c] of chan) {
+      if (t > c.t1 + 300) { chan.delete(key); continue; }
+      const al = Math.max(0, Math.min(1, (t - c.t0) / 200, (c.t1 + 300 - t) / 300));
+      if (al > 0) { const [pa, pb] = pores(L, c.A, c.B); bezierTube(pa, pb, Math.max(10, R * 2.6), c.A, c.B, al, t); }
+    }
+    // receptor channel on a win
+    if (mol.path && (mol.phase === 'travel' || mol.phase === 'docked')) {
+      const al = mol.phase === 'travel' ? Math.min(1, (t - mol.t0) / 300) : Math.max(0, 1 - (t - mol.t0) / 1200);
+      if (al > 0) for (let i = 0; i < mol.path.length - 2; i++) bezierTube(mol.path[i], mol.path[i + 1], Math.max(14, mol.hR * 1.8), mol.F, mol.F, al, t);
+    }
+    // field lines from the held / selected ion to everyone it repels
+    const focus = held != null ? held : sel;
+    const pushSet = new Map();
+    if (focus != null) {
+      const m = hoverCh != null ? moveFor(g, focus, hoverCh) : null;
+      if (m && !m.web) m.K.vs.forEach(w => { if (w !== focus) pushSet.set(w, g.col[w] === m.from ? m.to : m.from); });
+      const p = P[focus];
+      ctx.setLineDash([3, 6]); ctx.lineDashOffset = -t * .03; ctx.lineWidth = 1.4;
+      g.adj[focus].forEach(w => {
+        const q = w === hole ? { x: mol.x, y: mol.y } : P[w], dx = q.x - p.x, dy = q.y - p.y;
+        const gr = ctx.createLinearGradient(p.x, p.y, q.x, q.y);
+        gr.addColorStop(0, rgba(disp[focus], .7)); gr.addColorStop(1, w === hole ? 'rgba(255,250,220,.8)' : rgba(disp[w], .7));
+        ctx.strokeStyle = gr; ctx.beginPath(); ctx.moveTo(p.x, p.y);
+        ctx.quadraticCurveTo((p.x + q.x) / 2 - dy * .18, (p.y + q.y) / 2 + dx * .18, q.x, q.y); ctx.stroke();
+      });
+      ctx.setLineDash([]);
+    }
+    // push flashes during a cascade
+    ctx.globalCompositeOperation = 'lighter';
+    for (let i = pulses.length - 1; i >= 0; i--) {
+      const u = pulses[i], f = (t - u.t0) / u.dur; if (f >= 1) { pulses.splice(i, 1); continue; }
+      const a = P[u.a], b = P[u.b]; if (!a || !b) continue;
+      ctx.strokeStyle = `rgba(240,250,255,${((1 - f) * .7).toFixed(3)})`; ctx.lineWidth = 2.5 * (1 - f) + .5;
+      ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+    }
+    // ion glows and streaks
+    const rep = focus != null ? new Set(g.adj[focus]) : null;
+    P.forEach(p => {
+      if (!p) return;
+      const k = disp[p.v], boost = (rep && rep.has(p.v)) ? 1.5 : (p.v === focus ? 1.7 : 1), s = R * p.s * 2.6 * boost;
+      ctx.drawImage(glowSpr[k], p.x - s, p.y - s, s * 2, s * 2);
+      if (p.tr && p.px != null) { ctx.strokeStyle = rgba(k, .45); ctx.lineWidth = R * .9; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(p.px - (p.x - p.px) * 3, p.py - (p.y - p.py) * 3); ctx.lineTo(p.x, p.y); ctx.stroke(); }
+    });
+    // win pulses
+    for (let i = rings.length - 1; i >= 0; i--) {
+      const r = rings[i], f = (t - r.t0) / r.dur; if (f < 0) continue; if (f >= 1) { rings.splice(i, 1); continue; }
+      const rad = R * 2 + f * Math.max(L.W, L.H) * .8;
+      ctx.strokeStyle = `rgba(255,250,215,${((1 - f) * .55).toFixed(3)})`; ctx.lineWidth = 10 * (1 - f) + 1; ctx.beginPath(); ctx.arc(r.x, r.y, rad, 0, TAU); ctx.stroke();
+      ctx.strokeStyle = rgba(r.k, (1 - f) * .35); ctx.lineWidth = 24 * (1 - f); ctx.stroke();
+    }
+    ctx.globalCompositeOperation = 'source-over';
+    // ion cores
+    P.forEach(p => {
+      if (!p) return;
+      const lift = p.v === held ? 1.2 : 1;
+      drawIon(p, lift);
+      if (pushSet.has(p.v)) { const k2 = pushSet.get(p.v); ctx.strokeStyle = rgba(k2, .55 + .4 * Math.sin(t * .012)); ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(p.x, p.y, R * p.s * 1.7, 0, TAU); ctx.stroke(); }
+      if (rimSet.has(p.v)) { ctx.fillStyle = '#ffffff'; star(ctx, p.x + R * p.s * .8, p.y - R * p.s * .8, Math.max(2.6, R * .42), 5); ctx.fill(); }
+    });
+    // win: the signal travels the channel / sits docked
+    if (mol.phase === 'travel') {
+      const f = Math.min(1, (t - mol.t0) / mol.dur), e = ease(f), pts = mol.path;
+      const seg = [], tot = []; let T = 0;
+      for (let i = 0; i < pts.length - 1; i++) { const d = Math.hypot(pts[i + 1][0] - pts[i][0], pts[i + 1][1] - pts[i][1]); seg.push(d); T += d; tot.push(T); }
+      let at = e * T, i = 0; while (i < seg.length - 1 && at > tot[i]) i++;
+      const s0 = i ? tot[i - 1] : 0, q = seg[i] ? (at - s0) / seg[i] : 1;
+      mol.x = pts[i][0] + (pts[i + 1][0] - pts[i][0]) * q; mol.y = pts[i][1] + (pts[i + 1][1] - pts[i][1]) * q;
+      mol.R = mol.hR + (R * 2 - mol.hR) * e;
+      drawMolecule(t, mol.x, mol.y, mol.R, .2);
+    } else if (mol.phase === 'docked') {
+      const f = Math.min(1, (t - mol.t0) / 600);
+      drawMolecule(t, mol.x, mol.y, mol.R, .5 * (1 - f) + .15);
+    }
+    L.ch.forEach(C => drawBadge(C, t));
+    drawBand(t);
+    // floating notes ("equilibrium")
+    for (let i = notes.length - 1; i >= 0; i--) {
+      const n = notes[i], f = (t - n.t0) / n.dur; if (f < 0) continue; if (f >= 1) { notes.splice(i, 1); continue; }
+      ctx.font = `700 ${Math.max(11, R * .9)}px ${FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillStyle = `rgba(220,240,255,${(Math.sin(Math.PI * f) * .9).toFixed(3)})`; ctx.fillText('≈ ' + n.text, n.x, n.y - f * R * 2);
+    }
+  }
+
+  let last = now();
+  function frame() {
+    const t = now();
+    const dt = Math.min(.033, Math.max(0, (t - last) / 1000)); last = t;
+    if (L.r !== R) R += (L.r - R) * Math.min(1, dt * 4);
+    transits(t); physics(dt, t); draw(t);
+    requestAnimationFrame(frame);
+  }
+
+  // ---- input (pointer events: drag, swipe or flick; or tap an ion then tap a chamber)
+  let down = null;
+  function pt(e) { const b = cv.getBoundingClientRect(); return [e.clientX - b.left, e.clientY - b.top]; }
+  function ionAt(x, y) {
+    let best = null, bd = Math.max(R * 1.8, 22);
+    P.forEach(p => { if (!p || p.tr) return; const d = Math.hypot(p.x - x, p.y - y); if (d < bd) { bd = d; best = p.v; } });
+    return best;
+  }
+  cv.addEventListener('pointerdown', e => {
+    if (!ac) { try { ac = new (window.AudioContext || window.webkitAudioContext)(); } catch (_) { ac = null; } }
+    else if (ac.state === 'suspended') ac.resume();
+    if (won && !busy) { restart(); return; }
+    if (busy || won) return;
+    const [x, y] = pt(e), u = ionAt(x, y);
+    if (u == null) {
+      if (sel != null) { const B = chamberFor(L, x, y, null, 0, 0); if (B != null && B !== disp[sel]) { doMove(sel, B); return; } }
+      sel = null; return;
+    }
+    try { cv.setPointerCapture(e.pointerId); } catch (_) {}
+    down = { u, x0: x, y0: y, moved: false, hist: [[x, y, now()]], wasSel: sel === u };
+    held = u; sel = null; hoverCh = null; sfx.pick();
+    P[u].vx = P[u].vy = 0;
+  });
+  cv.addEventListener('pointermove', e => {
+    if (!down) return;
+    const [x, y] = pt(e), p = P[down.u];
+    if (!down.moved && Math.hypot(x - down.x0, y - down.y0) > 8) down.moved = true;
+    if (!down.moved) return;
+    p.x = x; p.y = y - R * .3;
+    down.hist.push([x, y, now()]); if (down.hist.length > 6) down.hist.shift();
+    let B = chamberFor(L, x, y, disp[down.u], x - down.x0, y - down.y0);
+    if (B === disp[down.u]) B = null;
+    if (B !== hoverCh) { hoverCh = B; const m = B != null ? moveFor(g, down.u, B) : null; hope = !!(m && !m.web && g.preview(m.K).won); }
+  });
+  function release(e, cancel) {
+    if (!down) return;
+    const d = down; down = null; hoverCh = null; hope = false;
+    const [x, y] = pt(e);
+    if (cancel) { held = null; return; }
+    if (!d.moved) { held = null; sel = d.wasSel ? null : d.u; return; }
+    const from = disp[d.u];
+    let B = chamberFor(L, x, y, from, x - d.x0, y - d.y0);
+    if (B === from) {
+      const h = d.hist, h0 = h[0], dt = Math.max(30, h[h.length - 1][2] - h0[2]);
+      let px = (x - h0[0]) / dt * 140, py = (y - h0[1]) / dt * 140; const pl = Math.hypot(px, py), cap = Math.max(60, R * 4);
+      if (pl > cap) { px *= cap / pl; py *= cap / pl; }
+      B = chamberFor(L, x + px, y + py, from, x - d.x0 + px, y - d.y0 + py);
+    }
+    doMove(d.u, B);
+  }
+  cv.addEventListener('pointerup', e => release(e, false));
+  cv.addEventListener('pointercancel', e => release(e, true));
+
+  document.getElementById('undo').onclick = () => { if (!busy && !won) g.undo(); };
+  document.getElementById('again').onclick = () => { if (!busy || won) restart(); };
+
+  let rt = 0;
+  addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(relayout, 80); });
+  relayout();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

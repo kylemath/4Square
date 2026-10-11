@@ -1,0 +1,443 @@
+<!doctype html>
+<!--
+  Paint Trail (lab/trail.html): Fill the Hole as an .io-style trail game through a living landscape.
+
+  What the player sees: a dark, glowing, slowly breathing landscape (no lines, no map, no borders). Every region of the
+  level is a soft-edged territory of one of four biomes, each with its own animated texture AND pattern so colour is
+  never needed: LAVA (glowing crack veins, triangle glyph), SEA (rolling horizontal wave bands, wave glyph), DUNES
+  (diagonal wind ridges, mound glyph), MEADOW (swaying dotted tufts, sprout glyph). The territory polygons g.cells are
+  baked into a label texture and then sampled through an animated domain-warp, so territories meet in wobbly, living
+  seams. The hole is a violet swirling "wishing well". Four biome runes float in it; each rune is fed by glowing
+  wisps from every land that touches the well and is of that biome. Goal cue: "Wake the well: leave one rune unfed".
+
+  What the player does, and how it maps onto the puzzle (all state changes through lab/core.js):
+  - Press inside territory u and drag a glowing comet trail into a territory v of a different biome. The two biomes
+    the trail has touched pick the zone K = g.chainAt(u, g.col[v]) (the connected run through u of just those two
+    biomes). Following the zone keeps it; touching a third biome re-picks K = g.chainAt(u, that biome). While dragging,
+    every territory of K shimmers (see how far it reaches), and runes that the trade would starve flicker
+    (g.preview(K)).
+  - Lift the finger, or close the loop back to where you started: g.swap(K). The two biomes trade places in every
+    territory of K, captured paper.io style by a wave rippling outward from the trail.
+  - Zones of a single territory (u surrounded only by other biomes) can't be reached by a trail, so: scribble a small
+    circle inside one territory, or just tap it, and three tiny biome seeds pop out. Seed b = g.chainAt(u, b) (shimmers
+    while held; release on it = g.swap). This reaches every chain through u, so every chain is reachable.
+  - K.web (the only zone of that biome pair; trading it would just rename two biomes everywhere): the trail fizzles,
+    nothing changes, a little "pfft".
+  - Win: g.won() (the lands around the well show at most three biomes) = one rune has no wisps left. That rune
+    (g.free()) glows free, the well erupts in that biome and its colour floods the screen. Tap to play again
+    (g.reset()). Tiny undo (g.undo) and restart (g.reset) buttons sit in the bottom corners. When idle, a ghost comet
+    demonstrates one helpful trail (g.good()[0]).
+
+  Performance: the field is rendered per pixel into a ~30k pixel buffer and upscaled with smoothing; crisp glyphs,
+  trail and runes are drawn on top at device resolution. prefers-reduced-motion freezes the warp and shortens effects.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>Paint Trail</title>
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #05060a; overscroll-behavior: none;
+    font-family: ui-rounded, "SF Pro Rounded", system-ui, -apple-system, "Segoe UI", sans-serif;
+    -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+  #cv { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; touch-action: none; }
+  #cue { position: fixed; left: 0; right: 0; top: max(8px, env(safe-area-inset-top)); text-align: center; pointer-events: none;
+    color: rgba(240, 235, 255, .88); font-weight: 650; font-size: clamp(12px, 3.6vw, 17px); letter-spacing: .02em;
+    text-shadow: 0 0 10px rgba(150, 90, 255, .8), 0 1px 2px #000; padding: 0 44px; transition: opacity .4s; }
+  .bt { position: fixed; bottom: max(8px, env(safe-area-inset-bottom)); width: 36px; height: 36px; border-radius: 50%;
+    border: 1px solid rgba(255, 255, 255, .22); background: rgba(10, 8, 20, .45); color: rgba(255, 255, 255, .75);
+    font-size: 18px; line-height: 34px; text-align: center; padding: 0; cursor: pointer; touch-action: manipulation;
+    backdrop-filter: blur(3px); }
+  .bt:active { transform: scale(.9); }
+  #undo { left: 8px; } #again { right: 8px; }
+</style>
+</head>
+<body>
+<canvas id="cv"></canvas>
+<div id="cue">Wake the well: leave one rune unfed</div>
+<button class="bt" id="undo" aria-label="undo">&#8630;</button>
+<button class="bt" id="again" aria-label="restart">&#10227;</button>
+<script src="../levels.js"></script>
+<script src="../layout.js"></script>
+<script src="core.js"></script>
+<script>
+'use strict';
+const g = LAB.game();
+const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const HOLE = g.hole;
+
+// ---------- biomes (index = element index in g.col) ----------
+const BI = [
+  { name: 'lava', base: [40, 6, 4], hi: [255, 92, 30], hot: [255, 225, 130], css: '#ff6a2a' },
+  { name: 'sea', base: [4, 18, 52], hi: [50, 140, 255], hot: [200, 235, 255], css: '#46a2ff' },
+  { name: 'dunes', base: [62, 42, 14], hi: [238, 196, 110], hot: [255, 244, 205], css: '#f0c66e' },
+  { name: 'meadow', base: [6, 36, 16], hi: [74, 214, 96], hot: [210, 255, 170], css: '#5ddc70' },
+];
+const FIZZ = ['pfft.', 'the land shrugs', 'nothing budges', '...meh', 'fizzle!'];
+
+// glyph per biome, drawn centred at (0,0) with size s
+function glyph(c, b, s) {
+  c.beginPath();
+  if (b === 0) { c.moveTo(-s, s * .75); c.lineTo(0, -s * .85); c.lineTo(s, s * .75); c.closePath(); c.moveTo(-s * .25, -s * .35); c.lineTo(s * .25, -s * .35); }
+  else if (b === 1) { for (let k = 0; k < 2; k++) { const y = (k ? .4 : -.3) * s; c.moveTo(-s, y); c.bezierCurveTo(-s * .5, y - s * .55, -s * .1, y + s * .55, s * .2, y); c.bezierCurveTo(s * .45, y - s * .4, s * .75, y - s * .4, s, y); } }
+  else if (b === 2) { c.moveTo(-s, s * .6); c.quadraticCurveTo(-s * .2, -s * 1.1, s, s * .6); c.moveTo(-s * .45, s * .6); c.quadraticCurveTo(s * .15, -s * .2, s * .7, s * .6); }
+  else { c.moveTo(0, s * .9); c.lineTo(0, -s * .2); c.moveTo(0, s * .1); c.quadraticCurveTo(-s * .9, 0, -s * .8, -s * .8); c.quadraticCurveTo(-s * .1, -s * .6, 0, s * .1); c.moveTo(0, -s * .2); c.quadraticCurveTo(s * .9, -s * .4, s * .7, -s * 1); c.quadraticCurveTo(s * .05, -s * .9, 0, -s * .2); }
+}
+
+// ---------- noise ----------
+let seed = 1337;
+const rnd = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
+const NZ = new Float32Array(64 * 64); for (let i = 0; i < NZ.length; i++) NZ[i] = rnd();
+function noise(x, y) {
+  let xi = Math.floor(x), yi = Math.floor(y); const fx = x - xi, fy = y - yi; xi &= 63; yi &= 63;
+  const x1 = (xi + 1) & 63, y1 = (yi + 1) & 63, a = NZ[yi * 64 + xi], b = NZ[yi * 64 + x1], c = NZ[y1 * 64 + xi], d = NZ[y1 * 64 + x1];
+  const u = fx * fx * (3 - 2 * fx), v = fy * fy * (3 - 2 * fy);
+  return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
+}
+
+// ---------- label texture: which territory owns each point of the [-1,1]^2 square ----------
+const LMN = 256, LM = new Int16Array(LMN * LMN);
+(function bake() {
+  const cells = g.cells, bb = cells.map(P => { let a = 9, b = 9, c = -9, d = -9; P.forEach(([x, y]) => { a = Math.min(a, x); b = Math.min(b, y); c = Math.max(c, x); d = Math.max(d, y); }); return [a, b, c, d]; });
+  const inside = (P, x, y) => { let s = false; for (let i = 0, j = P.length - 1; i < P.length; j = i++) { const [xi, yi] = P[i], [xj, yj] = P[j]; if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) s = !s; } return s; };
+  for (let j = 0; j < LMN; j++) for (let i = 0; i < LMN; i++) {
+    const x = (i + .5) / LMN * 2 - 1, y = (j + .5) / LMN * 2 - 1; let r = -1;
+    for (let k = 0; k < cells.length && r < 0; k++) { const B = bb[k]; if (x >= B[0] && x <= B[2] && y >= B[1] && y <= B[3] && inside(cells[k], x, y)) r = k; }
+    if (r < 0) { let best = 1e9; g.centre.forEach((c, k) => { const d = (c[0] - x) ** 2 + (c[1] - y) ** 2; if (d < best) { best = d; r = k; } }); }
+    LM[j * LMN + i] = r;
+  }
+})();
+const WA = .065;
+function warp(x, y, t, out) {
+  const ox = t * .09, oy = t * .06;
+  out[0] = x + WA * (noise(x * 3.4 + ox + 3.1, y * 3.4 + oy) * 2 - 1) + .022 * (noise(x * 9 + 40, y * 9 - ox) * 2 - 1) + .008 * Math.sin(y * 13 + t * .8);
+  out[1] = y + WA * (noise(x * 3.4 + 17.3 - oy, y * 3.4 + 5.1 + ox) * 2 - 1) + .022 * (noise(x * 9 - oy, y * 9 + 23) * 2 - 1) + .008 * Math.sin(x * 11 - t * .7);
+}
+function labelW(wx, wy) {
+  let i = ((wx + 1) * .5 * LMN) | 0, j = ((wy + 1) * .5 * LMN) | 0;
+  i = i < 0 ? 0 : i >= LMN ? LMN - 1 : i; j = j < 0 ? 0 : j >= LMN ? LMN - 1 : j;
+  return LM[j * LMN + i];
+}
+
+// ---------- canvas / sizes ----------
+const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
+const fc = document.createElement('canvas'), fx = fc.getContext('2d');
+let CW = 0, CH = 0, DPR = 1, FW = 0, FH = 0, img = null, lab = null, sm = null, cp = null, vig = null, PX = null, PY = null;
+function resize() {
+  CW = innerWidth; CH = innerHeight; DPR = Math.min(2, devicePixelRatio || 1);
+  cv.width = Math.round(CW * DPR); cv.height = Math.round(CH * DPR);
+  const s = Math.max(1, Math.sqrt(CW * CH / 30000)); FW = Math.max(40, Math.round(CW / s)); FH = Math.max(40, Math.round(CH / s));
+  fc.width = FW; fc.height = FH; img = fx.createImageData(FW, FH); lab = new Int16Array(FW * FH); sm = new Uint8Array(FW * FH); cp = new Uint8ClampedArray(FW * FH * 4); vig = new Float32Array(FW * FH);
+  PX = new Float32Array(FW); PY = new Float32Array(FH);
+  for (let i = 0; i < FW; i++) PX[i] = (i + .5) / FW * CW; for (let j = 0; j < FH; j++) PY[j] = (j + .5) / FH * CH;
+  for (let j = 0; j < FH; j++) for (let i = 0; i < FW; i++) { const dx = (i / FW - .5) * 2, dy = (j / FH - .5) * 2; vig[j * FW + i] = Math.max(.35, 1 - .32 * (dx * dx + dy * dy)); }
+  layoutRunes();
+}
+const toPx = (x, y) => [(x + 1) * .5 * CW, (y + 1) * .5 * CH];
+const toW = (sx, sy) => [sx / CW * 2 - 1, sy / CH * 2 - 1];
+const tmp = [0, 0];
+function regionAt(sx, sy, t) { const [x, y] = toW(sx, sy); warp(x, y, RM ? 0 : t, tmp); return labelW(tmp[0], tmp[1]); }
+
+// ---------- state ----------
+let ripple = null;     // { t0, set: Uint8Array, old: col copy, pts: [[px,py]...], speed, maxD }
+let zone = null;       // { set: Uint8Array, mode: 1 normal | 2 web | 3 hint, K }
+let drag = null, seeds = null, seedPress = -1, win = null, ghost = null;
+let lastAct = performance.now() - 9000, pv = null; // pv: preview starve flags per biome
+const parts = [], floaters = [];
+const centrePx = () => g.centre.map(c => toPx(c[0], c[1]));
+let CP = [], RUNE = { cx: 0, cy: 0, R: 20, s: 8, pos: [] };
+function layoutRunes() {
+  CP = centrePx();
+  const P = g.cells[HOLE].map(([x, y]) => toPx(x, y));
+  let a = 1e9, b = 1e9, c = -1e9, d = -1e9; P.forEach(([x, y]) => { a = Math.min(a, x); b = Math.min(b, y); c = Math.max(c, x); d = Math.max(d, y); });
+  const [cx, cy] = CP[HOLE], R = Math.max(15, Math.min(36, .34 * Math.min(c - a, d - b)));
+  RUNE = { cx, cy, R, s: Math.max(6, R * .36), pos: [0, 1, 2, 3].map(k => { const an = -Math.PI / 2 + k * Math.PI / 2; return [cx + Math.cos(an) * R, cy + Math.sin(an) * R]; }) };
+}
+// displayed biome of region r at screen point (px,py) right now (ripple-aware)
+function shownAt(r, px, py, now) {
+  if (r === HOLE) return -1;
+  if (ripple && ripple.set[r]) { const d = rippleD(px, py); if (d > (now - ripple.t0) * ripple.speed) return ripple.old[r]; }
+  return g.col[r];
+}
+function rippleD(px, py) { let m = 1e9; const P = ripple.pts; for (let k = 0; k < P.length; k++) { const dx = P[k][0] - px, dy = P[k][1] - py, d = dx * dx + dy * dy; if (d < m) m = d; } return Math.sqrt(m); }
+function setZone(K, mode) { if (!K) { zone = null; return; } const s = new Uint8Array(g.n); K.vs.forEach(v => s[v] = 1); zone = { set: s, mode, K }; }
+
+// ---------- field render ----------
+function renderField(now) {
+  const t = RM ? 0 : now / 1000, tt = now / 1000, data = img.data, W = FW, H = FH;
+  const wo = [0, 0];
+  for (let j = 0; j < H; j++) { const y = (j + .5) / H * 2 - 1; for (let i = 0; i < W; i++) { const x = (i + .5) / W * 2 - 1; warp(x, y, t, wo); lab[j * W + i] = labelW(wo[0], wo[1]); } }
+  const rT = ripple ? (now - ripple.t0) * ripple.speed : 0;
+  const [hcx, hcy] = CP[HOLE] || [0, 0];
+  const wb = win ? Math.min(1, (now - win.t0) / 700) : 0;
+  const ax = CW / Math.max(CW, CH), ay = CH / Math.max(CW, CH);
+  for (let j = 0; j < H; j++) {
+    const y = (j + .5) / H * 2 - 1, py = PY[j];
+    for (let i = 0; i < W; i++) {
+      const k = j * W + i, r = lab[k], x = (i + .5) / W * 2 - 1, px = PX[i];
+      let b = r === HOLE ? -1 : g.col[r], ring = 0;
+      if (ripple && ripple.set[r]) { const d = rippleD(px, py), e = d - rT; if (e > 0) b = ripple.old[r]; ring = Math.exp(-(e * e) / 260); }
+      let R, G, B, v;
+      if (b < 0 && !(win && r === HOLE)) {
+        const dx = (px - hcx) / 60, dy = (py - hcy) / 60, rr = Math.sqrt(dx * dx + dy * dy), an = Math.atan2(dy, dx);
+        v = .5 + .5 * Math.sin(an * 3 + rr * 9 - tt * 2.6); const gl = Math.max(0, 1 - rr * .9);
+        R = 18 + 120 * v * .6 + 140 * gl * gl; G = 6 + 40 * v * .5 + 90 * gl * gl * gl; B = 40 + 170 * v * .6 + 120 * gl * gl;
+      } else {
+        if (b < 0) b = win.free;
+        const Z = BI[b]; let m;
+        if (b === 0) { const n = noise(x * 7 + 5, y * 7 - t * .12); v = 1 - Math.min(1, Math.abs(n - .5) * 13); v *= v; m = .18 + .12 * Math.sin(tt * 2 + n * 9) + .85 * v; }
+        else if (b === 1) { const n = noise(x * 3, y * 3 + t * .05), w = Math.sin(y * 36 + n * 6 - t * 1.7 + x * 3); v = w > .55 ? (w - .55) / .45 : 0; m = .22 + .65 * v + .08 * n; }
+        else if (b === 2) { const n = noise(x * 2.5 + 9, y * 2.5); const s = .5 + .5 * Math.sin((x * .7 + y) * 26 + n * 5 + t * .25); v = s * s * s; m = .2 + .72 * v; }
+        else { const gx = x * 10 + .25 * Math.sin(t * 1.3 + y * 5), gy = y * 10 * (CH / CW), cx = Math.floor(gx), cy = Math.floor(gy), h = NZ[((cy & 63) << 6) | (cx & 63)];
+          const fx = gx - cx - .3 - .4 * h, fy = gy - cy - .3 - .4 * NZ[((cx & 63) << 6) | (cy & 63)], d2 = fx * fx + fy * fy; v = Math.max(0, 1 - d2 / .06); m = .2 + .75 * v; }
+        R = Z.base[0] + (Z.hi[0] - Z.base[0]) * m; G = Z.base[1] + (Z.hi[1] - Z.base[1]) * m; B = Z.base[2] + (Z.hi[2] - Z.base[2]) * m;
+        if (v > .85) { const h2 = (v - .85) * 4; R += (Z.hot[0] - R) * h2; G += (Z.hot[1] - G) * h2; B += (Z.hot[2] - B) * h2; }
+        if (r === HOLE && win) { const dx = (px - hcx) / 50, dy = (py - hcy) / 50, gl = Math.max(0, 1 - Math.sqrt(dx * dx + dy * dy)); const f = wb * (.6 + .9 * gl); R += (255 - R) * f * .35 + Z.hi[0] * f * .3; G += (255 - G) * f * .35 + Z.hi[1] * f * .3; B += (255 - B) * f * .35 + Z.hi[2] * f * .3; }
+      }
+      if (zone && zone.set[r]) {
+        const sh = .5 + .5 * Math.sin(tt * 7 - (px + py) * .05);
+        if (zone.mode === 2) { const f = (Math.sin(tt * 31 + px * .3) > .6 ? .5 : .15); const gy = (R + G + B) / 3; R += (gy - R) * .6 + 40 * f; G += (gy - G) * .6 + 40 * f; B += (gy - B) * .6 + 40 * f; }
+        else { const a = zone.mode === 3 ? 45 : 90; R += a * sh; G += a * sh; B += a * sh * 1.1; }
+      }
+      if (ring) { R += 200 * ring; G += 200 * ring; B += 220 * ring; }
+      const seam = (i > 0 && lab[k - 1] !== r) || (i < W - 1 && lab[k + 1] !== r) || (j > 0 && lab[k - W] !== r) || (j < H - 1 && lab[k + W] !== r);
+      let f = vig[k]; if (seam) { f *= .8; sm[k] = 1; } else sm[k] = 0;
+      const o = k * 4; data[o] = R * f; data[o + 1] = G * f; data[o + 2] = B * f; data[o + 3] = 255;
+    }
+  }
+  // soften the seams: 3x3 average on boundary pixels only (cheap anti-aliasing of the living borders)
+  cp.set(data);
+  for (let j = 1; j < H - 1; j++) for (let i = 1; i < W - 1; i++) {
+    const k = j * W + i; if (!sm[k]) continue; const o = k * 4;
+    for (let c = 0; c < 3; c++) { let a = 0; for (let dj = -W; dj <= W; dj += W) for (let di = -1; di <= 1; di++) a += cp[o + (dj + di) * 4 + c]; data[o + c] = a / 9; }
+  }
+  fx.putImageData(img, 0, 0);
+}
+
+// ---------- overlay drawing ----------
+function drawGlyphs(now) {
+  ctx.lineWidth = 1.6; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  const s = Math.max(5, Math.min(9, Math.min(CW, CH) * .018));
+  for (let r = 0; r < g.n; r++) {
+    if (r === HOLE) continue; const [x, y] = CP[r]; if (x < 4 || y < 4 || x > CW - 4 || y > CH - 4) continue;
+    const b = shownAt(r, x, y, now); ctx.save(); ctx.translate(x, y);
+    ctx.strokeStyle = 'rgba(0,0,0,.45)'; ctx.lineWidth = 3.4; glyph(ctx, b, s); ctx.stroke();
+    ctx.strokeStyle = 'rgba(255,255,255,.55)'; ctx.lineWidth = 1.5; glyph(ctx, b, s); ctx.stroke(); ctx.restore();
+  }
+}
+function fedSet(now) { const f = [0, 0, 0, 0]; g.rim.forEach(x => { const b = shownAt(x, CP[x][0], CP[x][1], now); if (b >= 0) f[b]++; }); return f; }
+function drawWell(now) {
+  const t = now / 1000, fed = fedSet(now), { cx, cy, R, s, pos } = RUNE;
+  // wisps: every land touching the well sends a wisp of its biome to its rune
+  ctx.lineCap = 'round';
+  g.rim.forEach((x, k) => {
+    const b = shownAt(x, CP[x][0], CP[x][1], now); if (b < 0) return;
+    const [x0, y0] = CP[x], [x1, y1] = pos[b], mx = (x0 + x1) / 2 + Math.sin(t * 1.3 + k) * 14, my = (y0 + y1) / 2 + Math.cos(t * 1.1 + k * 2) * 14;
+    ctx.strokeStyle = BI[b].css; ctx.globalAlpha = .55; ctx.lineWidth = 2.2;
+    ctx.setLineDash([3, 7]); ctx.lineDashOffset = RM ? 0 : -t * 22;
+    ctx.beginPath(); ctx.moveTo(x0, y0); ctx.quadraticCurveTo(mx, my, x1, y1); ctx.stroke();
+  });
+  ctx.setLineDash([]); ctx.globalAlpha = 1;
+  // runes
+  for (let b = 0; b < 4; b++) {
+    const [x, y] = pos[b], free = win ? b === win.free : false, starve = !win && pv && pv[b];
+    const pulse = .5 + .5 * Math.sin(t * (starve ? 14 : 2) + b);
+    ctx.save(); ctx.translate(x, y);
+    if (free || starve) { const gR = s * (free ? 3.2 + pulse : 2 + pulse); const gr = ctx.createRadialGradient(0, 0, 0, 0, 0, gR); gr.addColorStop(0, BI[b].css); gr.addColorStop(1, 'rgba(0,0,0,0)'); ctx.globalAlpha = free ? 1 : .6; ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(0, 0, gR, 0, 7); ctx.fill(); ctx.globalAlpha = 1; }
+    ctx.fillStyle = free ? '#fff' : 'rgba(8,4,20,.82)'; ctx.beginPath(); ctx.arc(0, 0, s * 1.55, 0, 7); ctx.fill();
+    ctx.lineWidth = 1.6; ctx.strokeStyle = BI[b].css; ctx.globalAlpha = fed[b] ? .95 : .5; ctx.stroke();
+    if (fed[b] && !free) { // a chain-ring of fed links: one dot per feeding land
+      for (let q = 0; q < fed[b]; q++) { const an = -Math.PI / 2 + (q - (fed[b] - 1) / 2) * .55; ctx.fillStyle = BI[b].css; ctx.beginPath(); ctx.arc(Math.cos(an) * s * 1.55, Math.sin(an) * s * 1.55, 1.9, 0, 7); ctx.fill(); }
+    }
+    ctx.globalAlpha = 1; ctx.strokeStyle = free ? BI[b].css : BI[b].css; ctx.lineWidth = free ? 2.2 : 1.6; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    glyph(ctx, b, s * .8); ctx.stroke(); ctx.restore();
+  }
+}
+function drawTrail(T, now, alpha) {
+  const P = T.pts; if (P.length < 2) return; const n = P.length;
+  const c0 = BI[T.a].css, c1 = T.b >= 0 ? BI[T.b].css : c0;
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  for (let pass = 0; pass < 2; pass++) {
+    for (let k = 1; k < n; k++) {
+      const f = k / n, w = (pass ? 3 : 12) * (.35 + .65 * f);
+      ctx.globalAlpha = alpha * (pass ? .95 : .28) * (.3 + .7 * f);
+      ctx.strokeStyle = pass ? '#fff' : (P[k][2] ? c1 : c0); ctx.lineWidth = w;
+      ctx.beginPath(); ctx.moveTo(P[k - 1][0], P[k - 1][1]); ctx.lineTo(P[k][0], P[k][1]); ctx.stroke();
+    }
+  }
+  const [hx, hy] = P[n - 1], gr = ctx.createRadialGradient(hx, hy, 0, hx, hy, 22);
+  gr.addColorStop(0, 'rgba(255,255,255,.95)'); gr.addColorStop(.3, T.web ? 'rgba(160,160,160,.6)' : c1); gr.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.globalAlpha = alpha; ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(hx, hy, 22, 0, 7); ctx.fill(); ctx.globalAlpha = 1;
+}
+function drawSeeds(now) {
+  if (!seeds) return; const k = Math.min(1, (now - seeds.t0) / 180);
+  seeds.items.forEach((S, q) => {
+    const x = seeds.x + (S.x - seeds.x) * k, y = seeds.y + (S.y - seeds.y) * k, rr = S.r * (.4 + .6 * k);
+    const gr = ctx.createRadialGradient(x, y, 0, x, y, rr * 1.8); gr.addColorStop(0, BI[S.b].css); gr.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = gr; ctx.globalAlpha = seedPress === q ? 1 : .6; ctx.beginPath(); ctx.arc(x, y, rr * 1.8, 0, 7); ctx.fill(); ctx.globalAlpha = 1;
+    ctx.fillStyle = 'rgba(10,6,24,.9)'; ctx.beginPath(); ctx.arc(x, y, rr, 0, 7); ctx.fill();
+    ctx.strokeStyle = BI[S.b].css; ctx.lineWidth = 2; ctx.stroke();
+    ctx.save(); ctx.translate(x, y); ctx.lineWidth = 2; ctx.lineCap = 'round'; glyph(ctx, S.b, rr * .5); ctx.stroke(); ctx.restore();
+  });
+}
+function drawParts(dt) {
+  for (let i = parts.length - 1; i >= 0; i--) {
+    const p = parts[i]; p.life -= dt; if (p.life <= 0) { parts.splice(i, 1); continue; }
+    p.x += p.vx * dt; p.y += p.vy * dt; p.vy += (p.grav || 0) * dt; p.vx *= .985; p.vy *= .985;
+    ctx.globalAlpha = Math.min(1, p.life / p.max * 1.5); ctx.fillStyle = p.c; ctx.beginPath(); ctx.arc(p.x, p.y, p.s, 0, 7); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+  for (let i = floaters.length - 1; i >= 0; i--) {
+    const f = floaters[i]; f.life -= dt; if (f.life <= 0) { floaters.splice(i, 1); continue; }
+    ctx.globalAlpha = Math.min(1, f.life * 1.6); ctx.font = '600 15px ui-rounded, system-ui, sans-serif'; ctx.textAlign = 'center';
+    ctx.fillStyle = '#000'; ctx.fillText(f.s, f.x + 1, f.y - (1.4 - f.life) * 28 + 1); ctx.fillStyle = '#ddd'; ctx.fillText(f.s, f.x, f.y - (1.4 - f.life) * 28);
+  }
+  ctx.globalAlpha = 1;
+}
+function burst(x, y, c, n, sp, grav) { for (let i = 0; i < (RM ? n / 4 : n); i++) { const a = rnd() * 6.283, v = sp * (.3 + rnd()); parts.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, c, s: 1 + rnd() * 2.2, life: .5 + rnd() * .7, max: 1.2, grav }); } }
+
+// ---------- audio (after first gesture) ----------
+let AC = null;
+function audio() { if (!AC) { try { AC = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { AC = null; } } if (AC && AC.state === 'suspended') AC.resume(); }
+function tone(f0, f1, dur, type, vol, delay) {
+  if (!AC) return; const t = AC.currentTime + (delay || 0), o = AC.createOscillator(), gn = AC.createGain();
+  o.type = type || 'sine'; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(Math.max(20, f1), t + dur);
+  gn.gain.setValueAtTime(0, t); gn.gain.linearRampToValueAtTime(vol || .06, t + .02); gn.gain.exponentialRampToValueAtTime(.0001, t + dur);
+  o.connect(gn); gn.connect(AC.destination); o.start(t); o.stop(t + dur + .05);
+}
+const NOTE = [220, 262, 330, 392];
+
+// ---------- gestures ----------
+function commit(K, pts, now) {
+  if (!K) return;
+  if (K.web) { fizzle(pts[pts.length - 1]); return; }
+  const old = g.col.slice(), sp = pts.length > 10 ? pts.filter((_, i) => i % Math.ceil(pts.length / 10) === 0).concat([pts[pts.length - 1]]) : pts.slice();
+  ripple = null; win = null;
+  g.swap(K);
+  const s = new Uint8Array(g.n); K.vs.forEach(v => s[v] = 1);
+  const diag = Math.hypot(CW, CH);
+  ripple = { t0: now, set: s, old, pts: sp.map(p => [p[0], p[1]]), speed: RM ? 10 : Math.max(.45, diag / 1100), dur: RM ? 150 : 1100 * 1.05 };
+  zone = null; pv = null;
+  tone(NOTE[K.pair[0]] * 2, NOTE[K.pair[1]] * 2, .5, 'triangle', .07); tone(110, 330, .7, 'sine', .05, .05);
+  if (navigator.vibrate) try { navigator.vibrate(12); } catch (e) {}
+}
+function fizzle(p) {
+  zone = null; pv = null;
+  burst(p[0], p[1], '#999', 26, 120, 60); floaters.push({ x: p[0], y: p[1] - 14, s: FIZZ[(rnd() * FIZZ.length) | 0], life: 1.4 });
+  tone(160, 60, .35, 'sawtooth', .03);
+}
+function openSeeds(u, x, y, now) {
+  const a = g.col[u], R = Math.max(26, Math.min(40, Math.min(CW, CH) * .08)), r = Math.max(15, R * .55);
+  const items = [0, 1, 2, 3].filter(b => b !== a).map((b, q) => { const an = -Math.PI / 2 + (q - 1) * 2.1; let sx = x + Math.cos(an) * R, sy = y + Math.sin(an) * R; sx = Math.max(r + 4, Math.min(CW - r - 4, sx)); sy = Math.max(r + 4, Math.min(CH - r - 4, sy)); return { b, x: sx, y: sy, r }; });
+  seeds = { u, x, y, items, t0: now }; tone(520, 780, .15, 'sine', .05);
+}
+function seedHit(x, y) { if (!seeds) return -1; return seeds.items.findIndex(S => Math.hypot(S.x - x, S.y - y) < S.r * 1.25); }
+let trailFade = null;
+function pt(e) { const r = cv.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; }
+cv.addEventListener('pointerdown', e => {
+  audio(); const now = performance.now(); lastAct = now; ghost = null; if (zone && zone.mode === 3) zone = null;
+  const [x, y] = pt(e);
+  if (win) { if (now - win.t0 > 900) g.reset(); return; }
+  try { cv.setPointerCapture(e.pointerId); } catch (er) {}
+  if (seeds) { const q = seedHit(x, y); if (q >= 0) { seedPress = q; const K = g.chainAt(seeds.u, seeds.items[q].b); setZone(K, K && K.web ? 2 : 1); pv = previewFlags(K); tone(NOTE[seeds.items[q].b] * 2, NOTE[seeds.items[q].b] * 2.02, .12, 'sine', .04); return; } seeds = null; }
+  const u = regionAt(x, y, now);
+  if (u === HOLE) { burst(RUNE.cx, RUNE.cy, '#b48cff', 14, 90); tone(300, 200, .2, 'sine', .04); return; }
+  drag = { u, a: g.col[u], b: -1, K: null, pts: [[x, y, 0]], turn: 0, lastAng: null, left: false, len: 0, web: false };
+});
+cv.addEventListener('pointermove', e => {
+  const now = performance.now(), [x, y] = pt(e);
+  if (seedPress >= 0) { if (seedHit(x, y) !== seedPress) { seedPress = -1; zone = null; pv = null; } return; }
+  if (!drag) return; lastAct = now;
+  const P = drag.pts, L = P[P.length - 1], dx = x - L[0], dy = y - L[1], d = Math.hypot(dx, dy); if (d < 3) return;
+  drag.len += d;
+  const r = regionAt(x, y, now);
+  if (r !== drag.u) drag.left = true;
+  if (r !== HOLE && r !== drag.u && g.col[r] !== drag.a && (!drag.K || !drag.K.set.has(r))) {
+    drag.b = g.col[r]; drag.K = g.chainAt(drag.u, drag.b); drag.web = !!(drag.K && drag.K.web);
+    setZone(drag.K, drag.web ? 2 : 1); pv = previewFlags(drag.K);
+    tone(NOTE[drag.b] * 2, NOTE[drag.b] * 3, .12, drag.web ? 'square' : 'sine', drag.web ? .02 : .045);
+  }
+  P.push([x, y, drag.b >= 0 ? 1 : 0]); if (P.length > 90) P.shift();
+  if (!drag.web && drag.K && !RM && rnd() < .5) parts.push({ x, y, vx: (rnd() - .5) * 40, vy: (rnd() - .5) * 40, c: BI[drag.b].css, s: 1.5, life: .5, max: .5 });
+  if (drag.web && rnd() < .5) parts.push({ x, y, vx: (rnd() - .5) * 80, vy: (rnd() - .5) * 80, c: '#888', s: 1.2, life: .4, max: .4 });
+  // circle-scribble detection (only while still inside the start territory)
+  const an = Math.atan2(dy, dx);
+  if (drag.lastAng !== null) { let da = an - drag.lastAng; while (da > Math.PI) da -= 2 * Math.PI; while (da < -Math.PI) da += 2 * Math.PI; drag.turn += da; }
+  drag.lastAng = an;
+  if (!drag.K && !drag.left && Math.abs(drag.turn) > 5.6) {
+    let sx = 0, sy = 0; P.forEach(p => { sx += p[0]; sy += p[1]; }); openSeeds(drag.u, sx / P.length, sy / P.length, now);
+    trailFade = { T: drag, t0: now }; drag = null; return;
+  }
+  // closing the loop back to the start commits immediately
+  if (drag.K && drag.len > 90 && Math.hypot(x - P[0][0], y - P[0][1]) < 20 && P.length > 12) {
+    const D = drag; drag = null; trailFade = { T: D, t0: now }; if (D.web) fizzle([x, y]); else { commit(D.K, D.pts, now); burst(x, y, BI[D.b].css, 30, 140); }
+  }
+});
+function up(e) {
+  const now = performance.now(), [x, y] = pt(e);
+  if (seedPress >= 0) {
+    const q = seedPress; seedPress = -1;
+    if (seedHit(x, y) === q && seeds) { const S = seeds.items[q], K = g.chainAt(seeds.u, S.b); seeds = null; if (K && K.web) fizzle([S.x, S.y]); else if (K) { commit(K, [[S.x, S.y]], now); burst(S.x, S.y, BI[S.b].css, 24, 120); } }
+    zone = null; pv = null; return;
+  }
+  if (!drag) return; const D = drag; drag = null; trailFade = { T: D, t0: now };
+  if (D.K) { if (D.web) fizzle(D.pts[D.pts.length - 1]); else commit(D.K, D.pts, now); }
+  else if (D.len < 10 && e.type === 'pointerup') openSeeds(D.u, x, y, now);
+  zone = null; pv = null;
+}
+cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up);
+function previewFlags(K) { if (!K || K.web) return null; const c = g.preview(K).col, s = new Set(g.rim.map(x => c[x])), cur = new Set(g.rimColours()); return [0, 1, 2, 3].map(b => cur.has(b) && !s.has(b)); }
+document.getElementById('undo').addEventListener('click', () => { audio(); lastAct = performance.now(); g.undo(); tone(300, 220, .15, 'sine', .04); });
+document.getElementById('again').addEventListener('click', () => { audio(); lastAct = performance.now(); g.reset(); tone(260, 180, .2, 'sine', .04); });
+const cue = document.getElementById('cue');
+g.on((G, info) => {
+  if (info.type !== 'swap') { ripple = null; win = null; zone = null; seeds = null; pv = null; ghost = null; cue.textContent = 'Wake the well: leave one rune unfed'; }
+});
+
+// ---------- ghost demo of one helpful trail ----------
+function startGhost(now) {
+  const K = g.good()[0]; if (!K) return;
+  let u = -1, v = -1; for (const a of K.vs) { for (const w of g.adj[a]) if (K.set.has(w) && g.col[w] !== g.col[a]) { u = a; v = w; break; } if (u >= 0) break; }
+  if (u < 0) { u = K.vs[0]; v = u; }
+  ghost = { t0: now, u, v, K }; setZone(K, 3);
+}
+function drawGhost(now) {
+  if (!ghost) return; const k = (now - ghost.t0) / 1800; if (k > 1.25) { ghost = null; if (zone && zone.mode === 3) zone = null; return; }
+  const [x0, y0] = CP[ghost.u], [x1, y1] = CP[ghost.v], pts = [];
+  for (let q = 0; q <= 24; q++) { const f = Math.min(1, k) * q / 24; pts.push([x0 + (x1 - x0) * f + Math.sin(f * 7) * 8, y0 + (y1 - y0) * f + Math.cos(f * 6) * 8, f > .5 ? 1 : 0]); }
+  drawTrail({ pts, a: g.col[ghost.u], b: g.col[ghost.v] }, now, .45 * Math.min(1, 1.25 - k + .2));
+}
+
+// ---------- main loop ----------
+let prev = performance.now();
+function frame(now) {
+  const dt = Math.min(.05, (now - prev) / 1000); prev = now;
+  if (ripple && (now - ripple.t0) * ripple.speed > Math.hypot(CW, CH) + 40) {
+    ripple = null;
+    if (g.won() && !win) { win = { t0: now, free: g.free() }; const c = BI[win.free].css; burst(RUNE.cx, RUNE.cy, c, 120, 260, 120); burst(RUNE.cx, RUNE.cy, '#fff', 40, 180, 0);
+      cue.textContent = 'The well woke! Tap to dream a new land';
+      [0, 1, 2, 3].forEach((q, i) => tone(NOTE[win.free] * [2, 2.5, 3, 4][i], NOTE[win.free] * [2, 2.5, 3, 4][i] * 1.01, .9, 'triangle', .05, i * .09)); }
+  }
+  if (!drag && !seeds && !ripple && !win && !ghost && now - lastAct > 12000) { lastAct = now; startGhost(now); }
+  renderField(now);
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(fc, 0, 0, CW, CH);
+  drawGlyphs(now); drawWell(now);
+  if (trailFade) { const a = 1 - (now - trailFade.t0) / 500; if (a <= 0) trailFade = null; else drawTrail(trailFade.T, now, a); }
+  if (drag) drawTrail(drag, now, 1);
+  drawGhost(now); drawSeeds(now); drawParts(dt);
+  if (win) {
+    const k = (now - win.t0) / (RM ? 600 : 1600), c = BI[win.free].css, rad = Math.hypot(CW, CH) * Math.min(1, k * 1.4);
+    if (k < 1.2) { ctx.globalAlpha = Math.max(0, .55 * (1 - k / 1.2)); ctx.fillStyle = c; ctx.beginPath(); ctx.arc(RUNE.cx, RUNE.cy, rad, 0, 7); ctx.fill(); ctx.globalAlpha = 1; }
+    if (!RM && rnd() < .5) parts.push({ x: RUNE.cx, y: RUNE.cy, vx: (rnd() - .5) * 120, vy: -60 - rnd() * 140, c, s: 1.5 + rnd() * 2, life: 1.2, max: 1.2, grav: 90 });
+  }
+  requestAnimationFrame(frame);
+}
+addEventListener('resize', resize); resize();
+lastAct = performance.now() - 9500; // first ghost demo ~2.5 s after load
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

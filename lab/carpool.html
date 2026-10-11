@@ -1,0 +1,731 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>Carpool</title>
+<!--
+  CARPOOL: a calm station forecourt, flat Mini-Metro style.
+
+  What the player sees: a paved plaza seen from above, with an oval pick-up bay in the middle; at its top end the
+  road dips into an underpass. A white shuttle van waits in the bay. Around the bay is a pale kerb; five commuters
+  stand on it (yellow waiting spots). The rest of the crowd queues around them in loose rings on the floor tiles,
+  joined by thin grey "chatting" lines to the people standing right next to them (lines between kerb neighbours run
+  along the kerb; a line that would cross the bay bows round it). The layout is computed (rings by distance from
+  the kerb, then untangled), so lines rarely cross. Every commuter is going to one of four places: Airport (blue, plane on the
+  chest, flat cap), Beach (amber, parasol, sun hat), City (rose, tower blocks, no hat), Park (green, tree, bobble
+  hat): colour, icon and hat all differ, so colour is never needed. Two people chatting are never going to the same
+  place (they would have shared a cab already).
+  The van seats 5 (seen from above): a front row with the driver and ONE single seat, then TWO double benches. It
+  makes one stop per row, so it leaves when the kerb five form two pairs going to the same place plus one single.
+  The van shows the seat plan live: each kerb commuter's seat is tinted with their destination; a row whose
+  passengers share a stop gets a green tick, a row with two different stops gets a red cross. One-line cue at the
+  bottom: "One stop per row, then the van can go".
+
+  Mapping onto the puzzle (lab/core.js):
+    commuter u               = region u (every region except the hole); destination = g.col[u] (0 Airport, 1 Beach,
+                               2 City, 3 Park)
+    chatting line            = an edge of g.edges that does not touch the hole (all of them are always drawn)
+    the bay / the van        = the hole. The kerb five = g.rim, standing around the bay in g.rim's cyclic order.
+    seat plan                = rim destinations sorted into rows (pairs to the benches, a single to the front seat);
+                               with 4 destinations (always 2+1+1+1 on a ring of 5) one bench is mixed (red cross)
+    van leaves               = g.won() (only 3 destinations at the kerb = 2+2+1). As it pulls out, the departure board
+                               over the underpass shows its three stops; g.free() is the one it skips (not drawn).
+    one move = exactly one g.swap(K), or nothing:
+       tap commuter A, then tap a chatting neighbour B        ->  K = g.chainAt(A, g.col[B])
+       tap commuter A, then one of the 3 ticket chips (dest b) ->  K = g.chainAt(A, b)
+       The chips reach every chain through A, including a lone commuter with no neighbour bound for b. The ticket
+       swap ripples out from A along chatting lines (BFS from A inside K), each person flipping their ticket.
+    K.web === true (the only {a, b} group on the map: everybody swaps, nothing changes) -> no g.swap; a red ticket
+       office "NO CHANGE" stamp thumps down and the group shrugs.
+    undo / restart (top corners) = g.undo() / g.reset(). Win: the kerb five hop into their seats, the van drives
+       into the underpass; tap for the next van (g.reset()).
+  Idle hint: after ~9 quiet seconds a commuter in a g.good() chain waves, and once tapped its right ticket pulses.
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;800&display=swap" rel="stylesheet">
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #f1efe9; touch-action: manipulation;
+    -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
+  svg { display: block; width: 100vw; height: 100vh;
+    font-family: Nunito, 'Avenir Next', 'Segoe UI', 'Helvetica Neue', system-ui, sans-serif; }
+  .p { cursor: pointer; }
+  .p .lift, .flip, .chip .ci, .stamp, .hop { transform-box: fill-box; }
+  .p .lift { transform-origin: 50% 100%; transition: transform .16s cubic-bezier(.3, 1.5, .5, 1); }
+  .p.sel .lift { transform: translateY(-9%) scale(1.08); }
+  .p .halo { opacity: 0; transition: opacity .12s; }
+  .p.sel .halo, .p.nb .halo, .p.pv .halo { opacity: 1; }
+  .p.nb .halo { stroke-dasharray: 3 4; animation: march .8s linear infinite; }
+  .p.pv .halo { stroke-dasharray: 6 3; animation: march .45s linear infinite; }
+  @keyframes march { to { stroke-dashoffset: -14; } }
+  .p.wave .lift { animation: wave .5s ease-in-out infinite; transform-origin: 50% 100%; }
+  @keyframes wave { 0%, 100% { transform: rotate(-5deg); } 50% { transform: rotate(5deg) translateY(-4%); } }
+  .flip { transform-origin: 50% 50%; }
+  .flip.go { animation: flip .36s ease-in-out; }
+  @keyframes flip { 0% { transform: none; } 45% { transform: scaleX(0) translateY(-6%); } 55% { transform: scaleX(0) translateY(-6%); } 100% { transform: none; } }
+  .flip.shrug { animation: shrug .6s ease-in-out; }
+  @keyframes shrug { 0%, 100% { transform: none; } 30% { transform: translateY(-5%) rotate(-4deg); } 65% { transform: translateY(-3%) rotate(4deg); } }
+  .chip { cursor: pointer; }
+  .chip .ci { transform-origin: 50% 50%; animation: pop .2s cubic-bezier(.3, 1.6, .5, 1); }
+  .chip.hint .ci { animation: pulse .6s ease-in-out infinite; }
+  @keyframes pop { from { transform: scale(.2); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+  @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.18); } }
+  .zip { animation: zip .55s ease-out forwards; }
+  @keyframes zip { 0% { opacity: 1; } 100% { opacity: 0; } }
+  .stamp { transform-origin: 50% 50%; animation: stamp 1.5s ease-out forwards; }
+  @keyframes stamp { 0% { transform: scale(2.2) rotate(-14deg); opacity: 0; } 14% { transform: scale(.94) rotate(-9deg); opacity: .95; }
+    22%, 75% { transform: scale(1) rotate(-9deg); opacity: .95; } 100% { transform: scale(1) rotate(-9deg); opacity: 0; } }
+  .tick { transform-box: fill-box; transform-origin: 50% 50%; animation: pop .25s cubic-bezier(.3, 1.6, .5, 1); }
+  .btn { cursor: pointer; }
+  .btn.off { opacity: .3; }
+  .fade-in { animation: fin .4s ease-out; }
+  @keyframes fin { from { opacity: 0; } to { opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) {
+    .p .lift, .p.nb .halo, .p.pv .halo, .p.wave .lift, .flip.go, .flip.shrug, .chip .ci, .chip.hint .ci, .zip, .stamp, .tick, .fade-in { animation: none; transition: none; }
+  }
+</style>
+</head>
+<body>
+<svg id="S" xmlns="http://www.w3.org/2000/svg"></svg>
+<script src="../levels.js"></script>
+<script src="../layout.js"></script>
+<script src="core.js"></script>
+<script>
+(function () {
+  'use strict';
+  const g = LAB.game();
+  const NC = g.NC || 4;
+  const INK = '#2f3440', LINE = '#cdd0d7';
+  const DEST = [
+    { name: 'Airport', col: '#3b7dd8', soft: '#d6e5f8', ink: '#fff' },
+    { name: 'Beach', col: '#f2a516', soft: '#fbe9c3', ink: '#5b3a00' },
+    { name: 'City', col: '#e0566c', soft: '#f8d9de', ink: '#fff' },
+    { name: 'Park', col: '#2f9e68', soft: '#d2ecdf', ink: '#fff' },
+  ];
+  // 24x24 icons; C = icon colour
+  const ICON = [
+    C => `<path d="M21 15.6v-1.9l-7.6-4.8V3.8a1.4 1.4 0 0 0-2.8 0v5.1L3 13.7v1.9l7.6-2.4v4.6l-2 1.5V21l3.4-1 3.4 1v-1.7l-2-1.5v-4.6z" fill="${C}"/>`,
+    C => `<path d="M3 11.5a9 9 0 0 1 18 0z" fill="${C}"/><path d="M12 11.5v7.5a2 2 0 0 1-4 0" fill="none" stroke="${C}" stroke-width="2.2" stroke-linecap="round"/>`,
+    C => `<path d="M3 21V10h5v11zM9.5 21V3h6v18zM17 21v-8h4.5v8z" fill="${C}"/>`,
+    C => `<path d="M12 2.5l5.5 7h-3l4.5 6.5H5l4.5-6.5h-3z" fill="${C}"/><rect x="10.6" y="15.5" width="2.8" height="6" rx="1" fill="${C}"/>`,
+  ];
+  const icon = (k, x, y, s, c) => `<g transform="translate(${x - s / 2},${y - s / 2}) scale(${s / 24})">${ICON[k](c || DEST[k].ink)}</g>`;
+  const SKIN = ['#f3d2b3', '#d9a47c', '#a86f4c', '#ecc095', '#7a4b33'];
+  const HAT = [
+    c => `<path d="M-17,-38Q-16,-52 0,-52Q16,-52 17,-38Z" fill="${c}"/><path d="M4,-40h20q2,0 1,3h-25z" fill="${c}"/>`,
+    c => `<ellipse cx="0" cy="-40" rx="27" ry="6" fill="#f6e1a8"/><path d="M-14,-40Q-14,-55 0,-55Q14,-55 14,-40Z" fill="#f6e1a8"/><path d="M-14,-43h28v4h-28z" fill="${c}"/>`,
+    () => ``,
+    c => `<path d="M-17,-36Q-17,-54 0,-54Q17,-54 17,-36Z" fill="${c}"/><circle cx="0" cy="-56" r="6" fill="#fff"/><path d="M-17,-38h34v5h-34z" fill="#fff" opacity=".55"/>`,
+  ];
+  // a commuter in a 100-unit box, feet at y = 46
+  function person(k, u) {
+    const D = DEST[k];
+    return `<path d="M-29,46V4Q-29,-14 -12,-14H12Q29,-14 29,4V46Z" fill="${D.col}"/>` +
+      `<path d="M-29,40h58v6h-58z" fill="#000" opacity=".12"/>` +
+      icon(k, 0, 15, 38) +
+      `<circle cx="0" cy="-32" r="16" fill="${SKIN[u % SKIN.length]}"/>` + HAT[k](D.col);
+  }
+
+  // ---------- layout (pure; testable in node) ----------
+  // Layout of the forecourt. The van's bay is an oval in the middle; the kerb five stand evenly round it in g.rim's
+  // cyclic order. The crowd queues in rings around them: ring k holds the people k steps from the kerb, each at the
+  // average direction of the people they chat with one ring in, so chatting lines stay short and mostly radial.
+  // Then: neighbours in a ring swap places while that untangles lines; a settle spreads everyone to arm's length,
+  // off lines they are not on, out of the bay, and tries small steps towards their chat partners. Settle steps that
+  // would add a crossing are refused (and steps that remove one are kept), so the lines read like a transit map.
+  function forecourt(g, W, H, iters) {
+    const n = g.n, hole = g.hole, R = g.rim.length, TAU = Math.PI * 2;
+    const pad = Math.max(8, Math.min(W, H) * 0.03);
+    const btn = Math.max(15, Math.min(22, Math.min(W, H) * 0.045));
+    const fs = Math.max(11, Math.min(17, W * 0.042));
+    const top = pad + btn * 2 + 4, bottom = H - pad - fs * 2.4;
+    const left = pad, right = W - pad, w = right - left, h = bottom - top;
+    const D = Math.min(Math.sqrt(w * h / (n - 1 + 8)) * 0.92, Math.min(W, H) * 0.2);
+    const size = Math.max(16, Math.min(D * 0.8, 70));
+    const Rb0 = Math.max(D * 0.62, Math.min(Math.min(w, h) * 0.15, 120));
+    const Rbx = Rb0, Rby = Rb0 * 1.22, Rb = Rbx;
+    const kx = Rbx + size * 0.45, ky = Rby + size * 0.45;
+    const cx = left + w / 2, cy = top + h * 0.48;
+    const ix0 = left + size * 0.5, ix1 = right - size * 0.5, iy0 = top + size * 0.6, iy1 = bottom - size * 0.5;
+    const layer = Array(n).fill(-1); layer[hole] = 0;
+    let fr = [hole], maxL = 1;
+    for (let k = 1; fr.length; k++) { const nx = []; fr.forEach(u => g.adj[u].forEach(x => { if (layer[x] < 0) { layer[x] = k; nx.push(x); } })); if (nx.length) maxL = k; fr = nx; }
+    const edgeDist = a => {   // bay centre to the inset plaza edge along angle a
+      const c = Math.cos(a), sn = Math.sin(a); let t = Infinity;
+      if (c > 1e-6) t = Math.min(t, (ix1 - cx) / c); if (c < -1e-6) t = Math.min(t, (ix0 - cx) / c);
+      if (sn > 1e-6) t = Math.min(t, (iy1 - cy) / sn); if (sn < -1e-6) t = Math.min(t, (iy0 - cy) / sn);
+      return t;
+    };
+    const kerbR = a => 1 / Math.hypot(Math.cos(a) / kx, Math.sin(a) / ky);
+    const t = Array(n).fill(0);   // direction as a fraction of a turn; rim i at (i + .5) / R
+    g.rim.forEach((u, i) => { t[u] = (i + 0.5) / R; });
+    for (let k = 2; k <= maxL; k++) for (let u = 0; u < n; u++) if (layer[u] === k) {
+      let x = 0, y = 0;
+      g.adj[u].forEach(v => { if (layer[v] === k - 1) { x += Math.cos(TAU * t[v]); y += Math.sin(TAU * t[v]); } });
+      let a = Math.atan2(y, x) / TAU; if (a < 0) a += 1; t[u] = a;
+    }
+    const E = g.edges.filter(([u, v]) => u !== hole && v !== hole);
+    const orient = (a, b, c) => Math.sign((b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]));
+    const segX = (p, q, r, s) => orient(p, q, r) * orient(p, q, s) < 0 && orient(r, s, p) * orient(r, s, q) < 0;
+    const bayHit = (p, q) => {   // does the segment pass over the bay (a little inflated)?
+      const ex = Rbx + size * 0.2, ey = Rby + size * 0.2;
+      const ax = (p[0] - cx) / ex, ay = (p[1] - cy) / ey, bx = (q[0] - cx) / ex, by = (q[1] - cy) / ey;
+      const vx = bx - ax, vy = by - ay, L2 = vx * vx + vy * vy || 1e-9, s = Math.max(0, Math.min(1, -(ax * vx + ay * vy) / L2));
+      return Math.hypot(ax + s * vx, ay + s * vy) < 1;
+    };
+    const crossings = P => {
+      let c = 0;
+      for (let i = 0; i < E.length; i++) {
+        const [a, b] = E[i];
+        if (!(layer[a] === 1 && layer[b] === 1) && bayHit(P[a], P[b])) c += 2;
+        for (let j = i + 1; j < E.length; j++) { const [p, q] = E[j]; if (a !== p && a !== q && b !== p && b !== q && segX(P[a], P[b], P[p], P[q])) c++; }
+      }
+      return c;
+    };
+    const rings = []; for (let k = 2; k <= maxL; k++) { const row = []; for (let u = 0; u < n; u++) if (layer[u] === k) row.push(u); rings.push(row); }
+    const place = (rot, a0) => {
+      const P = Array(n).fill(null); P[hole] = [cx, cy];
+      const ang = f => -Math.PI / 2 + (f + rot) * TAU;
+      g.rim.forEach(u => { const a = ang(t[u]), r = kerbR(a); P[u] = [cx + r * Math.cos(a), cy + r * Math.sin(a)]; });
+      if (!a0) {
+        a0 = Array(n).fill(0);
+        rings.forEach(row => { const s = row.slice().sort((a, b) => t[a] - t[b]), o = t[s[0]]; s.forEach((u, j) => { let e = o + j / s.length; a0[u] = 0.6 * t[u] + 0.4 * (t[u] + ((e - t[u] + 0.5) % 1 + 1) % 1 - 0.5); }); });
+      }
+      rings.forEach((row, i) => {
+        const k = i + 2, f = maxL <= 2 ? 0.4 : (k - 2) / (maxL - 2);
+        row.forEach(u => {
+          const a = ang(a0[u]), base = kerbR(a) + D * 0.9, r = base + f * Math.max(0, edgeDist(a) - base);
+          P[u] = [cx + r * Math.cos(a), cy + r * Math.sin(a)];
+        });
+      });
+      return { P, a0 };
+    };
+    let P = null, best = Infinity;
+    for (let c = 0; c < R; c++) {
+      const rot = c / R;
+      let L0 = place(rot), x = crossings(L0.P);
+      for (let pass = 0; pass < 3; pass++) {
+        let improved = false;
+        rings.forEach(row => {
+          const s = row.slice().sort((a, b) => L0.a0[a] - L0.a0[b]);
+          for (let j = 0; j < s.length; j++) {
+            const u = s[j], v = s[(j + 1) % s.length]; if (u === v) continue;
+            const a0 = L0.a0.slice(); [a0[u], a0[v]] = [a0[v], a0[u]];
+            const L1 = place(rot, a0), y = crossings(L1.P);
+            if (y < x) { L0 = L1; x = y; improved = true; s[j] = v; s[(j + 1) % s.length] = u; }
+          }
+          row.forEach(u => [0.04, -0.04, 0.12, -0.12, 0.25, -0.25, 0.38, -0.38, 0.5].forEach(da => {   // or step round the ring
+            const a0 = L0.a0.slice(); a0[u] += da;
+            const L1 = place(rot, a0), y = crossings(L1.P);
+            if (y < x) { L0 = L1; x = y; improved = true; }
+          }));
+        });
+        if (!improved) break;
+      }
+      if (x < best) { best = x; P = L0.P; }
+    }
+    // settle
+    const inc = Array.from({ length: n }, () => []); E.forEach(([u, v]) => { inc[u].push(v); inc[v].push(u); });
+    const crossAt = (u, p) => {
+      let c = 0;
+      inc[u].forEach(v => {
+        if (!(layer[u] === 1 && layer[v] === 1) && bayHit(p, P[v])) c += 1;
+        E.forEach(([a, b]) => { if (a !== u && b !== u && a !== v && b !== v && segX(p, P[v], P[a], P[b])) c++; });
+      });
+      return c;
+    };
+    const segDist = (p, a, b) => {
+      const vx = b[0] - a[0], vy = b[1] - a[1], L2 = vx * vx + vy * vy || 1;
+      const s = Math.max(0, Math.min(1, ((p[0] - a[0]) * vx + (p[1] - a[1]) * vy) / L2));
+      return [p[0] - a[0] - s * vx, p[1] - a[1] - s * vy];
+    };
+    const ids = []; for (let u = 0; u < n; u++) if (u !== hole && layer[u] > 1) ids.push(u);
+    const all = []; for (let u = 0; u < n; u++) if (u !== hole) all.push(u);
+    const N = iters == null ? 140 : iters;
+    for (let it = 0; it < N; it++) {
+      ids.forEach(u => {
+        const p = P[u]; let fx = 0, fy = 0;
+        all.forEach(v => {
+          if (v === u) return;
+          const dx = p[0] - P[v][0], dy = p[1] - P[v][1], d = Math.hypot(dx, dy) || 0.01;
+          if (d < D) { fx += dx / d * (D - d) * 0.5; fy += dy / d * (D - d) * 0.5; }
+        });
+        E.forEach(([a, b]) => {
+          if (a === u || b === u) return;
+          const [dx, dy] = segDist(p, P[a], P[b]), d = Math.hypot(dx, dy) || 0.01, cl = size * 0.55;
+          if (d < cl) { fx += dx / d * (cl - d) * 0.5; fy += dy / d * (cl - d) * 0.5; }
+        });
+        const qx = (p[0] - cx) / (kx + D * 0.8), qy = (p[1] - cy) / (ky + D * 0.8), e = Math.hypot(qx, qy) || 0.01;
+        if (e < 1) { fx += (p[0] - cx) * (1 / e - 1) * 0.5; fy += (p[1] - cy) * (1 / e - 1) * 0.5; }
+        const m = Math.hypot(fx, fy), cap = D * 0.15; if (m > cap) { fx *= cap / m; fy *= cap / m; }
+        const before = crossAt(u, p);
+        const tryAt = q => { q = [Math.min(ix1, Math.max(ix0, q[0])), Math.min(iy1, Math.max(iy0, q[1]))]; const c = crossAt(u, q); return c; };
+        let np = [p[0] + fx, p[1] + fy], done = false;
+        for (let tries = 0; tries < 3 && !done; tries++) {
+          const q = [Math.min(ix1, Math.max(ix0, np[0])), Math.min(iy1, Math.max(iy0, np[1]))];
+          if (crossAt(u, q) <= before) { P[u] = q; done = true; }
+          np = [(np[0] + p[0]) / 2, (np[1] + p[1]) / 2];
+        }
+        if (before > 0 && it % 4 === 0) {   // a small step towards the chat partners, kept only if it untangles
+          let bx = 0, by = 0; inc[u].forEach(v => { bx += P[v][0]; by += P[v][1]; });
+          const q = [P[u][0] + (bx / inc[u].length - P[u][0]) * 0.25, P[u][1] + (by / inc[u].length - P[u][1]) * 0.25];
+          if (tryAt(q) < crossAt(u, P[u])) P[u] = [Math.min(ix1, Math.max(ix0, q[0])), Math.min(iy1, Math.max(iy0, q[1]))];
+        }
+      });
+    }
+    // centre the whole crowd (bay included) in the plaza
+    let bx0 = cx - kx, bx1 = cx + kx, by0 = cy - ky, by1 = cy + ky;
+    all.forEach(u => { bx0 = Math.min(bx0, P[u][0]); bx1 = Math.max(bx1, P[u][0]); by0 = Math.min(by0, P[u][1]); by1 = Math.max(by1, P[u][1]); });
+    // spare room: stretch everything (an affine map, so no new crossings; the bay stretches with it)
+    const fx = Math.min(1.3, Math.max(1, (ix1 - ix0) / (bx1 - bx0 || 1))), fy = Math.min(1.3, Math.max(1, (iy1 - iy0) / (by1 - by0 || 1)));
+    const mx = (bx0 + bx1) / 2, my = (by0 + by1) / 2;
+    const sx = (ix0 + ix1) / 2 - mx, sy = (iy0 + iy1) / 2 - my;
+    for (let u = 0; u < n; u++) if (P[u]) P[u] = [mx + (P[u][0] - mx) * fx + sx, my + (P[u][1] - my) * fy + sy];
+    const ncx = mx + (cx - mx) * fx + sx, ncy = my + (cy - my) * fy + sy;
+    let md = Infinity;
+    for (let a = 0; a < all.length; a++) for (let b = a + 1; b < all.length; b++) md = Math.min(md, Math.hypot(P[all[a]][0] - P[all[b]][0], P[all[a]][1] - P[all[b]][1]));
+    const sz = Math.max(15, Math.min(size, md * 0.95));
+    return { P, cx: ncx, cy: ncy, Rb: Math.min(Rbx * fx, Rby * fy), Rbx: Rbx * fx, Rby: Rby * fy, kx: kx * fx, ky: ky * fy, D, size: sz, pad, btn, fs, top, bottom, minDist: md };
+  }
+  // seat plan: rows of the van, front first. Destinations at the kerb are grouped; the biggest groups take the
+  // biggest empty rows, anyone left over fills the remaining seats (a mixed row = a red cross).
+  function rowCaps(g) {
+    const R = g.rim.length, rows = Math.max(1, g.goal || 3), base = Math.floor(R / rows), extra = R % rows, caps = [];
+    for (let i = 0; i < rows; i++) caps.push(base + (i >= rows - extra ? 1 : 0));
+    return caps;
+  }
+  function seatPlan(g, col) {
+    const caps = rowCaps(g), rows = caps.map(c => ({ cap: c, seats: [] }));
+    const groups = {};
+    g.rim.forEach(u => { (groups[col[u]] = groups[col[u]] || []).push(u); });
+    const gl = Object.keys(groups).map(k => ({ k: +k, us: groups[k] })).sort((a, b) => b.us.length - a.us.length || a.k - b.k);
+    const left = [];
+    gl.forEach(G => {
+      let best = -1;
+      rows.forEach((r, i) => { if (!r.seats.length && r.cap >= G.us.length && (best < 0 || r.cap < rows[best].cap)) best = i; });
+      if (best >= 0) G.us.forEach(u => rows[best].seats.push({ u, k: G.k }));
+      else G.us.forEach(u => left.push({ u, k: G.k }));
+    });
+    left.forEach(s => { const r = rows.find(r => r.seats.length && r.seats.length < r.cap) || rows.find(r => r.seats.length < r.cap); if (r) r.seats.push(s); });
+    rows.forEach(r => { r.ok = r.seats.length > 0 && r.seats.every(s => s.k === r.seats[0].k); });
+    return rows;
+  }
+  const chainFor = (g, u, b) => (u < 0 || u === g.hole || b === g.col[u] || b < 0 || b >= NC) ? null : g.chainAt(u, b);
+  function ripple(g, K, u0) {
+    const depth = new Map([[u0, 0]]), par = new Map(), order = [[u0]];
+    let fr = [u0];
+    while (fr.length) {
+      const nx = [];
+      fr.forEach(u => g.adj[u].forEach(w => { if (K.set.has(w) && !depth.has(w)) { depth.set(w, depth.get(u) + 1); par.set(w, u); nx.push(w); } }));
+      if (nx.length) order.push(nx); fr = nx;
+    }
+    return { order, par };
+  }
+  window.Carpool = { g, forecourt, seatPlan, rowCaps, chainFor, ripple };
+  if (typeof document === 'undefined' || !document.getElementById) return;
+
+  // ---------- DOM ----------
+  const S = document.getElementById('S');
+  const NS = 'http://www.w3.org/2000/svg';
+  const RM = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  function el(tag, attrs, parent, html) {
+    const e = document.createElementNS(NS, tag);
+    for (const k in attrs) e.setAttribute(k, (k === 'width' || k === 'height' || k === 'r') && attrs[k] < 0 ? 0 : attrs[k]);
+    if (html) e.innerHTML = html;
+    if (parent) parent.appendChild(e);
+    return e;
+  }
+  let W = 0, H = 0, LY = null, show = g.col.slice(), sel = -1, busy = false, winning = false, waitReset = false;
+  let M = [], L = {}, van = {}, hintPick = null, idleT = 0, timers = [], lines = {};
+  const later = (fn, ms) => { const id = setTimeout(fn, ms); timers.push(id); return id; };
+  const ekey = (a, b) => a < b ? a + '-' + b : b + '-' + a;
+
+  // ---------- sound: soft chimes ----------
+  let AC = null;
+  function ac() {
+    if (!AC) { try { AC = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { AC = null; } }
+    if (AC && AC.state === 'suspended') AC.resume();
+  }
+  function tone(f, d, type, v, when, slide) {
+    if (!AC) return;
+    const t = AC.currentTime + (when || 0), o = AC.createOscillator(), gn = AC.createGain();
+    o.type = type || 'sine'; o.frequency.setValueAtTime(f, t);
+    if (slide) o.frequency.exponentialRampToValueAtTime(f * slide, t + d);
+    gn.gain.setValueAtTime(0.0001, t); gn.gain.exponentialRampToValueAtTime(v || 0.08, t + 0.012);
+    gn.gain.exponentialRampToValueAtTime(0.0001, t + d);
+    o.connect(gn); gn.connect(AC.destination); o.start(t); o.stop(t + d + 0.03);
+  }
+  function thump() {
+    if (!AC) return;
+    tone(140, 0.18, 'sine', 0.22, 0, 0.5);
+    const t = AC.currentTime, b = AC.createBuffer(1, Math.floor(AC.sampleRate * 0.08), AC.sampleRate), ch = b.getChannelData(0);
+    for (let i = 0; i < ch.length; i++) ch[i] = (Math.random() * 2 - 1) * (1 - i / ch.length);
+    const s = AC.createBufferSource(), fl = AC.createBiquadFilter(), gn = AC.createGain();
+    s.buffer = b; fl.type = 'lowpass'; fl.frequency.value = 900; gn.gain.value = 0.25;
+    s.connect(fl); fl.connect(gn); gn.connect(AC.destination); s.start(t);
+  }
+  const SCALE = [523, 587, 659, 784, 880, 1047, 1175, 1319, 1568, 1760];
+
+  // ---------- scene ----------
+  function build() {
+    timers.forEach(clearTimeout); timers = [];
+    W = Math.max(200, window.innerWidth); H = Math.max(300, window.innerHeight);
+    S.setAttribute('viewBox', `0 0 ${W} ${H}`);
+    S.innerHTML = '';
+    LY = forecourt(g, W, H);
+    const { cx, cy, Rbx, Rby, size, pad, btn, fs } = LY, kx = LY.kx + size * 0.5, ky = LY.ky + size * 0.5;
+    const defs = el('defs', {}, S);
+    const tile = Math.max(22, Math.round(LY.D * 0.7));
+    const yt = cy - Rby * 0.6, hw = Rbx * Math.sqrt(1 - 0.36);
+    defs.innerHTML = `<pattern id="tiles" width="${tile}" height="${tile}" patternUnits="userSpaceOnUse"><path d="M${tile},0V${tile}H0" fill="none" stroke="#e3e0d8" stroke-width="1.2"/></pattern>
+      <filter id="sh" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="2" stdDeviation="2.2" flood-color="#1d2230" flood-opacity=".22"/></filter>
+      <filter id="shv" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="4" stdDeviation="4" flood-color="#1d2230" flood-opacity=".3"/></filter>
+      <linearGradient id="tun" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1f232b"/><stop offset="1" stop-color="#3a3f4b"/></linearGradient>
+      <clipPath id="vclip"><rect x="0" y="${yt}" width="${W}" height="${H}"/></clipPath>`;
+    el('rect', { x: 0, y: 0, width: W, height: H, fill: '#f1efe9' }, S);
+    el('rect', { x: 0, y: 0, width: W, height: H, fill: 'url(#tiles)' }, S);
+    // the bay: a paved kerb ring, the asphalt pick-up loop, and the underpass the van leaves by
+    const bay = el('g', {}, S);
+    el('ellipse', { cx, cy, rx: kx, ry: ky, fill: '#e6e2d8', stroke: '#d6d1c5', 'stroke-width': 1.5 }, bay);
+    el('ellipse', { cx, cy, rx: Rbx + 3, ry: Rby + 3, fill: '#cfcabe' }, bay);
+    el('ellipse', { cx, cy, rx: Rbx, ry: Rby, fill: '#5b6170' }, bay);
+    el('ellipse', { cx, cy, rx: Rbx - 4, ry: Rby - 4, fill: 'none', stroke: '#f2c94c', 'stroke-width': 2, 'stroke-dasharray': '7 6' }, bay);
+    el('path', { d: `M${cx - hw},${yt}A${Rbx},${Rby} 0 0 1 ${cx + hw},${yt}Z`, fill: 'url(#tun)' }, bay);
+    el('path', { d: `M${cx - hw},${yt}H${cx + hw}`, stroke: '#cfcabe', 'stroke-width': Math.max(3, Rby * 0.05), 'stroke-linecap': 'round' }, bay);
+    el('path', { d: `M${cx},${yt + Rby * 0.12}V${cy + Rby * 0.85}`, stroke: '#fff', 'stroke-width': 1.6, 'stroke-dasharray': '6 7', opacity: 0.35 }, bay);
+    // kerb stand spots
+    g.rim.forEach(u => { const [x, y] = LY.P[u]; el('ellipse', { cx: x, cy: y + size * 0.42, rx: size * 0.46, ry: size * 0.16, fill: '#f2c94c', opacity: 0.6 }, bay); });
+    // layers
+    L.lines = el('g', { 'stroke-linecap': 'round' }, S);
+    L.glow = el('g', { 'stroke-linecap': 'round', 'pointer-events': 'none' }, S);
+    L.van = el('g', { 'clip-path': 'url(#vclip)' }, S);
+    L.crowd = el('g', {}, S);
+    L.ui = el('g', {}, S);
+    L.fx = el('g', { 'pointer-events': 'none' }, S);
+    van.board = el('g', { 'pointer-events': 'none' }, S);
+    L.hud = el('g', {}, S);
+    // chatting lines
+    lines = {};
+    g.edges.forEach(([a, b]) => {
+      if (a === g.hole || b === g.hole) return;
+      lines[ekey(a, b)] = el('path', { d: chatPath(a, b), fill: 'none', stroke: LINE, 'stroke-width': Math.max(1.6, size * 0.055) }, L.lines);
+    });
+    buildVan();
+    // commuters, back to front
+    M = [];
+    const order = []; for (let u = 0; u < g.n; u++) if (u !== g.hole) order.push(u);
+    order.sort((a, b) => LY.P[a][1] - LY.P[b][1]);
+    order.forEach(u => {
+      const [x, y] = LY.P[u];
+      const gm = el('g', { class: 'p', transform: `translate(${x},${y})`, 'data-act': 'p', 'data-u': u }, L.crowd);
+      el('circle', { r: Math.max(size * 0.6, Math.min(LY.minDist * 0.5, size * 0.8)), fill: 'transparent' }, gm);
+      el('ellipse', { cx: 0, cy: size * 0.44, rx: size * 0.36, ry: size * 0.1, fill: '#1d2230', opacity: 0.13 }, gm);
+      const halo = el('ellipse', { class: 'halo', cx: 0, cy: size * 0.44, rx: size * 0.52, ry: size * 0.18, fill: 'none', stroke: INK, 'stroke-width': 2.2 }, gm);
+      const lift = el('g', { class: 'lift' }, gm);
+      const flip = el('g', { class: 'flip' }, lift);
+      const art = el('g', { transform: `scale(${size / 100})` }, flip);
+      M[u] = { g: gm, lift, flip, art, halo, k: -1, x, y };
+    });
+    // goal line + buttons
+    van.cue = el('text', { x: W / 2, y: H - pad - fs * 0.75, 'text-anchor': 'middle', 'font-size': fs, 'font-weight': 800, fill: INK }, L.hud);
+    van.cue.textContent = 'One stop per row, then the van can go';
+    van.undo = hudBtn(pad + btn, pad + btn, btn, 'undo', 'M-6,-6A8,8 0 1 1 -8,3M-6,-6h-6M-6,-6v-6');
+    van.restart = hudBtn(W - pad - btn, pad + btn, btn, 'reset', 'M7,-5A8,8 0 1 0 8,3M7,-5h6M7,-5v-6');
+    show = g.col.slice(); sel = -1; busy = false; winning = false; waitReset = false;
+    render();
+    if (g.won()) win(true);
+  }
+  function hudBtn(x, y, r, act, d) {
+    const b = el('g', { class: 'btn', transform: `translate(${x},${y})`, 'data-act': act }, L.hud);
+    el('circle', { r, fill: '#fff', filter: 'url(#sh)' }, b);
+    el('path', { d, transform: `scale(${r / 16})`, fill: 'none', stroke: INK, 'stroke-width': 2.6 * 16 / r, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }, b);
+    return b;
+  }
+  // the van, top-down, nose up: front row = driver + single seat, then the benches
+  function buildVan() {
+    const { cx, Rbx, Rby } = LY, cy = LY.cy + Rby * 0.17, caps = rowCaps(g), maxCap = Math.max(...caps);
+    const vw = Math.min(Rbx * 0.95, Rby * 0.82), s = vw * 0.34, rowH = s * 1.12, front = vw * 0.36;
+    const vl = Math.min(Rby * 1.3, Math.max(vw * 1.45, front + caps.length * rowH + s * 0.35));
+    van.cy = cy;
+    van.g = el('g', { transform: `translate(${cx},${cy})` }, L.van);
+    van.body = el('g', { filter: 'url(#shv)' }, van.g);
+    el('rect', { x: -vw / 2, y: -vl / 2, width: vw, height: vl, rx: vw * 0.24, fill: '#fbfbfd' }, van.body);
+    el('path', { d: `M${-vw * 0.4},${-vl / 2 + front * 0.82}Q0,${-vl / 2 + front * 0.62} ${vw * 0.4},${-vl / 2 + front * 0.82}L${vw * 0.36},${-vl / 2 + front * 0.36}Q0,${-vl / 2 + front * 0.2} ${-vw * 0.36},${-vl / 2 + front * 0.36}Z`, fill: '#9fb4cc' }, van.g);
+    [-1, 1].forEach(sx => el('rect', { x: sx > 0 ? vw * 0.5 - vw * 0.07 : -vw * 0.5 + vw * 0.01, y: -vl / 2 + front * 0.9, width: vw * 0.06, height: s * 0.4, rx: 2, fill: '#cfd4dd' }, van.g));
+    el('rect', { x: -vw * 0.3, y: vl / 2 - s * 0.16, width: vw * 0.6, height: s * 0.1, rx: 2, fill: '#e2524f', opacity: 0.85 }, van.g);
+    // destination board (filled on win)
+    van.rows = [];
+    const plan = seatPlan(g, show);
+    caps.forEach((cap, i) => {
+      const y = -vl / 2 + front + (i + 0.5) * rowH;
+      const xs = [];
+      const driver = i === 0 && cap < maxCap;
+      const cols = driver ? cap + 1 : cap;
+      for (let j = 0; j < cols; j++) xs.push((j - (cols - 1) / 2) * s * 1.18);
+      const rg = el('g', {}, van.g);
+      const bg = el('rect', { x: -vw * 0.44, y: y - s * 0.52, width: vw * 0.88, height: s * 1.04, rx: s * 0.22, fill: 'transparent' }, rg);
+      if (driver) {
+        el('rect', { x: xs[0] - s / 2, y: y - s / 2, width: s, height: s, rx: s * 0.26, fill: '#c8ccd5' }, rg);
+        el('circle', { cx: xs[0], cy: y - s * 0.62, r: s * 0.26, fill: 'none', stroke: '#7a8190', 'stroke-width': Math.max(1.5, s * 0.08) }, rg);
+      }
+      const seats = [];
+      for (let j = driver ? 1 : 0; j < cols; j++) {
+        const sg = el('g', { transform: `translate(${xs[j]},${y})` }, rg);
+        seats.push({ g: sg, x: xs[j], y });
+      }
+      const badge = el('g', { transform: `translate(${vw / 2 + s * 0.15},${y})` }, rg);
+      van.rows.push({ g: rg, bg, seats, badge, y });
+    });
+    van.vw = vw; van.vl = vl; van.s = s;
+    drawSeats(plan, false);
+  }
+  function drawSeats(plan, seated) {
+    const s = van.s;
+    plan.forEach((row, i) => {
+      const R = van.rows[i]; if (!R) return;
+      R.seats.forEach((st, j) => {
+        const p = row.seats[j];
+        let h = '';
+        if (!p) h = `<rect x="${-s / 2}" y="${-s / 2}" width="${s}" height="${s}" rx="${s * 0.26}" fill="#e6e8ee"/>`;
+        else {
+          const D = DEST[p.k];
+          h = `<rect x="${-s / 2}" y="${-s / 2}" width="${s}" height="${s}" rx="${s * 0.26}" fill="${seated ? D.col : D.soft}" stroke="${D.col}" stroke-width="${Math.max(1.2, s * 0.07)}"/>`;
+          if (seated) h += `<circle cx="0" cy="${-s * 0.06}" r="${s * 0.28}" fill="${SKIN[p.u % SKIN.length]}"/>`;
+          else h += icon(p.k, 0, 0, s * 0.7, D.col);
+        }
+        if (R.seats[j].html !== h) { R.seats[j].g.innerHTML = h; R.seats[j].html = h; }
+      });
+      const full = row.seats.length > 0;
+      const bh = !full ? '' : row.ok
+        ? `<g class="tick"><circle r="${s * 0.3}" fill="#2f9e68"/><path d="M${-s * 0.13},0l${s * 0.09},${s * 0.1}l${s * 0.17},${-s * 0.2}" fill="none" stroke="#fff" stroke-width="${Math.max(1.6, s * 0.08)}" stroke-linecap="round" stroke-linejoin="round"/></g>`
+        : `<g class="tick"><circle r="${s * 0.3}" fill="#e2524f"/><path d="M${-s * 0.11},${-s * 0.11}l${s * 0.22},${s * 0.22}M${s * 0.11},${-s * 0.11}l${-s * 0.22},${s * 0.22}" stroke="#fff" stroke-width="${Math.max(1.6, s * 0.08)}" stroke-linecap="round"/></g>`;
+      if (R.bh !== bh) { R.badge.innerHTML = bh; R.bh = bh; }
+      R.bg.setAttribute('fill', full && !row.ok ? '#fde3e2' : 'transparent');
+    });
+  }
+  // a chatting line: along the kerb between two kerb commuters, bowed round the bay if it would cross it, else straight
+  function chatPath(a, b) {
+    const { cx, cy, kx, ky, Rbx, Rby } = LY, off = LY.size * 0.05;
+    const p = [LY.P[a][0], LY.P[a][1] + off], q = [LY.P[b][0], LY.P[b][1] + off];
+    if (g.rim.includes(a) && g.rim.includes(b)) {
+      const cr = (LY.P[a][0] - cx) * (LY.P[b][1] - cy) - (LY.P[a][1] - cy) * (LY.P[b][0] - cx);
+      return `M${p[0]},${p[1]}A${kx},${ky} 0 0 ${cr > 0 ? 1 : 0} ${q[0]},${q[1]}`;
+    }
+    const ex = Rbx + LY.size * 0.3, ey = Rby + LY.size * 0.3;
+    const ax = (p[0] - cx) / ex, ay = (p[1] - cy) / ey, bx = (q[0] - cx) / ex, by = (q[1] - cy) / ey;
+    const vx = bx - ax, vy = by - ay, L2 = vx * vx + vy * vy || 1e-9, s = Math.max(0, Math.min(1, -(ax * vx + ay * vy) / L2));
+    const nx = ax + s * vx, ny = ay + s * vy, d = Math.hypot(nx, ny);
+    if (d >= 1) return `M${p[0]},${p[1]}L${q[0]},${q[1]}`;
+    let ux = nx, uy = ny; if (d < 1e-3) { ux = -vy; uy = vx; }
+    const ul = Math.hypot(ux * ex, uy * ey) || 1, dx = ux * ex / ul, dy = uy * ey / ul;
+    const rr = 1 / Math.hypot(dx / (kx + LY.size * 0.55), dy / (ky + LY.size * 0.55));
+    const Q = [cx + dx * rr, cy + dy * rr], c = [(4 * Q[0] - p[0] - q[0]) / 2, (4 * Q[1] - p[1] - q[1]) / 2];
+    return `M${p[0]},${p[1]}Q${c[0]},${c[1]} ${q[0]},${q[1]}`;
+  }
+  function setArt(u, k) { const m = M[u]; if (!m) return; m.k = k; m.art.innerHTML = person(k, u); }
+  function render() {
+    for (let u = 0; u < g.n; u++) {
+      if (u === g.hole || !M[u]) continue;
+      if (M[u].k !== show[u]) setArt(u, show[u]);
+      const m = M[u];
+      m.g.classList.toggle('sel', u === sel);
+      m.g.classList.toggle('nb', sel >= 0 && g.adj[sel].includes(u));
+      m.g.classList.toggle('wave', sel < 0 && !!hintPick && hintPick.u === u);
+      m.g.classList.remove('pv');
+      m.halo.setAttribute('stroke', u === sel ? INK : DEST[show[u]].col);
+    }
+    for (const k in lines) { lines[k].setAttribute('stroke', LINE); lines[k].setAttribute('opacity', 1); }
+    L.ui.innerHTML = '';
+    if (sel >= 0) {
+      for (const k in lines) lines[k].setAttribute('opacity', 0.45);
+      g.adj[sel].forEach(v => { const ln = lines[ekey(sel, v)]; if (ln) { ln.setAttribute('stroke', '#7c8394'); ln.setAttribute('opacity', 1); } });
+      chips(sel);
+    }
+    drawSeats(seatPlan(g, show), false);
+    van.undo.classList.toggle('off', !g.history.length || winning);
+    van.restart.classList.toggle('off', !g.history.length || winning);
+  }
+  // ticket chips: the 3 other destinations, fanned out away from the bay
+  function chips(u) {
+    const m = M[u], s = LY.size, bw = Math.max(34, Math.min(64, s * 0.85)), bh = bw * 0.68, R = s * 0.55 + bw * 0.8;
+    let out = Math.atan2(m.y - LY.cy, m.x - LY.cx);
+    const ks = []; for (let b = 0; b < NC; b++) if (b !== show[u]) ks.push(b);
+    ks.forEach((b, i) => {
+      const a = out + (i - (ks.length - 1) / 2) * 0.95;
+      let x = m.x + Math.cos(a) * R, y = m.y - s * 0.1 + Math.sin(a) * R;
+      x = Math.min(W - bw * 0.55, Math.max(bw * 0.55, x)); y = Math.min(H - bh * 0.6, Math.max(bh * 0.6, y));
+      const cg = el('g', { class: 'chip' + (hintPick && hintPick.u === u && hintPick.b === b ? ' hint' : ''), transform: `translate(${x},${y})`, 'data-act': 'chip', 'data-b': b }, L.ui);
+      const inner = el('g', { class: 'ci' }, cg);
+      const D = DEST[b], nr = bh * 0.16;
+      el('path', { d: `M${-bw / 2},${-bh / 2}H${bw / 2}V${-nr}A${nr},${nr} 0 0 0 ${bw / 2},${nr}V${bh / 2}H${-bw / 2}V${nr}A${nr},${nr} 0 0 0 ${-bw / 2},${-nr}Z`, fill: D.col, filter: 'url(#sh)' }, inner);
+      el('path', { d: `M${bw * 0.2},${-bh * 0.36}V${bh * 0.36}`, stroke: D.ink, 'stroke-width': 1.3, 'stroke-dasharray': '2 2.5', opacity: 0.6 }, inner);
+      el('g', {}, inner, icon(b, -bw * 0.12, 0, bh * 0.66));
+      el('circle', { cx: 0, cy: 0, r: Math.max(bw * 0.7, 22), fill: 'transparent' }, cg);
+    });
+  }
+  function preview(K) { M.forEach((m, u) => { if (m) m.g.classList.toggle('pv', !!K && K.set.has(u)); }); }
+  function select(u) {
+    sel = u; hintPick = hintPick && hintPick.u === u ? hintPick : null;
+    tone(700 + show[u] * 80, 0.08, 'sine', 0.06);
+    render();
+  }
+  function flipTo(u, k) {
+    const m = M[u]; if (!m) return;
+    m.flip.classList.remove('go', 'shrug'); m.flip.getBoundingClientRect();
+    if (!RM) m.flip.classList.add('go');
+    later(() => { show[u] = k; setArt(u, k); if (g.rim.includes(u)) drawSeats(seatPlan(g, show), false); }, RM ? 0 : 170);
+  }
+  function zipLine(a, b, k) {
+    el('path', { class: 'zip', d: chatPath(a, b), fill: 'none', stroke: DEST[k].col, 'stroke-width': Math.max(4, LY.size * 0.16) }, L.glow);
+  }
+  function move(u0, b) {
+    const K = chainFor(g, u0, b);
+    sel = -1; hintPick = null; render();
+    if (!K) return;
+    if (K.web) { noChange(K, u0); return; }
+    busy = true;
+    const { order, par } = ripple(g, K, u0);
+    g.swap(K);
+    const step = RM ? 50 : Math.max(80, Math.min(170, 1300 / order.length));
+    order.forEach((grp, d) => later(() => {
+      grp.forEach(u => { if (par.has(u)) zipLine(par.get(u), u, g.col[u]); flipTo(u, g.col[u]); });
+      tone(SCALE[Math.min(d, SCALE.length - 1)], 0.16, 'triangle', 0.07);
+    }, d * step));
+    later(() => {
+      busy = false; show = g.col.slice(); L.glow.innerHTML = ''; render();
+      if (g.won()) win(false);
+    }, (order.length - 1) * step + 420);
+  }
+  function noChange(K, u0) {
+    busy = true;
+    K.vs.forEach(u => { const m = M[u]; if (!m) return; m.flip.classList.remove('go', 'shrug'); m.flip.getBoundingClientRect(); if (!RM) m.flip.classList.add('shrug'); });
+    const m = M[u0], fz = Math.max(12, Math.min(20, W * 0.045));
+    const w = fz * 6.4, h = fz * 1.9;
+    const x = Math.min(W - w * 0.62, Math.max(w * 0.62, m.x)), y = Math.min(H - h * 1.5, Math.max(h * 1.5, m.y - LY.size * 0.3));
+    const st = el('g', { transform: `translate(${x},${y})` }, L.fx);
+    const inner = el('g', { class: 'stamp' }, st);
+    el('rect', { x: -w / 2, y: -h / 2, width: w, height: h, rx: h * 0.18, fill: 'rgba(255,255,255,.7)', stroke: '#d0343b', 'stroke-width': 3 }, inner);
+    el('rect', { x: -w / 2 + 4, y: -h / 2 + 4, width: w - 8, height: h - 8, rx: h * 0.12, fill: 'none', stroke: '#d0343b', 'stroke-width': 1.2 }, inner);
+    const t = el('text', { x: 0, y: fz * 0.36, 'text-anchor': 'middle', 'font-size': fz, 'font-weight': 800, fill: '#d0343b', 'letter-spacing': 1.5 }, inner);
+    t.textContent = 'NO CHANGE';
+    later(thump, 120);
+    tone(330, 0.25, 'triangle', 0.05, 0.3, 0.9);
+    later(() => { st.remove(); }, RM ? 1100 : 1500);
+    later(() => { K.vs.forEach(u => M[u] && M[u].flip.classList.remove('shrug')); busy = false; }, 700);
+  }
+  // ---------- win: the five board, the van pulls out ----------
+  function win(instant) {
+    winning = true; sel = -1; hintPick = null; render();
+    const plan = seatPlan(g, show);
+    van.cue.textContent = 'All aboard!';
+    const vt = (x, y) => [LY.cx + x, van.cy + y];
+    const boardAll = () => { drawSeats(plan, true); g.rim.forEach(u => { if (M[u]) M[u].g.style.visibility = 'hidden'; }); };
+    if (instant) { boardAll(); pullOut(true); return; }
+    tone(659, 0.12, 'sine', 0.07); tone(784, 0.12, 'sine', 0.07, 0.1); tone(1047, 0.25, 'sine', 0.07, 0.2);
+    let n = 0;
+    plan.forEach((row, i) => row.seats.forEach((p, j) => {
+      const R = van.rows[i]; if (!R || !R.seats[j]) return;
+      const to = vt(R.seats[j].x, R.seats[j].y), d = 200 + n * 140; n++;
+      later(() => hop(p.u, to, () => {
+        R.seats[j].g.innerHTML = `<rect x="${-van.s / 2}" y="${-van.s / 2}" width="${van.s}" height="${van.s}" rx="${van.s * 0.26}" fill="${DEST[p.k].col}"/><circle cx="0" cy="${-van.s * 0.06}" r="${van.s * 0.28}" fill="${SKIN[p.u % SKIN.length]}"/>`;
+        R.seats[j].html = null;
+        tone(SCALE[Math.min(n, 9)], 0.1, 'triangle', 0.06);
+      }), d);
+    }));
+    later(() => pullOut(false), 200 + n * 140 + 650);
+  }
+  function hop(u, to, done) {
+    const m = M[u]; if (!m) { done(); return; }
+    const from = [m.x, m.y]; m.g.style.visibility = 'hidden';
+    const sp = el('g', {}, L.fx, `<g>${person(show[u], u)}</g>`);
+    const dur = RM ? 1 : 480, t0 = performance.now(), sc0 = LY.size / 100, sc1 = van.s * 0.9 / 100;
+    const stepf = now => {
+      const t = Math.min(1, (now - t0) / dur), e = t * t * (3 - 2 * t);
+      const x = from[0] + (to[0] - from[0]) * e, y = from[1] + (to[1] - from[1]) * e - Math.sin(Math.PI * t) * LY.size * 0.5;
+      sp.setAttribute('transform', `translate(${x},${y}) scale(${sc0 + (sc1 - sc0) * e})`);
+      if (t < 1) requestAnimationFrame(stepf); else { sp.remove(); done(); }
+    };
+    requestAnimationFrame(stepf);
+  }
+  function pullOut(instant) {
+    const s = van.s;
+    // destination board: the stops this van makes, and the one it skips
+    const stops = []; g.rim.forEach(u => { if (!stops.includes(show[u])) stops.push(show[u]); });
+    stops.sort((a, b) => a - b);
+    let bh = '';
+    const bw = s * 0.82 * stops.length + s * 0.2, by = LY.cy - LY.Rby * 0.6 - s * 0.62;
+    bh += `<rect x="${-bw / 2}" y="${by - s * 0.42}" width="${bw}" height="${s * 0.84}" rx="${s * 0.2}" fill="${INK}"/>`;
+    stops.forEach((k, i) => { bh += icon(k, -bw / 2 + s * 0.1 + s * 0.82 * (i + 0.5), by, s * 0.62, DEST[k].col); });
+    van.board.innerHTML = `<g class="fade-in" transform="translate(${LY.cx},0)">${bh}</g>`;
+    const done = () => {
+      van.cue.textContent = 'Van’s off! Tap for the next one';
+      waitReset = true;
+      tone(784, 0.1, 'sine', 0.06); tone(988, 0.1, 'sine', 0.06, 0.09); tone(1175, 0.3, 'sine', 0.06, 0.18);
+    };
+    if (instant) { done(); return; }
+    tone(440, 0.09, 'square', 0.03, 0); tone(440, 0.09, 'square', 0.03, 0.16);
+    const dur = RM ? 1 : 1700, y0 = van.cy, y1 = LY.cy - LY.Rby * 0.6 - van.vl / 2 - 4;
+    later(() => {
+      const st = performance.now();
+      const stepf = now => {
+        const t = Math.min(1, (now - st) / dur), e = t * t * t * 0.6 + t * t * 0.4;
+        van.g.setAttribute('transform', `translate(${LY.cx},${y0 + (y1 - y0) * e})`);
+        if (t < 1) requestAnimationFrame(stepf); else done();
+      };
+      requestAnimationFrame(stepf);
+      if (AC) tone(110, 1.4, 'sine', 0.06, 0, 1.8);
+    }, RM ? 0 : 700);
+  }
+  // ---------- idle hint ----------
+  function idle() {
+    clearTimeout(idleT);
+    if (hintPick && sel < 0) { hintPick = null; render(); }
+    idleT = setTimeout(() => {
+      if (busy || winning || sel >= 0) return idle();
+      const K = g.good()[0]; if (!K) return;
+      const u = K.vs.find(v => g.rim.includes(v)) ?? K.vs[0];
+      hintPick = { u, b: K.pair[0] === g.col[u] ? K.pair[1] : K.pair[0] };
+      render();
+    }, 9000);
+  }
+  // ---------- input ----------
+  S.addEventListener('pointerdown', e => {
+    ac();
+    const keepHint = hintPick;
+    idle();
+    if (waitReset) { waitReset = false; g.reset(); return; }
+    if (winning || busy) return;
+    const t = e.target.closest && e.target.closest('[data-act]');
+    if (!t) { if (sel >= 0) { sel = -1; tone(440, 0.05, 'sine', 0.03); render(); } return; }
+    const act = t.getAttribute('data-act');
+    if (act === 'undo') { if (g.history.length) { g.undo(); tone(520, 0.12, 'sine', 0.06, 0, 0.7); } return; }
+    if (act === 'reset') { if (g.history.length) { g.reset(); tone(420, 0.2, 'sine', 0.06, 0, 0.6); } return; }
+    if (act === 'chip') { move(sel, +t.getAttribute('data-b')); return; }
+    if (act === 'p') {
+      const u = +t.getAttribute('data-u');
+      if (sel < 0) { hintPick = keepHint && keepHint.u === u ? keepHint : null; select(u); }
+      else if (u === sel) { sel = -1; tone(440, 0.05, 'sine', 0.03); render(); }
+      else if (g.adj[sel].includes(u)) move(sel, show[u]);
+      else select(u);
+    }
+  });
+  S.addEventListener('pointerover', e => {
+    if (busy || winning || sel < 0) return;
+    const t = e.target.closest && e.target.closest('[data-act]');
+    let K = null;
+    if (t && t.getAttribute('data-act') === 'chip') K = chainFor(g, sel, +t.getAttribute('data-b'));
+    else if (t && t.getAttribute('data-act') === 'p') { const u = +t.getAttribute('data-u'); if (u !== sel && g.adj[sel].includes(u)) K = chainFor(g, sel, show[u]); }
+    preview(K);
+  });
+  g.on((gg, info) => {
+    if (info.type === 'reset') { build(); idle(); }
+    else if (info.type === 'undo') { show = g.col.slice(); sel = -1; render(); }
+  });
+  let rz = 0;
+  window.addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(() => { if (!busy && !winning) build(); }, 120); });
+  build();
+  idle();
+})();
+</script>
+</body>
+</html>

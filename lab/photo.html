@@ -1,0 +1,698 @@
+<!doctype html>
+<!--
+  CLASS PHOTO (lab front end, round 3: crowd game, "two pairs and a single")
+
+  What the player sees: school photo day in a warm crayon-on-paper gym. Every map region (except the hole) is a kid
+  standing on the bleachers, in tidy tiers. Each kid wears one of four house team shirts, told apart by colour AND by
+  a big mascot badge shape: Foxes (orange, fox face), Owls (blue, owl with ear tufts), Bears (yellow, paw print),
+  Frogs (green, frog with bump eyes). Kids that stand next to each other in a row link arms (a little clasped hand);
+  kids in neighbouring rows rest a hand on each other's shoulder (thin crayon arm lines); the few pairs that would
+  have to reach "round the side" of the bleachers hold a paper-chain garland that loops around the bleachers.
+  The photographer's rule: two kids in the same shirt never touch (the legal colouring, never explained in maths).
+
+  The FRONT ROW (bottom tier) is g.rim, left to right in ring order. In front of them is the photo bench: two double
+  "buddy" cushions and one single cushion, with a little sitting version of each front-row kid on the cushion they
+  will take (dotted line from kid to seat). The photographer wants each double cushion to hold two buddies in matching
+  shirts. Because front-row neighbours never match, the front row is always 2+1+1+1 (one buddy pair, three singles:
+  one double cushion is grumpy, the two kids glare at each other) or 2+2+1 (both doubles happy) = g.won().
+  The seat plan is just the best grouping of the 5 rim shirts; it never changes the puzzle.
+
+  Mapping onto lab/core.js:
+    kid u                 = region u (the hole is the photographer's spot, not drawn); shirt = g.col[u]
+    touching / linked     = g.adj (every non-hole edge is drawn: arm link, shoulder hand, or garland)
+    front row             = g.rim (ring order).  Goal cue: "Bench: 2 buddy pairs + 1 solo!"
+    a move = exactly one g.swap(K), or nothing:
+       tap kid A, then tap a kid B who touches A (B is always in another shirt)   ->  K = g.chainAt(A, col[B])
+       tap kid A, then one of the 3 shirt chips popping above A (team b)        ->  K = g.chainAt(A, b)
+       (the chips reach every chain through A, including lone kids none of whose touching kids wear team b)
+       The shirt swap spreads as a wave (BFS from A inside K): each beat is a camera flash + shutter click and that
+       ring of kids spins round and comes back in the other shirt.
+    K.web (only {a,b} group on the map) -> g.swap is NOT called: the whole wave plays, everyone ends up looking
+       exactly the same, the photographer sighs "...same photo."
+    win = g.won(): both buddy cushions match. "Say cheese!", flash, and a polaroid develops showing the bench with
+       the two buddy pairs and the solo kid; the mascot of g.free() (the team nobody on the bench wears) photobombs.
+       Tap the polaroid to line up a new class (g.reset()).  Undo = g.undo(), restart = g.reset() (top corners).
+  Idle hint: after ~10 quiet seconds a kid from a g.good() chain waves; select it and the right shirt chip pulses.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>Class Photo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Patrick+Hand&display=swap" rel="stylesheet">
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #f6ead2; touch-action: none;
+    -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
+  svg { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
+    font-family: 'Patrick Hand', 'Comic Sans MS', 'Chalkboard SE', 'Marker Felt', cursive, sans-serif; }
+  .bob, .spin { transform-box: fill-box; transform-origin: 50% 100%; }
+  .bob { animation: bob 2.4s ease-in-out infinite; }
+  @keyframes bob { 0%, 100% { transform: scale(1, 1); } 50% { transform: scale(1.02, .975); } }
+  .kid.sel .bob { animation: hop .5s ease-in-out infinite; }
+  @keyframes hop { 0%, 100% { transform: translateY(0); } 45% { transform: translateY(-9%); } }
+  .kid.nb .bob, .kid.hint .bob { animation: wig .55s ease-in-out infinite; }
+  @keyframes wig { 0%, 100% { transform: rotate(-5deg); } 50% { transform: rotate(5deg); } }
+  .spin.go { animation: twirl .34s ease-in-out; }
+  @keyframes twirl { 0% { transform: none; } 50% { transform: translateY(-6%) scaleX(0); } 100% { transform: none; } }
+  .chip .cb { transform-box: fill-box; transform-origin: center; animation: pop .2s ease-out; }
+  .chip.hint .cb { animation: pulse .6s ease-in-out infinite; }
+  @keyframes pop { from { transform: scale(.2); } to { transform: scale(1); } }
+  @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.2); } }
+  #flash { pointer-events: none; opacity: 0; }
+  #flash.f1 { animation: f1 .22s ease-out; }
+  #flash.f2 { animation: f2 1.1s ease-out; }
+  @keyframes f1 { 0% { opacity: .38; } 100% { opacity: 0; } }
+  @keyframes f2 { 0% { opacity: 1; } 35% { opacity: .9; } 100% { opacity: 0; } }
+  .march { stroke-dasharray: 4 5; animation: march .6s linear infinite; }
+  @keyframes march { to { stroke-dashoffset: -18; } }
+  .glow { animation: gfade 1.4s ease-out forwards; }
+  @keyframes gfade { 0%, 40% { opacity: 1; } 100% { opacity: 0; } }
+  .say { transform-box: fill-box; transform-origin: 90% 100%; animation: say .25s ease-out; }
+  @keyframes say { from { transform: scale(.3); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+  .happy { transform-box: fill-box; transform-origin: center; animation: pop .35s ease-out; }
+  .drop { animation: drop .7s cubic-bezier(.3, 1.4, .5, 1); }
+  @keyframes drop { from { transform: translateY(-110vh) rotate(-14deg); } to { transform: none; } }
+  .dim { animation: dimIn .5s ease-out forwards; }
+  @keyframes dimIn { from { opacity: 0; } to { opacity: .55; } }
+  .dev { animation: dev 3.2s ease-in forwards; }
+  @keyframes dev { 0% { opacity: 1; } 100% { opacity: 0; } }
+  .devsep { animation: devsep 3.2s ease-in forwards; }
+  @keyframes devsep { 0% { opacity: .55; } 100% { opacity: .08; } }
+  .btn { cursor: pointer; }
+  .btn.off { opacity: .35; }
+  @media (prefers-reduced-motion: reduce) {
+    .bob, .kid.sel .bob, .kid.nb .bob, .kid.hint .bob, .spin.go, .chip .cb, .chip.hint .cb, .march, .say, .happy,
+    .drop { animation: none !important; }
+    #flash.f1, #flash.f2 { animation: none; }
+    .dev, .devsep { animation-duration: .8s; }
+  }
+</style>
+</head>
+<body>
+<svg id="S" xmlns="http://www.w3.org/2000/svg"></svg>
+<script src="../levels.js"></script>
+<script src="../layout.js"></script>
+<script src="core.js"></script>
+<script>
+(function () {
+  'use strict';
+  const g = LAB.game();
+  const NC = g.NC || 4;
+  const INK = '#4a3426';
+  const TEAM = [
+    { name: 'Foxes', col: '#ee6b35', dark: '#9b3511', light: '#ffe0c9' },
+    { name: 'Owls', col: '#4472d4', dark: '#1f3c84', light: '#dbe5ff' },
+    { name: 'Bears', col: '#f3c22f', dark: '#99720a', light: '#fff4c6' },
+    { name: 'Frogs', col: '#47ad5a', dark: '#1d6a33', light: '#d6f3d9' },
+  ];
+
+  // ---------------- bleacher layout (pure; runs in node) ----------------
+  // Rows = distance from the photographer's spot (BFS from the hole): row 1 = front row = g.rim. Inside each row kids are
+  // ordered by angle around the hole in g.pos (a planar drawing), with the seam angle chosen so the fewest links have to
+  // go "round the side" (garlands) and no shoulder lines cross. Then each back-row kid is pulled toward the kids it
+  // touches in the neighbouring rows, keeping its row order and a minimum spacing.
+  function plan(g) {
+    const n = g.n, hole = g.hole;
+    const L = Array(n).fill(-1); L[hole] = 0;
+    let fr = [hole];
+    while (fr.length) { const nx = []; fr.forEach(u => g.adj[u].forEach(w => { if (L[w] < 0) { L[w] = L[u] + 1; nx.push(w); } })); fr = nx; }
+    const R = Math.max(...L);
+    const h = g.pos[hole], ang = g.pos.map(p => Math.atan2(p[1] - h[1], p[0] - h[0]));
+    const E = g.edges.filter(([u, v]) => u !== hole && v !== hole);
+    const cross = (a, b, c, d) => {
+      const o = (p, q, r) => Math.sign((q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0]));
+      return o(a, b, c) * o(a, b, d) < 0 && o(c, d, a) * o(c, d, b) < 0;
+    };
+    let best = null;
+    for (let s = 0; s < 360; s += 2) {
+      const a0 = s * Math.PI / 180;
+      const t = ang.map(a => { let x = (a - a0) / (2 * Math.PI); return x - Math.floor(x); });
+      const P = Array(n), rows = [[]];
+      for (let k = 1; k <= R; k++) {
+        const row = []; for (let u = 0; u < n; u++) if (L[u] === k) row.push(u);
+        row.sort((a, b) => t[a] - t[b]); rows.push(row);
+        row.forEach((u, i) => { P[u] = [0.5 * (i + 0.5) / row.length + 0.5 * t[u], k]; });
+      }
+      let wrap = 0, nonc = 0, cr = 0;
+      const ok = E.filter(([u, v]) => { if (Math.abs(P[u][0] - P[v][0]) > 0.5) { wrap++; return false; } return true; });
+      ok.forEach(([u, v]) => { if (L[u] === L[v]) { const r = rows[L[u]]; if (Math.abs(r.indexOf(u) - r.indexOf(v)) !== 1) nonc++; } });
+      for (let i = 0; i < ok.length; i++) for (let j = i + 1; j < ok.length; j++) {
+        const [a, b] = ok[i], [c, d] = ok[j];
+        if (a === c || a === d || b === c || b === d) continue;
+        if (cross(P[a], P[b], P[c], P[d])) cr++;
+      }
+      const sc = wrap * 3 + cr * 2 + nonc;
+      if (!best || sc < best.sc) best = { sc, rows, P, wrap, cr, nonc };
+    }
+    const rows = best.rows, P = best.P;
+    const edges = E.map(([u, v]) => {
+      let type = 'hand';
+      if (Math.abs(P[u][0] - P[v][0]) > 0.5) type = 'wrap';
+      else if (L[u] === L[v]) { const r = rows[L[u]]; type = Math.abs(r.indexOf(u) - r.indexOf(v)) === 1 ? 'link' : 'hop'; }
+      return { u, v, type };
+    });
+    const isAdj = (u, v) => g.adj[u].includes(v);
+    const GAP = (a, b) => isAdj(a, b) ? 1 : 1.35;  // touching kids stand closer than non-touching ones
+    const X = Array(n).fill(0);
+    let span = 0;
+    for (let k = 1; k <= R; k++) { let w = 0; for (let i = 1; i < rows[k].length; i++) w += GAP(rows[k][i - 1], rows[k][i]); span = Math.max(span, w); }
+    { const f = rows[1]; let x = 0; f.forEach((u, i) => { if (i) x += GAP(f[i - 1], u); X[u] = x; }); const m = x / 2; f.forEach(u => { X[u] -= m; }); }
+    for (let k = 2; k <= R; k++) rows[k].forEach(u => { X[u] = (P[u][0] - 0.5) * span; });
+    const handNb = Array.from({ length: n }, () => []);
+    edges.forEach(e => { if (e.type === 'hand' && L[e.u] !== L[e.v]) { handNb[e.u].push(e.v); handNb[e.v].push(e.u); } });
+    for (let it = 0; it < 80; it++) {
+      for (let k = 2; k <= R; k++) {
+        const row = rows[k];
+        const want = row.map((u, i) => {
+          const tg = handNb[u].map(w => X[w]);
+          if (i > 0 && isAdj(row[i - 1], u)) tg.push(X[row[i - 1]] + 1, X[row[i - 1]] + 1);
+          if (i < row.length - 1 && isAdj(row[i + 1], u)) tg.push(X[row[i + 1]] - 1, X[row[i + 1]] - 1);
+          return tg.length ? 0.4 * X[u] + 0.6 * tg.reduce((s, x) => s + x, 0) / tg.length : X[u];
+        });
+        const m0 = want.reduce((s, x) => s + x, 0) / row.length;
+        const y = want.slice();
+        for (let i = 1; i < row.length; i++) y[i] = Math.max(y[i], y[i - 1] + GAP(row[i - 1], row[i]));
+        const m1 = y.reduce((s, x) => s + x, 0) / row.length;
+        row.forEach((u, i) => { X[u] = y[i] + (m0 - m1); });
+      }
+    }
+    // garlands: lower rows loop outermost
+    const wraps = edges.filter(e => e.type === 'wrap').map(e => {
+      const l = X[e.u] < X[e.v] ? e.u : e.v, r = l === e.u ? e.v : e.u; return { u: e.u, v: e.v, l, r };
+    }).sort((a, b) => Math.min(L[a.l], L[a.r]) - Math.min(L[b.l], L[b.r]) || L[a.l] - L[b.l]);
+    wraps.forEach((w, i) => { w.lane = wraps.length - 1 - i; e2w(edges, w); });
+    function e2w(es, w) { const e = es.find(e => e.type === 'wrap' && ((e.u === w.u && e.v === w.v))); e.lane = w.lane; }
+    let xmin = Infinity, xmax = -Infinity;
+    for (let u = 0; u < n; u++) if (u !== hole) { xmin = Math.min(xmin, X[u]); xmax = Math.max(xmax, X[u]); }
+    return { L, R, rows, X, edges, wraps, xmin, xmax, front: rows[1], score: best };
+  }
+
+  // tap A, then tap B / chip b  ->  the one chain to swap
+  const chainFor = (g, a, b) => (a < 0 || a === g.hole || b < 0 || b >= NC || b === g.col[a]) ? null : g.chainAt(a, b);
+  // the shirt-swap wave: BFS through touching kids inside K, from the kid you tapped
+  function waveOrder(g, K, a) {
+    const seen = new Map([[a, -1]]), lv = [[a]];
+    let fr = [a];
+    while (fr.length) {
+      const nx = [];
+      fr.forEach(u => g.adj[u].forEach(w => { if (K.set.has(w) && !seen.has(w)) { seen.set(w, u); nx.push(w); } }));
+      if (nx.length) lv.push(nx); fr = nx;
+    }
+    return { lv, par: seen };
+  }
+  // bench seating: slots [double A: 0,1][single: 2][double B: 3,4]; most matching buddies, then least walking
+  function seatPlan(rimKids, col, kidX, slotX) {
+    let best = null;
+    const perm = (arr, k) => {
+      if (k === arr.length) {
+        const m0 = col[arr[0]] === col[arr[1]], m1 = col[arr[3]] === col[arr[4]];
+        let d = 0; arr.forEach((u, i) => { d += Math.abs(kidX[u] - slotX[i]); });
+        const sc = (m0 + m1) * 1e6 - d;
+        if (!best || sc > best.sc) best = { sc, seat: arr.slice(), ok: [m0, true, m1] };
+        return;
+      }
+      for (let i = k; i < arr.length; i++) { [arr[k], arr[i]] = [arr[i], arr[k]]; perm(arr, k + 1); [arr[k], arr[i]] = [arr[i], arr[k]]; }
+    };
+    perm(rimKids.slice(), 0);
+    return best;
+  }
+  window.ClassPhoto = { g, plan, chainFor, waveOrder, seatPlan };
+  if (typeof document === 'undefined' || !document.getElementById) return;
+
+  // ---------------- art ----------------
+  const SKIN = ['#f8d9bf', '#eebf98', '#c98f63', '#8e5b3c', '#f3cba6', '#dca27a'];
+  const HAIRC = ['#3b2618', '#7a4520', '#e0ab46', '#262022', '#b5532f', '#5b3a2a'];
+  const TROU = ['#5b4a6e', '#3e5468', '#6a4a3a', '#4b5b3c'];
+  const look = u => ({ skin: SKIN[(u * 5 + 1) % SKIN.length], hair: HAIRC[(u * 7 + 3) % HAIRC.length], st: (u * 11 + 2) % 6, tr: TROU[(u * 3) % TROU.length] });
+  function badge(k, x, y, r) {
+    const T = TEAM[k], f = `fill="${T.light}" stroke="${INK}" stroke-width="2.2" stroke-linejoin="round"`;
+    let s;
+    if (k === 0) s = `<path ${f} d="M-10,-7L-8.5,-13L-3,-7.5H3L8.5,-13L10,-7L0,10Z"/><circle cx="-3.6" cy="-2" r="1.5" fill="${INK}"/><circle cx="3.6" cy="-2" r="1.5" fill="${INK}"/><circle cx="0" cy="5" r="1.7" fill="${INK}"/>`;
+    else if (k === 1) s = `<path ${f} d="M-9,-11L-5,-6.5Q0,-8.5 5,-6.5L9,-11L9.5,3Q9,10.5 0,10.5Q-9,10.5 -9.5,3Z"/><circle cx="-4" cy="-1" r="3.4" fill="#fff" stroke="${INK}" stroke-width="1.6"/><circle cx="4" cy="-1" r="3.4" fill="#fff" stroke="${INK}" stroke-width="1.6"/><circle cx="-4" cy="-1" r="1.4" fill="${INK}"/><circle cx="4" cy="-1" r="1.4" fill="${INK}"/><path d="M-1.6,3L1.6,3L0,6Z" fill="#e8a33a"/>`;
+    else if (k === 2) s = `<ellipse ${f} cx="0" cy="4" rx="7" ry="6"/><circle ${f} cx="-7.5" cy="-4.5" r="3"/><circle ${f} cx="-2.6" cy="-9" r="3"/><circle ${f} cx="2.6" cy="-9" r="3"/><circle ${f} cx="7.5" cy="-4.5" r="3"/>`;
+    else s = `<path ${f} d="M-11,4Q-11,-3 -7.5,-4.5A4.2,4.2 0 1 1 -0.5,-7Q0,-7 0.5,-7A4.2,4.2 0 1 1 7.5,-4.5Q11,-3 11,4Q11,10 0,10Q-11,10 -11,4Z"/><circle cx="-4.6" cy="-7.4" r="1.6" fill="${INK}"/><circle cx="4.6" cy="-7.4" r="1.6" fill="${INK}"/><path d="M-5,3Q0,7 5,3" fill="none" stroke="${INK}" stroke-width="1.6" stroke-linecap="round"/>`;
+    return `<g transform="translate(${x},${y}) scale(${r / 10})">${s}</g>`;
+  }
+  function hair(st, hc) {
+    const b = `fill="${hc}" stroke="${INK}" stroke-width="3" stroke-linejoin="round"`;
+    const short = `<path ${b} d="M-19,-78Q-21,-101 0,-101Q21,-101 19,-78Q13,-91 0,-90Q-10,-93 -19,-78Z"/>`;
+    if (st === 0) return ['', short];
+    if (st === 1) return [`<circle ${b} cx="-22" cy="-73" r="7.5"/><circle ${b} cx="22" cy="-73" r="7.5"/>`, short];
+    if (st === 2) return [`<circle ${b} cx="0" cy="-102" r="8.5"/>`, short];
+    if (st === 3) { let c = ''; for (let a = -165; a <= -15; a += 25) { const r = a * Math.PI / 180; c += `<circle ${b} cx="${(19 * Math.cos(r)).toFixed(1)}" cy="${(-80 + 19 * Math.sin(r)).toFixed(1)}" r="7"/>`; } return ['', c]; }
+    if (st === 4) return ['', `<path ${b} d="M-19,-80L-18,-96L-11,-91L-6,-104L0,-94L6,-104L11,-91L18,-96L19,-80Q10,-89 0,-88Q-10,-89 -19,-80Z"/>`];
+    return [`<path ${b} d="M-22,-63Q-26,-103 0,-103Q26,-103 22,-63Z"/>`, `<path ${b} d="M-18,-82Q-16,-98 0,-98Q16,-98 18,-82Q8,-89 0,-87Q-8,-89 -18,-82Z"/>`];
+  }
+  function face(m) {
+    const e = INK;
+    let eyes, mouth, extra = '';
+    if (m === 'cheese') { eyes = `<path d="M-10,-80q3,-5 6,0M4,-80q3,-5 6,0" fill="none" stroke="${e}" stroke-width="2.6" stroke-linecap="round"/>`; mouth = `<path d="M-9,-74Q0,-60 9,-74Z" fill="#8a2b2b" stroke="${e}" stroke-width="2.2" stroke-linejoin="round"/><path d="M-6,-73.5h12v3h-12z" fill="#fff"/>`; }
+    else if (m === 'grump') { eyes = `<circle cx="-6.5" cy="-80" r="2.5" fill="${e}"/><circle cx="6.5" cy="-80" r="2.5" fill="${e}"/>`; extra = `<path d="M-11,-88l8,3M11,-88l-8,3" stroke="${e}" stroke-width="2.6" stroke-linecap="round"/>`; mouth = `<path d="M-6,-69Q0,-75 6,-69" fill="none" stroke="${e}" stroke-width="2.6" stroke-linecap="round"/>`; }
+    else if (m === 'wow') { eyes = `<circle cx="-6.5" cy="-81" r="3.4" fill="${e}"/><circle cx="6.5" cy="-81" r="3.4" fill="${e}"/><circle cx="-5.4" cy="-82.2" r="1.2" fill="#fff"/><circle cx="7.6" cy="-82.2" r="1.2" fill="#fff"/>`; mouth = `<ellipse cx="0" cy="-71" rx="3.2" ry="4" fill="#8a2b2b" stroke="${e}" stroke-width="2"/>`; }
+    else if (m === 'flat') { eyes = `<path d="M-10,-80h6M4,-80h6" stroke="${e}" stroke-width="2.6" stroke-linecap="round"/>`; mouth = `<path d="M-5,-71h10" stroke="${e}" stroke-width="2.6" stroke-linecap="round"/>`; }
+    else { eyes = `<circle cx="-6.5" cy="-80" r="2.5" fill="${e}"/><circle cx="6.5" cy="-80" r="2.5" fill="${e}"/>`; mouth = `<path d="M-6,-73Q0,-67 6,-73" fill="none" stroke="${e}" stroke-width="2.6" stroke-linecap="round"/>`; }
+    return `<circle cx="-11.5" cy="-73.5" r="3.6" fill="#f2907c" opacity=".45"/><circle cx="11.5" cy="-73.5" r="3.6" fill="#f2907c" opacity=".45"/>${eyes}${mouth}${extra}`;
+  }
+  // one kid, 100-unit box, feet at (0,0), head top near y=-102. sit = bench version (no legs)
+  function kidArt(u, k, mood, sit) {
+    const T = TEAM[k], lk = look(u), hs = hair(lk.st, lk.hair);
+    const arm = mood === 'cheese' ? 'M-27,-55Q-40,-70 -36,-86' : 'M-26,-56Q-36,-42 -33,-29';
+    const armR = mood === 'cheese' ? 'M27,-55Q40,-70 36,-86' : 'M26,-56Q36,-42 33,-29';
+    const hand = mood === 'cheese' ? [[-36, -88], [36, -88]] : [[-33, -27], [33, -27]];
+    let s = '';
+    if (!sit) s += `<path d="M-12,-22v18M12,-22v18" stroke="${lk.tr}" stroke-width="11" stroke-linecap="round"/><ellipse cx="-14" cy="-2" rx="8.5" ry="4.5" fill="#3a2e2a"/><ellipse cx="14" cy="-2" rx="8.5" ry="4.5" fill="#3a2e2a"/>`;
+    s += `<path d="${arm}M26,-56${armR.slice(7)}" fill="none" stroke="${INK}" stroke-width="12.5" stroke-linecap="round"/>` +
+      `<path d="${arm}M26,-56${armR.slice(7)}" fill="none" stroke="${T.col}" stroke-width="8" stroke-linecap="round"/>` +
+      `<circle cx="${hand[0][0]}" cy="${hand[0][1]}" r="5.5" fill="${lk.skin}" stroke="${INK}" stroke-width="2.5"/><circle cx="${hand[1][0]}" cy="${hand[1][1]}" r="5.5" fill="${lk.skin}" stroke="${INK}" stroke-width="2.5"/>` +
+      hs[0] +
+      `<path d="M-6,-66v-6h12v6z" fill="${lk.skin}" stroke="${INK}" stroke-width="2.5"/>` +
+      `<path d="M-28,-20L-29,-52Q-27,-61 -14,-63Q0,-58 14,-63Q27,-61 29,-52L28,-20Q0,-15 -28,-20Z" fill="${T.col}" stroke="${INK}" stroke-width="3" stroke-linejoin="round"/>` +
+      `<path d="M-28,-20L-29,-52Q-27,-61 -14,-63Q0,-58 14,-63Q27,-61 29,-52L28,-20Q0,-15 -28,-20Z" fill="url(#hatch)"/>` +
+      `<path d="M-10,-61L0,-53L10,-61" fill="none" stroke="${T.light}" stroke-width="3.2" stroke-linecap="round"/>` +
+      badge(k, 0, -37, 13) +
+      `<circle cx="0" cy="-80" r="18" fill="${lk.skin}" stroke="${INK}" stroke-width="3"/>` + face(mood) + hs[1];
+    return s;
+  }
+  // mascot costume (polaroid photobomber): a big badge head on a team-colour body
+  function mascotArt(k) {
+    const T = TEAM[k];
+    return `<path d="M-30,0L-32,-50Q-30,-66 0,-66Q30,-66 32,-50L30,0Z" fill="${T.col}" stroke="${INK}" stroke-width="3.5" stroke-linejoin="round"/>` +
+      `<path d="M28,-50Q48,-70 44,-92" fill="none" stroke="${INK}" stroke-width="13" stroke-linecap="round"/><path d="M28,-50Q48,-70 44,-92" fill="none" stroke="${T.col}" stroke-width="8.5" stroke-linecap="round"/>` +
+      `<ellipse cx="0" cy="-30" rx="17" ry="20" fill="${T.light}" opacity=".9"/>` + badge(k, 0, -92, 34);
+  }
+
+  // ---------------- DOM ----------------
+  const S = document.getElementById('S');
+  const NS = 'http://www.w3.org/2000/svg';
+  const RM = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
+  const PL = plan(g);
+  const rimSet = new Set(g.rim);
+  let W = 0, H = 0, s = 40, U = 29, Y = [], KX = [], KY = [];
+  let shown = g.col.slice(), sel = -1, busy = false, won = false, temp = {}, kidEl = [], hintU = -1, hintB = -1, idleT = 0, seat = null;
+  let geo = {};
+  const el = (tag, attrs, parent, html) => { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); if (html != null) e.innerHTML = html; if (parent) parent.appendChild(e); return e; };
+  const $ = id => document.getElementById(id);
+
+  // sound (after first gesture)
+  let AC = null;
+  function ac() { if (!AC) { try { AC = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { AC = null; } } if (AC && AC.state === 'suspended') AC.resume(); return AC; }
+  function tone(f, d, type, vol, f2, delay) {
+    const a = AC; if (!a) return;
+    const t = a.currentTime + (delay || 0), o = a.createOscillator(), v = a.createGain();
+    o.type = type || 'sine'; o.frequency.setValueAtTime(f, t); if (f2) o.frequency.exponentialRampToValueAtTime(f2, t + d);
+    v.gain.setValueAtTime(0.0001, t); v.gain.exponentialRampToValueAtTime(vol || 0.15, t + 0.012); v.gain.exponentialRampToValueAtTime(0.0001, t + d);
+    o.connect(v); v.connect(a.destination); o.start(t); o.stop(t + d + 0.02);
+  }
+  function shutter(i, big) {
+    const a = AC; if (!a) return;
+    const len = big ? 0.14 : 0.05, buf = a.createBuffer(1, Math.floor(a.sampleRate * len), a.sampleRate), d = buf.getChannelData(0);
+    for (let j = 0; j < d.length; j++) d[j] = (Math.random() * 2 - 1) * Math.pow(1 - j / d.length, 3);
+    const src = a.createBufferSource(), hp = a.createBiquadFilter(), v = a.createGain();
+    hp.type = 'highpass'; hp.frequency.value = big ? 900 : 2200; v.gain.value = big ? 0.5 : 0.28;
+    src.buffer = buf; src.connect(hp); hp.connect(v); v.connect(a.destination); src.start();
+    tone(520 + 70 * (i % 6), 0.07, 'triangle', 0.06, null, 0.02);
+  }
+
+  function build() {
+    W = Math.max(200, innerWidth); H = Math.max(300, innerHeight);
+    S.setAttribute('viewBox', `0 0 ${W} ${H}`);
+    const R = PL.R, nw = PL.wraps.length;
+    const topH = Math.max(30, Math.min(46, H * 0.065));
+    const benchH = Math.max(84, Math.min(H > 1.6 * W ? 280 : 200, H * (H > 1.6 * W ? 0.3 : 0.24)));
+    const lane = Math.max(3.5, Math.min(7, W * 0.012));
+    const side = nw * lane + 8;
+    const gl = nw * lane + 10;
+    const availW = W - 2 * side, availH = H - benchH - topH - 10 - gl;
+    const spanU = PL.xmax - PL.xmin + 1.1;
+    s = Math.min(availW / (spanU * 0.74), availH / (1.08 + (R - 1) * 0.74), Math.min(W, H) * 0.2);
+    U = s * 0.74;
+    const tier = s * 0.74;
+    const blockH = gl + (1.08 + (R - 1) * 0.74) * s;
+    const gtop = topH + 6 + Math.max(0, (H - benchH - topH - 10 - blockH) * 0.62);
+    const top = gtop + gl;
+    const yFront = top + s * 1.06 + (R - 1) * tier;
+    const cx = W / 2 - (PL.xmin + PL.xmax) / 2 * U;
+    for (let u = 0; u < g.n; u++) { KX[u] = cx + PL.X[u] * U; KY[u] = yFront - (PL.L[u] - 1) * tier; }
+    geo = { topH, benchH, lane, side, top, gtop, yFront, tier, cx };
+    let defs = `<defs>
+      <filter id="cray" x="-5%" y="-5%" width="110%" height="110%"><feTurbulence type="fractalNoise" baseFrequency="0.05" numOctaves="2" seed="3" result="n"/><feDisplacementMap in="SourceGraphic" in2="n" scale="3"/></filter>
+      <filter id="paper"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" seed="7"/><feColorMatrix values="0 0 0 0 .45  0 0 0 0 .32  0 0 0 0 .2  0 0 0 -1.6 .9"/></filter>
+      <pattern id="hatch" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(35)"><path d="M0,1.5H7" stroke="#fff" stroke-width="1.3" opacity=".22"/><path d="M0,5H7" stroke="#000" stroke-width="1" opacity=".06"/></pattern>
+      <pattern id="wood" width="26" height="9" patternUnits="userSpaceOnUse"><rect width="26" height="9" fill="#d9a466"/><path d="M0,3Q8,1.5 14,3T26,3M2,7Q10,5.5 16,7" stroke="#b9803f" stroke-width="1" fill="none" opacity=".6"/></pattern>
+    </defs>`;
+    S.innerHTML = defs + `<rect width="${W}" height="${H}" fill="#f6ead2"/><g id="wall"></g><rect width="${W}" height="${H}" filter="url(#paper)" opacity=".5"/>` +
+      `<g id="garl"></g><g id="planks" filter="url(#cray)"></g><g id="hands"></g><g id="fx"></g><g id="kids"></g><g id="links"></g>` +
+      `<g id="bench"></g><g id="photog"></g><g id="chips"></g><g id="topbar"></g><rect id="flash" width="${W}" height="${H}" fill="#fffdf4"/><g id="over"></g>`;
+    drawWall(); drawPlanks(); drawEdges(); drawKids(); drawTop(); drawPhotog(); drawBench(); drawChips();
+    if (won) showPolaroid(true);
+  }
+  function drawWall() {
+    const w = $('wall'), fy = geo.yFront + s * 0.2;
+    // gym wall stripes and floor
+    el('rect', { x: 0, y: 0, width: W, height: fy, fill: '#f3e3c3' }, w);
+    el('path', { d: `M0,${geo.topH + 4}H${W}`, stroke: '#e3c79c', 'stroke-width': 6, opacity: .6, filter: 'url(#cray)' }, w);
+    el('rect', { x: 0, y: fy, width: W, height: H - fy, fill: '#e9c99a' }, w);
+    for (let x = -40; x < W + 40; x += 46) el('path', { d: `M${x},${fy}L${x - 30},${H}`, stroke: '#d4ad78', 'stroke-width': 1.6, opacity: .7 }, w);
+    // little pennants along the top
+    let p = '';
+    const n = Math.max(4, Math.floor(W / 34));
+    for (let i = 0; i < n; i++) { const x = (i + 0.5) * W / n, y = geo.topH + 5; p += `<path d="M${x - 8},${y}L${x + 8},${y}L${x},${y + 12}Z" fill="${TEAM[i % 4].col}" opacity=".55"/>`; }
+    el('g', { filter: 'url(#cray)' }, w, p);
+    // a hand-made banner on the wall when there is room above the bleachers
+    const room = geo.gtop - geo.topH - 22;
+    if (room > Math.max(56, H * 0.08)) {
+      const txt = 'PHOTO DAY!', fs = Math.min(room * 0.5, W * 0.13, 64), bw = fs * 5.6, bh = fs * 1.35, by = geo.topH + 22 + (room - bh) * 0.5;
+      let t = `<path d="M${W / 2 - bw / 2 - 10},${by - 8}Q${W / 2},${by + 6} ${W / 2 + bw / 2 + 10},${by - 8}" fill="none" stroke="#8a6448" stroke-width="2"/>` +
+        `<path d="M${W / 2 - bw / 2},${by}H${W / 2 + bw / 2}L${W / 2 + bw / 2 - 10},${by + bh / 2}L${W / 2 + bw / 2},${by + bh}H${W / 2 - bw / 2}L${W / 2 - bw / 2 + 10},${by + bh / 2}Z" fill="#fffaf0" stroke="${INK}" stroke-width="2.5"/>`;
+      [...txt].forEach((ch, i) => { t += `<text x="${W / 2 - bw / 2 + bw * (i + 0.5) / txt.length}" y="${by + bh * 0.72}" text-anchor="middle" font-size="${fs}" fill="${TEAM[i % 4].col}" transform="rotate(${(i % 3 - 1) * 5} ${W / 2 - bw / 2 + bw * (i + 0.5) / txt.length} ${by + bh / 2})">${ch}</text>`; });
+      el('g', { filter: 'url(#cray)' }, w, t);
+    }
+  }
+  function rowExt(k) { const r = PL.rows[k]; return [KX[r[0]], KX[r[r.length - 1]]]; }
+  function drawPlanks() {
+    const p = $('planks');
+    for (let k = PL.R; k >= 1; k--) {
+      const [a, b] = rowExt(k), y = KY[PL.rows[k][0]] - s * 0.03, x0 = a - s * 0.48, x1 = b + s * 0.48;
+      el('rect', { x: x0, y: y, width: x1 - x0, height: geo.tier + s * 0.05, fill: '#c98f52', stroke: INK, 'stroke-width': 2, rx: 3 }, p);
+      el('rect', { x: x0, y: y, width: x1 - x0, height: s * 0.13, fill: 'url(#wood)', stroke: INK, 'stroke-width': 2, rx: 3 }, p);
+    }
+  }
+  // where links attach: shoulders / hands
+  const sh = u => [KX[u], KY[u] - s * 0.5];
+  function edgePath(e) {
+    const a = sh(e.u), b = sh(e.v);
+    if (e.type === 'hop') { const my = Math.min(a[1], b[1]) - s * 0.75; return `M${a[0]},${a[1]}Q${(a[0] + b[0]) / 2},${my} ${b[0]},${b[1]}`; }
+    if (e.type === 'wrap') {
+      const l = sh(e.u)[0] < sh(e.v)[0] ? e.u : e.v, r = l === e.u ? e.v : e.u;
+      const lp = [KX[l] - s * 0.3, KY[l] - s * 0.3], rp = [KX[r] + s * 0.3, KY[r] - s * 0.3];
+      const lx = geo.side - 6 - e.lane * geo.lane, rx = W - geo.side + 6 + e.lane * geo.lane;
+      const ty = geo.gtop + 2 + (PL.wraps.length - 1 - e.lane) * geo.lane, c = Math.min(10, geo.lane * 2);
+      return `M${lp[0]},${lp[1]}L${lx + c},${lp[1]}Q${lx},${lp[1]} ${lx},${lp[1] - c}L${lx},${ty + c}Q${lx},${ty} ${lx + c},${ty}L${rx - c},${ty}Q${rx},${ty} ${rx},${ty + c}L${rx},${rp[1] - c}Q${rx},${rp[1]} ${rx - c},${rp[1]}L${rp[0]},${rp[1]}`;
+    }
+    return `M${a[0]},${a[1]}L${b[0]},${b[1]}`;
+  }
+  function drawEdges() {
+    const ga = $('garl'), hd = $('hands'), lk = $('links');
+    let G = '', Hh = '', Lk = '';
+    PL.edges.forEach(e => {
+      if (e.type === 'wrap') G += `<path d="${edgePath(e)}" fill="none" stroke="${INK}" stroke-width="${geo.lane * 0.95 + 1.6}" stroke-linejoin="round" opacity=".55"/><path d="${edgePath(e)}" fill="none" stroke="${['#e98f6c', '#86a9e6', '#efce62', '#86c891'][e.lane % 4]}" stroke-width="${geo.lane * 0.95}" stroke-dasharray="7 3" stroke-linejoin="round"/>`;
+      else if (e.type === 'link') {
+        const a = KX[e.u] < KX[e.v] ? e.u : e.v, b = a === e.u ? e.v : e.u, y = KY[a] - s * 0.4, y2 = KY[b] - s * 0.4;
+        Lk += `<path d="M${KX[a] + s * 0.24},${y}L${KX[b] - s * 0.24},${y2}" stroke="${INK}" stroke-width="${s * 0.09 + 2}" stroke-linecap="round"/><path d="M${KX[a] + s * 0.24},${y}L${KX[b] - s * 0.24},${y2}" stroke="${look(a).skin}" stroke-width="${s * 0.09}" stroke-linecap="round"/><circle cx="${(KX[a] + KX[b]) / 2}" cy="${(y + y2) / 2}" r="${s * 0.065}" fill="${look(b).skin}" stroke="${INK}" stroke-width="1.5"/>`;
+      } else Hh += `<path d="${edgePath(e)}" fill="none" stroke="#8a6448" stroke-width="${Math.max(1.6, s * 0.045)}" stroke-linecap="round" opacity=".6"/>`;
+    });
+    ga.innerHTML = G; hd.innerHTML = Hh; lk.innerHTML = Lk;
+  }
+  function moodOf(u) {
+    if (won) return 'cheese';
+    if (temp[u]) return temp[u];
+    if (u === sel) return 'wow';
+    if (seat && rimSet.has(u)) { const i = seat.seat.indexOf(u); if ((i === 0 || i === 1) && !seat.ok[0]) return 'grump'; if ((i === 3 || i === 4) && !seat.ok[2]) return 'grump'; }
+    return 'smile';
+  }
+  function drawKids() {
+    const kg = $('kids'); kg.innerHTML = ''; kidEl = [];
+    computeSeat();
+    for (let k = PL.R; k >= 1; k--) PL.rows[k].forEach(u => {
+      const o = el('g', { class: 'kid', transform: `translate(${KX[u]},${KY[u]}) scale(${s / 100})` }, kg);
+      const b = el('g', { class: 'bob', style: `animation-delay:${-((u * 0.37) % 2.4)}s` }, o);
+      const sp = el('g', { class: 'spin' }, b);
+      kidEl[u] = { o, sp };
+      drawKid(u);
+    });
+    markSel();
+  }
+  function drawKid(u) { if (kidEl[u]) kidEl[u].sp.innerHTML = kidArt(u, shown[u], moodOf(u)); }
+  function redrawAll() { for (let u = 0; u < g.n; u++) if (u !== g.hole) drawKid(u); }
+  function markSel() {
+    for (let u = 0; u < g.n; u++) if (kidEl[u]) {
+      const c = kidEl[u].o.classList;
+      c.toggle('sel', u === sel); c.toggle('nb', sel >= 0 && g.adj[sel].includes(u)); c.toggle('hint', u === hintU && sel < 0);
+    }
+    const fx = $('fx'); fx.innerHTML = '';
+    if (sel >= 0) PL.edges.forEach(e => { if (e.u === sel || e.v === sel) el('path', { d: edgePath(e), fill: 'none', stroke: '#fff3a8', 'stroke-width': Math.max(4, s * 0.12), 'stroke-linecap': 'round', class: 'march', opacity: .95 }, fx); });
+  }
+
+  function drawTop() {
+    const t = $('topbar'), h = geo.topH, r = h * 0.36, fs = Math.max(13, Math.min(22, W / 22, h * 0.52));
+    const msg = 'Bench: 2 buddy pairs + 1 solo!';
+    const tw = Math.min(W - 4 * r - 24, msg.length * fs * 0.47 + 26);
+    el('g', { filter: 'url(#cray)' }, t, `<rect x="${W / 2 - tw / 2}" y="4" width="${tw}" height="${h - 6}" rx="6" fill="#fffaf0" stroke="${INK}" stroke-width="2" transform="rotate(-.8 ${W / 2} ${h / 2})"/>`);
+    el('text', { x: W / 2, y: 4 + (h - 6) / 2 + fs * 0.34, 'text-anchor': 'middle', 'font-size': fs, fill: INK }, t, msg);
+    const bt = (x, kind, path) => {
+      const gg = el('g', { class: 'btn', 'data-btn': kind, id: 'b_' + kind }, t);
+      el('circle', { cx: x, cy: h / 2 + 1, r: r + 6, fill: 'transparent' }, gg);
+      el('circle', { cx: x, cy: h / 2 + 1, r, fill: '#ffe2a8', stroke: INK, 'stroke-width': 2 }, gg);
+      el('path', { d: path, fill: 'none', stroke: INK, 'stroke-width': 2.2, 'stroke-linecap': 'round', 'stroke-linejoin': 'round', transform: `translate(${x},${h / 2 + 1}) scale(${r / 10})` }, gg);
+    };
+    bt(r + 8, 'undo', 'M-5,-4H3A4.5,4.5 0 0 1 3,5H-3M-5,-4L-1.5,-7.5M-5,-4L-1.5,-0.5');
+    bt(W - r - 8, 'reset', 'M5.5,-3A6,6 0 1 0 6,2M5.5,-3V-7.5M5.5,-3H1');
+    upButtons();
+  }
+  function upButtons() { const b = $('b_undo'); if (b) b.classList.toggle('off', !g.history.length || busy || won); }
+
+  function drawPhotog() {
+    const p = $('photog'), ph = Math.min(geo.benchH * 0.9, W * 0.24), x = W - ph * 0.42 - 6, y = H - 6, k = ph / 100;
+    geo.ph = ph; geo.phX = x; geo.phY = y;
+    el('g', { transform: `translate(${x},${y}) scale(${k})`, filter: 'url(#cray)' }, p,
+      `<path d="M-10,0L-20,-38M-10,0L0,-38M-10,0L-12,-38" stroke="#6b4a2f" stroke-width="3.5" stroke-linecap="round"/>` +
+      `<path d="M10,-2v-26M24,-2v-26" stroke="#4b5b3c" stroke-width="9" stroke-linecap="round"/>` +
+      `<path d="M2,-28L3,-62Q17,-72 32,-62L33,-28Z" fill="#f2efe6" stroke="${INK}" stroke-width="3" stroke-linejoin="round"/><path d="M3,-50H32M3,-40H33" stroke="#d26a5c" stroke-width="4"/>` +
+      `<rect x="-32" y="-60" width="34" height="24" rx="4" fill="#5b4e46" stroke="${INK}" stroke-width="3"/><circle cx="-24" cy="-48" r="8" fill="#9ec6e0" stroke="${INK}" stroke-width="3"/><rect x="-14" y="-70" width="10" height="9" fill="#cfc4b6" stroke="${INK}" stroke-width="2.5"/>` +
+      `<circle id="bulb" cx="-9" cy="-74" r="5" fill="#fff6c4" stroke="${INK}" stroke-width="2"/>` +
+      `<path d="M4,-58Q-6,-54 -4,-46" fill="none" stroke="${INK}" stroke-width="7" stroke-linecap="round"/>` +
+      `<circle cx="18" cy="-82" r="15" fill="#eebf98" stroke="${INK}" stroke-width="3"/><path d="M3,-90Q8,-104 22,-102Q34,-100 35,-90Z" fill="#6b3a5a" stroke="${INK}" stroke-width="3"/><circle cx="20" cy="-105" r="3" fill="#6b3a5a"/>` +
+      `<circle cx="10" cy="-82" r="2.2" fill="${INK}"/><path d="M8,-74q4,2 8,0" fill="none" stroke="${INK}" stroke-width="2.2" stroke-linecap="round"/><path d="M4,-76q6,-3 12,0" fill="none" stroke="#3b2618" stroke-width="3" stroke-linecap="round"/>`);
+  }
+  let sayT = 0;
+  function say(txt, ms) {
+    const p = $('photog'); const old = $('bub'); if (old) old.remove();
+    if (!txt) return;
+    const fs = Math.max(13, Math.min(20, W / 22)), w = txt.length * fs * 0.48 + 18, h = fs * 1.7;
+    const x = Math.min(W - w - 4, geo.phX - w * 0.6), y = geo.phY - geo.ph * 1.12 - h;
+    const b = el('g', { id: 'bub', class: 'say' }, p);
+    el('path', { d: `M${x + 6},${y}H${x + w - 6}Q${x + w},${y} ${x + w},${y + 6}V${y + h - 6}Q${x + w},${y + h} ${x + w - 6},${y + h}H${geo.phX + 4}L${geo.phX + 2},${y + h + 9}L${geo.phX - 8},${y + h}H${x + 6}Q${x},${y + h} ${x},${y + h - 6}V${y + 6}Q${x},${y} ${x + 6},${y}Z`, fill: '#fffaf0', stroke: INK, 'stroke-width': 2 }, b);
+    el('text', { x: x + w / 2, y: y + h / 2 + fs * 0.34, 'text-anchor': 'middle', 'font-size': fs, fill: INK }, b, txt);
+    clearTimeout(sayT); if (ms) sayT = setTimeout(() => { const o = $('bub'); if (o) o.remove(); }, ms);
+  }
+
+  // ---------------- the bench ----------------
+  function benchGeo() {
+    const left = 8, right = W - geo.ph - 10, bw = right - left;
+    const u = Math.max(16, Math.min(bw / 6.1, geo.benchH * 0.42, s * 1.6));
+    const tot = u * 5.9, x0 = left + (bw - tot) / 2, y = H - geo.benchH * 0.32;
+    const cush = [[x0, 2 * u], [x0 + 2.45 * u, 1.0 * u], [x0 + 3.9 * u, 2 * u]];
+    const slotX = [x0 + 0.5 * u, x0 + 1.5 * u, x0 + 2.95 * u, x0 + 4.4 * u, x0 + 5.4 * u];
+    return { u, y, cush, slotX, x0, tot };
+  }
+  function computeSeat() {
+    const B = benchGeo(); geo.B = B;
+    seat = seatPlan(g.rim, shown, KX, B.slotX);
+  }
+  function drawBench() {
+    const bg = $('bench'); bg.innerHTML = '';
+    computeSeat();
+    const B = geo.B, u = B.u, y = B.y, ks = u * 1.05;
+    // dotted seat-plan lines
+    let d = '';
+    seat.seat.forEach((k, i) => { d += `M${KX[k]},${KY[k] + s * 0.02}L${B.slotX[i]},${y - ks * 0.98}`; });
+    el('path', { d, stroke: '#8a6448', 'stroke-width': 1.6, 'stroke-dasharray': '2 4', 'stroke-linecap': 'round', fill: 'none', opacity: .8 }, bg);
+    // bench frame
+    el('g', { filter: 'url(#cray)' }, bg,
+      `<rect x="${B.x0 - u * 0.2}" y="${y - u * 0.05}" width="${B.tot + u * 0.4}" height="${u * 0.22}" rx="4" fill="url(#wood)" stroke="${INK}" stroke-width="2"/>` +
+      `<path d="M${B.x0},${y + u * 0.15}v${u * 0.55}M${B.x0 + B.tot},${y + u * 0.15}v${u * 0.55}M${B.x0 + B.tot / 2},${y + u * 0.15}v${u * 0.5}" stroke="#8a5a2e" stroke-width="${u * 0.14}" stroke-linecap="round"/>`);
+    // cushion backs
+    const cc = ['#e7a7b8', '#c9b8e8', '#e7a7b8'];
+    B.cush.forEach(([cx, cw], i) => el('rect', { x: cx, y: y - u * 0.62, width: cw, height: u * 0.62, rx: u * 0.25, fill: seat.ok[i] ? cc[i] : '#d9cfc4', stroke: INK, 'stroke-width': 2 }, bg));
+    // seated kids
+    seat.seat.forEach((k, i) => {
+      const gk = el('g', { transform: `translate(${B.slotX[i]},${y - u * 0.05}) scale(${ks / 100})` }, bg);
+      const lean = (i === 0 || i === 3) ? -1 : (i === 1 || i === 4) ? 1 : 0;
+      const bad = (i < 2 && !seat.ok[0]) || (i > 2 && !seat.ok[2]);
+      const happy = !bad && i !== 2;
+      el('g', { transform: `rotate(${bad ? lean * 9 : happy ? -lean * 6 : 0})` }, gk, kidArt(k, shown[k], won ? 'cheese' : bad ? 'grump' : 'smile', true));
+    });
+    // cushion fronts + verdicts
+    B.cush.forEach(([cx, cw], i) => {
+      el('rect', { x: cx - 1, y: y - u * 0.22, width: cw + 2, height: u * 0.3, rx: u * 0.14, fill: seat.ok[i] ? cc[i] : '#d9cfc4', stroke: INK, 'stroke-width': 2 }, bg);
+      el('path', { d: `M${cx + 6},${y - u * 0.08}h${cw - 12}`, stroke: '#fff', 'stroke-width': 1.5, 'stroke-dasharray': '3 3', opacity: .7 }, bg);
+      const mx = cx + cw / 2, my = y + u * 0.48, r = Math.max(8, u * 0.22);
+      if (i === 1) el('g', {}, bg, `<path d="${star(mx, my, r * 0.95)}" fill="#ffd34a" stroke="${INK}" stroke-width="1.8" stroke-linejoin="round"/>`);
+      else if (seat.ok[i]) el('g', { class: 'happy' }, bg, `<circle cx="${mx}" cy="${my}" r="${r}" fill="#7cc77f" stroke="${INK}" stroke-width="2"/><path d="M${mx - r * 0.45},${my}l${r * 0.3},${r * 0.35}l${r * 0.55},-${r * 0.7}" fill="none" stroke="#fff" stroke-width="${Math.max(2, r * 0.28)}" stroke-linecap="round" stroke-linejoin="round"/>` + heart(mx, y - u * 1.75, u * 0.2));
+      else el('g', {}, bg, `<circle cx="${mx}" cy="${my}" r="${r}" fill="#f0a59a" stroke="${INK}" stroke-width="2"/><path d="M${mx - r * 0.38},${my - r * 0.38}l${r * 0.76},${r * 0.76}M${mx + r * 0.38},${my - r * 0.38}l-${r * 0.76},${r * 0.76}" stroke="#fff" stroke-width="${Math.max(2, r * 0.28)}" stroke-linecap="round"/>` +
+        `<path d="M${mx - u * 0.18},${y - u * 1.75}l${u * 0.12},-${u * 0.12}l${u * 0.12},${u * 0.12}l${u * 0.12},-${u * 0.12}" fill="none" stroke="#c0392b" stroke-width="2" stroke-linecap="round"/>`);
+    });
+  }
+  function star(x, y, r) { let d = ''; for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + i * Math.PI / 5, rr = i % 2 ? r * 0.45 : r; d += (i ? 'L' : 'M') + (x + rr * Math.cos(a)).toFixed(1) + ',' + (y + rr * Math.sin(a)).toFixed(1); } return d + 'Z'; }
+  function heart(x, y, r) { return `<path d="M${x},${y + r}C${x - r * 2},${y - r * 0.4} ${x - r * 0.8},${y - r * 1.8} ${x},${y - r * 0.6}C${x + r * 0.8},${y - r * 1.8} ${x + r * 2},${y - r * 0.4} ${x},${y + r}Z" fill="#ff7a8f" stroke="${INK}" stroke-width="1.6"/>`; }
+
+  // ---------------- shirt chips ----------------
+  function drawChips() {
+    const c = $('chips'); c.innerHTML = '';
+    if (sel < 0 || busy || won) return;
+    const r = Math.max(15, Math.min(26, s * 0.34)), opts = [];
+    for (let b = 0; b < NC; b++) if (b !== shown[sel]) opts.push(b);
+    let y = KY[sel] - s * 1.12 - r;
+    if (y < geo.topH + r + 2) y = KY[sel] - s * 0.25 + r;
+    const span = (opts.length - 1) * r * 2.3;
+    let x0 = Math.max(r + 4, Math.min(W - r - 4 - span, KX[sel] - span / 2));
+    opts.forEach((b, i) => {
+      const x = x0 + i * r * 2.3;
+      const gg = el('g', { class: 'chip' + (sel === hintU && b === hintB ? ' hint' : ''), 'data-chip': b }, c);
+      el('g', { class: 'cb' }, gg,
+        `<circle cx="${x}" cy="${y}" r="${r + 5}" fill="transparent"/>` +
+        `<circle cx="${x}" cy="${y}" r="${r}" fill="#fffaf0" stroke="${INK}" stroke-width="2"/>` +
+        `<path transform="translate(${x},${y}) scale(${r / 22})" d="M-15,-9L-7,-14Q0,-10 7,-14L15,-9L13,-2L9,-4L9,13H-9L-9,-4L-13,-2Z" fill="${TEAM[b].col}" stroke="${INK}" stroke-width="2.2" stroke-linejoin="round"/>` +
+        badge(b, x, y + r * 0.12, r * 0.33));
+    });
+  }
+
+  // ---------------- play ----------------
+  function select(u) { sel = u; markSel(); drawChips(); redrawSelFaces(); }
+  let lastSel = -1;
+  function redrawSelFaces() { if (lastSel >= 0 && lastSel !== sel) drawKid(lastSel); if (sel >= 0) drawKid(sel); lastSel = sel; }
+  function pick(x, y) {
+    let best = -1, bd = Infinity;
+    for (let u = 0; u < g.n; u++) {
+      if (u === g.hole) continue;
+      const d = Math.hypot((x - KX[u]) / 0.85, y - (KY[u] - s * 0.55));
+      if (d < bd) { bd = d; best = u; }
+    }
+    return bd < s * 0.6 ? best : -1;
+  }
+  function doMove(a, b) {
+    const K = chainFor(g, a, b);
+    if (!K) return;
+    hintU = -1; idle();
+    sel = -1; lastSel = -1; markSel(); drawChips();
+    if (K.web) { wave(K, a, false); return; }
+    g.swap(K); wave(K, a, true);
+  }
+  function wave(K, a, real) {
+    busy = true; upButtons();
+    const { lv, par } = waveOrder(g, K, a);
+    const step = RM ? 110 : 200;
+    const fx = $('fx');
+    lv.forEach((ring, i) => setTimeout(() => {
+      shutter(i, false);
+      const f = $('flash'); if (f && !RM) { f.classList.remove('f1'); void f.getBoundingClientRect(); f.classList.add('f1'); }
+      const bl = $('bulb'); if (bl) { bl.setAttribute('fill', '#fff'); setTimeout(() => bl.setAttribute('fill', '#fff6c4'), 120); }
+      ring.forEach(u => {
+        const p = par.get(u);
+        if (p >= 0) { const e = PL.edges.find(e => (e.u === p && e.v === u) || (e.u === u && e.v === p)); if (e) el('path', { d: edgePath(e), fill: 'none', stroke: '#ffe066', 'stroke-width': Math.max(4, s * 0.13), 'stroke-linecap': 'round', class: 'glow' }, fx); }
+        const sp = kidEl[u].sp;
+        sp.classList.remove('go'); void sp.getBoundingClientRect(); if (!RM) sp.classList.add('go');
+        setTimeout(() => { if (real) shown[u] = g.col[u]; else temp[u] = 'flat'; drawKid(u); }, RM ? 0 : 170);
+      });
+    }, i * step));
+    setTimeout(() => {
+      busy = false; fx.innerHTML = '';
+      document.querySelectorAll('.spin.go').forEach(x => x.classList.remove('go'));
+      shown = g.col.slice();
+      drawBench(); redrawAll(); upButtons();
+      if (!real) {
+        say('Sigh… same photo.', 1900);
+        tone(392, 0.35, 'sine', 0.12, 220);
+        setTimeout(() => { temp = {}; redrawAll(); }, 1100);
+      } else if (g.won()) win();
+      else tone(660, 0.12, 'triangle', 0.08, 880);
+    }, lv.length * step + 260);
+  }
+  function win() {
+    won = true; busy = true; sel = -1; markSel(); drawChips(); upButtons();
+    say('Say cheese!', 0);
+    redrawAll(); drawBench();
+    tone(523, 0.25, 'triangle', 0.12); tone(659, 0.25, 'triangle', 0.1, null, 0.12); tone(784, 0.4, 'triangle', 0.1, null, 0.24);
+    setTimeout(() => {
+      shutter(0, true);
+      const f = $('flash'); f.classList.remove('f1', 'f2'); void f.getBoundingClientRect(); f.classList.add('f2');
+      setTimeout(() => { showPolaroid(false); busy = false; }, RM ? 200 : 650);
+    }, RM ? 300 : 1000);
+  }
+  function showPolaroid(instant) {
+    const o = $('over'); o.innerHTML = '';
+    el('rect', { width: W, height: H, fill: '#2b1d14', class: instant ? '' : 'dim', opacity: .55 }, o);
+    const cw = Math.min(W * 0.84, H * 0.72 / 1.2, 460), pw = cw * 0.88, ch = cw * 1.2;
+    const cx = W / 2, cy = H / 2;
+    const card = el('g', { transform: `translate(${cx},${cy}) rotate(-3)` }, o);
+    const inner = el('g', { class: instant ? '' : 'drop' }, card);
+    el('rect', { x: -cw / 2 + 4, y: -ch / 2 + 6, width: cw, height: ch, fill: '#000', opacity: .25, rx: 4 }, inner);
+    el('rect', { x: -cw / 2, y: -ch / 2, width: cw, height: ch, fill: '#fffdf6', stroke: '#d8cdb8', 'stroke-width': 1.5, rx: 3, filter: 'url(#cray)' }, inner);
+    const px = -pw / 2, py = -ch / 2 + (cw - pw) / 2;
+    el('clipPath', { id: 'pc' }, inner, `<rect x="${px}" y="${py}" width="${pw}" height="${pw}"/>`);
+    const ph = el('g', { 'clip-path': 'url(#pc)' }, inner);
+    // the photo: wall, pennants, bench with the two buddy pairs + solo, mascot photobomb
+    el('rect', { x: px, y: py, width: pw, height: pw, fill: '#f3e3c3' }, ph);
+    el('rect', { x: px, y: py + pw * 0.74, width: pw, height: pw * 0.26, fill: '#e9c99a' }, ph);
+    let pen = ''; for (let i = 0; i < 7; i++) { const x = px + (i + 0.5) * pw / 7, y = py + 6; pen += `<path d="M${x - 9},${y}L${x + 9},${y}L${x},${y + 13}Z" fill="${TEAM[i % 4].col}" opacity=".6"/>`; }
+    el('g', {}, ph, pen);
+    const fr = g.free();
+    if (fr >= 0) el('g', { transform: `translate(${px + pw * 0.8},${py + pw * 0.66}) scale(${pw / 330}) rotate(8)` }, ph, mascotArt(fr));
+    const B = geo.B, u = pw / 6.6, by = py + pw * 0.8, bx0 = px + (pw - 5.9 * u) / 2;
+    const slotX = [0.5, 1.5, 2.95, 4.4, 5.4].map(v => bx0 + v * u);
+    const cush = [[bx0, 2 * u], [bx0 + 2.45 * u, u], [bx0 + 3.9 * u, 2 * u]];
+    el('rect', { x: bx0 - u * 0.2, y: by - u * 0.05, width: 6.3 * u, height: u * 0.2, fill: 'url(#wood)', stroke: INK, 'stroke-width': 1.5 }, ph);
+    cush.forEach(([x, w], i) => el('rect', { x, y: by - u * 0.6, width: w, height: u * 0.6, rx: u * 0.25, fill: ['#e7a7b8', '#c9b8e8', '#e7a7b8'][i], stroke: INK, 'stroke-width': 1.5 }, ph));
+    seat.seat.forEach((k, i) => el('g', { transform: `translate(${slotX[i]},${by}) scale(${u * 1.15 / 100}) rotate(${[6, -6, 0, 6, -6][i]})` }, ph, kidArt(k, shown[k], 'cheese', true)));
+    cush.forEach(([x, w]) => el('rect', { x: x - 1, y: by - u * 0.2, width: w + 2, height: u * 0.28, rx: u * 0.12, fill: '#f1c4cf', stroke: INK, 'stroke-width': 1.5 }, ph));
+    el('g', {}, ph, heart(bx0 + u, by - u * 1.55, u * 0.17) + heart(bx0 + 4.9 * u, by - u * 1.55, u * 0.17));
+    // developing: dark sheet fades away, then a sepia veil lifts
+    el('rect', { x: px, y: py, width: pw, height: pw, fill: '#a88a5c', class: instant ? '' : 'devsep', opacity: instant ? .08 : .55, style: 'mix-blend-mode:multiply' }, inner);
+    el('rect', { x: px, y: py, width: pw, height: pw, fill: '#2d2622', class: instant ? '' : 'dev', opacity: instant ? 0 : 1 }, inner);
+    const fs = Math.max(16, cw * 0.075);
+    el('text', { x: 0, y: py + pw + (ch - pw - (cw - pw) / 2) * 0.48, 'text-anchor': 'middle', 'font-size': fs, fill: '#3a4a8a' }, inner, 'Class Photo ✿');
+    el('text', { x: 0, y: py + pw + (ch - pw - (cw - pw) / 2) * 0.48 + fs * 0.95, 'text-anchor': 'middle', 'font-size': fs * 0.55, fill: '#8a7a68' }, inner, 'tap for a new class');
+  }
+  function restart() { won = false; busy = false; sel = -1; lastSel = -1; temp = {}; $('over').innerHTML = ''; say(''); g.reset(); }
+
+  g.on((gg, info) => {
+    if (info.type === 'swap') return; // the wave reveals swaps kid by kid
+    shown = g.col.slice(); sel = -1; lastSel = -1; temp = {}; hintU = -1;
+    markSel(); drawChips(); redrawAll(); drawBench(); upButtons(); idle();
+  });
+
+  function idle() {
+    clearTimeout(idleT);
+    idleT = setTimeout(() => {
+      if (busy || won || sel >= 0) { idle(); return; }
+      const G = g.good(); if (!G.length) return;
+      const K = G[0]; const u = K.vs.find(v => rimSet.has(v)) ?? K.vs[0];
+      hintU = u; hintB = K.pair[0] === g.col[u] ? K.pair[1] : K.pair[0];
+      markSel();
+      say('psst… try a shirt swap!', 2200);
+    }, 10000);
+  }
+
+  S.addEventListener('pointerdown', ev => {
+    ev.preventDefault();
+    ac();
+    const x = ev.clientX, y = ev.clientY;
+    if (won) { if (!busy) restart(); return; }
+    const t = ev.target.closest && ev.target.closest('[data-btn],[data-chip]');
+    if (t && t.dataset.btn) {
+      if (busy) return;
+      if (t.dataset.btn === 'undo') { if (g.history.length) { g.undo(); tone(330, 0.1, 'sine', 0.08); } }
+      else { g.reset(); tone(262, 0.15, 'sine', 0.08); }
+      return;
+    }
+    if (busy) return;
+    idle();
+    if (t && t.dataset.chip != null && sel >= 0) { doMove(sel, +t.dataset.chip); return; }
+    const u = pick(x, y);
+    if (u < 0) { if (sel >= 0) { select(-1); } return; }
+    if (u === sel) { select(-1); tone(300, 0.06, 'sine', 0.05); return; }
+    if (sel >= 0 && g.adj[sel].includes(u)) { doMove(sel, g.col[u]); return; }
+    tone(520 + 30 * (u % 5), 0.07, 'triangle', 0.07);
+    if (u === hintU) { /* keep the hint chip pulsing for this kid */ } else hintU = -1;
+    select(u);
+  });
+  let rz = 0;
+  addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(() => { if (!busy) { sel = -1; lastSel = -1; build(); } }, 120); });
+  build();
+  idle();
+  Object.assign(window.ClassPhoto, { KX, KY, size: () => s }); // for tests
+})();
+</script>
+</body>
+</html>

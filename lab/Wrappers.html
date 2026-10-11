@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Fill the Hole Wrappers</title>
+<style>
+  /* Dev page: every front end playing the same level, side by side, each in its own frame with its own state. */
+  :root { --bg: #0e1122; --card: #171b33; --line: #2b3157; --fg: #e8ecff; --dim: #8f97c4; --accent: #ffd84a; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--fg); font: 13px/1.35 system-ui, -apple-system, Segoe UI, sans-serif; }
+  body { padding: 10px 12px 24px; }
+  h1 { margin: 2px 0 2px; font-size: 1.05rem; letter-spacing: .02em; }
+  h1 small { color: var(--dim); font-weight: 500; font-size: .8rem; margin-left: 8px; }
+  h2 { margin: 16px 0 8px; font-size: .78rem; text-transform: uppercase; letter-spacing: .12em; color: var(--accent); }
+  .row { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 10px; }
+  .tile { position: relative; background: var(--card); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; display: flex; flex-direction: column; min-width: 0; }
+  .tile header { display: flex; align-items: baseline; gap: 6px; padding: 6px 8px 5px; border-bottom: 1px solid var(--line); min-width: 0; }
+  .tile header b { font-size: .82rem; white-space: nowrap; }
+  .tile header span { color: var(--dim); font-size: .7rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
+  .tile header button { background: none; border: 1px solid var(--line); color: var(--fg); border-radius: 7px; font: inherit; font-size: .72rem; padding: 1px 7px; cursor: pointer; }
+  .tile header button:hover { border-color: var(--accent); }
+  .tile iframe { display: block; width: 100%; height: 520px; border: 0; background: #000; }
+  .tile.min iframe { display: none; } .tile.min { align-self: start; } .tile.min header { border-bottom: 0; }
+  .tile.max { position: fixed; inset: 0; z-index: 10; border-radius: 0; }
+  .tile.max iframe { flex: 1; height: auto; }
+  .tile.max header button.mx::after { content: ' ✕'; }
+  body.has-max { overflow: hidden; }
+  .tile header .sk { display: flex; gap: 3px; font-style: normal; } .tile header .sk button.on { background: var(--accent); color: #1c1640; border-color: var(--accent); }
+  .row { grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); } .tile iframe { height: 600px; }
+  @media (max-width: 560px) { .tile iframe { height: 70vh; } }
+</style>
+</head>
+<body>
+<h1>Fill the Hole · Wrappers <small>the keepers: one puzzle (level 4), six game skins over it, each frame independent · <a href="index.html" style="color:var(--fg)">all trials</a></small></h1>
+
+<h2>Keepers</h2>
+<div class="row" id="rowA"></div>
+<h2>Crowds: the gate needs two pairs and a single</h2>
+<div class="row" id="rowB"></div>
+<h2>Pens: move one in, the ones who clash move out</h2>
+<div class="row" id="rowC"></div>
+<h2>Experiments</h2>
+<div class="row" id="rowD"></div>
+
+<script>
+  const lvl = new URLSearchParams(location.search).get('lvl') || '4';
+  // each entry: [name, note, [[skin label, src], ...]]: more than one skin gives the tile a skin toggle
+  const A = [
+    ['Fill the Hole', 'the current game, walled', [['Game', '../index.html?lab=' + lvl + '&walls=1']]],
+    ['Dots', 'one-finger chaining; skins share the same play', [['Dots', 'dots.html?lvl=' + lvl], ['Spheres', 'spheres.html?lvl=' + lvl]]],
+    ['Island map', 'drag across a border', [['Island', 'map.html?lvl=' + lvl]]],
+    ['Blocks', 'cosy cat blocks', [['Blocks', 'blocks.html?lvl=' + lvl]]],
+    ['Petting Zoo', 'swipe animals between four pens', [['Zoo', 'zoo.html?lvl=' + lvl]]],
+    ['Monster Ride', 'fast taps: monsters do-si-do', [['Ride', 'ride.html?lvl=' + lvl]]],
+  ];
+  function row(id, list) {
+    const el = document.getElementById(id);
+    list.forEach(([name, note, skins]) => {
+      const t = document.createElement('section'); t.className = 'tile';
+      t.innerHTML = '<header><b></b><span></span><i class="sk"></i><button class="mn" title="Minimize: unload this game to free memory">–</button><button class="rl" title="Reload this game">↺</button><button class="mx" title="Fill the window">⤢</button></header><iframe loading="lazy" allow="autoplay"></iframe>';
+      t.querySelector('b').textContent = name; t.querySelector('span').textContent = note;
+      const f = t.querySelector('iframe'); let cur = skins[0][1]; f.src = cur; f.title = name;
+      if (skins.length > 1) {                       // skin toggle: same puzzle, different look
+        const box = t.querySelector('.sk');
+        skins.forEach(([lab, src], k) => { const b = document.createElement('button'); b.textContent = lab; b.className = k ? '' : 'on';
+          b.onclick = () => { box.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); cur = src; f.src = src; }; box.appendChild(b); });
+      }
+      t.querySelector('.rl').onclick = () => { f.src = cur; };
+      // minimize: unload the frame (frees its memory and CPU), remembered per tile in this browser
+      const mkey = 'lab-min:' + location.pathname + ':' + name;
+      const setMin = on => { t.classList.toggle('min', on); f.src = on ? 'about:blank' : cur; t.querySelector('.mn').textContent = on ? '+' : '–'; try { localStorage.setItem(mkey, on ? '1' : ''); } catch (_) {} };
+      t.querySelector('.mn').onclick = () => setMin(!t.classList.contains('min'));
+      try { if (localStorage.getItem(mkey) === '1') setMin(true); } catch (_) {}
+      t.querySelector('.mx').onclick = () => { const on = t.classList.toggle('max'); document.body.classList.toggle('has-max', on); focusOnly(on ? t : null); };
+      t._reload = () => { if (!t.classList.contains('min')) f.src = cur; };
+      t._unload = () => { f.src = 'about:blank'; };
+      el.appendChild(t);
+    });
+  }
+  const B = [
+    ['Monster Ride 2', 'families in rows; the car seats two pairs and a single', [['Ride 2', 'ride2.html?lvl=' + lvl]]],
+    ['Carpool', 'a taxi rank: the van takes two couples and one solo', [['Carpool', 'carpool.html?lvl=' + lvl]]],
+    ['Class Photo', 'bleachers: the front bench wants two pairs and a single', [['Photo', 'photo.html?lvl=' + lvl]]],
+  ];
+  const C = [
+    ['Gift Boxes', 'packing gifts that clash into four boxes', [['Gifts', 'gifts.html?lvl=' + lvl]]],
+    ['Wedding Tables', 'seating guests who feud at four tables', [['Tables', 'tables.html?lvl=' + lvl]]],
+    ['Ion Channels', 'ions jostle between four compartments', [['Ions', 'ions.html?lvl=' + lvl]]],
+  ];
+  const D = [
+    ['Line Doodle', 'the childhood line-drawing colouring game (its own puzzle)', [['Lines', 'lines.html']]],
+    ['Pills', 'Dr. Mario pills: flip one, its pair-mates flip in a chain', [['Pills', 'pills.html?lvl=' + lvl]]],
+    ['Bonus Swipe', 'the bonus round as the real puzzle', [['Swipe', 'swipe.html?lvl=' + lvl]]],
+  ];
+  row('rowA', A); row('rowB', B); row('rowC', C); row('rowD', D);
+  // every same-origin frame shares one thread, so a dozen running games slow each other down: while one tile is
+  // maximised the others are unloaded, and they come back when it is restored
+  function focusOnly(keep) {
+    document.querySelectorAll('.tile').forEach(t => { if (t === keep) return; if (keep) t._unload && t._unload(); else t._reload && t._reload(); });
+  }
+  addEventListener('keydown', e => { if (e.key === 'Escape' && document.querySelector('.tile.max')) { document.querySelectorAll('.tile.max').forEach(t => t.classList.remove('max')); document.body.classList.remove('has-max'); focusOnly(null); } });
+</script>
+</body>
+</html>

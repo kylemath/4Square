@@ -1,0 +1,927 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Monster Ride 2</title>
+<!--
+  MONSTER RIDE 2: the same chunky googly-eyed monsters, now in an organised queue, and a car built for two couples.
+
+  What the player sees: a purple boarding platform in the middle with the ride car on it, seen from above: a driver's
+  seat at the nose, a middle bench (2) and a back bench (2). The five monsters at the gate already SIT in the car.
+  Everybody else waits in ringed queue lanes around the platform, each monster on its own painted spot, and every
+  hand-hold is drawn all the time as two linked arms with a clasp (arms of one lane run along the lane; arms between
+  lanes reach across; an arm that skips people arches around them; passengers' arms reach out of the car to the crowd).
+  Species: round red Blorb, tall blue Stretch, triangle yellow Spike, square green Boxo (shape, colour, eyes, mouth
+  and topper all differ). Rules of the park: two of the same species never hold hands, and one species per bench.
+  The matching couple sits on the middle bench and glows. The back bench holds two different monsters, sweating, with
+  a red "!" badge. Sign: "Back bench must match, then we ride!" When the back bench matches too (2+2+1), the car
+  flies a loop over the crowd.
+  Mapping onto the puzzle (lab/core.js):
+    monster u                    = region u (every region except the hole); species = g.col[u]
+    linked arms (always drawn)   = the edges g.edges not touching the hole (legal colouring = no same-species arms)
+    the ride car                 = the hole; the 5 passengers = g.rim (ring neighbours hold hands, so always differ)
+    queue lane k                 = BFS distance k from the hole (lane 1 = platform). Order inside a lane comes from
+                                   the planar drawing g.pos + a crossing-repair search (no two arms cross on level 4).
+    seating (seatPlan)           = rim positions 0..4 in ring order. Not won (2+1+1+1): the couple {a, a+2} on the middle
+                                   bench, back bench {a+1, a+3} or {a+1, a+4} (never ring-neighbours, so it cannot match
+                                   yet), the last single drives; the option that moves fewest passengers is kept.
+                                   Won (g.won(), 2+2+1): one couple per bench, the solo drives. After every swap the plan
+                                   is recomputed and passengers who change seats hop over. The car leaves exactly when
+                                   g.won(). (g.free() is the species not riding; not shown.)
+    lane 1 spots on the platform = where each passenger's arms leave the car (its place in the ring)
+    do-si-do                     = exactly one g.swap(K):
+       tap monster A, then tap one of its hand-holding neighbours B  ->  K = g.chainAt(A, col[B])
+       tap monster A, then one of the 3 costume bubbles (species b)  ->  K = g.chainAt(A, b)
+       (costumes reach every chain through A, so every chain on the map is reachable, including single-monster
+        chains). The spin travels monster by monster along the arms (BFS from A inside K); each arm it crosses flashes.
+    K.web (the only couple-chain of that pair on the map) -> no swap; that crowd shrugs, "...same seats. Meh!"
+    undo / restart (top corners) = g.undo() / g.reset(). Win: the back bench glows "Match!", the passengers let go of the
+                                   crowd, the car flies a loop over the crowd; tap to ride again (g.reset()).
+  The whole scene is fitted to the frame (and re-fitted on resize): if anything would poke out, the view box widens.
+  Idle hint: after a few quiet seconds a monster from a g.good() chain waves "psst", and its right costume pulses.
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #ffe6a8; touch-action: manipulation;
+    -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
+  svg { display: block; width: 100%; height: 100%; font-family: Fredoka, 'Trebuchet MS', 'Arial Rounded MT Bold', system-ui, sans-serif; }
+  .bob, .spin { transform-box: fill-box; transform-origin: 50% 100%; }
+  .bob { animation: bob 1.5s ease-in-out infinite; }
+  @keyframes bob { 0%, 100% { transform: scale(1, 1); } 50% { transform: scale(1.05, .94); } }
+  .m { cursor: pointer; }
+  .m.sel .bob { animation: hop .46s ease-in-out infinite; }
+  @keyframes hop { 0%, 100% { transform: scale(1.1, .9); } 45% { transform: translateY(-16%) scale(.95, 1.07); } }
+  .m.nb .bob { animation: wig .5s ease-in-out infinite; }
+  @keyframes wig { 0%, 100% { transform: rotate(-6deg); } 50% { transform: rotate(6deg); } }
+  .m.hint .bob { animation: wig .35s ease-in-out infinite; }
+  .m.gone { opacity: 0; pointer-events: none; }
+  .ring { opacity: 0; transition: opacity .12s; }
+  .m.sel .ring, .m.pv .ring { opacity: 1; }
+  .m.pv .ring { stroke-dasharray: 5 4; animation: march .5s linear infinite; }
+  .halo { opacity: 0; transition: opacity .25s; }
+  .m.pair .halo { opacity: 1; animation: glow .7s ease-in-out infinite alternate; }
+  .m.solo .sweat { opacity: 1; }
+  .sweat { opacity: 0; transition: opacity .25s; }
+  .spin.go { animation: dosido .42s ease-in-out; }
+  @keyframes dosido { 0% { transform: none; } 30% { transform: translateY(-14%) scaleX(.45) rotate(-10deg); }
+    50% { transform: translateY(-20%) scaleX(0); } 72% { transform: translateY(-12%) scaleX(.5) rotate(10deg); } 100% { transform: none; } }
+  .spin.shrug { animation: shrug .55s ease-in-out; }
+  @keyframes shrug { 0%, 100% { transform: none; } 30% { transform: scale(1.08, .9) rotate(-5deg); } 60% { transform: scale(.95, 1.06) rotate(5deg); } }
+  .arms { transition: opacity .2s; }
+  .arms.dim .arm { opacity: .28; }
+  .arms.dim .arm.hot { opacity: 1; }
+  .arm.zap { animation: zap .5s ease-out; }
+  @keyframes zap { 0% { opacity: 1; filter: brightness(1.8); } 100% { filter: none; } }
+  .dibs { stroke-dasharray: 3 5; stroke-linecap: round; animation: march .7s linear infinite; }
+  @keyframes march { to { stroke-dashoffset: -16; } }
+  .shake { animation: shake .35s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+  @keyframes shake { 0%, 100% { transform: rotate(0); } 25% { transform: rotate(-9deg); } 75% { transform: rotate(9deg); } }
+  .popin { animation: pop .3s cubic-bezier(.3, 1.6, .5, 1); transform-box: fill-box; transform-origin: center; }
+  .cos { cursor: pointer; }
+  .cos .cb { animation: pop .18s ease-out; transform-box: fill-box; transform-origin: center; }
+  .cos.hint .cb { animation: pulse .6s ease-in-out infinite; }
+  @keyframes pop { from { transform: scale(.2); } to { transform: scale(1); } }
+  @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.22); } }
+  @keyframes glow { from { opacity: .45; } to { opacity: 1; } }
+  .cheer { animation: rise .8s ease-out forwards; transform-box: fill-box; transform-origin: center; }
+  @keyframes rise { 0% { transform: translateY(0) scale(.4); opacity: 0; } 20% { transform: translateY(-6px) scale(1.15); opacity: 1; }
+    100% { transform: translateY(-26px) scale(1); opacity: 0; } }
+  .say { animation: say 1.7s ease-out forwards; transform-box: fill-box; transform-origin: center; }
+  @keyframes say { 0% { transform: scale(.4); opacity: 0; } 12% { transform: scale(1.1); opacity: 1; } 20%, 80% { transform: scale(1); opacity: 1; } 100% { opacity: 0; } }
+  .btn { cursor: pointer; }
+  .btn.off { opacity: .35; }
+  @media (prefers-reduced-motion: reduce) {
+    .bob, .m.sel .bob, .m.nb .bob, .m.hint .bob, .dibs, .m.pv .ring, .m.pair .halo, .cos.hint .cb, .shake, .popin, .arm.zap { animation: none; }
+    .spin.go, .spin.shrug { animation: none; }
+    .cheer, .say { animation: none; }
+  }
+</style>
+</head>
+<body>
+<svg id="S" xmlns="http://www.w3.org/2000/svg"></svg>
+<script src="../levels.js"></script>
+<script src="../layout.js"></script>
+<script src="core.js"></script>
+<script>
+(function () {
+  'use strict';
+  const g = LAB.game();
+  const NC = g.NC || 4;
+  const INK = '#2b1d3a';
+  const KIND = [
+    { name: 'Blorb', col: '#ff5d73', dark: '#b8243f', light: '#ffd3da' },
+    { name: 'Stretch', col: '#3d8bff', dark: '#1d4fb0', light: '#cfe1ff' },
+    { name: 'Spike', col: '#ffc21a', dark: '#a87400', light: '#fff0b8' },
+    { name: 'Boxo', col: '#2fbf71', dark: '#16764a', light: '#c8f3da' },
+  ];
+  // ---------- monster art (100-unit box centred on 0,0) ----------
+  const BODY = [
+    'M0,-40C24,-40 42,-22 42,4C42,28 24,42 0,42C-24,42 -42,28 -42,4C-42,-22 -24,-40 0,-40Z',
+    'M-26,-22A26,26 0 0 1 26,-22L26,38Q19.5,48 13,38Q6.5,28 0,38Q-6.5,48 -13,38Q-19.5,28 -26,38Z',
+    'M0,-46Q5,-46 8,-40L45,30Q49,40 38,40L-38,40Q-49,40 -45,30L-8,-40Q-5,-46 0,-46Z',
+    'M-36,-28Q-36,-36 -28,-36L28,-36Q36,-36 36,-28L36,32Q36,40 28,40L-28,40Q-36,40 -36,32Z',
+  ];
+  const TOP = [-40, -48, -46, -36];
+  const EYES = [[[0, -8, 15]], [[-11, -22, 9], [11, -22, 9]], [[-11, 10, 8.5], [11, 10, 8.5]], [[-18, -14, 7], [0, -20, 8.5], [18, -14, 7]]];
+  const PRE = [
+    `<path d="M0,-40Q-3,-50 5,-55" fill="none"/><circle cx="6" cy="-56" r="5" fill="#ffd23f"/>`,
+    `<path d="M-6,-47q-4,-9 -1,-12M0,-48q0,-9 4,-12M6,-47q5,-7 9,-7" fill="none"/>`,
+    `<path d="M-30,10l-14,-4l10,10M30,10l14,-4l-10,10" fill="#ffc21a"/>`,
+    `<path d="M-30,-36L-24,-52L-16,-36ZM30,-36L24,-52L16,-36Z" fill="#fff4dc"/>`,
+  ];
+  const MOUTH = [
+    `<path d="M-15,14Q0,32 15,14Z" fill="#5a1530" stroke="${INK}" stroke-width="3" stroke-linejoin="round"/><path d="M-6,15h6v5h-6z" fill="#fff"/>`,
+    `<ellipse cx="0" cy="4" rx="6.5" ry="8.5" fill="#14295e" stroke="${INK}" stroke-width="3"/>`,
+    `<path d="M-17,24Q0,36 17,24Z" fill="#5a3a00" stroke="${INK}" stroke-width="3" stroke-linejoin="round"/><path d="M-11,25l3,5l3,-4.5M11,25l-3,5l-3,-4.5" fill="#fff"/>`,
+    `<rect x="-17" y="10" width="34" height="12" rx="4" fill="#0d4a2c" stroke="${INK}" stroke-width="3"/><path d="M-13,11.5h6v5h-6zM-3,11.5h6v5h-6zM7,11.5h6v5h-6z" fill="#fff"/>`,
+  ];
+  const SHINE = [[-18, -20], [-13, -30], [-8, -18], [-22, -24]];
+  const CROWN = y => `<path d="M-18,${y}l4,-16l8,9l6,-14l6,14l8,-9l4,16z" fill="#ffd23f" stroke="${INK}" stroke-width="3.5" stroke-linejoin="round"/><circle cx="0" cy="${y - 6}" r="3" fill="#ff5d73"/>`;
+  function art(k, vip) {
+    const K = KIND[k];
+    let s = `<g stroke="${INK}" stroke-width="4.5" stroke-linejoin="round" stroke-linecap="round">${PRE[k]}` +
+      `<ellipse cx="-15" cy="43" rx="10" ry="6" fill="${K.dark}"/><ellipse cx="15" cy="43" rx="10" ry="6" fill="${K.dark}"/>` +
+      `<path d="${BODY[k]}" fill="${K.col}"/></g>` +
+      `<ellipse cx="${SHINE[k][0]}" cy="${SHINE[k][1]}" rx="8" ry="4.5" fill="#fff" opacity=".5" transform="rotate(-35 ${SHINE[k][0]} ${SHINE[k][1]})"/>`;
+    EYES[k].forEach(([x, y, r]) => {
+      s += `<circle cx="${x}" cy="${y}" r="${r}" fill="#fff" stroke="${INK}" stroke-width="3"/>` +
+        `<circle class="pu" data-r="${r}" cx="${x}" cy="${y}" r="${r * 0.5}" fill="${INK}"/>`;
+    });
+    s += MOUTH[k];
+    if (vip) s += CROWN(TOP[k] - 2);
+    return s;
+  }
+  const seatArt = (k, sc) => `<path d="${BODY[k]}" transform="scale(${sc})" fill="${KIND[k].light}" stroke="${INK}" stroke-width="${4 / sc}" stroke-linejoin="round"/>`;
+  // ---------- queue layout (pure; testable in node) ----------
+  // The queue stands in rings around the boarding platform: ring k = everybody k hand-holds away from the car (ring 1 =
+  // the five on the platform, in g.rim order). Order inside a ring starts from the planar drawing g.pos (angle around
+  // the car), is nudged towards evenly spaced "spots", and is then repaired by a small local search so that no two
+  // hand-holds cross. Hand-holds inside one ring that skip people bend outwards or inwards around them. All of this
+  // is done once in (ring, angle) space; on screen the rings become stretched ellipses that fill the frame, which
+  // keeps every crossing-free picture crossing-free.
+  const TAU = Math.PI * 2;
+  const wrapA = a => { a = (a + Math.PI) % TAU; if (a < 0) a += TAU; return a - Math.PI; };
+  function queueTopo(g, BACK, RELAX) {
+    const n = g.n, hole = g.hole;
+    const layer = Array(n).fill(-1); layer[hole] = 0;
+    let fr = [hole];
+    for (let k = 1; fr.length; k++) { const nx = []; fr.forEach(u => g.adj[u].forEach(w => { if (layer[w] < 0) { layer[w] = k; nx.push(w); } })); fr = nx; }
+    // the far-side regions (g.border: the outer face of g.pos) stand in the back lane, so the arms between them
+    // run along the back of the queue instead of looping around it
+    const K = Math.max(...layer), hp = g.pos[hole];
+    if (BACK) (g.border || []).forEach(u => { if (u !== hole && layer[u] > 1) layer[u] = K; });
+    const raw = u => Math.atan2(g.pos[u][0] - hp[0], g.pos[u][1] - hp[1]);
+    let sx = 0, sy = 0;
+    for (let u = 0; u < n; u++) if (layer[u] === K) { sx += Math.sin(raw(u)); sy += Math.cos(raw(u)); }
+    const rot = Math.atan2(sx, sy);                                  // back of the line at the bottom
+    const rows = [], slots = [], th = Array(n).fill(0);
+    for (let k = 1; k <= K; k++) {
+      const row = []; for (let u = 0; u < n; u++) if (layer[u] === k) row.push(u);
+      if (k === 1) { row.length = 0; g.rim.forEach(u => row.push(u)); }
+      const a = u => wrapA(raw(u) - rot);
+      if (k > 1) row.sort((p, q) => a(p) - a(q));
+      rows[k] = row; slots[k] = row.map(a).sort((p, q) => p - q);
+    }
+    // ring 1 runs in the rim's order; flip the rim's direction if the drawing goes the other way round
+    if (rows[1].length > 2) {
+      const a = rows[1].map(u => wrapA(raw(u) - rot));
+      let s = 0; for (let i = 0; i < a.length; i++) s += wrapA(a[(i + 1) % a.length] - a[i]);
+      if (s < 0) rows[1] = rows[1].slice().reverse();
+    }
+    function angles(k) {
+      const row = rows[k], m = row.length;
+      const a0 = k === 1 ? row.map(u => wrapA(raw(u) - rot)) : slots[k];
+      let cs = 0, cc = 0;
+      a0.forEach((a, i) => { cs += Math.sin(a - i * TAU / m); cc += Math.cos(a - i * TAU / m); });
+      const off = Math.atan2(cs, cc), blend = k === 1 ? 1 : m === 1 ? 0 : 0.6;
+      row.forEach((u, i) => { th[u] = a0[i] + blend * wrapA(off + i * TAU / m - a0[i]); });
+    }
+    for (let k = 1; k <= K; k++) angles(k);
+    // radius of each monster's spot: its lane, except a lone last-in-line monster stands just behind the back lane
+    const rad = layer.slice();
+    if (K > 2 && rows[K].length === 1) rad[rows[K][0]] = K - 0.45;
+    const links = [];
+    g.edges.forEach(([u, v]) => { if (u !== hole && v !== hole) links.push([u, v, 0]); });
+    const isChord = l => {
+      if (layer[l[0]] !== layer[l[1]]) return false;
+      const row = rows[layer[l[0]]], m = row.length, d = Math.abs(row.indexOf(l[0]) - row.indexOf(l[1]));
+      return d !== 1 && d !== m - 1;
+    };
+    const N = 8;
+    const curve = (u, v, b) => {
+      const ku = rad[u], kv = rad[v], d = wrapA(th[v] - th[u]), pts = [];
+      let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+      for (let i = 0; i <= N; i++) {
+        const t = i / N, r = 0.6 + ku + (kv - ku) * t + b * 4 * t * (1 - t), a = th[u] + d * t, x = r * Math.sin(a), y = r * Math.cos(a);
+        pts.push([x, y]); x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y);
+      }
+      pts.box = [x0, x1, y0, y1];
+      return pts;
+    };
+    const o = (p, q, r) => Math.sign((q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0]));
+    const segX = (a, b, c, d) => o(a, b, c) * o(a, b, d) < 0 && o(c, d, a) * o(c, d, b) < 0;
+    const crossPts = (A, B) => {
+      const a = A.box, b = B.box;
+      if (a[1] < b[0] || b[1] < a[0] || a[3] < b[2] || b[3] < a[2]) return 0;
+      let c = 0; for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) if (segX(A[i], A[i + 1], B[j], B[j + 1])) c++; return c;
+    };
+    const share = (a, b) => a[0] === b[0] || a[0] === b[1] || a[1] === b[0] || a[1] === b[1];
+    const spot = u => { const r = 0.6 + rad[u]; return [r * Math.sin(th[u]), r * Math.cos(th[u])]; };
+    // an arm that brushes past somebody else's head reads as holding the wrong hand
+    const brush = (A, l) => { let c = 0; for (let u = 0; u < n; u++) { if (u === hole || u === l[0] || u === l[1]) continue; const p = spot(u); if (A.some(q => Math.hypot(q[0] - p[0], q[1] - p[1]) < 0.33)) c++; } return c; };
+    const BENDS = [0.45, -0.45, 0.75, -0.75, 1.15, 1.6, 2.1];
+    function score() {
+      links.forEach(l => { l[2] = 0; });
+      const paths = links.map(l => curve(l[0], l[1], 0));
+      links.forEach((l, i) => {
+        if (!isChord(l)) return;
+        let best = null;
+        BENDS.forEach(b => {
+          if (layer[l[0]] + b < 0.7) return;
+          const A = curve(l[0], l[1], b); let c = brush(A, l) * 0.3 + Math.abs(b) * 0.01;
+          links.forEach((m, j) => { if (j !== i && !share(l, m)) c += crossPts(A, paths[j]); });
+          if (!best || c < best.c) best = { b, c, A };
+        });
+        l[2] = best.b; paths[i] = best.A;
+      });
+      let c = 0;
+      for (let i = 0; i < links.length; i++) {
+        if (!isChord(links[i]) && layer[links[i][0]] !== layer[links[i][1]]) c += brush(paths[i], links[i]) * 0.3;
+        for (let j = i + 1; j < links.length; j++) if (!share(links[i], links[j])) c += crossPts(paths[i], paths[j]);
+      }
+      return c;
+    }
+    let cur = score();
+    const until = Date.now() + 600;                                  // big maps: stop searching after a moment
+    for (let pass = 0; pass < 4 && cur > 0 && Date.now() < until; pass++) {
+      let improved = false;
+      for (let k = 2; k <= K && cur > 0; k++) {
+        const row = rows[k], m = row.length;
+        if (m < 2) continue;
+        for (let i = 0; i < m && cur > 0 && Date.now() < until; i++) {
+          const j = (i + 1) % m;
+          [row[i], row[j]] = [row[j], row[i]]; angles(k);
+          const c = score();
+          if (c < cur) { cur = c; improved = true; } else { [row[i], row[j]] = [row[j], row[i]]; angles(k); }
+        }
+      }
+      if (!improved) break;
+    }
+    // relax: slide each monster along its lane towards the partners it holds hands with (shorter arms), keeping
+    // the lane order and a minimum gap; keep the result only if it adds no crossing
+    if (RELAX) {
+      const keep = th.slice();
+      for (let it = 0; it < 80; it++) for (let k = 2; k <= K; k++) {
+        const row = rows[k], m = row.length, gap = Math.min(TAU / m * 0.85, 1.05 / (0.6 + k));
+        const a = [th[row[0]]];
+        for (let i = 1; i < m; i++) { let d = th[row[i]] - th[row[i - 1]]; while (d <= 0) d += TAU; a.push(a[i - 1] + d); }
+        row.forEach((u, i) => {
+          let sum = 0, w = 0;
+          g.adj[u].forEach(v => { if (v === hole) return; const wt = layer[v] === k ? 0.5 : 1; sum += wrapA(th[v] - th[u]) * wt; w += wt; });
+          if (w) a[i] += 0.25 * sum / w;
+        });
+        for (let sweep = 0; sweep < 12; sweep++) for (let i = 0; i < m && m > 1; i++) {
+          const j = i + 1, aj = j < m ? a[j] : a[0] + TAU, d = aj - a[i];
+          if (d < gap) { const p = (gap - d) / 2; a[i] -= p; if (j < m) a[j] += p; else a[0] -= p; }
+        }
+        row.forEach((u, i) => { th[u] = wrapA(a[i]); });
+      }
+      const c = score();
+            if (c > cur + 0.65) { th.splice(0, n, ...keep); score(); } else cur = c;
+    } else score();
+    return { layer, rad, K, rows, th, links, cross: cur };
+  }
+  // On screen each lane is a rounded-box ring (superellipse) around the car, and a monster's place along its lane is
+  // its angle read as a fraction of the lane's length, so neighbours in a lane are evenly spread.
+  const LANE_P = 2.8;
+  const LANES = new Map();
+  function laneTable(A, B) {
+    const key = A.toFixed(1) + ',' + B.toFixed(1);
+    if (LANES.has(key)) return LANES.get(key);
+    if (LANES.size > 4000) LANES.clear();
+    const M = 96, pts = [], cum = [0], e = 2 / LANE_P;
+    for (let i = 0; i <= M; i++) {
+      const f = i / M * TAU, s = Math.sin(f), c = Math.cos(f);
+      pts.push([A * Math.sign(s) * Math.pow(Math.abs(s), e), B * Math.sign(c) * Math.pow(Math.abs(c), e)]);
+      if (i) cum.push(cum[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]));
+    }
+    const T = { pts, cum, total: cum[M] };
+    LANES.set(key, T);
+    return T;
+  }
+  function onLane(A, B, t) {
+    const T = laneTable(A, B), L = (((t % 1) + 1) % 1) * T.total;
+    let lo = 0, hi = T.cum.length - 1;
+    while (hi - lo > 1) { const m = (lo + hi) >> 1; if (T.cum[m] <= L) lo = m; else hi = m; }
+    const f = (L - T.cum[lo]) / Math.max(1e-9, T.cum[hi] - T.cum[lo]), p = T.pts[lo], q = T.pts[hi];
+    return [p[0] + (q[0] - p[0]) * f, p[1] + (q[1] - p[1]) * f];
+  }
+  function queueLayout(g, W, H, T) {
+    const n = g.n, hole = g.hole, { layer, rad, th, links } = T;
+    const pad = Math.max(5, Math.min(W, H) * 0.02);
+    const top = Math.max(30, Math.min(H * 0.075, 48));
+    // points that must fit on screen: every monster, plus the far point of every bent hand-hold
+    const pts = [];
+    for (let u = 0; u < n; u++) if (u !== hole) pts.push([rad[u], th[u]]);
+    links.forEach(([u, v, b]) => {
+      if (!b && rad[u] !== rad[v]) return;
+      const d = wrapA(th[v] - th[u]);
+      for (let t = 0.125; t < 1; t += 0.125) pts.push([rad[u] + (rad[v] - rad[u]) * t + b * 4 * t * (1 - t), th[u] + d * t]);
+    });
+    const radii = (G, k) => [G.ax1 + (k - 1) * G.dx, G.ay1 + (k - 1) * G.dy];
+    const rel = (G, k, a) => { const [A, B] = radii(G, k); return onLane(A, B, a / TAU); };
+    function geom(s) {
+      const su = s * 0.88, carW = su * 2.5, carH = su * 3.75;
+      const G = { s, su, carW, carH, ax1: carW / 2 + s * 0.62, ay1: carH / 2 + s * 0.5, dx: s * 2.2, dy: s * 2.6, cy: 0 };
+      const ext = () => { let x = G.ax1, u = G.ay1, d = G.ay1; pts.forEach(([k, a]) => { const p = rel(G, k, a); x = Math.max(x, Math.abs(p[0])); u = Math.max(u, -p[1]); d = Math.max(d, p[1]); }); return { x, u, d }; };
+      const limX = W / 2 - pad - s * 0.5, room = H - top - pad - s * 1.05;
+      for (let pass = 0; pass < 2; pass++) {
+        let lo = 0, hi = s * 2.2;
+        for (let it = 0; it < 18; it++) { G.dx = (lo + hi) / 2; if (ext().x <= limX) lo = G.dx; else hi = G.dx; }
+        G.dx = lo;
+        lo = 0; hi = s * 3.4;
+        for (let it = 0; it < 18; it++) { G.dy = (lo + hi) / 2; const e = ext(); if (e.u + e.d <= room) lo = G.dy; else hi = G.dy; }
+        G.dy = lo;
+      }
+      const e = ext();
+      G.cy = top + s * 0.55 + e.u + Math.max(0, (room - e.u - e.d) * 0.4);
+      return G;
+    }
+    const cx = W / 2;
+    const at = (G, k, a) => { const p = rel(G, k, a); return [cx + p[0], G.cy + p[1]]; };
+    const place = G => { const P = Array(n).fill(null); for (let u = 0; u < n; u++) if (u !== hole) P[u] = at(G, rad[u], th[u]); return P; };
+    const cap = Math.min(72, Math.min(W, H) * 0.15);
+    let s = cap, G = null, P = null;
+    for (let it = 0; it < 12; it++) {
+      G = geom(s); P = place(G);
+      let md = Infinity;
+      for (let u = 0; u < n; u++) for (let v = u + 1; v < n; v++) if (P[u] && P[v]) md = Math.min(md, Math.hypot(P[u][0] - P[v][0], P[u][1] - P[v][1]));
+      const ns = Math.max(12, Math.min(cap, md * 0.9, Math.max(G.dx, 1) * 1.05, Math.max(G.dy, 1) * 1.05));
+      if (Math.abs(ns - s) < 0.4) { s = ns; break; }
+      s = s * 0.4 + ns * 0.6;
+    }
+    G = geom(s); P = place(G);
+    const curve = (u, v, b, N) => {
+      const ku = rad[u], kv = rad[v], d = wrapA(th[v] - th[u]), out = [];
+      for (let i = 0; i <= N; i++) { const t = i / N; out.push(at(G, ku + (kv - ku) * t + b * 4 * t * (1 - t), th[u] + d * t)); }
+      return out;
+    };
+    const shape = (A, B) => laneTable(A, B).pts.map(p => [cx + p[0], G.cy + p[1]]);
+    const lane = k => { const [A, B] = radii(G, k); return shape(A, B); };
+    return { P, th, layer, links, curve, lane, shape, at: (k, a) => at(G, k, a), cx, cy: G.cy, G, size: G.s, top, pad };
+  }
+  // ---------- the car: who sits where ----------
+  // Rim positions 0..4 in ring order; ring-neighbours always differ. Not won (4 kinds = 2+1+1+1): the couple {a, a+2}
+  // takes the middle bench; the back bench gets two singles that are not ring-neighbours ({a+1, a+3} or {a+1, a+4}),
+  // so they differ; the last single drives. Won (3 kinds = 2+2+1): one couple in the middle, the other in the back,
+  // the solo drives. Among the allowed plans the one that moves the fewest passengers from the previous plan wins.
+  function seatPlan(g, cols, prev) {
+    const m = g.rim.length, c = g.rim.map(u => cols[u]), P = i => ((i % m) + m) % m;
+    const pairs = []; for (let i = 0; i < m; i++) if (c[i] === c[P(i + 2)]) pairs.push(i);
+    const cands = [];
+    if (pairs.length >= 2) pairs.forEach(a => pairs.forEach(b => {
+      if (a === b) return;
+      const used = new Set([a, P(a + 2), b, P(b + 2)]), d = [...Array(m).keys()].find(i => !used.has(i));
+      if (used.size === 4 && d !== undefined) cands.push({ mid: [a, P(a + 2)], back: [b, P(b + 2)], drv: d });
+    }));
+    else if (pairs.length === 1) {
+      const a = pairs[0];
+      cands.push({ mid: [a, P(a + 2)], back: [P(a + 1), P(a + 3)], drv: P(a + 4) }, { mid: [a, P(a + 2)], back: [P(a + 1), P(a + 4)], drv: P(a + 3) });
+    }
+    if (!cands.length) cands.push({ mid: [0, 2], back: [1, 3], drv: 4 });
+    let best = null;
+    cands.forEach(C => {
+      const s = Array(m).fill(2); C.mid.forEach(i => { s[i] = 0; }); C.back.forEach(i => { s[i] = 1; });
+      const cost = prev ? s.reduce((t, x, i) => t + (x !== prev.seat[i] ? 1 : 0), 0) : 0;
+      if (!best || cost < best.cost) best = { C, s, cost };
+    });
+    const { C, s } = best, cush = Array(m).fill(0);
+    [C.mid, C.back].forEach((pr, bi) => {
+      const [x, y] = pr, kx = prev && prev.seat[x] === bi, ky = prev && prev.seat[y] === bi;
+      if (kx && ky && prev.cush[x] !== prev.cush[y]) { cush[x] = prev.cush[x]; cush[y] = prev.cush[y]; }
+      else if (ky) { cush[y] = prev.cush[y]; cush[x] = 1 - cush[y]; }
+      else if (kx) { cush[x] = prev.cush[x]; cush[y] = 1 - cush[x]; }
+      else { cush[x] = 0; cush[y] = 1; }
+    });
+    return { seat: s, cush, mid: C.mid, back: C.back, drv: C.drv,
+      midMatch: c[C.mid[0]] === c[C.mid[1]], backMatch: c[C.back[0]] === c[C.back[1]] };
+  }
+  // gesture -> chain: tapping partner kind b while holding monster u
+  const chainFor = (g, u, b) => (u < 0 || u === g.hole || b === g.col[u] || b < 0 || b >= NC) ? null : g.chainAt(u, b);
+  // dance order: BFS through held hands inside the chain, starting at the monster you picked
+  function danceOrder(g, K, u0) {
+    const depth = new Map([[u0, 0]]), par = new Map(), order = [[u0]];
+    let fr = [u0];
+    while (fr.length) {
+      const nx = [];
+      fr.forEach(u => g.adj[u].forEach(w => { if (K.set.has(w) && !depth.has(w)) { depth.set(w, depth.get(u) + 1); par.set(w, u); nx.push(w); } }));
+      if (nx.length) order.push(nx); fr = nx;
+    }
+    return { order, par };
+  }
+  const TOPO = queueTopo(g, false, false);
+  window.MonsterRide2 = { g, queueTopo, queueLayout, TOPO, seatPlan, chainFor, danceOrder };
+  if (typeof document === 'undefined' || !document.getElementById) return;
+
+  // ---------- DOM / game ----------
+  const S = document.getElementById('S');
+  const NS = 'http://www.w3.org/2000/svg';
+  const RM = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  function el(tag, attrs, parent, html) {
+    const e = document.createElementNS(NS, tag);
+    for (const k in attrs) e.setAttribute(k, (k === 'width' || k === 'height' || k === 'r' || k === 'rx' || k === 'ry') && attrs[k] < 0 ? 0 : attrs[k]);
+    if (html) e.innerHTML = html;
+    if (parent) parent.appendChild(e);
+    return e;
+  }
+  let W = 0, H = 0, LY = null, show = g.col.slice(), sel = -1, busy = false, winning = false, waitReset = false;
+  let M = [], L = {}, ride = {}, ARM = [], armAt = new Map(), hintPick = null, idleT = 0, timers = [], plan = null;
+  const later = (fn, ms) => { const id = setTimeout(fn, ms); timers.push(id); return id; };
+  const isRim = u => g.rim.includes(u);
+
+  // ---------- sound ----------
+  let AC = null;
+  function ac() {
+    if (!AC) { try { AC = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { AC = null; } }
+    if (AC && AC.state === 'suspended') AC.resume();
+  }
+  function tone(f, d, type, v, when, slide) {
+    if (!AC) return;
+    const t = AC.currentTime + (when || 0), o = AC.createOscillator(), gn = AC.createGain();
+    o.type = type || 'triangle'; o.frequency.setValueAtTime(f, t);
+    if (slide) o.frequency.exponentialRampToValueAtTime(f * slide, t + d);
+    gn.gain.setValueAtTime(0.0001, t); gn.gain.exponentialRampToValueAtTime(v || 0.1, t + 0.012);
+    gn.gain.exponentialRampToValueAtTime(0.0001, t + d);
+    o.connect(gn); gn.connect(AC.destination); o.start(t); o.stop(t + d + 0.03);
+  }
+  function noise(d, v, f0, f1) {
+    if (!AC) return;
+    const t = AC.currentTime, b = AC.createBuffer(1, Math.floor(AC.sampleRate * d), AC.sampleRate), ch = b.getChannelData(0);
+    for (let i = 0; i < ch.length; i++) ch[i] = Math.random() * 2 - 1;
+    const s = AC.createBufferSource(), fl = AC.createBiquadFilter(), gn = AC.createGain();
+    s.buffer = b; fl.type = 'bandpass'; fl.frequency.setValueAtTime(f0, t); fl.frequency.exponentialRampToValueAtTime(f1, t + d); fl.Q.value = 1.2;
+    gn.gain.setValueAtTime(v, t); gn.gain.exponentialRampToValueAtTime(0.0001, t + d);
+    s.connect(fl); fl.connect(gn); gn.connect(AC.destination); s.start(t);
+  }
+  const SCALE = [523, 587, 659, 784, 880, 1047, 1175, 1319, 1568];
+  const HEART = 'M0,-3C-4,-10 -14,-7 -12,1C-10,7 -3,10 0,14C3,10 10,7 12,1C14,-7 4,-10 0,-3Z';
+
+  // ---------- scene ----------
+  function build() {
+    timers.forEach(clearTimeout); timers = [];
+    W = Math.max(200, document.documentElement.clientWidth || window.innerWidth); H = Math.max(300, document.documentElement.clientHeight || window.innerHeight);
+    S.setAttribute('viewBox', `0 0 ${W} ${H}`);
+    S.innerHTML = '';
+    LY = queueLayout(g, W, H, TOPO);
+    const { cx, cy, G, size, top, pad } = LY, s = size, su = G.su;
+    const defs = el('defs', {}, S);
+    defs.innerHTML = `<linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#7fd0ff"/><stop offset="1" stop-color="#c9efff"/></linearGradient>
+      <pattern id="dots" width="22" height="22" patternUnits="userSpaceOnUse"><circle cx="5" cy="6" r="1.6" fill="#e8bf6a"/><circle cx="16" cy="17" r="1.2" fill="#f2cf85"/></pattern>
+      <radialGradient id="spot" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="#fff7c2" stop-opacity=".9"/><stop offset="1" stop-color="#fff7c2" stop-opacity="0"/></radialGradient>`;
+    el('rect', { x: -W, y: -H, width: W * 3, height: H * 3, fill: '#ffe6a8' }, S);
+    el('rect', { x: -W, y: -H, width: W * 3, height: H * 3, fill: 'url(#dots)' }, S);
+    // queue lanes: worn sandy rings with a rope line, one per distance from the car
+    const lanes = el('g', {}, S);
+    const pd = pts => 'M' + pts.map(p => p[0].toFixed(1) + ',' + p[1].toFixed(1)).join('L') + 'Z';
+    for (let k = 2; k <= TOPO.K; k++) {
+      const pts = LY.lane(k);
+      if ((TOPO.rows[k] || []).length < 3) continue;
+      el('path', { d: pd(pts), fill: 'none', stroke: '#f4cf7c', 'stroke-width': s * 0.95, opacity: 0.75, 'stroke-linejoin': 'round' }, lanes);
+      el('path', { d: pd(pts), fill: 'none', stroke: '#e0ac52', 'stroke-width': 1.5, 'stroke-dasharray': '2 6', 'stroke-linecap': 'round' }, lanes);
+    }
+    // the boarding platform: a purple deck with chaser lights
+    const prx = G.ax1 + s * 0.6, pry = G.ay1 + s * 0.62;
+    const deck = LY.shape(prx, pry);
+    el('path', { d: pd(deck), transform: `translate(0,${s * 0.12})`, fill: '#5b2bb0', stroke: INK, 'stroke-width': 3 }, S);
+    el('path', { d: pd(deck), fill: '#8a4dff', stroke: INK, 'stroke-width': 3.5 }, S);
+    el('path', { d: pd(LY.shape(prx - s * 0.18, pry - s * 0.18)), fill: 'none', stroke: '#a77bff', 'stroke-width': 2 }, S);
+    let bulbs = '';
+    const bpts = LY.shape(prx - s * 0.08, pry - s * 0.08), nb = Math.max(12, Math.round((prx + pry) * 3.3 / Math.max(14, s * 0.55)));
+    for (let i = 0; i < nb; i++) { const p = bpts[Math.floor(i * (bpts.length - 1) / nb)]; bulbs += `<circle cx="${p[0]}" cy="${p[1]}" r="${Math.max(1.8, s * 0.045)}" fill="${i % 2 ? '#ffd23f' : '#fff4c0'}"/>`; }
+    ride.bulbs = el('g', {}, S, bulbs);
+    ride.spot = el('ellipse', { cx, cy, rx: prx * 0.9, ry: pry * 0.9, fill: 'url(#spot)', opacity: 0 }, S);
+    // layers
+    L.arms = el('g', { class: 'arms', 'pointer-events': 'none' }, S);
+    L.carArms = el('g', { class: 'arms', 'pointer-events': 'none' }, S);
+    L.carSlot = el('g', {}, S);
+    L.crowd = el('g', {}, S);
+    L.ui = el('g', {}, S);
+    L.fx = el('g', { 'pointer-events': 'none' }, S);
+    L.hud = el('g', {}, S);
+    buildCar();
+    show = g.col.slice(); sel = -1; busy = false; winning = false; waitReset = false;
+    plan = seatPlan(g, show, null);
+    // monsters, drawn back to front; the five at the gate sit in the car
+    M = [];
+    const order = [];
+    for (let u = 0; u < g.n; u++) if (u !== g.hole) order.push(u);
+    order.sort((a, b) => (isRim(b) - isRim(a)) || LY.P[a][1] - LY.P[b][1]);
+    order.forEach((u, i) => {
+      const rim = isRim(u), z = rim ? su * 1.05 : s, [x, y] = rim ? seatSpot(u) : LY.P[u];
+      const gm = el('g', { class: 'm', transform: `translate(${x},${y})`, 'data-act': 'm', 'data-u': u }, L.crowd);
+      el('circle', { r: rim ? su * 0.5 : s * 0.6, fill: 'transparent' }, gm);
+      if (!rim) el('ellipse', { cx: 0, cy: s * 0.42, rx: s * 0.42, ry: s * 0.13, fill: '#fff2cf', stroke: '#e0ac52', 'stroke-width': 1.5 }, gm);
+      const halo = el('ellipse', { class: 'halo', cx: 0, cy: z * 0.36, rx: z * 0.52, ry: z * 0.2, fill: 'none', 'stroke-width': Math.max(3, z * 0.08) }, gm);
+      if (!rim) el('ellipse', { cx: 0, cy: s * 0.42, rx: s * 0.32, ry: s * 0.08, fill: '#000', opacity: 0.16 }, gm);
+      el('ellipse', { class: 'ring', cx: 0, cy: z * 0.4, rx: z * 0.5, ry: z * 0.16, fill: 'none', stroke: '#fff', 'stroke-width': 3 }, gm);
+      const bob = el('g', { class: 'bob' }, gm);
+      bob.style.animationDelay = (-(i * 0.37) % 1.5) + 's';
+      const spin = el('g', { class: 'spin' }, bob);
+      const a = el('g', { transform: `scale(${z * 0.9 / 100})` }, spin);
+      let sweat = null;
+      if (rim) sweat = el('path', { class: 'sweat', d: `M${z * 0.36},${-z * 0.5}q${z * 0.08},${z * 0.12} 0,${z * 0.17}q${-z * 0.08},${-z * 0.05} 0,${-z * 0.17}z`, fill: '#9fe0ff', stroke: INK, 'stroke-width': 1.5 }, gm);
+      M[u] = { g: gm, spin, art: a, halo, sweat, k: -1, x, y, rim };
+    });
+    buildArms();
+    // sign + undo / restart
+    el('rect', { x: -W, y: -H, width: W * 3, height: top + H, fill: 'url(#sky)' }, L.hud);
+    let bunt = '';
+    const bn = Math.max(5, Math.round(W / 30));
+    for (let i = 0; i < bn; i++) {
+      const x = (i + 0.5) * W / bn, c = ['#ffc21a', '#3d8bff', '#2fbf71', '#ff5d73'][i % 4];
+      bunt += `<path d="M${x - 6},${top}L${x + 6},${top}L${x},${top + 9}Z" fill="${c}" stroke="${INK}" stroke-width="1.5"/>`;
+    }
+    el('g', { 'pointer-events': 'none' }, L.hud, `<path d="M${-W},${top}H${2 * W}" stroke="${INK}" stroke-width="2"/>` + bunt);
+    const br = Math.max(12, Math.min(top * 0.4, 18));
+    ride.sign = el('text', { x: W / 2, y: top / 2, 'text-anchor': 'middle', 'font-weight': 700,
+      fill: '#fff', stroke: INK, 'paint-order': 'stroke', 'stroke-linejoin': 'round', 'pointer-events': 'none' }, L.hud);
+    ride.signRoom = W - 4 * br - 4 * pad;
+    say('Back bench must match, then we ride!');
+    ride.undo = hudBtn(pad + br, top / 2, br, 'undo', 'M-6,-6A8,8 0 1 1 -8,3M-6,-6h-6M-6,-6v-6');
+    ride.restart = hudBtn(W - pad - br, top / 2, br, 'reset', 'M7,-5A8,8 0 1 0 8,3M7,-5h6M7,-5v-6');
+    render(true);
+    fit();
+    if (g.won()) win(true);
+  }
+  // the sign: one line, shrunk to fit between the buttons
+  function say(txt) {
+    const top = LY.top, fs = Math.max(9, Math.min(W * 0.046, 22, top * 0.5, ride.signRoom / (txt.length * 0.53)));
+    ride.sign.setAttribute('font-size', fs); ride.sign.setAttribute('stroke-width', fs * 0.22);
+    ride.sign.setAttribute('y', top / 2 + fs * 0.36);
+    ride.sign.textContent = txt;
+  }
+  // scale the whole scene to fit the frame: if anything pokes out, widen the view box to take it in
+  function fit() {
+    let x0 = 0, y0 = 0, x1 = W, y1 = H;
+    [L.arms, L.carArms, L.carSlot, L.crowd].forEach(p => {
+      try { const b = p.getBBox(); if (b.width || b.height) { x0 = Math.min(x0, b.x); y0 = Math.min(y0, b.y); x1 = Math.max(x1, b.x + b.width); y1 = Math.max(y1, b.y + b.height); } } catch (e) { /* not rendered yet */ }
+    });
+    const m = 4, out = x0 < 0 || y0 < 0 || x1 > W || y1 > H;
+    S.setAttribute('viewBox', out ? `${x0 - m} ${y0 - m} ${x1 - x0 + 2 * m} ${y1 - y0 + 2 * m}` : `0 0 ${W} ${H}`);
+  }
+  function hudBtn(x, y, r, act, d) {
+    const b = el('g', { class: 'btn', transform: `translate(${x},${y})`, 'data-act': act }, L.hud);
+    el('circle', { r: r + 6, fill: 'transparent' }, b);
+    el('circle', { r, fill: '#fff', stroke: INK, 'stroke-width': 3 }, b);
+    el('path', { d, transform: `scale(${r / 16})`, fill: 'none', stroke: INK, 'stroke-width': 3 * 16 / r, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }, b);
+    return b;
+  }
+  // ---------- hand-holds: every one drawn, two arms meeting in a clasp ----------
+  // A passenger's arms reach out from under the car at its spot in the ring (lane 1, on the platform), then on.
+  function buildArms() {
+    ARM = []; armAt = new Map();
+    const s = LY.size, aw = Math.max(2.2, s * 0.095), NP = 14;
+    LY.links.forEach(([u, v, b]) => {
+      const base = LY.curve(u, v, b, NP), car = isRim(u) || isRim(v);
+      const gr = el('g', { class: 'arm' }, car ? L.carArms : L.arms);
+      const lk = { fill: 'none', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' };
+      const ink = el('path', Object.assign({ stroke: INK, 'stroke-width': aw + 3 }, lk), gr);
+      const pu = el('path', Object.assign({ 'stroke-width': aw }, lk), gr);
+      const pv = el('path', Object.assign({ 'stroke-width': aw }, lk), gr);
+      const clasp = el('circle', { r: aw * 0.75 + 1.5, fill: '#fff', stroke: INK, 'stroke-width': 2 }, gr);
+      const A = { u, v, g: gr, ink, pu, pv, clasp, base };
+      drawArm(A);
+      ARM.push(A); armAt.set(Math.min(u, v) + '-' + Math.max(u, v), A);
+    });
+  }
+  function drawArm(A) {
+    const pts = A.base.slice(), mid = A.base.length >> 1;
+    let h = mid;
+    if (M[A.u] && M[A.u].rim) { pts.unshift([M[A.u].x, M[A.u].y]); h++; }
+    if (M[A.v] && M[A.v].rim) pts.push([M[A.v].x, M[A.v].y]);
+    const d = (a, z) => 'M' + pts.slice(a, z + 1).map(p => p[0].toFixed(1) + ',' + p[1].toFixed(1)).join('L');
+    A.ink.setAttribute('d', d(0, pts.length - 1));
+    A.pu.setAttribute('d', d(0, h)); A.pv.setAttribute('d', d(h, pts.length - 1));
+    A.clasp.setAttribute('cx', pts[h][0]); A.clasp.setAttribute('cy', pts[h][1]);
+  }
+  function armColour(A) {
+    A.pu.setAttribute('stroke', KIND[show[A.u]] ? KIND[show[A.u]].col : '#ccc');
+    A.pv.setAttribute('stroke', KIND[show[A.v]] ? KIND[show[A.v]].col : '#ccc');
+  }
+  // ---------- the car, seen from above: driver's seat at the nose, middle bench, back bench ----------
+  function buildCar() {
+    const { cx, cy, G } = LY, su = G.su, w = G.carW, h = G.carH;
+    ride.wrap = el('g', { transform: `translate(${cx},${cy})` }, L.carSlot);
+    const c = ride.car = el('g', {}, ride.wrap);
+    [-1, 1].forEach(sx => [-1, 1].forEach(sy => el('rect', { x: sx * w / 2 - su * 0.16, y: sy * h * 0.3 - su * 0.36, width: su * 0.32, height: su * 0.72, rx: su * 0.12, fill: '#3a3a46', stroke: INK, 'stroke-width': 2.5 }, c)));
+    el('rect', { x: -w / 2, y: -h / 2, width: w, height: h, rx: w * 0.45, fill: '#ff4d6d', stroke: INK, 'stroke-width': 3.5 }, c);
+    el('rect', { x: -w / 2 + su * 0.14, y: -h / 2 + su * 0.14, width: w - su * 0.28, height: h - su * 0.28, rx: w * 0.38, fill: 'none', stroke: '#ffd23f', 'stroke-width': Math.max(2, su * 0.07) }, c);
+    [-1, 1].forEach(sx => el('circle', { cx: sx * w * 0.26, cy: -h / 2 + su * 0.28, r: su * 0.13, fill: '#fff7b0', stroke: INK, 'stroke-width': 2 }, c));
+    // seats: 0 = middle bench, 1 = back bench, 2 = driver
+    const mk = (y, xs) => {
+      const sg = el('g', {}, c);
+      const bw = xs.length > 1 ? su * 2.0 : su * 0.95;
+      const glow = el('rect', { class: 'halo', x: -bw / 2 - su * 0.12, y: y - su * 0.54, width: bw + su * 0.24, height: su * 1.12, rx: su * 0.42, fill: '#fff59a', stroke: '#fff', 'stroke-width': 2 }, sg);
+      el('rect', { x: -bw / 2, y: y + su * 0.36, width: bw, height: su * 0.2, rx: su * 0.1, fill: '#7a3bd8', stroke: INK, 'stroke-width': 2 }, sg);
+      el('rect', { x: -bw / 2, y: y - su * 0.42, width: bw, height: su * 0.8, rx: su * 0.32, fill: '#ffd23f', stroke: INK, 'stroke-width': 2.5 }, sg);
+      xs.forEach(x => el('circle', { cx: x, cy: y, r: su * 0.34, fill: '#fff4e6', stroke: INK, 'stroke-width': 2 }, sg));
+      const rider = el('g', {}, sg);
+      return { g: sg, glow, y, bw, cush: xs.map(x => [x, y]), rider };
+    };
+    ride.seats = [mk(su * 0.12, [-su * 0.5, su * 0.5]), mk(su * 1.22, [-su * 0.5, su * 0.5]), mk(-su * 1.0, [0])];
+    el('circle', { cx: 0, cy: -su * 1.52, r: su * 0.2, fill: 'none', stroke: INK, 'stroke-width': Math.max(2, su * 0.09) }, c);
+    el('path', { d: `M${-su * 0.2},${-su * 1.52}H${su * 0.2}`, stroke: INK, 'stroke-width': Math.max(1.5, su * 0.06) }, c);
+    // the back bench's grumble badge, drawn above the passengers
+    const bs = ride.seats[1];
+    ride.badge = el('g', { class: 'shake', 'pointer-events': 'none' }, L.fx);
+    const bx = cx + bs.bw / 2 + su * 0.18, by = cy + bs.y - su * 0.45, r = Math.max(8, su * 0.26);
+    ride.badge.innerHTML = `<circle cx="${bx}" cy="${by}" r="${r}" fill="#ff3b3b" stroke="${INK}" stroke-width="2"/>` +
+      `<text x="${bx}" y="${by + r * 0.45}" text-anchor="middle" font-size="${r * 1.4}" font-weight="700" fill="#fff">!</text>`;
+  }
+  // where a passenger sits right now (screen coordinates)
+  function seatSpot(u) {
+    const r = g.rim.indexOf(u), i = plan.seat[r], st = ride.seats[i], c = st.cush[i === 2 ? 0 : plan.cush[r]];
+    return [LY.cx + c[0], LY.cy + c[1] - LY.G.su * 0.18];
+  }
+  // passengers shuffle to their new seats (a short hop), their arms following
+  function shuffle(animate) {
+    const moving = [];
+    g.rim.forEach(u => {
+      const m = M[u], to = seatSpot(u);
+      if (Math.hypot(to[0] - m.x, to[1] - m.y) < 0.5) return;
+      moving.push([u, m.x, m.y, to[0], to[1]]);
+    });
+    if (!moving.length) return 0;
+    const setPos = (u, x, y) => { const m = M[u]; m.x = x; m.y = y; m.g.setAttribute('transform', `translate(${x},${y})`); ARM.forEach(A => { if (A.u === u || A.v === u) drawArm(A); }); };
+    if (!animate || RM) { moving.forEach(([u, , , x, y]) => setPos(u, x, y)); return 0; }
+    const dur = 380, t0 = performance.now(), hop = LY.G.su * 0.7;
+    moving.forEach(([u]) => L.crowd.appendChild(M[u].g));
+    const step = now => {
+      const t = Math.min(1, (now - t0) / dur), e = t * t * (3 - 2 * t);
+      moving.forEach(([u, x0, y0, x1, y1]) => setPos(u, x0 + (x1 - x0) * e, y0 + (y1 - y0) * e - Math.sin(Math.PI * t) * hop));
+      if (t < 1) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+    tone(700, 0.08, 'triangle', 0.06, 0, 1.3); tone(900, 0.08, 'triangle', 0.06, 0.12, 1.3);
+    return dur;
+  }
+  // seats: middle bench glows (its couple matches); the back bench glows when it matches, grumbles while it doesn't
+  function drawSeats() {
+    ride.seats[0].glow.style.opacity = winning || plan.midMatch ? 1 : 0;
+    ride.seats[1].glow.style.opacity = plan.backMatch ? 1 : 0;
+    ride.seats[2].glow.style.opacity = 0;
+    ride.badge.style.display = plan.backMatch || winning ? 'none' : '';
+  }
+  function setArt(u, k) {
+    const m = M[u]; if (!m) return;
+    m.k = k; m.art.innerHTML = art(k);
+    m.pupils = [...m.art.querySelectorAll('.pu')];
+    m.halo.setAttribute('stroke', KIND[k].col); m.halo.setAttribute('fill', KIND[k].light);
+  }
+  function lookAt(x, y) {
+    M.forEach((m, u) => {
+      if (!m || !m.pupils) return;
+      let dx = x - m.x, dy = y - m.y; const d = Math.hypot(dx, dy) || 1;
+      dx /= d; dy /= d; if (u === sel) { dx = 0; dy = -0.6; }
+      m.pupils.forEach(p => { const r = +p.dataset.r * 0.42; p.setAttribute('transform', `translate(${(dx * r).toFixed(1)},${(dy * r).toFixed(1)})`); });
+    });
+  }
+  // returns { wait: ms of seat shuffling, newMid: the middle bench got a different couple }
+  function render(fresh) {
+    for (let u = 0; u < g.n; u++) {
+      if (u === g.hole || !M[u]) continue;
+      if (M[u].k !== show[u]) setArt(u, show[u]);
+      M[u].g.classList.toggle('sel', u === sel);
+      M[u].g.classList.toggle('nb', sel >= 0 && g.adj[sel].includes(u));
+      M[u].g.classList.toggle('hint', sel < 0 && !!hintPick && hintPick.u === u);
+      M[u].g.classList.remove('pv');
+    }
+    ARM.forEach(A => { armColour(A); A.g.classList.toggle('hot', sel >= 0 && (A.u === sel || A.v === sel)); });
+    L.arms.classList.toggle('dim', sel >= 0); L.carArms.classList.toggle('dim', sel >= 0);
+    // passengers' arms run under the car, except while a passenger is picked: then they show on top
+    S.insertBefore(L.carArms, sel >= 0 && isRim(sel) ? L.crowd : L.carSlot);
+    const prev = plan;
+    plan = seatPlan(g, show, prev);
+    const newMid = !fresh && !!prev && plan.mid.some(r => !prev.mid.includes(r));
+    const wait = shuffle(!fresh);
+    drawSeats();
+    g.rim.forEach((u, r) => {
+      const m = M[u]; if (!m) return;
+      const s = plan.seat[r];
+      m.g.classList.toggle('pair', s === 0 || (s === 1 && plan.backMatch));
+      m.g.classList.toggle('solo', !winning && s === 1 && !plan.backMatch);
+    });
+    L.ui.innerHTML = '';
+    if (sel >= 0) { costumes(sel); lookAt(M[sel].x, M[sel].y); } else lookAt(LY.cx, LY.cy);
+    ride.undo.classList.toggle('off', !g.history.length || winning);
+    ride.restart.classList.toggle('off', !g.history.length || winning);
+    return { wait, newMid };
+  }
+  // costume bubbles: the 3 other species around the picked monster
+  function costumes(u) {
+    const m = M[u], s = LY.size, br = Math.max(16, s * 0.32), R = s * 0.52 + br * 1.05;
+    const up = m.y - R - br > LY.top + br * 0.3;
+    const ks = []; for (let b = 0; b < NC; b++) if (b !== show[u]) ks.push(b);
+    ks.forEach((b, i) => {
+      const ang = (up ? -1 : 1) * (Math.PI / 2 + (i - (ks.length - 1) / 2) * 0.95);
+      let x = m.x + Math.cos(ang) * R, y = m.y + Math.sin(ang) * R;
+      x = Math.min(W - br - 2, Math.max(br + 2, x)); y = Math.min(H - br - 2, Math.max(LY.top + br * 0.3, y));
+      const cg = el('g', { class: 'cos' + (hintPick && hintPick.u === u && hintPick.b === b ? ' hint' : ''), transform: `translate(${x},${y})`, 'data-act': 'cos', 'data-b': b }, L.ui);
+      const inner = el('g', { class: 'cb' }, cg);
+      el('circle', { r: br, fill: '#fff', stroke: KIND[b].col, 'stroke-width': 3.5 }, inner);
+      el('circle', { r: br + 2, fill: 'none', stroke: INK, 'stroke-width': 1.5 }, inner);
+      el('g', { transform: `scale(${br * 1.45 / 100})` }, inner, art(b));
+    });
+  }
+  function preview(K) {
+    M.forEach((m, u) => { if (m) m.g.classList.toggle('pv', !!K && K.set.has(u)); });
+  }
+  function bubbleText(x, y, txt, size, col, cls, life) {
+    const t = el('text', { class: cls || 'cheer', x, y, 'text-anchor': 'middle', 'font-size': size, 'font-weight': 700, fill: col || '#fff',
+      stroke: INK, 'stroke-width': size * 0.2, 'paint-order': 'stroke', 'stroke-linejoin': 'round' }, L.fx);
+    t.textContent = txt;
+    later(() => t.remove(), life || 900);
+  }
+  function hearts(x, y, sz, col) {
+    for (let i = 0; i < 3; i++) later(() => {
+      const h = el('g', { transform: `translate(${x + (i - 1) * sz * 0.9},${y - (i % 2) * sz * 0.4})` }, L.fx);
+      el('path', { class: 'cheer', d: HEART, transform: `scale(${sz / 24})`, fill: col, stroke: INK, 'stroke-width': 2.4 * 24 / sz }, h);
+      later(() => h.remove(), 900);
+    }, i * 110);
+  }
+  function celebrate(bench) {
+    g.rim.forEach((u, r) => { if (plan.seat[r] === bench) hearts(M[u].x, M[u].y - LY.size * 0.6, Math.max(10, LY.size * 0.26), '#ff5d73'); });
+    const st = ride.seats[bench];
+    bubbleText(LY.cx, LY.cy + st.y - LY.G.su * 0.75, bench ? 'Match!' : 'Pair!', Math.max(11, LY.size * 0.3), '#ffd23f');
+    tone(988, 0.1, 'triangle', 0.08); tone(1319, 0.18, 'triangle', 0.08, 0.09);
+  }
+  function select(u) {
+    sel = u; hintPick = hintPick && hintPick.u === u ? hintPick : null;
+    tone(660 + show[u] * 90, 0.09, 'square', 0.05, 0, 1.4);
+    render();
+  }
+  function spinMonster(u, k) {
+    const m = M[u]; if (!m) return;
+    m.spin.classList.remove('go'); m.spin.getBoundingClientRect();
+    if (!RM) m.spin.classList.add('go');
+    later(() => {
+      show[u] = k; setArt(u, k); lookAt(LY.cx, LY.cy);
+      ARM.forEach(A => { if (A.u === u || A.v === u) armColour(A); });
+    }, RM ? 0 : 200);
+  }
+  function zapArm(a, b) {
+    const A = armAt.get(Math.min(a, b) + '-' + Math.max(a, b)); if (!A) return;
+    A.g.classList.remove('zap'); A.g.getBoundingClientRect(); if (!RM) A.g.classList.add('zap');
+  }
+  const CHEERS = ['Wheee!', 'Yay!', 'Hup!', 'Spin!', 'Ole!', 'Woo!'];
+  function dance(u0, b) {
+    const K = chainFor(g, u0, b);
+    sel = -1; hintPick = null; render();
+    if (!K) return;
+    if (K.web) { dud(K, u0); return; }
+    busy = true;
+    const { order, par } = danceOrder(g, K, u0);
+    g.swap(K);
+    const step = RM ? 60 : Math.max(70, Math.min(150, 1200 / order.length));
+    order.forEach((grp, d) => later(() => {
+      grp.forEach(u => { if (par.has(u)) zapArm(par.get(u), u); spinMonster(u, g.col[u]); });
+      tone(SCALE[Math.min(d, SCALE.length - 1)], 0.14, 'triangle', 0.09);
+      if (d % 2 === 0 || grp.length > 2) { const u = grp[0]; bubbleText(M[u].x, M[u].y - LY.size * 0.6, CHEERS[(d + u) % CHEERS.length], Math.max(11, LY.size * 0.3)); }
+    }, d * step));
+    later(() => {
+      show = g.col.slice();
+      const r = render();
+      later(() => {
+        busy = false;
+        if (g.won()) win(false);
+        else if (r.newMid) celebrate(0);
+        else { tone(1047, 0.08, 'sine', 0.05); tone(1319, 0.1, 'sine', 0.05, 0.07); }
+      }, r.wait + 40);
+    }, (order.length - 1) * step + 460);
+  }
+  function dud(K, u0) {
+    busy = true;
+    K.vs.forEach(u => { const m = M[u]; if (!m) return; m.spin.classList.remove('shrug'); m.spin.getBoundingClientRect(); if (!RM) m.spin.classList.add('shrug'); });
+    const m = M[u0];
+    const fz = Math.max(12, Math.min(20, LY.size * 0.3)), bx = Math.min(W - fz * 6, Math.max(fz * 6, m.x));
+    const by = Math.max(LY.top + fz * 1.5, m.y - LY.size * 0.75);
+    bubbleText(bx, by, 'Everybody swapped...', fz, '#ffe066', 'say', 1700);
+    later(() => bubbleText(bx, by + fz * 1.25, '...same seats. Meh!', fz, '#ffe066', 'say', 1300), 450);
+    tone(392, 0.22, 'sawtooth', 0.04, 0, 0.94); tone(370, 0.22, 'sawtooth', 0.04, 0.22, 0.94); tone(330, 0.4, 'sawtooth', 0.04, 0.44, 0.85);
+    later(() => { K.vs.forEach(u => M[u] && M[u].spin.classList.remove('shrug')); busy = false; }, 900);
+  }
+  // ---------- win: the five hop into their seats, the car flies a loop ----------
+  // ---------- win: the back bench matches, the car flies a loop ----------
+  function board(u) {
+    const r = g.rim.indexOf(u), i = plan.seat[r], st = ride.seats[i], c = st.cush[i === 2 ? 0 : plan.cush[r]], z = LY.G.su * 1.05;
+    el('g', { transform: `translate(${c[0]},${c[1] - LY.G.su * 0.18}) scale(${z * 0.9 / 100})` }, st.rider, art(show[u]));
+    M[u].g.classList.add('gone');
+  }
+  function win(instant) {
+    winning = true; sel = -1; hintPick = null; render();
+    say('All aboard!');
+    ride.spot.setAttribute('opacity', 1);
+    const letGo = () => { g.rim.forEach(board); L.carArms.style.opacity = 0; };
+    if (instant) { letGo(); finish(); return; }
+    celebrate(1);
+    tone(523, 0.12, 'square', 0.06); tone(659, 0.12, 'square', 0.06, 0.1); tone(784, 0.12, 'square', 0.06, 0.2); tone(1047, 0.3, 'square', 0.06, 0.3);
+    later(() => { letGo(); bubbleText(LY.cx, LY.cy + ride.seats[2].y - LY.G.su * 0.8, 'Let go, hold on!', Math.max(11, LY.size * 0.28), '#fff'); }, 900);
+    later(whoosh, 1500);
+  }
+  function whoosh() {
+    noise(1.8, 0.18, 300, 2400);
+    tone(392, 1.4, 'sine', 0.05, 0, 2.2);
+    S.appendChild(ride.wrap);
+    const { cx, cy, G, top } = LY, ox = W / 2, oy = (top + H) / 2;
+    const Rx = W / 2 - G.carH * 0.55, Ry = (H - top) / 2 - G.carH * 0.55;
+    const dur = RM ? 1 : 3000, t0 = performance.now();
+    let px = cx, py = cy, ang = 0;
+    const step = now => {
+      const t = Math.min(1, (now - t0) / dur), e = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+      const ramp = Math.min(1, t / 0.18, (1 - t) / 0.18), f = ramp * ramp * (3 - 2 * ramp);
+      const ph = e * TAU * 1.5;
+      const x = (1 - f) * cx + f * (ox + Rx * Math.sin(ph)), y = (1 - f) * cy + f * (oy + Ry * Math.cos(ph));
+      if (Math.hypot(x - px, y - py) > 0.5) ang = Math.atan2(x - px, -(y - py)) * 180 / Math.PI;
+      px = x; py = y;
+      ride.wrap.setAttribute('transform', `translate(${x},${y}) rotate(${t < 1 ? ang : 0}) scale(${1 + 0.2 * f})`);
+      if (t < 1) requestAnimationFrame(step);
+      else { ride.wrap.setAttribute('transform', `translate(${cx},${cy})`); L.carSlot.appendChild(ride.wrap); finish(); }
+    };
+    requestAnimationFrame(step);
+    later(confetti, 700);
+  }
+  function finish() {
+    say('Wheee! Tap to ride again');
+    waitReset = true;
+    tone(784, 0.1, 'triangle', 0.07); tone(988, 0.1, 'triangle', 0.07, 0.09); tone(1175, 0.25, 'triangle', 0.07, 0.18);
+  }
+  function confetti() {
+    if (RM) return;
+    const bits = [], cols = ['#ff5d73', '#3d8bff', '#ffc21a', '#2fbf71', '#a05cff', '#fff'];
+    for (let i = 0; i < 50; i++) {
+      const r = el('rect', { width: 6 + (i % 3) * 2, height: 4 + (i % 2) * 3, fill: cols[i % cols.length], rx: 1 }, L.fx);
+      bits.push({ r, x: W / 2, y: LY.top + 10, vx: (Math.random() - 0.5) * 10, vy: -2 - Math.random() * 6, a: Math.random() * 360, va: (Math.random() - 0.5) * 30 });
+    }
+    const t0 = performance.now();
+    const step = now => {
+      bits.forEach(b => { b.vy += 0.25; b.x += b.vx; b.y += b.vy; b.a += b.va; b.r.setAttribute('transform', `translate(${b.x},${b.y}) rotate(${b.a})`); });
+      if (now - t0 < 2400) requestAnimationFrame(step); else bits.forEach(b => b.r.remove());
+    };
+    requestAnimationFrame(step);
+  }
+  // ---------- idle hint ----------
+  function idle() {
+    clearTimeout(idleT);
+    if (hintPick && sel < 0) { hintPick = null; render(); }
+    idleT = setTimeout(() => {
+      if (busy || winning || sel >= 0) return idle();
+      const K = g.good()[0]; if (!K) return;
+      const u = K.vs.find(v => isRim(v)) ?? K.vs[0];
+      hintPick = { u, b: K.pair[0] === g.col[u] ? K.pair[1] : K.pair[0] };
+      render();
+      bubbleText(M[u].x, Math.max(LY.top + 14, M[u].y - LY.size * 0.65), 'psst!', Math.max(11, LY.size * 0.26), '#fff');
+    }, 9000);
+  }
+  // ---------- input ----------
+  S.addEventListener('pointerdown', e => {
+    ac();
+    const keepHint = hintPick;
+    idle();
+    if (waitReset) { waitReset = false; g.reset(); return; }
+    if (winning || busy) return;
+    const t = e.target.closest && e.target.closest('[data-act]');
+    if (!t) { if (sel >= 0) { sel = -1; render(); } return; }
+    const act = t.getAttribute('data-act');
+    if (act === 'undo') { if (g.history.length) { g.undo(); tone(500, 0.12, 'sine', 0.07, 0, 0.6); } return; }
+    if (act === 'reset') { if (g.history.length) { g.reset(); tone(400, 0.2, 'sine', 0.07, 0, 0.5); } return; }
+    if (act === 'cos') { dance(sel, +t.getAttribute('data-b')); return; }
+    if (act === 'm') {
+      const u = +t.getAttribute('data-u');
+      if (sel < 0) { hintPick = keepHint && keepHint.u === u ? keepHint : null; select(u); }
+      else if (u === sel) { sel = -1; tone(440, 0.06, 'sine', 0.04); render(); }
+      else if (g.adj[sel].includes(u)) dance(sel, show[u]);
+      else select(u);
+    }
+  });
+  S.addEventListener('pointerover', e => {
+    if (busy || winning || sel < 0) return;
+    const t = e.target.closest && e.target.closest('[data-act]');
+    let K = null;
+    if (t && t.getAttribute('data-act') === 'cos') K = chainFor(g, sel, +t.getAttribute('data-b'));
+    else if (t && t.getAttribute('data-act') === 'm') { const u = +t.getAttribute('data-u'); if (u !== sel && g.adj[sel].includes(u)) K = chainFor(g, sel, show[u]); }
+    preview(K);
+  });
+  g.on((gg, info) => {
+    if (info.type === 'reset') { build(); idle(); }
+    else if (info.type === 'undo') { show = g.col.slice(); sel = -1; render(); }
+  });
+  let rz = 0;
+  window.addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(() => { if (!busy && !winning) build(); }, 120); });
+  build();
+  idle();
+})();
+</script>
+</body>
+</html>

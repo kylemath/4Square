@@ -1,0 +1,650 @@
+<!doctype html>
+<!--
+  PETTING ZOO (lab front end, round 2: "hide the maths", inverted representation)
+
+  What the player sees: a cosy petting zoo with four fenced pens (Barn, Pond, Sunny patch, Meadow; each pen has its
+  own floor colour, floor texture and a sign shape: house, drop, sun, leaf). Every map region (except the hole) is an
+  animal with a species, a face and a name; the pen it lives in is its element. So animals that share a pen are
+  "the same colour", and the map itself is never drawn. The hidden relation: two animals that are neighbours on the
+  map can't stand each other, so they never share a pen (the legal colouring). It is only shown when it matters:
+  while you hold an animal, everyone it can't stand scowls, and the ones that would get bumped light up.
+
+  The visitor (the hole) is Lulu the llama, waiting at the gate. She can't stand five residents (g.rim); they wear a
+  red bow and their portraits sit in Lulu's speech bubble, each on a disc of the pen they currently live in. Each pen
+  has a little Lulu sign: a tick if none of her five live there, a cross otherwise. Goal: make one pen tick.
+  g.won() is exactly "some pen holds none of the five", and g.free() is that pen; Lulu then hops into it.
+
+  The move (one gesture = exactly one g.swap(K), or nothing): drag/swipe/flick animal u from its pen A towards pen B
+  (or tap u, then tap pen B). K = g.chainAt(u, B), the {A, B} chain through u. u moves into B, every animal in B that
+  can't stand it is bumped to A ("hmph!"), every animal in A that can't stand those is bumped to B, and so on: the
+  members of K hop between A and B one BFS layer at a time, starting from u. A lone animal with no rivals in B just
+  moves (single-region chain), so every chain on the map is reachable by moving any one of its members. If K.web is
+  true (the whole of pens A and B would trade places, which changes nothing) g.swap is NOT called: everybody in the
+  two pens shrugs, takes a step and walks back. Undo (g.undo) and restart (g.reset) are the two small wooden buttons.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>Petting Zoo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #cfe4b0; touch-action: none;
+    -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
+  svg { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
+    font-family: Fredoka, 'Baloo 2', 'Arial Rounded MT Bold', 'Trebuchet MS', system-ui, sans-serif; }
+  #ui { position: fixed; right: 6px; top: 6px; display: flex; flex-direction: column; gap: 6px; z-index: 2; }
+  #ui button { width: 30px; height: 30px; border-radius: 50%; border: 2px solid #8b5a2b; background: #e8c08a; color: #5a3416;
+    font: 700 16px/1 system-ui, sans-serif; padding: 0; cursor: pointer; box-shadow: 0 2px 0 #8b5a2b; }
+  #ui button:active { transform: translateY(2px); box-shadow: none; }
+  #ui button:disabled { opacity: .4; }
+  .ani { cursor: grab; }
+  .mo, .mg, .brow, .ani .ring, .ani .halo { display: none; }
+  .grump .ms, .bump .ms, .party .ms, .hope .ms { display: none; }
+  .grump .mg, .grump .brow { display: inline; }
+  .grump.bump .mg, .hope .mg, .hope .brow { display: none; }
+  .bump .mo, .party .mo, .hope .mo { display: inline; }
+  .ani.lit .ring { display: inline; animation: pulse .6s ease-in-out infinite alternate; }
+  .ani.held .halo, .ani.sel .halo { display: inline; }
+  .bob { transform-box: fill-box; transform-origin: 50% 90%; animation: breathe 2.6s ease-in-out infinite; }
+  .ani.lit .bob, .ani.grump .bob { animation: wiggle .22s ease-in-out infinite alternate; }
+  .ani.party .bob, #lulu.party .bob { animation: jump .45s ease-in-out infinite alternate; }
+  #lulu.hope .bob { animation: jump .35s ease-in-out infinite alternate; }
+  #lulu.grump .bob { animation: wiggle .22s ease-in-out infinite alternate; }
+  .pen .hi { opacity: 0; transition: opacity .15s; }
+  .pen.hover .hi { opacity: 1; }
+  @keyframes breathe { from { transform: scale(1, 1); } to { transform: scale(1.03, .97); } }
+  @keyframes wiggle { from { transform: rotate(-7deg); } to { transform: rotate(7deg); } }
+  @keyframes jump { from { transform: translateY(0); } to { transform: translateY(-.35px); } }
+  @keyframes pulse { from { opacity: .45; } to { opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) {
+    .bob, .ani.lit .bob, .ani.grump .bob, .ani.party .bob, #lulu .bob { animation: none !important; }
+    .ani.lit .ring { animation: none; }
+  }
+</style>
+</head>
+<body>
+<svg id="s" xmlns="http://www.w3.org/2000/svg" aria-label="Petting zoo"></svg>
+<div id="ui"><button id="undo" title="Undo" aria-label="Undo">&#8630;</button><button id="again" title="Start over" aria-label="Start over">&#8634;</button></div>
+<script src="../levels.js"></script>
+<script src="../layout.js"></script>
+<script src="core.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  // ---------------------------------------------------------------- pure helpers (also used by the node smoke test)
+  const PEN = [
+    { name: 'Barn', col: '#e2674f', floor: '#f6d6c6', tex: '#dca76a', dark: '#93351f' },
+    { name: 'Pond', col: '#3f8fd8', floor: '#cde3f5', tex: '#8fbfe6', dark: '#1d4f86' },
+    { name: 'Sunny', col: '#e9b318', floor: '#f9eebf', tex: '#f2c94c', dark: '#7f5c06' },
+    { name: 'Meadow', col: '#4fa64a', floor: '#d5ecc6', tex: '#86c06f', dark: '#245f22' },
+  ];
+
+  // Pens laid out as a 2x2 yard (or 1x4 when very wide, 2+1 for 3 pens), below the gate strip.
+  function layoutZoo(W, H, NC, counts) {
+    const wide = W > H * 1.25;
+    const gh = Math.round(Math.max(66, Math.min(118, (wide ? H * 0.2 : H * 0.17))));
+    const pad = Math.max(6, Math.min(14, W * 0.025)), path = Math.max(10, Math.min(22, W * 0.04));
+    const top = gh + 4, ah = H - top - pad, aw = W - 2 * pad;
+    const cols = (wide && aw / ah > 2.3) ? NC : 2, rows = Math.ceil(NC / cols);
+    const pens = [];
+    for (let k = 0; k < NC; k++) {
+      const r = Math.floor(k / cols), inRow = Math.min(cols, NC - r * cols), c = k - r * cols;
+      const pw = (aw - (inRow - 1) * path) / inRow, ph = (ah - (rows - 1) * path) / rows;
+      const x = pad + c * (pw + path), y = top + r * (ph + path);
+      const sign = Math.max(18, Math.min(30, Math.min(pw, ph) * 0.16));
+      const inner = { x: x + 8, y: y + sign * 0.75 + 6, w: pw - 16, h: ph - sign * 0.75 - 14 };
+      pens.push({ k, x, y, w: pw, h: ph, cx: x + pw / 2, cy: y + ph / 2, sign, inner });
+    }
+    const fit = (p, m) => { // best grid for m animals in pen p: [cols, cell size]
+      let best = [1, 0];
+      for (let c = 1; c <= m; c++) { const s = Math.min(p.inner.w / c, p.inner.h / Math.ceil(m / c)); if (s > best[1]) best = [c, s]; }
+      return best;
+    };
+    let r = 44;
+    pens.forEach((p, k) => { r = Math.min(r, fit(p, Math.max(4, counts[k] || 0))[1] * 0.4); });
+    r = Math.max(8, r);
+    pens.forEach((p, k) => { p.cols = fit(p, Math.max(1, counts[k] || 0))[0]; });
+    return { W, H, gh, pens, r };
+  }
+
+  // slot centres for the m animals in pen p (row-major, staggered rows, a touch of fixed jitter so it looks lived-in)
+  function slots(p, m, r) {
+    const out = []; if (!m) return out;
+    const c = Math.max(1, Math.min(p.cols || 1, m)), rows = Math.ceil(m / c);
+    const sx = p.inner.w / c, sy = p.inner.h / rows;
+    for (let i = 0; i < m; i++) {
+      const row = Math.floor(i / c), inRow = Math.min(c, m - row * c), col = i - row * c;
+      const off = (c - inRow) * sx / 2 + ((row % 2) && inRow === c && c > 1 ? sx * 0.12 : 0);
+      const j = Math.sin(i * 12.9898 + p.k * 78.233) * 0.08;
+      out.push([p.inner.x + off + (col + 0.5) * sx + j * sx * 0.5, p.inner.y + (row + 0.5) * sy + j * sy]);
+    }
+    return out;
+  }
+
+  // the cascade: the members of chain K in BFS layers from the animal that was moved
+  function cascade(g, K, u) {
+    const seen = new Set([u]), layers = [[u]];
+    let front = [u];
+    while (front.length) {
+      const nx = [];
+      for (const v of front) for (const w of g.adj[v]) if (K.set.has(w) && !seen.has(w)) { seen.add(w); nx.push(w); }
+      if (nx.length) layers.push(nx);
+      front = nx;
+    }
+    return layers;
+  }
+
+  // gesture -> chain: moving animal u into pen B means chain g.chainAt(u, B); nothing when B is its own pen
+  function moveFor(g, u, B) {
+    if (u === g.hole || B == null || B < 0 || B >= g.NC || B === g.col[u]) return null;
+    const K = g.chainAt(u, B);
+    if (!K) return null;
+    return { K, web: K.web, from: g.col[u], to: B, layers: cascade(g, K, u) };
+  }
+
+  // which pen does a release at (x, y) mean? Inside or nearest pen; a swipe that stays in its own pen but clearly
+  // points at another one counts for that one (forgiving flicks on a small phone tile).
+  function penFor(L, x, y, from, dx, dy) {
+    if (y < L.gh - 6) return null;
+    let best = null, bd = Infinity;
+    L.pens.forEach(p => {
+      const ex = Math.max(p.x - x, 0, x - p.x - p.w), ey = Math.max(p.y - y, 0, y - p.y - p.h), d = Math.hypot(ex, ey);
+      if (d < bd) { bd = d; best = p.k; }
+    });
+    const len = Math.hypot(dx || 0, dy || 0);
+    if (best === from && from != null && len > Math.max(28, L.r * 1.2)) {
+      const P = L.pens[from]; let bc = 0.5, alt = null;
+      L.pens.forEach(q => {
+        if (q.k === from) return;
+        const vx = q.cx - P.cx, vy = q.cy - P.cy, c = (vx * dx + vy * dy) / (Math.hypot(vx, vy) * len);
+        if (c > bc) { bc = c; alt = q.k; }
+      });
+      if (alt != null) return alt;
+    }
+    return best;
+  }
+
+  window.ZOO = { PEN, layoutZoo, slots, cascade, moveFor, penFor };
+  if (window.ZOO_TEST) return;
+
+  // ---------------------------------------------------------------- the zoo
+  const g = LAB.game();
+  const NC = g.NC, hole = g.hole, rimSet = new Set(g.rim);
+  const RM = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const NS = 'http://www.w3.org/2000/svg';
+  const svg = document.getElementById('s');
+  const el = (tag, attrs, parent, html) => {
+    const e = document.createElementNS(NS, tag);
+    for (const a in attrs) e.setAttribute(a, (a === 'width' || a === 'height') && attrs[a] < 0 ? 0 : attrs[a]);   // a frame laid out before it has a size
+    if (html != null) e.innerHTML = html;
+    if (parent) parent.appendChild(e);
+    return e;
+  };
+
+  // pen sign icons, unit size (about -1..1)
+  function penIcon(k, s) {
+    const P = PEN[k], f = `fill="${P.col}" stroke="${P.dark}" stroke-width=".12" stroke-linejoin="round"`;
+    if (k === 0) return `<path ${f} d="M-.8 .8V-.1L0-.85L.8-.1V.8Z"/><path d="M-.3 .8V.15H.3V.8M-.3 .15L.3 .8M.3 .15L-.3 .8" fill="none" stroke="#fff" stroke-width=".1"/>`;
+    if (k === 1) return `<path ${f} d="M0-.9C.35-.4 .68-.05 .68 .3A.68 .68 0 0 1-.68 .3C-.68-.05-.35-.4 0-.9Z"/><path d="M-.3 .3A.3 .3 0 0 0 0 .6" fill="none" stroke="#fff" stroke-width=".1" stroke-linecap="round"/>`;
+    if (k === 2) { let d = ''; for (let i = 0; i < 8; i++) { const a = i * Math.PI / 4, b = a + 0.22, c = a - 0.22; d += `M${(.55 * Math.cos(b)).toFixed(2)} ${(.55 * Math.sin(b)).toFixed(2)}L${(.92 * Math.cos(a)).toFixed(2)} ${(.92 * Math.sin(a)).toFixed(2)}L${(.55 * Math.cos(c)).toFixed(2)} ${(.55 * Math.sin(c)).toFixed(2)}Z`; } return `<path ${f} d="${d}"/><circle ${f} r=".5"/>`; }
+    return `<path ${f} d="M-.7 .72C-.85-.3 0-.88 .82-.82C.82 0 .2 .82-.7 .72Z"/><path d="M-.7 .72L.3-.3" fill="none" stroke="#fff" stroke-width=".1" stroke-linecap="round"/>`;
+  }
+
+  // ---- the residents: one animal per region (the hole is the visitor)
+  const SPECIES = [
+    ['bunny', '#f4efe8', '#b7a99a'], ['cat', '#f2a65a', '#b0662a'], ['bear', '#a8754f', '#6b4528'], ['pig', '#f6b6c1', '#c77685'],
+    ['sheep', '#f7f3ea', '#b9b1a3'], ['duck', '#fffaf0', '#c9b98e'], ['frog', '#8fd06f', '#4e8f37'], ['mouse', '#c4bcc0', '#857a80'],
+    ['cow', '#ffffff', '#9c9393'], ['owl', '#a07a57', '#634529'], ['fox', '#ee8a3c', '#a5531a'], ['panda', '#ffffff', '#8c8c8c'],
+    ['chick', '#ffe36e', '#c9a21d'], ['hedgehog', '#ecd0a6', '#8c6a46'], ['koala', '#a9adb6', '#6c707a'],
+    ['bunny', '#cfa47c', '#8d6a49'], ['cat', '#b9b9c4', '#77778a'], ['bear', '#e3b66c', '#a37a2e'], ['pig', '#f2c9a6', '#bd8f66'],
+    ['sheep', '#5f5866', '#2f2a33'], ['duck', '#5fa66b', '#2f6a3a'],
+  ];
+  const NAMES = ['Clover', 'Ginger', 'Bruno', 'Rosie', 'Fluff', 'Waddles', 'Hopper', 'Squeak', 'Daisy', 'Hoot', 'Rusty', 'Bamboo',
+    'Peep', 'Spike', 'Koko', 'Biscuit', 'Smokey', 'Honey', 'Peaches', 'Coal', 'Mallard'];
+  const INK = '#3b2a20';
+
+  function faceMarkup(ex, ey, er, my) {
+    if (my == null) my = ey;
+    return `<circle cx="${-ex - .16}" cy="${my + .2}" r=".12" fill="#ff8fa3" opacity=".5"/><circle cx="${ex + .16}" cy="${my + .2}" r=".12" fill="#ff8fa3" opacity=".5"/>` +
+      `<g fill="${INK}"><circle cx="${-ex}" cy="${ey}" r="${er}"/><circle cx="${ex}" cy="${ey}" r="${er}"/></g>` +
+      `<g fill="#fff"><circle cx="${-ex + .03}" cy="${ey - .03}" r="${er * .35}"/><circle cx="${ex + .03}" cy="${ey - .03}" r="${er * .35}"/></g>` +
+      `<path class="brow" d="M${-ex - .06} ${ey - .24}L${-ex + .24} ${ey - .12}M${ex + .06} ${ey - .24}L${ex - .24} ${ey - .12}" stroke="${INK}" stroke-width=".08" stroke-linecap="round" fill="none"/>` +
+      `<g stroke="${INK}" stroke-width=".07" stroke-linecap="round" fill="none">` +
+      `<path class="ms" d="M-.13 ${my + .25}Q0 ${my + .37} .13 ${my + .25}"/><path class="mg" d="M-.14 ${my + .34}Q0 ${my + .22} .14 ${my + .34}"/></g>` +
+      `<ellipse class="mo" cx="0" cy="${my + .3}" rx=".1" ry=".11" fill="#a33b3b" stroke="${INK}" stroke-width=".05"/>`;
+  }
+
+  function animalMarkup(sp, c, d) {
+    const S = `stroke="${d}" stroke-width=".07"`;
+    let back = '', mid = '', front = '', head = `<circle r=".8" fill="${c}" ${S}/>`, ex = .3, ey = -.02, er = .095, my = null;
+    switch (sp) {
+      case 'bunny': back = `<g ${S}><ellipse cx="-.3" cy="-.95" rx=".2" ry=".55" fill="${c}" transform="rotate(-10 -.3 -.95)"/><ellipse cx=".3" cy="-.95" rx=".2" ry=".55" fill="${c}" transform="rotate(10 .3 -.95)"/></g><ellipse cx="-.3" cy="-.95" rx=".09" ry=".38" fill="#f7b6c4" transform="rotate(-10 -.3 -.95)"/><ellipse cx=".3" cy="-.95" rx=".09" ry=".38" fill="#f7b6c4" transform="rotate(10 .3 -.95)"/>`;
+        front = `<ellipse cy=".14" rx=".07" ry=".05" fill="#e98a9c"/>`; break;
+      case 'cat': back = `<path d="M-.75-.25L-.62-1L-.12-.7ZM.75-.25L.62-1L.12-.7Z" fill="${c}" ${S} stroke-linejoin="round"/>`;
+        front = `<path d="M-.42 .16H-.9M-.42 .26L-.85 .38M.42 .16H.9M.42 .26L.85 .38" stroke="${d}" stroke-width=".04"/><path d="M-.06 .12H.06L0 .19Z" fill="#e98a9c"/>`; break;
+      case 'bear': back = `<g fill="${c}" ${S}><circle cx="-.56" cy="-.6" r=".28"/><circle cx=".56" cy="-.6" r=".28"/></g>`;
+        mid = `<ellipse cy=".28" rx=".34" ry=".25" fill="#f3dfc4" opacity=".85"/>`; front = `<ellipse cy=".15" rx=".1" ry=".07" fill="${INK}"/>`; break;
+      case 'pig': back = `<path d="M-.7-.35L-.45-.95L-.15-.62ZM.7-.35L.45-.95L.15-.62Z" fill="${c}" ${S} stroke-linejoin="round"/>`;
+        front = `<ellipse cy=".3" rx=".26" ry=".17" fill="${d}" opacity=".55"/><circle cx="-.09" cy=".3" r=".045" fill="${INK}"/><circle cx=".09" cy=".3" r=".045" fill="${INK}"/>`; ey = -.1; break;
+      case 'sheep': { let w = ''; for (let i = 0; i < 11; i++) { const a = i / 11 * Math.PI * 2; w += `<circle cx="${(.72 * Math.cos(a)).toFixed(2)}" cy="${(.72 * Math.sin(a) - .05).toFixed(2)}" r=".3"/>`; }
+        back = `<g fill="${c}" ${S}>${w}</g>`; head = `<circle r=".62" fill="${c}"/><ellipse cy=".1" rx=".5" ry=".55" fill="#ead7bf" stroke="#b9a487" stroke-width=".06"/>`; ex = .24; break; }
+      case 'duck': mid = `<path d="M-.05-.78Q.1-1 .25-.82" stroke="${d}" stroke-width=".08" fill="none"/>`;
+        front = `<ellipse cy=".26" rx=".32" ry=".13" fill="#f39a2b" stroke="#b5641a" stroke-width=".05"/>`; break;
+      case 'frog': back = `<g fill="${c}" ${S}><circle cx="-.4" cy="-.62" r=".3"/><circle cx=".4" cy="-.62" r=".3"/></g><circle cx="-.4" cy="-.64" r=".2" fill="#fff"/><circle cx=".4" cy="-.64" r=".2" fill="#fff"/>`;
+        ex = .4; ey = -.64; er = .11; my = -.05; head = `<ellipse rx=".85" ry=".7" cy=".08" fill="${c}" ${S}/>`; break;
+      case 'mouse': back = `<g fill="${c}" ${S}><circle cx="-.62" cy="-.55" r=".4"/><circle cx=".62" cy="-.55" r=".4"/></g><circle cx="-.62" cy="-.55" r=".24" fill="#f7b6c4"/><circle cx=".62" cy="-.55" r=".24" fill="#f7b6c4"/>`;
+        front = `<circle cy=".14" r=".08" fill="#e98a9c"/><path d="M-.3 .18H-.8M.3 .18H.8" stroke="${d}" stroke-width=".04"/>`; break;
+      case 'cow': back = `<path d="M-.45-.65Q-.6-1.05-.25-1M.45-.65Q.6-1.05 .25-1" stroke="#e9d7a8" stroke-width=".14" fill="none" stroke-linecap="round"/><g fill="${c}" ${S}><ellipse cx="-.82" cy="-.25" rx=".26" ry=".13"/><ellipse cx=".82" cy="-.25" rx=".26" ry=".13"/></g>`;
+        mid = `<path d="M.2-.75Q.7-.7 .62-.3Q.35-.35 .2-.75Z" fill="#3b3333"/><circle cx="-.45" cy="-.35" r=".14" fill="#3b3333"/>`;
+        front = `<ellipse cy=".45" rx=".44" ry=".24" fill="#f7b6c4" stroke="#c77685" stroke-width=".05"/><circle cx="-.15" cy=".45" r=".05" fill="${INK}"/><circle cx=".15" cy=".45" r=".05" fill="${INK}"/>`; ey = -.12; break;
+      case 'owl': back = `<path d="M-.65-.4L-.6-1L-.25-.7ZM.65-.4L.6-1L.25-.7Z" fill="${c}" ${S}/>`;
+        mid = `<circle cx="-.3" cy="-.05" r=".27" fill="#fff4dc"/><circle cx=".3" cy="-.05" r=".27" fill="#fff4dc"/>`;
+        front = `<path d="M-.08 .12H.08L0 .3Z" fill="#f39a2b"/>`; er = .12; break;
+      case 'fox': back = `<path d="M-.75-.3L-.6-1.05L-.12-.7ZM.75-.3L.6-1.05L.12-.7Z" fill="${c}" ${S} stroke-linejoin="round"/>`;
+        mid = `<path d="M-.78 .1Q-.4 .2 0 .5Q.4 .2 .78 .1Q.6 .75 0 .8Q-.6 .75-.78 .1Z" fill="#fff"/>`; front = `<ellipse cy=".26" rx=".08" ry=".06" fill="${INK}"/>`; break;
+      case 'panda': back = `<g fill="#2b2b2b"><circle cx="-.56" cy="-.62" r=".26"/><circle cx=".56" cy="-.62" r=".26"/></g>`;
+        mid = `<ellipse cx="-.28" cy=".0" rx=".17" ry=".22" fill="#2b2b2b" transform="rotate(30 -.28 0)"/><ellipse cx=".28" cy=".0" rx=".17" ry=".22" fill="#2b2b2b" transform="rotate(-30 .28 0)"/>`;
+        front = `<ellipse cy=".18" rx=".08" ry=".06" fill="#2b2b2b"/>`; ey = 0; break;
+      case 'chick': back = `<path d="M0-.75Q-.15-1.05-.05-1.1Q.05-.95 0-.75Q.1-1.05 .25-1Q.15-.85 0-.75" fill="${c}" ${S}/>`;
+        front = `<path d="M-.1 .14H.1L0 .3Z" fill="#f39a2b"/>`; break;
+      case 'hedgehog': { let p = ''; for (let i = 0; i <= 22; i++) { const a = Math.PI * (1.05 + i / 22 * 0.9) - 0.0, rr = i % 2 ? .78 : 1.02; p += (i ? 'L' : 'M') + (rr * Math.cos(a)).toFixed(2) + ' ' + (rr * Math.sin(a) + .05).toFixed(2); }
+        back = `<path d="${p}Z" fill="#8c6a46" stroke="#5e4329" stroke-width=".06"/><circle r=".9" cy=".05" fill="#8c6a46"/>`; head = `<ellipse rx=".66" ry=".62" cy=".14" fill="${c}" ${S}/>`; ey = .08; ex = .26;
+        front = `<circle cy=".32" r=".08" fill="${INK}"/>`; break; }
+      case 'koala': back = `<g fill="${c}" ${S}><circle cx="-.7" cy="-.42" r=".4"/><circle cx=".7" cy="-.42" r=".4"/></g><circle cx="-.7" cy="-.42" r=".22" fill="#e8e3e8"/><circle cx=".7" cy="-.42" r=".22" fill="#e8e3e8"/>`;
+        front = `<ellipse cy=".14" rx=".15" ry=".2" fill="#3e3a40"/>`; ex = .36; ey = -.1; break;
+    }
+    return back + head + mid + faceMarkup(ex, ey, er, my) + front;
+  }
+
+  function lulu() { // the visitor: a llama with a pink scarf
+    return `<g stroke="#c9b48e" stroke-width=".07"><path d="M-.45-.5Q-.75-1.2-.4-1.3Q-.2-.95-.2-.55Z" fill="#fbf2df"/><path d="M.45-.5Q.75-1.2 .4-1.3Q.2-.95 .2-.55Z" fill="#fbf2df"/>` +
+      `<ellipse rx=".7" ry=".85" fill="#fbf2df"/></g><g fill="#fffaf0" stroke="#c9b48e" stroke-width=".05"><circle cx="-.25" cy="-.72" r=".2"/><circle cx="0" cy="-.82" r=".22"/><circle cx=".25" cy="-.72" r=".2"/></g>` +
+      `<ellipse cy=".42" rx=".42" ry=".3" fill="#f0e0c6"/>` + faceMarkup(.3, -.1, .1) +
+      `<path d="M-.62 .62Q0 .95 .62 .62L.7 .85Q0 1.15-.7 .85Z" fill="#ff7fa8" stroke="#c74a77" stroke-width=".05"/>`;
+  }
+  const BOW = `<g transform="translate(.42 .62)"><path d="M0 0L-.3-.17V.17ZM0 0L.3-.17V.17Z" fill="#e8384f" stroke="#9c1c2e" stroke-width=".05" stroke-linejoin="round"/><circle r=".08" fill="#9c1c2e"/></g>`;
+
+  // ---- DOM layers
+  const defs = el('defs', {}, svg, `<radialGradient id="gr" cx="50%" cy="40%" r="70%"><stop offset="0" stop-color="#e3efc6"/><stop offset="1" stop-color="#bcd99a"/></radialGradient>` +
+    `<filter id="sh" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="1.5" stdDeviation="1.2" flood-color="#5b3d1c" flood-opacity=".3"/></filter>`);
+  const gBg = el('g', {}, svg), gPens = el('g', {}, svg), gSigns = el('g', {}, svg), gGate = el('g', {}, svg);
+  const gAni = el('g', {}, svg), gTop = el('g', {}, svg), gFx = el('g', { 'pointer-events': 'none' }, svg);
+
+  const A = []; // animals: { v, g, bob, ring, x, y, tween }
+  let k = 0;
+  for (let v = 0; v < g.n; v++) {
+    if (v === hole) continue;
+    const s = SPECIES[k % SPECIES.length], name = NAMES[k % NAMES.length] + (k >= NAMES.length ? ' ' + (1 + Math.floor(k / NAMES.length)) : '');
+    const G = el('g', { class: 'ani' }, gAni);
+    G.innerHTML = `<circle class="halo" r="1.08" fill="#fff8d6" fill-opacity=".55" stroke="#ffc928" stroke-width=".14"/><ellipse cy=".86" rx=".7" ry=".18" fill="#5b3d1c" opacity=".18"/>` +
+      `<circle class="ring" r="1.12" fill="none" stroke-width=".16" stroke-dasharray=".35 .2"/>` +
+      `<g class="bob">${animalMarkup(s[0], s[1], s[2])}${rimSet.has(v) ? BOW : ''}</g>` +
+      `<text class="nm" y="1.32" text-anchor="middle" font-size=".42" font-weight="700" fill="#5a3416" stroke="#fffaf0" stroke-width=".14" paint-order="stroke">${name}</text>`;
+    A[v] = { v, g: G, ring: G.querySelector('.ring'), nm: G.querySelector('.nm'), sp: s, name, x: 0, y: 0, tw: null, pen: g.col[v], kidx: k };
+    k++;
+  }
+  const disp = g.col.slice(); // the pen each animal is SHOWN in (lags g.col while a cascade plays)
+
+  let L = null; // layout
+  function counts() { const c = new Array(NC).fill(0); for (let v = 0; v < g.n; v++) if (v !== hole) c[disp[v]]++; return c; }
+
+  function drawStatic() {
+    const W = innerWidth, H = innerHeight;
+    svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+    L = layoutZoo(W, H, NC, counts());
+    gBg.innerHTML = ''; gPens.innerHTML = '';
+    el('rect', { width: W, height: H, fill: 'url(#gr)' }, gBg);
+    el('rect', { width: W, height: L.gh, fill: '#f6ead0' }, gBg);
+    el('path', { d: `M0 ${L.gh}H${W}`, stroke: '#a0703f', 'stroke-width': 4 }, gBg);
+    // little sandy paths between pens
+    L.pens.forEach(p => el('rect', { x: p.x - 6, y: p.y - 6, width: p.w + 12, height: p.h + 12, rx: 18, fill: '#ecdcb6' }, gBg));
+    L.pens.forEach(p => {
+      const P = PEN[p.k], G = el('g', { class: 'pen' }, gPens);
+      el('rect', { x: p.x, y: p.y, width: p.w, height: p.h, rx: 14, fill: P.floor }, G);
+      // floor texture, deterministic per pen
+      let tex = '', seed = p.k * 97 + 13; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+      const nT = Math.round(p.w * p.h / 900);
+      for (let i = 0; i < nT; i++) {
+        const x = p.x + 10 + rnd() * (p.w - 20), y = p.y + 10 + rnd() * (p.h - 20), a = rnd() * 6.28, s = 4 + rnd() * 4;
+        if (p.k === 0) tex += `M${x} ${y}l${(Math.cos(a) * s).toFixed(1)} ${(Math.sin(a) * s).toFixed(1)}`;
+        else if (p.k === 1) tex += `M${x - s} ${y}q${s} ${-s * .6} ${2 * s} 0`;
+        else if (p.k === 2) tex += `M${x} ${y}m-1.6 0a1.6 1.6 0 1 0 3.2 0a1.6 1.6 0 1 0-3.2 0`;
+        else tex += `M${x - 3} ${y}l2 ${-s}l1 ${s}l2 ${-s * .8}l1 ${s * .8}`;
+      }
+      el('path', { d: tex, fill: p.k === 2 ? P.tex : 'none', stroke: P.tex, 'stroke-width': p.k === 2 ? .8 : 1.6, 'stroke-linecap': 'round', opacity: .8 }, G);
+      if (p.k === 1) el('ellipse', { cx: p.x + p.w * .8, cy: p.y + p.h * .82, rx: Math.min(p.w, p.h) * .09, ry: Math.min(p.w, p.h) * .055, fill: '#7fc06a', opacity: .7 }, G);
+      el('rect', { class: 'hi', x: p.x + 3, y: p.y + 3, width: p.w - 6, height: p.h - 6, rx: 12, fill: P.col, 'fill-opacity': .14, stroke: P.col, 'stroke-width': 5 }, G);
+      // wooden fence: rails + posts
+      el('rect', { x: p.x, y: p.y, width: p.w, height: p.h, rx: 14, fill: 'none', stroke: '#8b5a2b', 'stroke-width': 5 }, G);
+      el('rect', { x: p.x, y: p.y, width: p.w, height: p.h, rx: 14, fill: 'none', stroke: '#dcaa6d', 'stroke-width': 1.6 }, G);
+      let posts = '';
+      const nx = Math.max(2, Math.round(p.w / 42)), ny = Math.max(2, Math.round(p.h / 42));
+      for (let i = 1; i < nx; i++) { const x = p.x + p.w * i / nx; posts += `M${x} ${p.y - 4}v8M${x} ${p.y + p.h - 4}v8`; }
+      for (let i = 1; i < ny; i++) { const y = p.y + p.h * i / ny; posts += `M${p.x - 4} ${y}h8M${p.x + p.w - 4} ${y}h8`; }
+      el('path', { d: posts, stroke: '#6e4320', 'stroke-width': 4.5, 'stroke-linecap': 'round' }, G);
+      p.el = G;
+    });
+    drawGate(); drawSigns(); place(true);
+    if (won && luluSlot && !luluTw) setLulu(luluSlot[0], luluSlot[1], L.r * 1.15);
+  }
+
+  // ---- the gate: Lulu + her speech bubble of the five she can't stand
+  let gLulu = null, luluPos = null, portraits = [];
+  function drawGate() {
+    gGate.innerHTML = ''; gTop.innerHTML = '';
+    const gh = L.gh, W = L.W, lr = gh * 0.3;
+    // gate arch
+    const ax = gh * 0.5;
+    el('path', { d: `M${ax - lr * 1.45} ${gh}V${gh * .22}Q${ax} ${gh * -.05} ${ax + lr * 1.45} ${gh * .22}V${gh}`, fill: 'none', stroke: '#8b5a2b', 'stroke-width': 5, 'stroke-linecap': 'round' }, gGate);
+    luluPos = { x: ax, y: gh * 0.58, r: lr };
+    // bubble
+    const bx = ax + lr * 1.75, bw = W - bx - 44, by = 6, bh = gh - 12;
+    el('path', { d: `M${bx + 10} ${by}H${bx + bw - 10}Q${bx + bw} ${by} ${bx + bw} ${by + 10}V${by + bh - 10}Q${bx + bw} ${by + bh} ${bx + bw - 10} ${by + bh}H${bx + 10}Q${bx} ${by + bh} ${bx} ${by + bh - 10}V${by + bh * .62}L${bx - 9} ${by + bh * .55}L${bx} ${by + bh * .45}V${by + 10}Q${bx} ${by} ${bx + 10} ${by}Z`,
+      fill: '#fffdf6', stroke: '#c9a77a', 'stroke-width': 2, filter: 'url(#sh)' }, gGate);
+    const fs = Math.max(9, Math.min(15, bh * 0.17, bw / (goalText().length * .52)));
+    const msg = el('text', { x: bx + bw / 2, y: by + fs + 3, 'text-anchor': 'middle', 'font-size': fs, 'font-weight': 700, fill: '#5a3416' }, gGate);
+    gGate.msg = msg; gGate.bw = bw; setMsg(goalText());
+    const n = g.rim.length, avail = bh - fs - 10, pr = Math.max(7, Math.min(avail * 0.36, (bw - 12) / n * 0.36));
+    portraits = g.rim.map((v, i) => {
+      const cx = bx + bw * (i + 0.5) / n, cy = by + fs + 6 + avail / 2;
+      const G = el('g', { transform: `translate(${cx} ${cy})` }, gGate);
+      const disc = el('circle', { r: pr * 1.2, 'stroke-width': 2 }, G);
+      const ico = el('g', { transform: `translate(${pr * 0.95} ${pr * 0.8}) scale(${pr * 0.42})` }, G);
+      el('g', { transform: `scale(${pr * 0.85})` }, G, animalMarkup(A[v].sp[0], A[v].sp[1], A[v].sp[2]) + BOW);
+      return { v, disc, ico };
+    });
+    gLulu = el('g', { id: 'lulu' }, gTop, `<g class="bob">${lulu()}</g>`);
+    setLulu(luluPos.x, luluPos.y, luluPos.r);
+    if (won) gLulu.classList.add('party');
+  }
+  function goalText() { return L.W > 420 ? 'Lulu needs a pen where none of these live:' : L.W > 330 ? 'Lulu won\'t share a pen with:' : 'Lulu won\'t live with:'; }
+  function setMsg(t) {
+    const m = gGate.msg; m.textContent = t; m.removeAttribute('textLength');
+    try { if (m.getComputedTextLength() > gGate.bw - 12) { m.setAttribute('textLength', gGate.bw - 12); m.setAttribute('lengthAdjust', 'spacingAndGlyphs'); } } catch (_) {}
+  }
+  function setLulu(x, y, r) { gLulu.setAttribute('transform', `translate(${x.toFixed(1)} ${y.toFixed(1)}) scale(${r.toFixed(2)})`); }
+
+  // ---- signs: pen kind (top-left) and "welcome Lulu?" (top-right), plus where each of the five lives now
+  function rivalsIn(pen) { return g.rim.filter(v => disp[v] === pen).length; }
+  function drawSigns() {
+    gSigns.innerHTML = '';
+    L.pens.forEach(p => {
+      const s = p.sign, P = PEN[p.k];
+      const showName = p.w > s * 6.5;
+      const w1 = showName ? s * 3.3 : s * 1.3;
+      const G = el('g', { transform: `translate(${p.x + 10} ${p.y - s * .35})`, filter: 'url(#sh)' }, gSigns);
+      el('rect', { width: w1, height: s, rx: 5, fill: '#e8c08a', stroke: '#8b5a2b', 'stroke-width': 2 }, G);
+      el('g', { transform: `translate(${s * .62} ${s / 2}) scale(${s * .36})` }, G, penIcon(p.k));
+      if (showName) { const t = el('text', { x: s * 1.2, y: s * .68, 'font-size': s * .5, 'font-weight': 700, fill: P.dark }, G); t.textContent = P.name; }
+      const n = rivalsIn(p.k), ok = n === 0;
+      const H = el('g', { transform: `translate(${p.x + p.w - 10 - s * 1.7} ${p.y - s * .35})`, filter: 'url(#sh)' }, gSigns);
+      el('rect', { width: s * 1.7, height: s, rx: 5, fill: ok ? '#d9f2c4' : '#e8c08a', stroke: ok ? '#3f8a35' : '#8b5a2b', 'stroke-width': 2 }, H);
+      el('g', { transform: `translate(${s * .48} ${s * .55}) scale(${s * .3})` }, H, lulu());
+      el('circle', { cx: s * 1.18, cy: s / 2, r: s * .32, fill: ok ? '#3f9a3a' : '#d8424f' }, H);
+      el('path', { d: ok ? `M${s * 1.02} ${s * .5}l${s * .12} ${s * .13}l${s * .2} ${-s * .26}` : `M${s * 1.06} ${s * .38}l${s * .24} ${s * .24}M${s * 1.3} ${s * .38}l${-s * .24} ${s * .24}`,
+        stroke: '#fff', 'stroke-width': Math.max(1.8, s * .1), fill: 'none', 'stroke-linecap': 'round' }, H);
+    });
+    portraits.forEach(P => {
+      const pen = disp[P.v];
+      P.disc.setAttribute('fill', PEN[pen].floor); P.disc.setAttribute('stroke', PEN[pen].col);
+      P.ico.innerHTML = penIcon(pen);
+    });
+  }
+
+  // ---- motion
+  const now = () => performance.now();
+  function tweenTo(a, x, y, dur, hop, delay) {
+    if (RM) { dur = Math.min(dur, 120); hop = 0; }
+    a.tw = { fx: a.x, fy: a.y, tx: x, ty: y, t0: now() + (delay || 0), dur, hop: hop || 0 };
+  }
+  function place(snap, hoppers) {
+    const c = counts().map((m, i) => m + (i === luluPen ? 1 : 0));
+    L.r = layoutZoo(L.W, L.H, NC, L.pens.map((p, i) => Math.max(c[i], Math.ceil((g.n - 1) / NC) + 1))).r;
+    L.pens.forEach((p, i) => { p.cols = layoutZoo(L.W, L.H, NC, c).pens[i].cols; });
+    for (let pen = 0; pen < NC; pen++) {
+      const members = [];
+      for (let v = 0; v < g.n; v++) if (v !== hole && disp[v] === pen) members.push(v);
+      const S = slots(L.pens[pen], members.length + (pen === luluPen ? 1 : 0), L.r);
+      if (pen === luluPen) luluSlot = S[members.length];
+      members.forEach((v, i) => {
+        const a = A[v]; a.slot = S[i];
+        if (v === held) return;
+        if (snap) { a.x = S[i][0]; a.y = S[i][1]; a.tw = null; }
+        else if (Math.hypot(a.x - S[i][0], a.y - S[i][1]) > .5) tweenTo(a, S[i][0], S[i][1], hoppers && hoppers.has(v) ? 420 : 300, hoppers && hoppers.has(v) ? L.r * 1.6 : 0);
+      });
+    }
+    A.forEach(a => { if (a) a.nm.style.display = L.r >= 15 ? '' : 'none'; });
+  }
+  function frame() {
+    const t = now();
+    A.forEach(a => {
+      if (!a) return;
+      let x = a.x, y = a.y, lift = 0;
+      if (a.tw && t >= a.tw.t0) {
+        const p = Math.min(1, (t - a.tw.t0) / a.tw.dur), e = p < .5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2;
+        x = a.x = a.tw.fx + (a.tw.tx - a.tw.fx) * e; y = a.y = a.tw.fy + (a.tw.ty - a.tw.fy) * e;
+        lift = a.tw.hop * Math.sin(Math.PI * p);
+        if (p >= 1) a.tw = null;
+      }
+      const s = L.r * (a.v === held ? 1.18 : 1);
+      a.g.setAttribute('transform', `translate(${x.toFixed(1)} ${(y - lift).toFixed(1)}) scale(${s.toFixed(2)})`);
+    });
+    if (luluTw) {
+      const p = Math.min(1, (t - luluTw.t0) / luluTw.dur);
+      if (p >= 0) {
+        const hops = 3, hp = (p * hops) % 1;
+        setLulu(luluTw.fx + (luluTw.tx - luluTw.fx) * p, luluTw.fy + (luluTw.ty - luluTw.fy) * p - (RM ? 0 : Math.abs(Math.sin(Math.PI * hp)) * luluTw.h), luluTw.fr + (luluTw.tr - luluTw.fr) * p);
+        if (p >= 1) { luluTw = null; if (onLuluDone) { const f = onLuluDone; onLuluDone = null; f(); } }
+      }
+    }
+    fx(t);
+    requestAnimationFrame(frame);
+  }
+
+  // speech puffs ("hmph!", "meh") riding on an animal
+  function puff(v, text, ms) {
+    const a = A[v]; const G = el('g', { class: 'puff', transform: 'translate(0 -1.25)' }, a.g);
+    const w = .36 * text.length + .5;
+    el('rect', { x: -w / 2, y: -.42, width: w, height: .62, rx: .3, fill: '#fff', stroke: '#8b5a2b', 'stroke-width': .06 }, G);
+    const t = el('text', { y: .05, 'text-anchor': 'middle', 'font-size': .44, 'font-weight': 700, fill: '#7a3b1a' }, G); t.textContent = text;
+    setTimeout(() => G.remove(), RM ? ms * .6 : ms);
+  }
+
+  // confetti
+  const parts = [];
+  function burst(x, y, n, cols) {
+    if (RM) n = Math.min(n, 10);
+    for (let i = 0; i < n; i++) {
+      const a = Math.random() * Math.PI * 2, sp = 1.5 + Math.random() * 3.5, c = cols[i % cols.length];
+      const e = el('path', { d: i % 2 ? 'M0 2C-4-2-3-5 0-3C3-5 4-2 0 2Z' : 'M-2.5-2.5h5v5h-5z', fill: c }, gFx);
+      parts.push({ e, x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 3, r: Math.random() * 360, life: 1 });
+    }
+  }
+  function fx() {
+    for (let i = parts.length - 1; i >= 0; i--) {
+      const p = parts[i]; p.x += p.vx; p.y += p.vy; p.vy += .15; p.r += 6; p.life -= .012;
+      if (p.life <= 0) { p.e.remove(); parts.splice(i, 1); continue; }
+      p.e.setAttribute('transform', `translate(${p.x.toFixed(1)} ${p.y.toFixed(1)}) rotate(${p.r.toFixed(0)}) scale(${(1.4 * p.life + .4).toFixed(2)})`);
+      p.e.setAttribute('opacity', Math.min(1, p.life * 2).toFixed(2));
+    }
+  }
+
+  // ---- sound (only after the first gesture)
+  let ac = null;
+  function tone(f, d, type, vol, slide, at) {
+    if (!ac) return;
+    const t = ac.currentTime + (at || 0), o = ac.createOscillator(), v = ac.createGain();
+    o.type = type || 'sine'; o.frequency.setValueAtTime(f, t); if (slide) o.frequency.exponentialRampToValueAtTime(slide, t + d);
+    v.gain.setValueAtTime(0, t); v.gain.linearRampToValueAtTime(vol || .12, t + .01); v.gain.exponentialRampToValueAtTime(.001, t + d);
+    o.connect(v).connect(ac.destination); o.start(t); o.stop(t + d + .02);
+  }
+  const sfx = {
+    pick: () => tone(620, .08, 'sine', .1, 820),
+    hop: () => tone(520, .16, 'sine', .12, 1040),
+    hmph: () => { tone(260, .14, 'triangle', .13, 170); },
+    meh: () => { tone(330, .18, 'triangle', .1, 300); tone(300, .22, 'triangle', .1, 250, .2); },
+    drop: () => tone(300, .08, 'sine', .08, 240),
+    win: () => [523, 659, 784, 1047, 1319].forEach((f, i) => tone(f, .25, 'triangle', .12, 0, i * .11)),
+  };
+
+  // ---- holding: rivals scowl, the would-be cascade lights up
+  let luluPen = -1, luluSlot = null;
+  let held = null, sel = null, busy = false, won = false, luluTw = null, onLuluDone = null, hoverPen = null;
+  function rivals(v) { return g.adj[v].filter(w => w !== hole); }
+  function clearMarks() {
+    A.forEach(a => { if (a) a.g.classList.remove('grump', 'lit', 'held', 'sel', 'bump'); });
+    L.pens.forEach(p => p.el.classList.remove('hover'));
+    if (gLulu) gLulu.classList.remove('grump', 'hope');
+  }
+  function mark(u, B) {
+    clearMarks();
+    if (u == null) return;
+    A[u].g.classList.add(u === held ? 'held' : 'sel');
+    rivals(u).forEach(w => A[w].g.classList.add('grump'));
+    if (rimSet.has(u)) gLulu.classList.add('grump');
+    const m = moveFor(g, u, B);
+    if (m) {
+      L.pens[B].el.classList.add('hover');
+      m.K.vs.forEach(w => { if (w === u) return; A[w].g.classList.add('lit'); A[w].ring.setAttribute('stroke', PEN[g.col[w] === m.from ? m.to : m.from].col); });
+      if (!m.web && g.preview(m.K).won) { gLulu.classList.remove('grump'); gLulu.classList.add('hope'); }
+    }
+  }
+
+  // ---- the move: one gesture -> one g.swap(K)
+  function doMove(u, B) {
+    const m = moveFor(g, u, B);
+    clearMarks(); held = null; sel = null;
+    if (!m) { place(false); sfx.drop(); return; }
+    busy = true;
+    if (m.web) { // the two whole pens would just trade places: nothing really changes
+      const P = L.pens[m.from], Q = L.pens[m.to];
+      place(false);
+      m.K.vs.forEach((w, i) => {
+        const a = A[w], other = g.col[w] === m.from ? Q : P;
+        const tx = a.slot[0] + (other.cx - a.slot[0]) * .22, ty = a.slot[1] + (other.cy - a.slot[1]) * .22;
+        setTimeout(() => { tweenTo(a, tx, ty, 380, L.r * .4); }, 260 + i * 15);
+        setTimeout(() => { tweenTo(a, a.slot[0], a.slot[1], 420, 0); }, 900 + i * 15);
+        if (i % 2 === 0 || m.K.vs.length < 6) setTimeout(() => puff(w, i % 3 ? 'meh' : '...?', 1000), 700);
+      });
+      setTimeout(sfx.meh, 650);
+      setTimeout(() => { busy = false; }, 1400);
+      return;
+    }
+    g.swap(m.K);
+    const STEP = RM ? 60 : 300;
+    m.layers.forEach((layer, i) => setTimeout(() => {
+      layer.forEach(w => { disp[w] = g.col[w]; });
+      place(false, new Set(layer));
+      drawSigns();
+      if (i === 0) sfx.hop(); else { sfx.hmph(); layer.forEach(w => { A[w].g.classList.add('bump'); puff(w, 'hmph!', 800); setTimeout(() => A[w].g.classList.remove('bump'), 700); }); }
+    }, i * STEP));
+    setTimeout(() => { busy = false; if (g.won()) win(); }, m.layers.length * STEP + 380);
+  }
+
+  function win() {
+    won = true; busy = true;
+    const F = g.free(), p = L.pens[F];
+    setMsg('Lulu found her pen!');
+    gLulu.classList.add('party');
+    luluPen = F; place(false);
+    const tr = L.r * 1.15;
+    luluTw = { fx: luluPos.x, fy: luluPos.y, fr: luluPos.r, tx: luluSlot[0], ty: luluSlot[1], tr, t0: now(), dur: RM ? 200 : 1300, h: Math.max(16, L.gh * .3) };
+    onLuluDone = () => {
+      sfx.win();
+      burst(p.cx, p.y + p.h * .6, 46, [PEN[F].col, '#ff7fa8', '#ffffff', '#ffd84a']);
+      A.forEach(a => { if (a) a.g.classList.add('party'); });
+      setTimeout(() => { setMsg('Lulu moved in! Tap to play again'); busy = false; }, 700);
+    };
+  }
+
+  function restart() {
+    won = false; luluTw = null; onLuluDone = null; busy = false; luluPen = -1;
+    A.forEach(a => { if (a) a.g.classList.remove('party'); });
+    setMsg(goalText());
+    gLulu.classList.remove('party');
+    setLulu(luluPos.x, luluPos.y, luluPos.r);
+    g.reset();
+  }
+
+  // undo / reset (and any other outside change): everyone walks to where they really live
+  g.on((_, info) => {
+    if (info.type === 'swap') return;
+    const moved = new Set();
+    for (let v = 0; v < g.n; v++) if (v !== hole && disp[v] !== g.col[v]) { disp[v] = g.col[v]; moved.add(v); }
+    clearMarks(); held = sel = null;
+    place(false, moved); drawSigns();
+    if (moved.size) sfx.hop();
+  });
+
+  // ---- input (pointer events: drag, swipe or flick; or tap an animal then tap a pen)
+  let down = null;
+  function pt(e) { const b = svg.getBoundingClientRect(); return [e.clientX - b.left, e.clientY - b.top]; }
+  function animalAt(x, y) {
+    let best = null, bd = Math.max(L.r * 1.3, 24);
+    A.forEach(a => { if (!a) return; const d = Math.hypot(a.x - x, a.y - y + L.r * .1); if (d < bd) { bd = d; best = a.v; } });
+    return best;
+  }
+  svg.addEventListener('pointerdown', e => {
+    if (!ac) { try { ac = new (window.AudioContext || window.webkitAudioContext)(); } catch (_) { ac = null; } }
+    else if (ac.state === 'suspended') ac.resume();
+    if (won && !busy) { restart(); return; }
+    if (busy) return;
+    const [x, y] = pt(e), u = animalAt(x, y);
+    if (u == null) {
+      if (sel != null) { const B = penFor(L, x, y, null, 0, 0); if (B != null && B !== disp[sel]) { doMove(sel, B); return; } }
+      sel = null; clearMarks(); return;
+    }
+    try { svg.setPointerCapture(e.pointerId); } catch (_) {}
+    down = { u, x0: x, y0: y, t0: now(), moved: false, hist: [[x, y, now()]], wasSel: sel === u };
+    held = u; sel = null; A[u].tw = null; sfx.pick(); gAni.appendChild(A[u].g);
+    mark(u, null);
+  });
+  svg.addEventListener('pointermove', e => {
+    if (!down) return;
+    const [x, y] = pt(e), a = A[down.u];
+    if (!down.moved && Math.hypot(x - down.x0, y - down.y0) > 8) down.moved = true;
+    if (!down.moved) return;
+    a.x = x; a.y = y - L.r * .35;
+    down.hist.push([x, y, now()]); if (down.hist.length > 6) down.hist.shift();
+    const B = penFor(L, x, y, disp[down.u], x - down.x0, y - down.y0);
+    if (B !== hoverPen) { hoverPen = B; mark(down.u, B); }
+  });
+  function release(e, cancel) {
+    if (!down) return;
+    const d = down; down = null; hoverPen = null;
+    const [x, y] = pt(e);
+    if (cancel) { held = null; clearMarks(); place(false); return; }
+    if (!d.moved) { // a tap: select (show who it can't stand), then tap a pen to send it there
+      held = null;
+      if (d.wasSel) { sel = null; clearMarks(); } else { sel = d.u; mark(d.u, null); }
+      return;
+    }
+    // released over another pen: that pen. Released in its own pen: a flick (projected a little along its speed)
+    // or a clear swipe direction can still name a neighbouring pen.
+    const from = disp[d.u];
+    let B = penFor(L, x, y, from, x - d.x0, y - d.y0);
+    if (B === from) {
+      const h = d.hist, h0 = h[0], dt = Math.max(30, h[h.length - 1][2] - h0[2]);
+      let px = (x - h0[0]) / dt * 140, py = (y - h0[1]) / dt * 140; const pl = Math.hypot(px, py), cap = Math.max(60, L.r * 3);
+      if (pl > cap) { px *= cap / pl; py *= cap / pl; }
+      B = penFor(L, x + px, y + py, from, x - d.x0 + px, y - d.y0 + py);
+    }
+    doMove(d.u, B);
+  }
+  svg.addEventListener('pointerup', e => release(e, false));
+  svg.addEventListener('pointercancel', e => release(e, true));
+
+  document.getElementById('undo').onclick = () => { if (!busy && !won) g.undo(); };
+  document.getElementById('again').onclick = () => { if (!busy || won) restart(); };
+
+  let rt = 0;
+  addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(drawStatic, 60); });
+  drawStatic();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

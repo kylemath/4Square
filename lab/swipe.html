@@ -1,0 +1,667 @@
+<!doctype html>
+<!--
+  BONUS SWIPE: the game's bonus round (index.html, "bonus round": cartoon hex tiles on a spaced hex grid, coin pancakes,
+  one long swipe through tiles of two alternating kinds, cha-ching per tile, the 5-4-3-2-1 countdown) turned into a
+  front end for the real puzzle. Same tile art, coins, sounds and dotted path line; the board is the level's map.
+
+  What the player sees: a purple bonus card, a spaced hex grid of cartoon tiles (fire, water, air, earth: colour AND
+  icon), each with a little coin stack. Every region sits on a site of a triangular lattice (pointy-top hexes, like the
+  bonus grid). A short chunky BRIDGE in the gap joins two tiles only when the two regions really are neighbours; two
+  tiles that sit side by side but are not neighbours just show the dark gap, so a swipe can never use a fake link. A few
+  links cannot be lattice steps (the map is not a flat grid: 6 of its regions have 5 neighbours), so they are longer
+  bridges; the three far regions of the map (g.border) are drawn as three long RAILS that wrap round the board's sides,
+  each bridged to exactly the tiles it touches and to the other two rails at the corners. The drawing is checked for
+  honesty on load (no crossings, no bridge or rail under a tile it does not belong to, rim tiles touch the golden tile);
+  the level-4 placement is precomputed (keyed by the graph's fingerprint, as in dots.html) and re-checked, other levels
+  are placed live by the same beam search. The hole is the GOLDEN TILE (a big coin) in the middle; its 5 neighbours
+  (g.rim) wear gold halos and gold bridges: the JACKPOT RING. The header shows the ring's 5 kinds grouped (a pair is
+  drawn as a joined capsule): it pays out on TWO PAIRS AND A SINGLE.
+
+  What the player does (exactly the bonus gesture):
+    press tile u, drag across a bridge to tile v           -> K = g.chainAt(u, g.col[v])   (the first two fix the pair)
+    the rest of K (K.vs) shimmers ahead; everything else dims. Each further step must cross a bridge from the last
+      tile to a tile of K (alternating the two kinds); stepping back onto the previous tile takes the last step back;
+      anything else shakes + buzzes and is ignored (a gap: "no bridge there"). Each tile passed cha-chings its coins.
+    lift with >= 2 tiles on the line                       -> g.swap(K): the WHOLE group flips, tile by tile from where
+      the swipe started, coin pancakes flipping with it (not just the traced tiles).
+    press and HOLD a tile (about 0.4 s without leaving it)  -> 3 kind bubbles pop up (the 3 other kinds b); hovering a
+      bubble shimmers g.chainAt(u, b); release on / tap a bubble -> g.swap(g.chainAt(u, b)). This is how lone tiles
+      (single-region chains, no neighbour of either partner kind) are reached; it works on any tile.
+    K.web (the only chain of that pair: flipping it renames two kinds everywhere, nothing changes) -> no swap: the coins
+      spill off the traced tiles and slide back, with a "nothing changes" line.
+  Every action is exactly one g.swap(K) or nothing. Win: g.won() (the ring is 2 + 2 + 1) -> JACKPOT: the golden tile
+  turns into g.free(), a coin fountain, the happy jingle, then the 5-4-3-2-1 countdown and g.reset() (tap to skip).
+  Idle hint: after a quiet spell a little snake of a g.good() chain bobs, like the bonus demo. Tiny undo / restart in
+  the header (g.undo / g.reset). Coins are just juice: no score.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>Bonus Swipe</title>
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; margin: 0; overflow: hidden; }
+  body {
+    background: radial-gradient(120% 80% at 50% 0%, #8a6cff 0%, #4a35c4 55%, #2e2090 100%); background-color: #2e2090; color: #fff;
+    font-family: ui-rounded, "SF Pro Rounded", system-ui, -apple-system, "Segoe UI", sans-serif;
+    overscroll-behavior: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
+    display: flex; flex-direction: column; padding: 8px 8px 8px; gap: 5px;
+  }
+  button { font: inherit; color: inherit; touch-action: manipulation; cursor: pointer; }
+  .bhead { display: flex; align-items: center; gap: 7px; font-weight: 900; font-size: .92rem; min-height: 30px; }
+  .btag { background: #ffd84a; color: #4a2a00; border: 2px solid #fff; border-radius: 999px; padding: 1px 9px; font-size: .74rem; letter-spacing: .08em; box-shadow: 0 3px 0 #b06a00; white-space: nowrap; }
+  #ring { flex: 1; min-width: 0; height: 30px; display: flex; align-items: center; }
+  #ring svg { height: 30px; width: auto; max-width: 100%; overflow: visible; }
+  .bskip { background: rgba(18,22,70,.55); color: #fff; border: 2px solid #fff; border-radius: 999px; width: 32px; height: 28px; padding: 0; font-weight: 900; font-size: .95rem; line-height: 1; flex: none; }
+  .bskip:disabled { opacity: .35; }
+  #msg { height: 2.5em; line-height: 1.25; font-weight: 800; font-size: .86rem; display: flex; align-items: center; overflow: hidden; }
+  .bwrap { position: relative; flex: 1; min-height: 0; border-radius: 18px; background: rgba(18,22,70,.45); box-shadow: inset 0 0 0 2px rgba(255,255,255,.35); padding: 4px; }
+  #bsvg { display: block; width: 100%; height: 100%; touch-action: none; overflow: visible; cursor: pointer; }
+  #bsvg .tl, #bsvg .bcoin, #bsvg polyline, #bsvg .lk, #bsvg .fx { pointer-events: none; }
+  .bglow { fill: none; stroke: #fff; stroke-width: 16; stroke-linecap: round; stroke-linejoin: round; stroke-opacity: .3; }
+  .bline { fill: none; stroke: #fff; stroke-width: 6; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 1 11; filter: drop-shadow(0 0 4px #fff); animation: bdash .6s linear infinite; }
+  @keyframes bdash { to { stroke-dashoffset: -12; } }
+  /* the game's cartoon tiles */
+  .tl .tb { fill: var(--c); } .tl .ts { fill: var(--d); } .tl .tp { fill: #07090d; } .tl .tr { fill: none; stroke: var(--n); }
+  .tl .ti { display: none; } .tl:not(.gold) .cic { display: none; }
+  .tl.e0 { --c: #ef5a3c; --d: #8e1c17; --n: #ff7a52; } .tl.e1 { --c: #3d8fe8; --d: #1b4f91; --n: #5ab4ff; }
+  .tl.e2 { --c: #e8c547; --d: #8a6510; --n: #ffe066; } .tl.e3 { --c: #4caf50; --d: #1a6b2a; --n: #5cff8a; }
+  .tl.gold { --c: #ffd84a; --d: #b06a00; --n: #fff6c8; }
+  .tl.e0 .ti0, .tl.e1 .ti1, .tl.e3 .ti3 { display: inline; fill: var(--n); }
+  .tl.e2 .ti2 { display: inline; fill: none; stroke: var(--n); stroke-width: 2.4; stroke-linecap: round; }
+  .tl .tin { transform-box: fill-box; transform-origin: center; }
+  .tl.lit .tr { stroke: #fff; } .tl.lit .tin { filter: drop-shadow(0 0 6px #fff) drop-shadow(0 0 3px var(--n)); }
+  .tl.glow .tin { filter: drop-shadow(0 0 10px var(--n)) drop-shadow(0 0 4px #fff); }
+  .tl.ahead .tin { animation: shim .75s ease-in-out infinite alternate; }
+  @keyframes shim { from { filter: drop-shadow(0 0 1px var(--n)); } to { filter: drop-shadow(0 0 9px var(--n)) drop-shadow(0 0 3px #fff) brightness(1.18); } }
+  .tl, .lk, .bcoin { transition: opacity .18s; }
+  .dimmed .tl:not(.lit):not(.ahead):not(.keep):not(.bub), .dimmed .bcoin:not(.keep) { opacity: .4; }
+  .dimmed .lk:not(.on) { opacity: .35; }
+  .tl .halo { fill: none; stroke: #ffd84a; stroke-linejoin: round; filter: drop-shadow(0 0 4px #ffd84a); }
+  .tl.gold .tin { animation: goldglow 2.4s ease-in-out infinite alternate; } @keyframes goldglow { to { filter: drop-shadow(0 0 9px #ffd84a) drop-shadow(0 0 3px #fff); } }
+  .tl.gold.hot .tin { animation: goldglow .35s ease-in-out infinite alternate; }
+  .lk .lo { stroke: #1c1640; stroke-linecap: round; } .lk .li { stroke: #cfc6ff; stroke-linecap: round; }
+  .lk.gl .li { stroke: #ffd84a; } .lk.on .li { stroke: #fff; } .lk.on .lo { filter: drop-shadow(0 0 4px #fff); }
+  .rail .rb { fill: none; stroke: var(--c); stroke-linecap: round; stroke-linejoin: round; }
+  .rail .rs { fill: none; stroke: var(--d); stroke-linecap: round; stroke-linejoin: round; }
+  .rail .ro { fill: none; stroke: #1c1640; stroke-linecap: round; stroke-linejoin: round; }
+  .rail .rn { fill: none; stroke: var(--n); stroke-linecap: round; stroke-linejoin: round; }
+  .rail .rp { fill: none; stroke: #07090d; stroke-linecap: round; stroke-linejoin: round; }
+  .rail.lit .rn { stroke: #fff; }
+  .bub .tin { transform-box: fill-box; transform-origin: center; }
+  .bub.hov .tin { filter: drop-shadow(0 0 8px #fff); }
+  .bcd { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; font-size: 5.5rem; font-weight: 900; color: #ffd84a; opacity: .9; text-align: center;
+    text-shadow: 4px 0 #1c1640, -4px 0 #1c1640, 0 4px #1c1640, 0 -4px #1c1640, 3px 3px #1c1640, -3px 3px #1c1640, 3px -3px #1c1640, -3px -3px #1c1640, 0 8px 0 #1c1640; }
+  .bcd.burst { font-size: 2.6rem; color: #fff; opacity: 1; }
+  #ring .grp { transition: transform .25s; }
+  #ring.win .cap { stroke: #ffd84a; filter: drop-shadow(0 0 4px #ffd84a); }
+  @media (max-width: 300px) { .btag { font-size: .62rem; padding: 1px 6px; } #msg { font-size: .76rem; } .bcd { font-size: 4rem; } .bcd.burst { font-size: 1.9rem; } }
+  @media (prefers-reduced-motion: reduce) { .bline, .tl.ahead .tin, .tl.gold .tin { animation: none !important; } .tl, .lk, .bcoin { transition: none; } }
+</style>
+</head>
+<body>
+<div class="bhead"><span class="btag">JACKPOT</span><span id="ring" aria-label="the gold ring"></span><button class="bskip" id="bUndo" aria-label="undo" title="undo">↶</button><button class="bskip" id="bReset" aria-label="start over" title="start over">⟲</button></div>
+<div id="msg"><span>Swipe a trail of two kinds!</span></div>
+<div class="bwrap" id="wrap"><svg id="bsvg" aria-label="Bonus swipe board"></svg><div class="bcd" id="cd" aria-live="polite"></div></div>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs><g id="coinG"><circle cy="1.8" r="11" fill="#c27a00" stroke="#1c1640" stroke-width="2"/><circle r="11" fill="#ffd84a" stroke="#1c1640" stroke-width="2"/><circle r="7.4" fill="none" stroke="#f0a91c" stroke-width="1.8"/><path d="M0 -4.8L1.4 -1.4 4.8 0 1.4 1.4 0 4.8-1.4 1.4-4.8 0-1.4-1.4Z" fill="#fff6c8" stroke="#c27a00" stroke-width=".8"/><path d="M-6.5 -6A9 9 0 0 1 1 -9.2" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round" opacity=".85"/></g></defs></svg>
+<script src="../levels.js"></script>
+<script src="../layout.js"></script>
+<script src="core.js"></script>
+<script>
+'use strict';
+// <layout>  (pure: lattice placement, rails, honesty check; also run by the node smoke test)
+const R3 = Math.sqrt(3) / 2;
+const site = (i, j) => [i + j / 2, j * R3];
+const hyp = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+const orient = (p, q, r) => Math.sign((q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0]));
+const segX = (a, b, c, d) => orient(a, b, c) * orient(a, b, d) < 0 && orient(c, d, a) * orient(c, d, b) < 0;
+function psd(p, a, b) {
+  const dx = b[0] - a[0], dy = b[1] - a[1], L = dx * dx + dy * dy || 1, t = Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / L));
+  return Math.hypot(p[0] - a[0] - t * dx, p[1] - a[1] - t * dy);
+}
+// a graph's fingerprint (same as dots.html), so a cached placement is only used for exactly the graph it was made for
+function graphSig(g) { let h = 7; const s = g.n + ':' + g.hole + ':' + g.rim + ':' + g.edges.join(';'); for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0; return h.toString(36); }
+const CLR = 0.52, CLH = 0.45, RAILD = 1.0;     // a long bridge keeps this far from every other tile centre (the golden tile: CLH)
+// Beam search: hole at the origin, the rim on 5 of its 6 lattice neighbours, then every other region on the lattice site
+// that makes the most of its links unit steps, keeping the drawing honest (no crossings, no bridge under a tile).
+// skip: regions left out (the 3 border regions when they become rails).
+function beamLayout(g, skip, BW) {
+  const n = g.n, H = g.hole, S = new Set(skip || []);
+  const adj = g.adj.map((a, u) => S.has(u) ? [] : a.filter(w => !S.has(w)));
+  const order = [H, ...g.rim.filter(u => !S.has(u))], inO = new Set(order);
+  const left = () => [...Array(n).keys()].filter(u => !inO.has(u) && !S.has(u));
+  while (order.length < n - S.size) {
+    let best = -1, bc = -1; for (const u of left()) { const c = adj[u].filter(w => inO.has(w)).length; if (c > bc) { bc = c; best = u; } }
+    order.push(best); inO.add(best);
+  }
+  function place(St, u, ij) {
+    const key = ij[0] + ',' + ij[1]; if (St.occ.has(key)) return null;
+    const p = site(ij[0], ij[1]), Q = St.Q; let unit = 0, len = 0; const nE = [];
+    for (const [a, b] of St.E) if (hyp(Q[a], Q[b]) > 1.001 && psd(p, Q[a], Q[b]) < CLR) return null;
+    for (const w of adj[u]) {
+      if (!Q[w]) continue;
+      const d = hyp(p, Q[w]);
+      if (d < 1.001) unit++;
+      else { if (w === H || u === H) return null; len += d - 1; for (const x of St.ids) if (x !== w && psd(Q[x], p, Q[w]) < (x === H ? CLH : CLR)) return null; }
+      for (const [a, b] of St.E) { if (a === w || b === w) continue; if (segX(p, Q[w], Q[a], Q[b])) return null; }
+      nE.push([u, w]);
+    }
+    const Q2 = Q.slice(); Q2[u] = p; const A2 = St.A.slice(); A2[u] = ij;
+    const occ = new Set(St.occ); occ.add(key);
+    return { Q: Q2, A: A2, occ, ids: St.ids.concat([u]), E: St.E.concat(nE), unit: St.unit + unit, len: St.len + len };
+  }
+  const A0 = []; A0[H] = [0, 0]; const Q0 = []; Q0[H] = [0, 0];
+  let beam = [{ Q: Q0, A: A0, occ: new Set(['0,0']), ids: [H], E: [], unit: 0, len: 0 }];
+  const D6 = [[1, 0], [0, 1], [-1, 1], [-1, 0], [0, -1], [1, -1]], nr = g.rim.filter(u => !S.has(u)).length;
+  for (let k = 1; k < order.length; k++) {
+    const u = order[k];
+    for (let R = 3; R <= 12; R += 3) {
+      const next = [], seen = new Set();
+      for (const St of beam) {
+        const cand = new Set();
+        if (k <= nr) D6.forEach(d => cand.add(d.join()));
+        else for (const w of adj[u]) if (St.A[w]) { const [wi, wj] = St.A[w]; for (let di = -R; di <= R; di++) for (let dj = -R; dj <= R; dj++) if (Math.abs(di) + Math.abs(dj) + Math.abs(di + dj) <= 2 * R) cand.add((wi + di) + ',' + (wj + dj)); }
+        for (const c of cand) {
+          const T = place(St, u, c.split(',').map(Number)); if (!T) continue;
+          const sig = T.ids.map(x => T.A[x].join(':')).join('|'); if (seen.has(sig)) continue; seen.add(sig); next.push(T);
+        }
+      }
+      if (next.length) { next.sort((a, b) => (b.unit * 10 - b.len * 2) - (a.unit * 10 - a.len * 2)); beam = next.slice(0, BW || 30); break; }
+      if (R >= 12) return null;
+    }
+  }
+  return beam[0].A.map(a => a || null);
+}
+// Rails: each border region is drawn as one long rail hugging the side of the board it touches. A rail is a polyline:
+// one attach point per tile it touches (1 unit out from the tile), in the order they go round, plus a cap at each end.
+function makeRails(g, Q) {
+  const B = g.border, isB = new Set(B), out = [];
+  if (B.length !== 3) return null;
+  for (const b of B) {
+    const r = g.rot[b], k = r.length;
+    let s = r.findIndex((w, i) => isB.has(w) && !isB.has(r[(i + 1) % k]));
+    if (s < 0) return null;
+    const tiles = []; for (let i = 1; i < k; i++) { const w = r[(s + i) % k]; if (isB.has(w)) break; tiles.push(w); }
+    if (!tiles.length) return null;
+    // offset the chain of tile centres by D to the outside (away from the golden tile), going round each tile
+    const C = tiles.map(t => Q[t]), D = RAILD, m = C.length;
+    let side = 1;
+    if (m > 1) { let sv = 0; for (let i = 0; i + 1 < m; i++) { const dx = C[i + 1][0] - C[i][0], dy = C[i + 1][1] - C[i][1]; sv += Math.sign(-dy * (C[i][0] - Q[g.hole][0]) + dx * (C[i][1] - Q[g.hole][1])); } side = sv >= 0 ? 1 : -1; }
+    const nrm = i => { const dx = C[i + 1][0] - C[i][0], dy = C[i + 1][1] - C[i][1], L = Math.hypot(dx, dy) || 1; return [-dy / L * side, dx / L * side]; };
+    const full = [], at = new Map(), add = (c, nv, k) => full.push([c[0] + nv[0] * k, c[1] + nv[1] * k]);
+    if (m === 1) { let nx = C[0][0] - Q[g.hole][0], ny = C[0][1] - Q[g.hole][1], L = Math.hypot(nx, ny) || 1; nx /= L; ny /= L; const tx = -ny * .4, ty = nx * .4;
+      full.push([C[0][0] + nx * D - tx, C[0][1] + ny * D - ty], [C[0][0] + nx * D, C[0][1] + ny * D], [C[0][0] + nx * D + tx, C[0][1] + ny * D + ty]); at.set(tiles[0], 1); }
+    else for (let i = 0; i < m; i++) {
+      const n0 = i > 0 ? nrm(i - 1) : null, n1 = i < m - 1 ? nrm(i) : null;
+      if (!n0) { const dx = C[0][0] - C[1][0], dy = C[0][1] - C[1][1], L = Math.hypot(dx, dy); add(C[0], [n1[0] + dx / L * .3 / D, n1[1] + dy / L * .3 / D], D); add(C[0], n1, D); at.set(tiles[0], full.length - 1); continue; }
+      if (!n1) { add(C[i], n0, D); at.set(tiles[i], full.length - 1); const dx = C[i][0] - C[i - 1][0], dy = C[i][1] - C[i - 1][1], L = Math.hypot(dx, dy); add(C[i], [n0[0] + dx / L * .3 / D, n0[1] + dy / L * .3 / D], D); continue; }
+      let bx = n0[0] + n1[0], by = n0[1] + n1[1]; const bl = Math.hypot(bx, by) || 1; bx /= bl; by /= bl;
+      const turn = n0[0] * n1[1] - n0[1] * n1[0], cosh = Math.max(.5, bx * n0[0] + by * n0[1]);
+      if (turn * side > 0 || Math.abs(turn) < 1e-6) { add(C[i], [bx, by], D / cosh); at.set(tiles[i], full.length - 1); }   // a dent: one mitred point
+      else { add(C[i], n0, D); add(C[i], [bx, by], D); at.set(tiles[i], full.length - 1); add(C[i], n1, D); }               // a bulge: go round the tile
+    }
+    out.push({ b, tiles, pts: full, at });
+  }
+  return out;
+}
+// The whole drawing as segments ("links" between two things, and rail bodies), then the honesty rules:
+// tiles a full step apart; no two segments cross unless they share an end thing; no bridge or rail passes under a tile
+// it does not belong to; every lattice neighbour that is not linked shows a clear gap (nothing is drawn between them).
+function drawing(g, Q, rails) {
+  const H = g.hole, segs = [], isB = new Set(rails ? g.border : []);
+  for (const [a, b] of g.edges) if (!isB.has(a) && !isB.has(b)) segs.push({ p: Q[a], q: Q[b], own: [a, b], kind: a === H || b === H ? 'gold' : 'link' });
+  if (rails) {
+    for (const r of rails) {
+      r.tiles.forEach(t => segs.push({ p: Q[t], q: r.pts[r.at.get(t)], own: [t, r.b], kind: 'link' }));
+      for (let i = 0; i + 1 < r.pts.length; i++) segs.push({ p: r.pts[i], q: r.pts[i + 1], own: [r.b], kind: 'rail', rail: r.b });
+    }
+    for (let i = 0; i < 3; i++) for (let j = i + 1; j < 3; j++) {
+      const A = rails[i], B = rails[j]; if (!g.adj[A.b].includes(B.b)) continue;
+      const ea = [0, A.pts.length - 1], eb = [0, B.pts.length - 1];
+      let best = null; ea.forEach(ia => eb.forEach(ib => { const d = hyp(A.pts[ia], B.pts[ib]); if (!best || d < best.d) best = { ia, ib, d }; }));
+      segs.push({ p: A.pts[best.ia], q: B.pts[best.ib], own: [A.b, B.b], kind: 'link', rr: true, ia: best.ia, ib: best.ib });
+    }
+  }
+  return segs;
+}
+function honest(g, Q, rails) {
+  const H = g.hole, ids = [...Array(g.n).keys()].filter(u => Q[u]), segs = drawing(g, Q, rails), why = [];
+  for (const u of ids) for (const v of ids) if (u < v && hyp(Q[u], Q[v]) < 0.99) why.push('close ' + u + ',' + v);
+  for (const u of g.rim) if (hyp(Q[u], Q[H]) > 1.001) why.push('rim ' + u + ' off the golden tile');
+  for (const s of segs) for (const w of ids) {
+    if (s.own.includes(w)) continue;
+    const d = psd(Q[w], s.p, s.q), lim = s.kind === 'rail' ? 0.78 : w === H ? CLH : CLR;
+    if (s.kind === 'link' && !s.rr && hyp(s.p, s.q) < 1.001) continue;      // a unit bridge only spans the gap
+    if (d < lim) why.push('under ' + w + ' ' + s.own);
+  }
+  for (let i = 0; i < segs.length; i++) for (let j = i + 1; j < segs.length; j++) {
+    const s = segs[i], t = segs[j]; if (s.own.some(x => t.own.includes(x))) continue;
+    if (segX(s.p, s.q, t.p, t.q)) why.push('cross ' + s.own + ' / ' + t.own);
+  }
+  return why;
+}
+function chooseLayout(g) {
+  const C = typeof SWIPE_CACHE !== 'undefined' && SWIPE_CACHE[graphSig(g)];
+  const fromA = A => A.map(a => a ? site(a[0], a[1]) : null);
+  const tryRails = A => { if (!A) return null; const Q = fromA(A), rails = makeRails(g, Q); return rails && !honest(g, Q, rails).length ? { Q, rails } : null; };
+  if (C) { const r = tryRails(C); if (r) return Object.assign(r, { cached: true }); }
+  if (g.n > 24) return loose();                // bigger maps without a cached placement: skip the live search (too slow)
+  if (g.border.length === 3) { const r = tryRails(beamLayout(g, g.border, 30)); if (r) return r; }
+  const A = beamLayout(g, [], 30);
+  if (A) { const Q = fromA(A); if (!honest(g, Q, null).length) return { Q, rails: null }; }
+  return loose();
+  function loose() {   // last resort: the given planar drawing, spread out (planar, but not on the lattice)
+  const P = g.pos, H = g.hole; let md = 1e9;
+  for (let u = 0; u < g.n; u++) for (let v = u + 1; v < g.n; v++) md = Math.min(md, hyp(P[u], P[v]));
+  return { Q: P.map(p => [(p[0] - P[H][0]) / md * 1.15, (p[1] - P[H][1]) / md * 1.15]), rails: null, loose: true };
+  }
+}
+// </layout>
+
+// <gesture>  (pure: one step of the swipe; also run by the node smoke test)
+// path: tiles on the line so far; K: the group fixed by the first two tiles (or null); v: the tile under the finger.
+// Every link of the map is drawn as a bridge, so "across a bridge" is g.adj.
+function swipeStep(g, path, K, v) {
+  const last = path[path.length - 1];
+  if (v == null || v < 0 || v === last) return { type: 'none' };
+  if (path.length >= 2 && v === path[path.length - 2]) return { type: 'back' };
+  if (path.includes(v)) return { type: 'none' };
+  if (v === g.hole) return { type: 'bad', why: 'gold' };
+  if (!g.adj[last].includes(v)) return { type: 'bad', why: 'gap' };
+  if (!K) { if (g.col[v] === g.col[last]) return { type: 'bad', why: 'same' }; const K2 = g.chainAt(last, g.col[v]); return K2 ? { type: 'start', K: K2 } : { type: 'bad', why: 'same' }; }
+  if (!K.set.has(v)) return { type: 'bad', why: 'kind' };
+  return { type: 'add' };
+}
+// the jackpot ring read as groups: [[kind, count], ...], pairs first (the goal is two pairs and a single)
+function ringGroups(g) {
+  const c = new Map(); g.rimColours().forEach(e => c.set(e, (c.get(e) || 0) + 1));
+  return [...c.entries()].sort((a, b) => b[1] - a[1] || a[0] - b[0]);
+}
+// </gesture>
+
+// <cache>  (placements precomputed with beamLayout + annealing for the shipped maps, as lattice [i, j]; re-checked by honest() on load)
+const SWIPE_CACHE = {"1spd2mn":[[1,0],[0,0],[0,-1],[2,-1],[2,0],[1,1],[0,1],[-1,1],[-1,0],[-1,-1],[0,-2],null,null,[-3,5],[-2,3],[-2,1],[-2,0],[-3,-1],null,[-4,2],[-3,2],[-3,1]],"zcxh1p":[[-1,-3],[1,-2],[0,-4],[-3,-4],[-2,-2],[-1,-2],[0,-1],[1,-1],[2,-2],[2,-3],[1,-5],null,null,[-3,4],[-2,3],[-1,1],[0,0],[1,0],[3,-1],[4,-2],[5,-3],null,[-2,7],[-1,5],[-1,3],[0,1],[1,1],[2,1],[4,-1],[5,-2],[5,-1],[2,3],[2,2],[1,2]],"gwvgky":[[1,3],[0,1],[1,1],[2,2],[2,3],[1,4],[0,4],[0,3],[-1,2],[-1,1],[0,0],[1,-1],[4,-3],[6,-4],null,null,[-5,3],[-4,2],[-3,1],[-1,0],[0,-1],[1,-2],[3,-3],[4,-4],[4,-5],null,[-4,-2],[-7,3],[-5,2],[-4,1],[-1,-1],[0,-2],[1,-3],[-4,-1]],"15f2tum":[[1,0],[-1,1],[0,-2],[3,-3],[0,-1],null,null,[1,-1],[0,0],null,[2,0],[0,1],[-1,-1]]};
+// </cache>
+
+(function () {
+  const g = LAB.game();
+  const LAY = chooseLayout(g), Q = LAY.Q, n = g.n, H = g.hole, RIM = new Set(g.rim);
+  const RAIL = new Map((LAY.rails || []).map(r => [r.b, r])), isRail = u => RAIL.has(u);
+  const SEGS = drawing(g, Q, LAY.rails);
+  const RRI = new Map(); SEGS.forEach(s => { if (s.rr) { RRI.set(s.own[0] + '>' + s.own[1], s.ia); RRI.set(s.own[1] + '>' + s.own[0], s.ib); } });
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const S = 40, h = S * .47, RW = S * .46, NS = 'http://www.w3.org/2000/svg';
+  const IPATH = ['M12 2c.8 3.6 5.5 5.8 5.5 11.2A5.5 5.5 0 0 1 6.5 13.2c0-2.6 1.6-4 2-6.4 1.2 1 2.2 2.4 2.3 4.4 1-1.9 1.4-5.4 1.2-9.2z', 'M12 2.5C9.2 7 5.5 10.6 5.5 15a6.5 6.5 0 0 0 13 0c0-4.4-3.7-8-6.5-12.5z', 'M3 8.5h10.5a3 3 0 1 0-3-3M3 12.5h14.5a3 3 0 1 1-3 3M3 16.5h7', 'M5 19.5C5 10 11 4.5 20 4.5c0 9.5-5.5 15-15 15z'];
+  const NAMES = ['fire', 'water', 'air', 'earth'], NEONH = ['#ff7a52', '#5ab4ff', '#ffe066', '#5cff8a'];
+  const $ = id => document.getElementById(id), svg = $('bsvg');
+  const q1 = v => Math.round(v * 10) / 10;
+  const later = (ms, fn) => { const t = setTimeout(fn, ms); timers.push(t); return t; };
+  let timers = [];
+  const COINS = Array.from({ length: n }, (_, u) => 1 + ((u * 7 + 3) % 5 === 0 ? 2 : (u * 5) % 3 === 0 ? 1 : 0));
+
+  // ---------------- sound (the game's blips, cha-ching and Shepard notes; started on the first touch) ----------------
+  let AC = null;
+  function audio() { try { AC = AC || new (window.AudioContext || window.webkitAudioContext)(); if (AC.state === 'suspended') AC.resume(); } catch (e) { AC = null; } }
+  function blip(freq, dur, type, vol) {
+    if (!AC) return;
+    try {
+      const o = AC.createOscillator(), gn = AC.createGain(), t = AC.currentTime;
+      o.type = type || 'sine'; o.frequency.setValueAtTime(freq, t); o.frequency.exponentialRampToValueAtTime(freq * 1.4, t + dur);
+      gn.gain.setValueAtTime(vol || 0.06, t); gn.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      o.connect(gn); gn.connect(AC.destination); o.start(t); o.stop(t + dur + 0.02);
+    } catch (e) {}
+  }
+  const SCALE = [0, 2, 4, 7, 9];
+  function shepard(pc, dur, vol) {
+    if (!AC) return;
+    try {
+      const t = AC.currentTime, out = AC.createGain(); out.gain.setValueAtTime(0, t);
+      out.gain.linearRampToValueAtTime(vol, t + .015); out.gain.exponentialRampToValueAtTime(.0001, t + dur); out.connect(AC.destination);
+      const centre = Math.log2(330), sigma = 1.1;
+      for (let k = 0; k < 8; k++) {
+        const f = 27.5 * Math.pow(2, k + pc / 12), w = Math.exp(-Math.pow(Math.log2(f) - centre, 2) / (2 * sigma * sigma));
+        if (w < .02 || f > 8000) continue;
+        const o = AC.createOscillator(), gg = AC.createGain(); o.type = 'sine'; o.frequency.value = f; gg.gain.value = w;
+        o.connect(gg); gg.connect(out); o.start(t); o.stop(t + dur + .05);
+      }
+    } catch (e) {}
+  }
+  const note = i => shepard((SCALE[i % 5] + 12 * Math.floor(i / 5)) % 12, .34, .07);
+  const chaching = k => setTimeout(() => { blip(1760 * Math.pow(1.04, k), .07, 'square', .018); blip(2640 * Math.pow(1.04, k), .16, 'triangle', .03); }, 45);
+  const buzz = () => blip(150, .12, 'sawtooth', .022);
+  const jingle = () => { [523, 659, 784, 1047, 1319, 1568].forEach((f, i) => setTimeout(() => blip(f, i === 5 ? .4 : .14, 'triangle', .05), i * 85)); setTimeout(() => { blip(1047, .45, 'sine', .035); blip(1319, .45, 'sine', .03); }, 6 * 85); };
+
+  // ---------------- geometry: lattice -> svg, turned by a multiple of 60 degrees to fit the frame ----------------
+  let rot = -1, P = [], RP = new Map(), VB = null;
+  const turn = (p, k) => { const a = k * Math.PI / 3, c = Math.cos(a), s = Math.sin(a); return [(p[0] * c - p[1] * s) * S, (p[0] * s + p[1] * c) * S]; };
+  function bbox(k) {
+    let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+    const add = (p, r) => { x0 = Math.min(x0, p[0] - r); x1 = Math.max(x1, p[0] + r); y0 = Math.min(y0, p[1] - r); y1 = Math.max(y1, p[1] + r); };
+    Q.forEach((q, u) => { if (q && !isRail(u)) add(turn(q, k), h + 6); });
+    RAIL.forEach(r => r.pts.forEach(p => add(turn(p, k), RW / 2 + 6)));
+    return [x0, y0 - 4, x1 - x0, y1 - y0 + 10];
+  }
+  function fit() {
+    const W = svg.clientWidth || innerWidth, Hh = svg.clientHeight || innerHeight;
+    let best = -1, bs = -1;
+    for (let k = 0; k < 6; k++) { const b = bbox(k), s = Math.min(W / b[2], Hh / b[3]) * (k === rot ? 1.04 : 1); if (s > bs) { bs = s; best = k; } }
+    if (best !== rot) { rot = best; build(); }
+  }
+
+  // ---------------- drawing ----------------
+  const mk = (tag, attrs, parent) => { const e = document.createElementNS(NS, tag); for (const a in attrs) e.setAttribute(a, attrs[a]); if (parent) parent.appendChild(e); return e; };
+  const hx = a => [0, 1, 2, 3, 4, 5].map(q => { const t = Math.PI / 3 * q - Math.PI / 2; return q1(a * Math.cos(t)) + ',' + q1(a * Math.sin(t)); }).join(' ');
+  const icons = sc => IPATH.map((d, e) => '<path class="ti ti' + e + '" d="' + d + '" transform="translate(' + q1(-12 * sc) + ' ' + q1(-12 * sc) + ') scale(' + q1(sc * 100) / 100 + ')"/>').join('');
+  function tileSvg(hh, extra) {          // the game's cartoon tile (shadow, body, neon rim, black plate, icon) as a hexagon
+    const sw = q1(hh * .1), sc = hh * .58 / 12;
+    return (extra || '') + '<polygon class="ts" points="' + hx(hh) + '" stroke-linejoin="round" transform="translate(0 ' + q1(hh * .16) + ')" stroke="#1c1640" stroke-width="' + sw + '"/>' +
+      '<polygon class="tb" points="' + hx(hh) + '" stroke-linejoin="round" stroke="#1c1640" stroke-width="' + sw + '"/>' +
+      '<polygon class="tr" points="' + hx(hh * .78) + '" stroke-linejoin="round" stroke-width="' + sw + '"/>' +
+      '<polygon class="tp" points="' + hx(hh * .64) + '" stroke-linejoin="round"/>' + icons(sc);
+  }
+  const stack = k => { let s = ''; for (let q = 0; q < k; q++) s += '<g transform="translate(0 ' + q1(4 - q * 3) + ') scale(.42)"><use href="#coinG"/></g>'; return s; };
+  let EL = [], CO = [], LK = new Map(), ANCH = [];
+  function railD(pts) { return 'M' + pts.map(p => q1(p[0]) + ' ' + q1(p[1])).join('L'); }
+  function build() {
+    cancelDrag(); closeBubbles();
+    P = Q.map(q => q && turn(q, rot)); RP = new Map(); RAIL.forEach((r, b) => RP.set(b, r.pts.map(p => turn(p, rot))));
+    VB = bbox(rot); svg.setAttribute('viewBox', VB.map(q1).join(' '));
+    svg.innerHTML = ''; EL = []; CO = []; LK = new Map(); ANCH = [];
+    const gl = mk('g', {}, svg), gr = mk('g', {}, svg), gt = mk('g', {}, svg);
+    // bridges: one per real link, under the tiles (so a unit bridge only shows in the gap)
+    SEGS.forEach(s => {
+      if (s.kind === 'rail') return;
+      const p = turn(s.p, rot), q = turn(s.q, rot), e = mk('g', { class: 'lk' + (s.kind === 'gold' ? ' gl' : '') }, gl);
+      const ln = (c, w) => mk('line', { class: c, x1: q1(p[0]), y1: q1(p[1]), x2: q1(q[0]), y2: q1(q[1]), 'stroke-width': w }, e);
+      const lng = Math.hypot(p[0] - q[0], p[1] - q[1]) > S * 1.01 && !s.rr;   // a longer bridge: slimmer, so the grid stays the star
+      ln('lo', q1(S * (lng ? .17 : .27))); ln('li', q1(S * (lng ? .075 : .13)));
+      LK.set(s.own[0] + '-' + s.own[1], e); LK.set(s.own[1] + '-' + s.own[0], e);
+    });
+    // rails: the 3 far regions, each one long tile hugging its side
+    RAIL.forEach((r, b) => {
+      const pts = RP.get(b), d = railD(pts), e = mk('g', { class: 'tl rail', 'data-k': b }, gr), tin = mk('g', { class: 'tin' }, e);
+      tin.innerHTML = '<path class="rs" d="' + d + '" stroke-width="' + q1(RW + 4) + '" transform="translate(0 ' + q1(RW * .2) + ')"/>' +
+        '<path class="ro" d="' + d + '" stroke-width="' + q1(RW + 4.4) + '"/><path class="rb" d="' + d + '" stroke-width="' + q1(RW) + '"/>' +
+        '<path class="rn" d="' + d + '" stroke-width="' + q1(RW * .62) + '"/><path class="rp" d="' + d + '" stroke-width="' + q1(RW * .44) + '"/>';
+      const mid = pts[r.at.get(r.tiles[Math.floor((r.tiles.length - 1) / 2)])], bh = h * .78;
+      const bg = mk('g', { transform: 'translate(' + q1(mid[0]) + ' ' + q1(mid[1]) + ')' }, tin); bg.innerHTML = tileSvg(bh);
+      EL[b] = e; ANCH[b] = mid;
+    });
+    for (let u = 0; u < n; u++) {
+      if (!P[u] || isRail(u)) continue;
+      const e = mk('g', { class: 'tl' + (u === H ? ' gold' : ''), 'data-k': u, transform: 'translate(' + q1(P[u][0]) + ' ' + q1(P[u][1]) + ')' }, gt), tin = mk('g', { class: 'tin' }, e);
+      const halo = RIM.has(u) || u === H ? '<polygon class="halo" points="' + hx(h * 1.17) + '" stroke-width="' + q1(h * .13) + '"' + (u === H ? ' style="display:none"' : '') + '/>' : '';
+      tin.innerHTML = tileSvg(h, halo) + (u === H ? '<g class="cic" transform="scale(' + q1(h * .5 / 11 * 100) / 100 + ')"><use href="#coinG"/></g>' : '');
+      EL[u] = e; ANCH[u] = P[u];
+    }
+    mk('polyline', { class: 'bglow', points: '' }, svg); mk('polyline', { class: 'bline', points: '' }, svg);
+    const gc = mk('g', {}, svg);
+    for (let u = 0; u < n; u++) {
+      if (u === H || !ANCH[u]) continue;
+      const a = ANCH[u], e = mk('g', { class: 'bcoin', 'data-c': u, transform: 'translate(' + q1(a[0] + h * .48) + ' ' + q1(a[1] + h * .42) + ')' }, gc);
+      const inner = mk('g', { class: 'cs' }, e); inner.style.transformBox = 'fill-box'; inner.style.transformOrigin = 'center'; inner.innerHTML = stack(COINS[u]); CO[u] = inner;
+    }
+    FX = mk('g', { class: 'fx' }, svg);
+    paintAll();
+  }
+  let FX = null;
+  const style = (e, c) => { if (!e) return; e.classList.remove('e0', 'e1', 'e2', 'e3'); if (c >= 0) e.classList.add('e' + c); };
+  function paintAll() {
+    for (let u = 0; u < n; u++) if (EL[u] && u !== H) style(EL[u], g.col[u]);
+    const gt = EL[H]; if (gt) { gt.classList.toggle('gold', !won); style(gt, won ? g.free() : -1); const ha = gt.querySelector('.halo'); if (ha) ha.style.display = won ? '' : 'none'; }
+    ring(); $('bUndo').disabled = !g.history.length;
+  }
+  function pop(u, s) { const e = EL[u]; if (reduced || !e) return; const t = e.querySelector('.tin'); if (t && t.animate) t.animate([{ transform: 'scale(1)' }, { transform: 'scale(' + (s || 1.3) + ')' }, { transform: 'scale(1)' }], { duration: 420, easing: 'cubic-bezier(.3,1.6,.5,1)' }); }
+  function shake(u) { const e = EL[u]; if (reduced || !e) return; const t = e.querySelector('.tin'); if (t && t.animate) t.animate([{ transform: 'translateX(0)' }, { transform: 'translateX(-5px)' }, { transform: 'translateX(5px)' }, { transform: 'translateX(-3px)' }, { transform: 'translateX(0)' }], { duration: 260 }); }
+  function burst(x, y, color, k) {
+    if (reduced || !FX) return; k = k || 10;
+    const gg = mk('g', {}, FX);
+    for (let i = 0; i < k; i++) {
+      const a = 2 * Math.PI * i / k + Math.random() * .4, d = 26 + Math.random() * 22;
+      const s = mk('path', { d: 'M0 -5L1.4 -1.4 5 0 1.4 1.4 0 5-1.4 1.4-5 0-1.4-1.4Z', fill: i % 2 ? '#fff' : color }, gg);
+      if (s.animate) s.animate([{ transform: 'translate(' + x + 'px,' + y + 'px) scale(.4)', opacity: 1 }, { transform: 'translate(' + (x + Math.cos(a) * d) + 'px,' + (y + Math.sin(a) * d) + 'px) scale(1.2) rotate(90deg)', opacity: 0 }], { duration: 750, easing: 'cubic-bezier(.2,.7,.3,1)', fill: 'forwards' });
+    }
+    setTimeout(() => gg.remove(), 900);
+  }
+  function coinFly(x, y, k, spread, up) {      // little coins hopping off a stack (or a fountain at the jackpot)
+    if (reduced || !FX) return;
+    for (let i = 0; i < k; i++) {
+      const c = mk('g', {}, FX), u = mk('use', { href: '#coinG' }, c);
+      const a = -Math.PI / 2 + (Math.random() - .5) * spread, v = up * (.7 + Math.random() * .6), dx = Math.cos(a) * v, dy = Math.sin(a) * v;
+      const kf = []; for (let t = 0; t <= 8; t++) { const f = t / 8; kf.push({ transform: 'translate(' + q1(x + dx * f) + 'px,' + q1(y + dy * f + 2.2 * up * f * f) + 'px) scale(' + (.45 - .15 * f) + ') rotate(' + (f * 220) + 'deg)', opacity: f > .7 ? (1 - f) / .3 : 1 }); }
+      c.animate(kf, { duration: 700 + Math.random() * 300, delay: i * 25, easing: 'linear', fill: 'both' }).onfinish = () => c.remove();
+    }
+  }
+  function say(t) { $('msg').innerHTML = '<span>' + t + '</span>'; }
+  const kindB = e => '<b style="color:' + NEONH[e] + '">' + NAMES[e] + '</b>';
+
+  // ---------------- the jackpot ring readout (header): the 5 kinds grouped, a pair as a joined capsule ----------------
+  function ring() {
+    const G = ringGroups(g), box = $('ring'), m = 11, W = m * 2 * .9;
+    let x = 2, s = '';
+    G.forEach(([e, c]) => {
+      const w = c * W + (c - 1) * 2 + 6;
+      s += '<g class="grp"><rect class="cap" x="' + q1(x) + '" y="2" width="' + q1(w) + '" height="26" rx="13" fill="rgba(18,22,70,.55)" stroke="' + (c > 1 ? '#fff' : 'rgba(255,255,255,.25)') + '" stroke-width="2"/>';
+      for (let i = 0; i < c; i++) { const cx = x + 3 + W / 2 + i * (W + 2); s += '<g class="tl e' + e + '" transform="translate(' + q1(cx) + ' 15)"><g class="tin">' + tileSvg(m * .92) + '</g></g>'; }
+      s += '</g>'; x += w + 5;
+    });
+    box.innerHTML = '<svg viewBox="0 0 ' + q1(x) + ' 32" aria-hidden="true">' + s + '</svg>';
+    box.classList.toggle('win', g.won());
+  }
+  function ringSay() {
+    const G = ringGroups(g), pairs = G.filter(x => x[1] > 1).length;
+    if (g.won()) return;
+    say(pairs >= 1 ? 'Gold ring: <b>one pair</b>. Make it <b>two pairs + one</b> for the jackpot!' : 'Make the gold ring <b>two pairs + one</b> for the jackpot!');
+  }
+
+  // ---------------- input ----------------
+  let dr = null, bub = null, busy = false, won = false, idleT = 0, hints = 0;
+  function pt(e) { const m = svg.getScreenCTM(); if (!m) return null; return new DOMPoint(e.clientX, e.clientY).matrixTransform(m.inverse()); }
+  function segD(p, a, b) { const dx = b[0] - a[0], dy = b[1] - a[1], L = dx * dx + dy * dy || 1, t = Math.max(0, Math.min(1, ((p.x - a[0]) * dx + (p.y - a[1]) * dy) / L)); return Math.hypot(p.x - a[0] - t * dx, p.y - a[1] - t * dy); }
+  function hit(p) {
+    if (!p) return -1;
+    let best = -1, bd = h * .98;                         // inside a tile (not the gap between two)
+    for (let u = 0; u < n; u++) if (P[u] && !isRail(u)) { const d = Math.hypot(P[u][0] - p.x, P[u][1] - p.y); if (d < bd) { bd = d; best = u; } }
+    if (best >= 0) return best;
+    for (const [b, pts] of RP) { if (Math.hypot(ANCH[b][0] - p.x, ANCH[b][1] - p.y) < h) return b; for (let i = 0; i + 1 < pts.length; i++) if (segD(p, pts[i], pts[i + 1]) < RW / 2 + 3) return b; }
+    return -1;
+  }
+  function nearIdx(b, p) { const pts = RP.get(b); let bi = 0, bd = 1e9; pts.forEach((q, i) => { const d = Math.hypot(q[0] - p.x, q[1] - p.y); if (d < bd) { bd = d; bi = i; } }); return bi; }
+  function railIdx(b, w) { return isRail(w) ? RRI.get(b + '>' + w) : RAIL.get(b).at.get(w); }
+  function line() {
+    const path = dr ? dr.path : [], pts = [];
+    path.forEach((u, i) => {
+      if (!isRail(u)) { pts.push(P[u]); return; }
+      const R = RP.get(u), a = (i > 0 ? railIdx(u, path[i - 1]) : dr.at0) || 0, b = (i < path.length - 1 ? railIdx(u, path[i + 1]) : a) || 0;
+      const st = a <= b ? 1 : -1; for (let k = a; k !== b + st; k += st) pts.push(R[k]);
+    });
+    const s = pts.map(p => q1(p[0]) + ',' + q1(p[1])).join(' ');
+    svg.querySelector('.bglow').setAttribute('points', s); svg.querySelector('.bline').setAttribute('points', s);
+    if (dr && dr.K) svg.querySelector('.bglow').style.stroke = NEONH[dr.K.pair[0]];
+    else svg.querySelector('.bglow').style.stroke = '';
+    LK.forEach(e => e.classList.remove('on'));
+    for (let i = 0; i + 1 < path.length; i++) { const e = LK.get(path[i] + '-' + path[i + 1]); if (e) e.classList.add('on'); }
+  }
+  function shimmer(K, keep) {
+    svg.classList.toggle('dimmed', !!K);
+    for (let u = 0; u < n; u++) {
+      if (!EL[u]) continue;
+      EL[u].classList.toggle('ahead', !!K && K.set.has(u) && !(dr && dr.path.includes(u)));
+      EL[u].classList.toggle('keep', !!K && (u === H || RIM.has(u) || (keep && keep.includes(u))));
+      if (CO[u]) CO[u].parentNode.classList.toggle('keep', !!K && K.set.has(u));
+    }
+    if (EL[H]) EL[H].classList.toggle('hot', !!K && g.preview(K).won);
+  }
+  function addStep(u) {
+    const p = dr.path; p.push(u); dr.bad = -1;
+    EL.forEach(e => e && e.classList.remove('glow'));
+    EL[u].classList.add('lit', 'glow'); pop(u, 1.35); line();
+    note(p.length - 1); chaching(p.length);
+    const a = ANCH[u]; coinFly(a[0] + h * .48, a[1] + h * .3, COINS[u], 1.6, 30);
+    if (CO[u] && !reduced) CO[u].animate([{ transform: 'translateY(0)' }, { transform: 'translateY(-6px) scale(1.15)' }, { transform: 'translateY(0)' }], { duration: 260, easing: 'ease-out' });
+  }
+  function armSay() {
+    const K = dr.K;
+    if (!K) { say('Drag across a <b>bridge</b> to another kind, or <b>hold</b>.'); return; }
+    if (K.web) say('Every ' + kindB(K.pair[0]) + ' and ' + kindB(K.pair[1]) + ' on the board? Flipping them all changes nothing…');
+    else if (g.preview(K).won) say('Let go: <b>JACKPOT!</b>');
+    else say('Only ' + kindB(K.pair[0]) + ' and ' + kindB(K.pair[1]) + '. Let go to flip all <b>' + K.size + '</b> glowing tiles!');
+  }
+  function cancelDrag() {
+    if (!dr) return; clearTimeout(dr.hold);
+    dr.path.forEach(u => EL[u] && EL[u].classList.remove('lit', 'glow'));
+    dr = null; if (svg.querySelector('.bline')) line(); shimmer(null);
+  }
+  function step(v) {
+    const r = swipeStep(g, dr.path, dr.K, v);
+    if (r.type === 'none') { if (v === dr.path[dr.path.length - 1]) dr.bad = -1; return; }
+    if (r.type === 'back') {
+      const u = dr.path.pop(); EL[u].classList.remove('lit', 'glow'); EL[dr.path[dr.path.length - 1]].classList.add('glow');
+      if (dr.path.length < 2) dr.K = null;
+      line(); shimmer(dr.K); blip(600, .05, 'triangle', .02); armSay(); return;
+    }
+    if (r.type === 'start') { clearTimeout(dr.hold); dr.K = r.K; addStep(v); shimmer(dr.K); armSay(); return; }
+    if (r.type === 'add') { addStep(v); shimmer(dr.K); armSay(); return; }
+    if (dr.bad === v) return; dr.bad = v;           // wrong tile: shake + buzz once per visit, then ignore it
+    shake(v); buzz();
+    if (r.why === 'gap') say('No bridge there! Follow the bridges.');
+    else if (r.why === 'gold') say('The golden tile pays out when its ring shows <b>two pairs + one</b>.');
+    else if (dr.K) say('Only ' + kindB(dr.K.pair[0]) + ' and ' + kindB(dr.K.pair[1]) + ', across a bridge from the end!');
+    else say('Two <b>different</b> kinds: hop to a tile that is not ' + kindB(g.col[dr.path[0]]) + '.');
+  }
+  // press and hold: three kind bubbles
+  function openBubbles(u) {
+    const kinds = [0, 1, 2, 3].filter(e => e !== g.col[u]), c = ANCH[u];
+    const up = c[1] - S * 1.5 > VB[1], els = [];
+    kinds.forEach((e, i) => {
+      const a = (up ? -90 : 90) + (i - 1) * 52, x = c[0] + Math.cos(a * Math.PI / 180) * S * 1.05, y = c[1] + Math.sin(a * Math.PI / 180) * S * 1.05;
+      const b = mk('g', { class: 'tl bub e' + e, transform: 'translate(' + q1(x) + ' ' + q1(y) + ')' }, FX), tin = mk('g', { class: 'tin' }, b);
+      tin.innerHTML = '<circle r="' + q1(h * 1.02) + '" fill="rgba(18,22,70,.7)" stroke="#fff" stroke-width="2"/>' + tileSvg(h * .78);
+      if (!reduced && tin.animate) tin.animate([{ transform: 'scale(0)' }, { transform: 'scale(1.15)', offset: .7 }, { transform: 'scale(1)' }], { duration: 260, delay: i * 50, easing: 'ease-out', fill: 'backwards' });
+      els.push({ e, x, y, el: b });
+    });
+    bub = { u, els, down: true, hov: -1 };
+    EL[u].classList.add('lit'); blip(880, .06, 'triangle', .03); blip(1320, .08, 'triangle', .02);
+    say('Pick a kind: the glowing group flips to it.');
+  }
+  function bubAt(p) { if (!bub || !p) return -1; return bub.els.findIndex(b => Math.hypot(b.x - p.x, b.y - p.y) < h * 1.1); }
+  function bubHover(i) {
+    if (!bub || i === bub.hov) return; bub.hov = i;
+    bub.els.forEach((b, j) => b.el.classList.toggle('hov', j === i));
+    shimmer(i >= 0 ? g.chainAt(bub.u, bub.els[i].e) : null, [bub.u]);
+    if (i >= 0) { blip(1200, .04, 'triangle', .02); const K = g.chainAt(bub.u, bub.els[i].e); say(K.web ? 'Every ' + kindB(K.pair[0]) + ' and ' + kindB(K.pair[1]) + ' on the board? That changes nothing…' : g.preview(K).won ? 'Pick it: <b>JACKPOT!</b>' : 'Flip ' + (K.size === 1 ? 'this tile' : 'all <b>' + K.size + '</b> glowing tiles') + ' to ' + kindB(bub.els[i].e) + '?'); }
+  }
+  function closeBubbles() { if (!bub) return; bub.els.forEach(b => b.el.remove()); if (EL[bub.u]) EL[bub.u].classList.remove('lit'); bub = null; shimmer(null); }
+  function pickBubble(i) {
+    const u = bub.u, K = g.chainAt(u, bub.els[i].e); closeBubbles();
+    if (!K) return;
+    if (K.web) spill([u], K); else doSwap(K, u);
+  }
+  // ---------------- moves ----------------
+  function bfsOrder(K, from) {
+    const seen = new Set([from]), out = [from]; let f = [from];
+    while (f.length) { const nx = []; for (const u of f) for (const w of g.adj[u]) if (K.set.has(w) && !seen.has(w)) { seen.add(w); out.push(w); nx.push(w); } f = nx; }
+    K.vs.forEach(u => { if (!seen.has(u)) out.push(u); });
+    return out;
+  }
+  function doSwap(K, from) {
+    busy = true;
+    const order = bfsOrder(K, K.set.has(from) ? from : K.vs[0]);
+    g.swap(K);
+    const dt = reduced ? 0 : Math.max(45, Math.min(90, 900 / order.length));
+    order.forEach((u, i) => later(i * dt, () => flip(u, g.col[u], i)));
+    later(order.length * dt + (reduced ? 0 : 260), () => {
+      busy = false; paintAll();
+      if (g.won()) jackpot(); else { ringSay(); poke(); }
+    });
+  }
+  function flip(u, c, i) {
+    const e = EL[u]; if (!e) return;
+    note(i);
+    if (reduced) { style(e, c); return; }
+    const t = e.querySelector('.tin'), rail = isRail(u);
+    const k1 = rail ? [{ transform: 'scaleY(1)' }, { transform: 'scaleY(.2)' }] : [{ transform: 'scaleX(1)' }, { transform: 'scaleX(0)' }];
+    const a = t.animate(k1, { duration: 110, easing: 'ease-in', fill: 'forwards' });
+    a.onfinish = () => { style(e, c); const b = t.animate(rail ? [{ transform: 'scaleY(.2)' }, { transform: 'scaleY(1.15)' }, { transform: 'scaleY(1)' }] : [{ transform: 'scaleX(0)' }, { transform: 'scaleX(1.15)' }, { transform: 'scaleX(1)' }], { duration: 220, easing: 'ease-out' }); a.cancel(); };
+    if (CO[u]) CO[u].animate([{ transform: 'translateY(0) scaleY(1)' }, { transform: 'translateY(-10px) scaleY(-1)', offset: .5 }, { transform: 'translateY(0) scaleY(1)' }], { duration: 380, easing: 'ease-in-out' });   // pancakes flip
+  }
+  function spill(path, K) {                          // a web: coins spill off and slide back, nothing changes
+    blip(220, .22, 'sawtooth', .03); setTimeout(() => blip(160, .3, 'sawtooth', .025), 160);
+    say('Every ' + kindB(K.pair[0]) + ' and ' + kindB(K.pair[1]) + ' would flip: nothing changes! Try another pair.');
+    if (reduced) return;
+    path.forEach((u, i) => {
+      if (!CO[u]) return; const a = Math.random() * Math.PI * 2, d = 14 + Math.random() * 10;
+      CO[u].animate([{ transform: 'translate(0,0) rotate(0)' }, { transform: 'translate(' + q1(Math.cos(a) * d) + 'px,' + q1(Math.sin(a) * d + 8) + 'px) rotate(' + (Math.random() > .5 ? 70 : -70) + 'deg)', offset: .35 }, { transform: 'translate(' + q1(Math.cos(a) * d) + 'px,' + q1(Math.sin(a) * d + 8) + 'px) rotate(0deg)', offset: .6 }, { transform: 'translate(0,0) rotate(0)' }], { duration: 1100, delay: i * 40, easing: 'ease-in-out' });
+      shake(u);
+    });
+  }
+  function jackpot() {
+    won = true; paintAll(); const f = g.free(), c = P[H];
+    pop(H, 1.7); burst(c[0], c[1], '#ffd84a', 16); coinFly(c[0], c[1], 26, 2.6, 70); jingle();
+    g.rim.forEach((u, i) => later(i * 70, () => pop(u, 1.3)));
+    const el = $('cd'); el.className = 'bcd burst'; el.textContent = 'JACKPOT!';
+    if (!reduced && el.animate) el.animate([{ transform: 'scale(.2) rotate(-8deg)', opacity: 0 }, { transform: 'scale(1.25) rotate(4deg)', opacity: 1, offset: .5 }, { transform: 'scale(1)', opacity: 1 }], { duration: 600, easing: 'cubic-bezier(.3,1.6,.5,1)', fill: 'forwards' });
+    say('<b>Two pairs + one!</b> The golden tile turns ' + kindB(f) + '. Tap to replay.');
+    let cdn = 5;
+    const tick = () => {
+      if (!won) return;
+      if (cdn === 0) { doReset(); return; }
+      el.className = 'bcd'; el.textContent = cdn;
+      if (!reduced && el.animate) el.animate([{ transform: 'scale(2.2)', opacity: 0 }, { transform: 'scale(.9)', opacity: 1, offset: .25 }, { transform: 'scale(1)', opacity: .85, offset: .4 }, { transform: 'scale(1)', opacity: .35 }], { duration: 1000, easing: 'ease-out', fill: 'forwards' });
+      blip(cdn === 1 ? 1046 : 784, .08, 'square', .035); blip(cdn === 1 ? 523 : 392, .05, 'sine', .03);
+      cdn--; later(1000, tick);
+    };
+    later(reduced ? 1500 : 2200, tick);
+  }
+  function doReset() {
+    timers.forEach(clearTimeout); timers = []; won = false; busy = false; cancelDrag(); closeBubbles();
+    const el = $('cd'); el.className = 'bcd'; el.textContent = ''; el.getAnimations && el.getAnimations().forEach(a => a.cancel());
+    g.reset(); g.rim.forEach((u, i) => setTimeout(() => pop(u, 1.25), i * 60)); ringSay(); poke();
+  }
+  g.on((gg, info) => { if (info.type !== 'swap') paintAll(); });
+  // idle hint: a little snake of a helpful group bobs, like the bonus demo
+  function poke() { clearTimeout(idleT); hints = 0; idleT = setTimeout(hint, 7000); }
+  function hint() {
+    if (busy || won || dr || bub) { idleT = setTimeout(hint, 3000); return; }
+    const G = g.good(); if (!G.length || hints >= 3) return; hints++;
+    const K = G.find(k => k.size > 1) || G[0], snake = bfsOrder(K, K.vs[0]);
+    snake.forEach((u, i) => setTimeout(() => { if (!dr && !bub && !busy) pop(u, 1.25); }, i * 90));
+    if (K.size === 1) setTimeout(() => say('Psst: <b>hold</b> a tile to pick its kind.'), 300);
+    idleT = setTimeout(hint, 7000);
+  }
+  svg.addEventListener('pointerdown', e => {
+    audio(); e.preventDefault(); try { svg.setPointerCapture(e.pointerId); } catch (_) {}
+    poke();
+    if (won) { doReset(); return; }
+    if (busy) return;
+    const p = pt(e);
+    if (bub) { const i = bubAt(p); if (i >= 0) { pickBubble(i); return; } closeBubbles(); }
+    if (dr) cancelDrag();
+    const u = hit(p); if (u < 0) return;
+    if (u === H) { pop(H, 1.4); g.rim.forEach((r, i) => setTimeout(() => pop(r, 1.25), 120 + i * 70)); blip(1320, .1, 'triangle', .03); say('The golden tile pays out when its gold ring shows <b>two pairs + one</b>.'); return; }
+    dr = { path: [], K: null, bad: -1, p0: p, at0: isRail(u) ? nearIdx(u, p) : 0 };
+    addStep(u); armSay();
+    dr.hold = setTimeout(() => { if (dr && dr.path.length === 1) { const w = dr.path[0]; cancelDrag(); openBubbles(w); } }, 420);
+  });
+  svg.addEventListener('pointermove', e => {
+    if (dr) { const p = pt(e); if (dr.hold && p && Math.hypot(p.x - dr.p0.x, p.y - dr.p0.y) > h * .6) { clearTimeout(dr.hold); dr.hold = 0; } const v = hit(p); if (v >= 0) step(v); }
+    else if (bub && bub.down) bubHover(bubAt(pt(e)));
+  });
+  const up = e => {
+    if (dr) {
+      clearTimeout(dr.hold);
+      if (dr.path.length >= 2 && dr.K) { const K = dr.K, path = dr.path.slice(); cancelDrag(); if (K.web) spill(path, K); else doSwap(K, path[0]); }
+      else { cancelDrag(); say('Swipe across bridges through <b>two kinds</b>, or <b>hold</b> a tile.'); }
+    } else if (bub && bub.down) { bub.down = false; const i = bubAt(pt(e)); if (i >= 0) pickBubble(i); else { bubHover(-1); } }
+  };
+  svg.addEventListener('pointerup', up); svg.addEventListener('pointercancel', () => { if (dr) cancelDrag(); if (bub) bub.down = false; });
+  $('bUndo').onclick = () => { audio(); if (busy || won) return; cancelDrag(); closeBubbles(); g.undo(); blip(500, .08, 'triangle', .03); ringSay(); poke(); };
+  $('bReset').onclick = () => { audio(); doReset(); };
+  addEventListener('resize', () => { clearTimeout(fit.t); fit.t = setTimeout(fit, 80); });
+  fit(); ringSay(); poke();
+  window.SWIPE = { g, LAY, hit: (x, y) => hit({ x, y }), get P() { return P; }, get ANCH() { return ANCH; }, get dr() { return dr; }, get bub() { return bub; }, get won() { return won; } };   // test hook
+})();
+</script>
+</body>
+</html>

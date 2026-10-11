@@ -1,0 +1,570 @@
+<!doctype html>
+<!--
+  BLOCKS: "Cat Nap Blocks". A Meowdoku-style front end for Fill the Hole.
+
+  What the player sees: a square board of chunky pastel blocks (a voxel-ish grid, 18x18 for level 4). Every map
+  region is a pastel blob of blocks in its element's tint (fire = peach, water = sky, air = butter, earth = mint),
+  with dark grout between blobs so the regions read at a glance, and the element icon stamped on one block. In the
+  middle is the hole: a wicker cat basket holding four little cushions, one per element tint. The 5 rim regions
+  around it each hold a sleeping cat, grumbling in its sleep. The rule a child gets at once: the basket may only use a
+  cushion that none of the neighbouring cats is lying on. So every cushion whose tint a rim cat sleeps on is tucked
+  down into the basket; a cushion no cat uses pops up and bobs (that is g.free()). At the start all four are tucked.
+  The top bar repeats this as a "cushion rack" (a mini basket and four cushions, taken ones lowered with a cat's ears
+  on them). The goal cue reads "Free a cushion for the basket" (no maths words on screen).
+
+  What the player does (fast taps):
+    * Tap a region u: up to 3 paw chips pop up next to the finger, one per partner element b != col[u], tinted by b.
+      Chip b  ==  g.chainAt(u, b)  (exactly the entries of g.chainsThrough(u)). Pressing a chip outlines its chain;
+      releasing on it calls g.swap(K). Every block of the chain then flips over one by one in a cascade from the tap
+      point (Minecraft block flip), coming up in its new colour.
+    * Preview: whenever a chain K is armed (chip pressed, or hovering a neighbour while dragging), K is outlined with
+      marching ants, every other block fades back, each block of K shows a small inset tile of the tint it will turn
+      into, and the basket's cushions + the rack show g.preview(K): if it frees a cushion, that cushion pops up and
+      the cue says "Let go!".
+    * Idle hint: after a few quiet seconds (and at once when the basket is tapped), a ghost paw drags from one region
+      into a neighbour along a chain of g.good() (or taps a region, for a one-region chain only reachable by chips),
+      with that chain previewed. At most 3 hints per quiet stretch; any touch cancels it.
+    * Or drag from region u into a neighbouring region v: that picks the pair directly, K = g.chainAt(u, g.col[v])
+      (the {col[u], col[v]} chain through u, which contains v). The chain is outlined while you hover; letting go swaps.
+    * A web chain (K.web: the only {a,b} chain, swapping it just renames two colours) is a dud: its blocks wobble and
+      nothing changes. Dragging onto a non-neighbour / the basket, or tapping the basket, gives a gentle wobble.
+    * Win (g.won(): rim down to 3 colours): the free cushion fills the basket, a yarn ball lands on it, the basket blocks flip to the
+      colour g.free(), the cats wake up and celebrate. Tap anywhere to play again (g.reset()).
+    * Small undo / restart paws in the top bar call g.undo() / g.reset().
+
+  Rasterisation: each grid cell takes the region whose dual-map polygon (g.cells, exact adjacency, [-1,1]^2) contains
+  the cell centre; then a repair pass (hill-climb on boundary cells, path carving for missing borders, dissolving
+  stray pieces) makes every region non-empty and 4-connected and makes grid contact == graph adjacency exactly.
+  The board size is the first of 18,16,20,... (28,32,... for 34-region maps) that repairs cleanly. All rules go through core.js (no re-implementation).
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Cat Nap Blocks</title>
+<style>
+  :root { --bg: #fbf3e6; --ink: #5b4a63; --frame: #e9d9c4; --seam: #eadfce; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; width: 100%; overflow: hidden; background: var(--bg); color: var(--ink);
+    font: 600 14px/1.2 ui-rounded, "Nunito", "Varela Round", system-ui, -apple-system, "Segoe UI", sans-serif;
+    -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
+  body { display: flex; flex-direction: column; height: 100vh; height: 100dvh; width: 100vw;
+    background: radial-gradient(circle at 20% 10%, #fff8ee 0, transparent 45%), radial-gradient(circle at 85% 90%, #f6e9f3 0, transparent 40%), var(--bg); }
+  #bar { flex: none; display: flex; align-items: center; gap: 6px; padding: 6px 8px 2px; min-height: 40px; }
+  #yarn { flex: none; height: 32px; width: 140px; margin-right: auto; overflow: visible; }
+  #cue { flex: 1 1 0; min-width: 0; font-size: clamp(12px, 3.6vw, 18px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: .01em; }
+  #bar button { flex: none; width: 40px; height: 40px; border-radius: 12px; border: 0; padding: 0; cursor: pointer;
+    background: #fff; box-shadow: inset 0 -3px 0 #e2d3c2, 0 1px 0 #d4c2ae; display: grid; place-items: center; }
+  #bar button:active { transform: translateY(2px); box-shadow: inset 0 -1px 0 #e2d3c2; }
+  #bar button svg { width: 22px; height: 22px; }
+  @media (max-width: 440px) { #bar { flex-wrap: wrap; row-gap: 2px; } #cue { order: 5; flex-basis: 100%; text-align: center; } #yarn { width: 120px; height: 28px; } #cue { font-size: 13px; } }
+  #wrap { flex: 1; min-height: 0; display: flex; padding: 4px 8px 8px; }
+  #board { flex: 1; width: 100%; height: 100%; touch-action: none; display: block; }
+  .f { transform-box: fill-box; transform-origin: center; }
+  .hi { fill: #fff; opacity: .5; } .sh { fill: #4a2d5a; opacity: .13; }
+  .ic { opacity: .55; }
+  .cat, .bk, .chip { transform-box: fill-box; transform-origin: 50% 80%; }
+  .wake, .won .sleep { display: none; } .won .wake { display: inline; }
+  .grr { animation: grr 2.6s ease-in-out infinite; }
+  @keyframes grr { 0%, 60%, 100% { opacity: 0; transform: translateY(0); } 70%, 90% { opacity: 1; transform: translateY(-.06px); } }
+  .cb { transform-box: fill-box; transform-origin: 50% 90%; animation: toss 4.2s ease-in-out infinite; }
+  @keyframes toss { 0%, 82%, 100% { transform: rotate(0); } 86% { transform: rotate(-4deg); } 92% { transform: rotate(3deg); } }
+  .won .cb { animation: hop .7s ease-in-out infinite; }
+  @keyframes hop { 0%, 100% { transform: translateY(0) scale(1, 1); } 30% { transform: translateY(-.12px) scale(.97, 1.04); } 60% { transform: translateY(0) scale(1.05, .95); } }
+  .heart { animation: float 1.6s ease-out infinite; transform-box: fill-box; transform-origin: center; }
+  @keyframes float { 0% { opacity: 0; transform: translateY(.1px) scale(.6); } 25% { opacity: 1; } 100% { opacity: 0; transform: translateY(-.5px) scale(1.1); } }
+  .yb { transform-box: fill-box; transform-origin: center; }
+  .yb.free { animation: bob 1s ease-in-out infinite; }
+  @keyframes bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
+  .line { fill: none; stroke: #fff; stroke-linecap: round; stroke-linejoin: round; }
+  .ants { stroke-dasharray: .32 .2; animation: ants .6s linear infinite; }
+  @keyframes ants { to { stroke-dashoffset: -.52; } }
+  .chip { cursor: pointer; }
+  /* the basket's cushions (board) and the cushion rack (top bar): taken ones tucked down, the free one pops up */
+  .pil, .rk { transform-box: fill-box; transform-origin: 50% 100%; transition: transform .38s cubic-bezier(.3, 1.6, .5, 1), opacity .3s; }
+  .pil { transform: translateY(.26px) scale(.9); opacity: .7; }
+  .pil.up { transform: translateY(-.3px) scale(1.7); opacity: 1; }
+  .rk { transform: translateY(5px) scale(.78); opacity: .55; }
+  .rk.up { transform: translateY(-1px) scale(1.08); opacity: 1; }
+  .pil.up .pb { animation: pbob 1s ease-in-out infinite; transform-box: fill-box; }
+  .rk.up .pb { animation: rbob 1s ease-in-out infinite; transform-box: fill-box; }
+  @keyframes pbob { 50% { transform: translateY(-.07px); } } @keyframes rbob { 50% { transform: translateY(-2.5px); } }
+  .rk .ears { transition: opacity .2s; } .rk.up .ears { opacity: 0; }
+  .spark { opacity: 0; transition: opacity .2s; } .up .spark { opacity: 1; animation: twinkle 1.1s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+  @keyframes twinkle { 50% { transform: scale(.55) rotate(30deg); } }
+  #yarn.ready .rk.up { filter: drop-shadow(0 0 3px #fff); }
+  /* chain preview: other blocks fade back, blocks of the chain show the tint they will turn into */
+  .f { transition: opacity .15s; }
+  #board.pv .f { opacity: .42; } #board.pv .f.k { opacity: 1; }
+  .peek { display: none; } #board.pv .f.k .peek { display: inline; }
+  .ghost { pointer-events: none; }
+  @media (prefers-reduced-motion: reduce) {
+    .grr, .cb, .won .cb, .heart, .yb.free, .ants, .pb, .spark { animation: none !important; }
+    .pil, .rk, .f { transition: none !important; }
+    .grr { opacity: 1; }
+  }
+</style>
+</head>
+<body>
+<div id="bar">
+  <svg id="yarn" viewBox="0 0 140 32" aria-label="the basket's cushions: taken ones are tucked away"></svg>
+  <div id="cue" aria-live="polite">Free a cushion for the basket</div>
+  <button id="undo" aria-label="undo"><svg viewBox="0 0 24 24"><path d="M9 7 4 11.5 9 16M4.5 11.5H14a5 5 0 0 1 0 10h-3" fill="none" stroke="#5b4a63" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+  <button id="again" aria-label="restart"><svg viewBox="0 0 24 24"><path d="M19 12a7 7 0 1 1-2.1-5M19 4v4.5h-4.5" fill="none" stroke="#5b4a63" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+</div>
+<div id="wrap"><svg id="board" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="cat nap block board"></svg></div>
+<script src="../levels.js"></script>
+<script src="../layout.js"></script>
+<script src="core.js"></script>
+<script>
+'use strict';
+/*PURE-START*/
+// ---- rasterise the dual map onto an N x N block grid; repair so grid contact == graph adjacency ----
+function buildGrid(g, N) {
+  const n = g.n, M = N * N, cells = g.cells;
+  let ctr = g.centre;
+  if (!ctr) { // no dual map: nearest-centre on the straight-line drawing, squeezed into the square
+    const xs = g.pos.map(p => p[0]), ys = g.pos.map(p => p[1]), x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+    ctr = g.pos.map(p => [-.9 + 1.8 * (p[0] - x0) / (x1 - x0 || 1), -.9 + 1.8 * (p[1] - y0) / (y1 - y0 || 1)]);
+  }
+  const pip = (x, y, P) => { let c = false; for (let i = 0, j = P.length - 1; i < P.length; j = i++) { const xi = P[i][0], yi = P[i][1], xj = P[j][0], yj = P[j][1]; if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) c = !c; } return c; };
+  const init = new Int16Array(M);
+  for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) {
+    const x = -1 + (c + .5) * 2 / N, y = 1 - (r + .5) * 2 / N; let k = -1;
+    if (cells) for (let u = 0; u < n && k < 0; u++) if (cells[u] && pip(x, y, cells[u])) k = u;
+    if (k < 0) { let bd = 1e9; for (let u = 0; u < n; u++) { const d = (ctr[u][0] - x) ** 2 + (ctr[u][1] - y) ** 2; if (d < bd) { bd = d; k = u; } } }
+    init[r * N + c] = k;
+  }
+  const want = new Set(); g.edges.forEach(([a, b]) => want.add(Math.min(a, b) * 64 + Math.max(a, b)));
+  const NB = Array.from({ length: M }, (_, i) => { const r = (i / N) | 0, c = i % N, o = []; if (c > 0) o.push(i - 1); if (c < N - 1) o.push(i + 1); if (r > 0) o.push(i - N); if (r < N - 1) o.push(i + N); return o; });
+  const seen = new Int32Array(M); let stamp = 0;
+  const touches = lab => { const t = new Set(); for (let i = 0; i < M; i++) { const a = lab[i]; if ((i % N) < N - 1 && lab[i + 1] !== a) t.add(Math.min(a, lab[i + 1]) * 64 + Math.max(a, lab[i + 1])); if (i + N < M && lab[i + N] !== a) t.add(Math.min(a, lab[i + N]) * 64 + Math.max(a, lab[i + N])); } return t; };
+  function score(lab) {
+    const cnt = new Int32Array(n), comps = new Int32Array(n); stamp++; let chg = 0;
+    for (let i = 0; i < M; i++) {
+      const a = lab[i]; cnt[a]++; if (a !== init[i]) chg++;
+      if (seen[i] !== stamp) { comps[a]++; seen[i] = stamp; const st = [i]; while (st.length) { const v = st.pop(); for (const w of NB[v]) if (seen[w] !== stamp && lab[w] === a) { seen[w] = stamp; st.push(w); } } }
+    }
+    const touch = touches(lab); let bad = 0;
+    for (let u = 0; u < n; u++) bad += cnt[u] ? comps[u] - 1 : 10;
+    want.forEach(e => { if (!touch.has(e)) bad++; }); touch.forEach(e => { if (!want.has(e)) bad++; });
+    return { bad, s: bad * 1000 + chg, cnt };
+  }
+  let lab = Int16Array.from(init), cur = score(lab), best = Int16Array.from(lab), bestS = cur.s;
+  let seed = 12345; const rnd = () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
+  const keep = () => { cur = score(lab); if (cur.s < bestS || cur.bad < Math.floor(bestS / 1000)) { best = Int16Array.from(lab); bestS = cur.s; } };
+  const tryMove = (i, b, T) => { const a = lab[i]; if (a === b) return false; lab[i] = b; const sc = score(lab); if (sc.cnt[a] > 0 && (sc.s < cur.s || (T > 0 && rnd() < Math.exp((cur.s - sc.s) / T)))) { cur = sc; if (sc.s < bestS) { bestS = sc.s; best = Int16Array.from(lab); } return true; } lab[i] = a; return false; };
+  const climb = () => { for (let pass = 0; pass < 30; pass++) { let any = false; for (let i = 0; i < M; i++) for (const w of NB[i]) if (lab[w] !== lab[i] && tryMove(i, lab[w], 0)) any = true; if (!any) break; } };
+  // carve: a missing border (a, b) gets a thin path of a-blocks grown towards b, cheapest through big regions
+  const carve = (a, b) => {
+    const cnt = cur.cnt, dist = new Float64Array(M).fill(1e9), prev = new Int32Array(M).fill(-1), Q = [];
+    for (let i = 0; i < M; i++) if (lab[i] === a) { dist[i] = 0; Q.push(i); }
+    let end = -1;
+    while (Q.length) {
+      let bi = 0; for (let k = 1; k < Q.length; k++) if (dist[Q[k]] < dist[Q[bi]]) bi = k; const v = Q.splice(bi, 1)[0];
+      if (NB[v].some(w => lab[w] === b)) { end = v; break; }
+      for (const w of NB[v]) { if (lab[w] === b || lab[w] === a) continue; const d = dist[v] + 1 + (cnt[lab[w]] < 3 ? 1e6 : cnt[lab[w]] < 5 ? 30 : 0); if (d < dist[w]) { if (dist[w] === 1e9) Q.push(w); dist[w] = d; prev[w] = v; } }
+    }
+    for (let v = end; v >= 0 && lab[v] !== a; v = prev[v]) lab[v] = a;
+    keep();
+  };
+  // strays: dissolve every piece of a region but its largest into the neighbours; an empty region gets a seed block
+  const fixComps = () => {
+    const comp = new Int32Array(M).fill(-1), mems = [], owner = [];
+    for (let i = 0; i < M; i++) if (comp[i] < 0) { const a = lab[i], st = [i], mem = [i], k = mems.length; comp[i] = k; while (st.length) { const v = st.pop(); for (const w of NB[v]) if (comp[w] < 0 && lab[w] === a) { comp[w] = k; st.push(w); mem.push(w); } } mems.push(mem); owner.push(a); }
+    const big = new Map(); mems.forEach((m, c) => { const a = owner[c]; if (!big.has(a) || mems[big.get(a)].length < m.length) big.set(a, c); });
+    mems.forEach((m, c) => {
+      if (big.get(owner[c]) === c) return; let left = m.slice();
+      for (let guard = 0; left.length && guard < 99; guard++) left = left.filter(v => { const t = {}; let bb = -1; NB[v].forEach(w => { const b = lab[w]; if (b !== owner[c]) { t[b] = (t[b] || 0) + 1; if (bb < 0 || t[b] > t[bb]) bb = b; } }); if (bb < 0) return true; lab[v] = bb; return false; });
+    });
+    const cnt = score(lab).cnt;
+    for (let u = 0; u < n; u++) if (!cnt[u]) { const c = Math.min(N - 1, Math.max(0, Math.floor((ctr[u][0] + 1) * N / 2))), r = Math.min(N - 1, Math.max(0, Math.floor((1 - ctr[u][1]) * N / 2))); lab[r * N + c] = u; }
+    keep();
+  };
+  climb();
+  for (let round = 0; round < 12 && cur.bad; round++) {
+    fixComps(); climb(); if (!cur.bad) break;
+    const t = touches(lab), miss = [...want].filter(e => !t.has(e)); if (!miss.length) continue;
+    const e = miss[round % miss.length]; carve(Math.floor(e / 64), e % 64); climb();
+  }
+  if (cur.bad) for (let it = 0, T = 1500; it < 20000 && bestS >= 1000; it++, T *= .9995) { const i = (rnd() * M) | 0, ws = NB[i]; tryMove(i, lab[ws[(rnd() * ws.length) | 0]], T); }
+  lab = best; cur = score(lab);
+  return { N, lab, bad: cur.bad, cnt: cur.cnt, NB };
+}
+function chooseGrid(g) {
+  const t0 = Date.now(); let best = null;
+  for (const N of g.n <= 24 ? [18, 16, 20, 15, 14, 22, 24, 28] : [28, 32, 26, 30, 24, 36]) { // big maps need finer blocks
+    const r = buildGrid(g, N); if (!best || r.bad < best.bad) best = r;
+    if (!r.bad || Date.now() - t0 > 3000) break;
+  }
+  return best;
+}
+// the "most inside" block of every region (cats, icons and the basket sit there)
+function anchors(grid, n) {
+  const { N, lab, NB } = grid, M = N * N, d = new Float64Array(M).fill(1e9), Q = [];
+  for (let i = 0; i < M; i++) { const r = (i / N) | 0, c = i % N; if (NB[i].some(w => lab[w] !== lab[i])) { d[i] = 0; Q.push(i); } else if (r === 0 || c === 0 || r === N - 1 || c === N - 1) { d[i] = .6; Q.push(i); } }
+  for (let h = 0; h < Q.length; h++) { const v = Q[h]; for (const w of NB[v]) if (lab[w] === lab[v] && d[w] > d[v] + 1) { d[w] = d[v] + 1; Q.push(w); } }
+  const sx = new Float64Array(n), sy = new Float64Array(n), k = new Float64Array(n);
+  for (let i = 0; i < M; i++) { sx[lab[i]] += i % N; sy[lab[i]] += (i / N) | 0; k[lab[i]]++; }
+  const out = new Array(n).fill(-1), sc = new Array(n).fill(-1e9);
+  for (let i = 0; i < M; i++) { const u = lab[i], s = d[i] - .08 * Math.hypot(i % N - sx[u] / k[u], ((i / N) | 0) - sy[u] / k[u]); if (s > sc[u]) { sc[u] = s; out[u] = i; } }
+  return out;
+}
+// gesture -> chain: chip b on region u, or a drag from u into neighbour v
+const chipChains = (g, u) => (u === g.hole || g.won()) ? [] : g.chainsThrough(u);
+function dragChain(g, u, v) {
+  if (u === v || u === g.hole || v === g.hole || !g.adj[u].includes(v)) return null;
+  return g.chainAt(u, g.col[v]);
+}
+// flip order: grid BFS through the changed blocks from the origin block, stragglers by straight-line distance
+function cascade(grid, regs, origin) {
+  const { N, lab, NB } = grid, M = N * N, out = [], dep = new Int32Array(M).fill(-1), Q = [];
+  if (origin >= 0 && regs.has(lab[origin])) { dep[origin] = 0; Q.push(origin); }
+  for (let h = 0; h < Q.length; h++) { const v = Q[h]; out.push([v, dep[v]]); for (const w of NB[v]) if (dep[w] < 0 && regs.has(lab[w])) { dep[w] = dep[v] + 1; Q.push(w); } }
+  const oc = origin >= 0 ? origin : (N * N) >> 1, ox = oc % N, oy = (oc / N) | 0;
+  for (let i = 0; i < M; i++) if (dep[i] < 0 && regs.has(lab[i])) out.push([i, Math.round(Math.hypot(i % N - ox, ((i / N) | 0) - oy))]);
+  return out.sort((a, b) => a[1] - b[1]);
+}
+/*PURE-END*/
+
+(function () {
+  const g = LAB.game(), E = LAB.ELEM, IC = LAB.ICON, NS = 'http://www.w3.org/2000/svg', INK = '#5b4a63';
+  const grid = chooseGrid(g), N = grid.N, lab = grid.lab, M = N * N, anc = anchors(grid, g.n);
+  const rimIdx = new Map(g.rim.map((u, k) => [u, k]));
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const svg = document.getElementById('board'), yarn = document.getElementById('yarn'), cue = document.getElementById('cue');
+  const el = (tag, at, parent) => { const e = document.createElementNS(NS, tag); for (const k in at) e.setAttribute(k, at[k]); if (parent) parent.appendChild(e); return e; };
+  const q = x => Math.round(x * 1000) / 1000;
+  const iconEl = (e, parent, tf, colour) => el('path', e === 2 ? { d: IC[e], transform: tf, fill: 'none', stroke: colour, 'stroke-width': 2.6, 'stroke-linecap': 'round' } : { d: IC[e], transform: tf, fill: colour }, parent);
+  const setIcon = (p, e, colour) => { p.setAttribute('d', IC[e]); if (e === 2) { p.setAttribute('fill', 'none'); p.setAttribute('stroke', colour); p.setAttribute('stroke-width', 2.6); p.setAttribute('stroke-linecap', 'round'); } else { p.setAttribute('fill', colour); p.removeAttribute('stroke'); } };
+
+  // a plump cushion centred at (x, y), w x h, in element e's tint, with a tuft at each corner and a sparkle
+  function cushion(x, y, w, h, e, sw) {
+    const l = x - w / 2, t = y - h / 2, r = h * .42;
+    return `<rect x="${q(l)}" y="${q(t)}" width="${q(w)}" height="${q(h)}" rx="${q(r)}" fill="${E[e].pastel}" stroke="${INK}" stroke-width="${sw}"/>` +
+      `<path d="M${q(l + w * .22)} ${q(t + h * .3)}Q${q(x)} ${q(t + h * .12)} ${q(l + w * .78)} ${q(t + h * .3)}" fill="none" stroke="#fff" stroke-width="${q(sw * 1.3)}" stroke-linecap="round" opacity=".8"/>` +
+      `<circle cx="${q(x)}" cy="${q(y + h * .08)}" r="${q(h * .1)}" fill="${E[e].dark}" opacity=".55"/>` +
+      `<path class="spark" d="M${q(x + w * .52)} ${q(t - h * .55)}l${q(h * .1)} ${q(h * .26)} ${q(h * .26)} ${q(h * .1)} ${q(-h * .26)} ${q(h * .1)} ${q(-h * .1)} ${q(h * .26)} ${q(-h * .1)} ${q(-h * .26)} ${q(-h * .26)} ${q(-h * .1)} ${q(h * .26)} ${q(-h * .1)}z" fill="#fff" stroke="${E[e].dark}" stroke-width="${q(sw * .6)}"/>`;
+  }
+
+  // ---------------- static board ----------------
+  svg.setAttribute('viewBox', `${-.55} ${-.55} ${N + 1.1} ${N + 1.1}`);
+  svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+  svg.innerHTML = '<defs><pattern id="wick" patternUnits="userSpaceOnUse" width=".5" height=".5"><rect width=".5" height=".5" fill="#e8c897"/>' +
+    '<path d="M0 .125h.25M.25 .375h.25" stroke="#c99a5f" stroke-width=".07"/><path d="M.125 0v.25M.375 .25v.25" stroke="#f3dcb4" stroke-width=".07"/></pattern>' +
+    '<filter id="soft" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy=".06" stdDeviation=".05" flood-color="#4a2d5a" flood-opacity=".25"/></filter></defs>';
+  el('rect', { x: -.42, y: -.32, width: N + .84, height: N + .84, rx: .5, fill: '#e2cfb8' }, svg);
+  el('rect', { x: -.42, y: -.42, width: N + .84, height: N + .84, rx: .5, fill: '#f4e7d6', stroke: '#e2cfb8', 'stroke-width': .06 }, svg);
+  el('rect', { x: 0, y: 0, width: N, height: N, fill: '#eadfce' }, svg);
+  const gCells = el('g', {}, svg), cellF = [], cellR = [], cellP = [];
+  for (let i = 0; i < M; i++) {
+    const b = el('g', { transform: `translate(${i % N} ${(i / N) | 0})` }, gCells), f = el('g', { class: 'f' }, b);
+    cellR[i] = el('rect', { x: .035, y: .035, width: .93, height: .93, rx: .1 }, f);
+    el('path', { class: 'hi', d: 'M.035 .965V.135Q.035 .035 .135 .035H.965L.82 .18H.18V.82Z' }, f);
+    el('path', { class: 'sh', d: 'M.965 .035V.865Q.965 .965 .865 .965H.035L.18 .82H.82V.18Z' }, f);
+    cellP[i] = el('rect', { class: 'peek', x: .27, y: .27, width: .46, height: .46, rx: .1, 'stroke-width': .07 }, f);   // "turns into" tile
+    cellF[i] = f;
+  }
+  // block icons: one stamped block per plain region (rim regions carry the cat's collar tag instead)
+  const blockIcon = [];
+  for (let u = 0; u < g.n; u++) if (u !== g.hole && !rimIdx.has(u) && anc[u] >= 0) blockIcon[u] = iconEl(0, cellF[anc[u]], 'translate(.5 .5) scale(.027) translate(-12 -12)', '#000');
+  // grout between regions (exact: drawn only where two different regions meet), and the board edge
+  let gp = '';
+  for (let i = 0; i < M; i++) { const r = (i / N) | 0, c = i % N; if (c < N - 1 && lab[i + 1] !== lab[i]) gp += `M${c + 1} ${r}v1`; if (r < N - 1 && lab[i + N] !== lab[i]) gp += `M${c} ${r + 1}h1`; }
+  el('path', { d: gp, fill: 'none', stroke: INK, 'stroke-width': .13, 'stroke-linecap': 'round', opacity: .8 }, svg);
+  el('rect', { x: 0, y: 0, width: N, height: N, fill: 'none', stroke: INK, 'stroke-width': .14, rx: .08, opacity: .8 }, svg);
+  const gLines = el('g', {}, svg);
+  const outline = set => { let d = ''; for (let i = 0; i < M; i++) { if (!set.has(lab[i])) continue; const r = (i / N) | 0, c = i % N; if (r === 0 || !set.has(lab[i - N])) d += `M${c} ${r}h1`; if (r === N - 1 || !set.has(lab[i + N])) d += `M${c} ${r + 1}h1`; if (c === 0 || !set.has(lab[i - 1])) d += `M${c} ${r}v1`; if (c === N - 1 || !set.has(lab[i + 1])) d += `M${c + 1} ${r}v1`; } return d; };
+  const lineSel = el('path', { class: 'line', 'stroke-width': .2, opacity: 0 }, gLines);
+  const lineK = el('path', { class: 'line ants', 'stroke-width': .17, opacity: 0 }, gLines);
+  const cx = i => i % N + .5, cy = i => ((i / N) | 0) + .5;
+
+  // basket on the hole
+  const gOver = el('g', {}, svg), ha = anc[g.hole];
+  const bk = el('g', { transform: `translate(${cx(ha)} ${cy(ha) + .05}) scale(1.2)` }, gOver), bki = el('g', { class: 'bk', filter: 'url(#soft)' }, bk);
+  bki.innerHTML = `<ellipse cx="0" cy="-.06" rx=".86" ry=".32" fill="#b07a46" stroke="${INK}" stroke-width=".06"/>` +
+    `<ellipse class="cush" cx="0" cy="-.02" rx=".66" ry=".21" fill="#f6eedf" opacity="0"/>` +
+    [0, 1, 2, 3].map(e => `<g class="pil p${e}"><g class="pb">${cushion(-.45 + e * .3, -.04, .29, .2, e, .03)}</g></g>`).join('') +
+    `<g class="ball" opacity="0"><circle cx="0" cy="-.16" r=".27" stroke="${INK}" stroke-width=".05"/><path d="M-.2 -.3q.2 .1 .38 .02M-.25 -.12q.25 .1 .5 -.04M-.14 .03q.16 -.06 .3 -.1" fill="none" stroke="#fff" stroke-width=".04" opacity=".8"/></g>` +
+    `<path d="M-.86 -.05Q-.78 .62 0 .62Q.78 .62 .86 -.05Q0 .34 -.86 -.05Z" fill="#dcae72" stroke="${INK}" stroke-width=".06"/>` +
+    `<path d="M-.6 .2Q0 .44 .6 .2M-.5 .4Q0 .58 .5 .4" fill="none" stroke="#b07a46" stroke-width=".05"/>`;
+  const pils = [0, 1, 2, 3].map(e => bki.querySelector('.p' + e));
+  const cush = bki.querySelector('.cush'), ball = bki.querySelector('.ball'), ballC = ball.querySelector('circle');
+
+  // cats on the rim
+  const FUR = ['#fffaf2', '#f7b77e', '#cdc6d8', '#f2d7ae', '#a99db2'];
+  const cats = g.rim.map((u, k) => {
+    const a = anc[u], c = el('g', { class: 'cat', transform: `translate(${cx(a)} ${cy(a) - .05}) scale(1.05)` }, gOver), b = el('g', { class: 'cb', filter: 'url(#soft)' }, c), fur = FUR[k % 5];
+    const flip = cx(a) < N / 2 ? ' transform="scale(-1 1)"' : ''; // heads toward the basket
+    b.style.animationDelay = (-k * .83) + 's';
+    b.innerHTML = `<g${flip}>` +
+      `<path d="M.74 .22C.95 .62 .42 .8 -.05 .68" fill="none" stroke="${INK}" stroke-width=".22" stroke-linecap="round"/><path d="M.74 .22C.95 .62 .42 .8 -.05 .68" fill="none" stroke="${fur}" stroke-width=".12" stroke-linecap="round"/>` +
+      `<ellipse cx=".12" cy=".2" rx=".72" ry=".45" fill="${fur}" stroke="${INK}" stroke-width=".06"/>` +
+      `<path d="M-.7 -.12L-.68 -.52L-.44 -.32ZM-.3 -.34L-.08 -.52L-.06 -.14Z" fill="${fur}" stroke="${INK}" stroke-width=".06" stroke-linejoin="round"/>` +
+      `<path d="M-.64 -.2L-.63 -.42L-.5 -.31ZM-.24 -.32L-.11 -.43L-.1 -.22Z" fill="#f4a7b6"/>` +
+      `<circle cx="-.38" cy="-.02" r=".37" fill="${fur}" stroke="${INK}" stroke-width=".06"/>` +
+      `<ellipse cx="-.62" cy=".1" rx=".07" ry=".045" fill="#f4a7b6"/><ellipse cx="-.14" cy=".1" rx=".07" ry=".045" fill="#f4a7b6"/>` +
+      `<path d="M-.41 .07h.06l-.03 .035z" fill="#e2808f"/>` +
+      `<g class="sleep" fill="none" stroke="${INK}" stroke-width=".045" stroke-linecap="round"><path d="M-.57 0q.07 .06 .14 0M-.33 0q.07 .06 .14 0M-.6 -.12l.13 .04M-.16 -.12l-.13 .04M-.43 .19q.05 -.045 .1 0"/>` +
+      `<path class="grr" d="M-.08 -.5c.07 -.1 .14 .1 .21 0s.14 .1 .21 0s.14 .1 .21 0" stroke-width=".05"/></g>` +
+      `<g class="wake"><circle cx="-.5" cy="-.03" r=".065" fill="${INK}"/><circle cx="-.26" cy="-.03" r=".065" fill="${INK}"/><circle cx="-.48" cy="-.05" r=".022" fill="#fff"/><circle cx="-.24" cy="-.05" r=".022" fill="#fff"/>` +
+      `<path d="M-.46 .14q.04 .05 .08 0q.04 .05 .08 0" fill="none" stroke="${INK}" stroke-width=".04" stroke-linecap="round"/>` +
+      `<path class="heart" style="animation-delay:${k * .3}s" d="M.1 -.6c-.06 -.1 -.2 -.05 -.15 .06l.15 .14l.15 -.14c.05 -.11 -.09 -.16 -.15 -.06z" fill="#ff8fab"/></g>` +
+      `<circle class="tag" cx="-.38" cy=".38" r=".15" stroke="#fff" stroke-width=".04"/></g>`;
+    const tagG = b.querySelector('.tag').parentNode, tagI = iconEl(0, tagG, 'translate(-.38 .38) scale(.0085) translate(-12 -12)', '#fff');
+    return { u, g: c, tag: b.querySelector('.tag'), tagI };
+  });
+  const gGhost = el('g', { class: 'ghost' }, svg);   // the idle-hint paw (kept below the chips group)
+  const gChips = el('g', {}, svg);
+
+  // ---------------- colours ----------------
+  let shown = g.col.slice(), basket = -1;
+  function paintCell(i, e) {
+    const u = lab[i];
+    cellR[i].setAttribute('fill', u === g.hole ? (basket >= 0 ? E[basket].pastel : 'url(#wick)') : E[e].pastel);
+    if (i === anc[u]) {
+      if (blockIcon[u]) setIcon(blockIcon[u], e, E[e].dark);
+      const k = rimIdx.get(u); if (k !== undefined) { cats[k].tag.setAttribute('fill', E[e].hex); setIcon(cats[k].tagI, e, '#fff'); }
+    }
+  }
+  function paintAll() { for (let i = 0; i < M; i++) paintCell(i, shown[lab[i]]); }
+  // the cushion rack (top bar): a mini basket, then the four cushions; one a rim cat sleeps on is lowered with the cat's
+  // ears peeking over it, a free one stands up and sparkles. Built once, then only classes change.
+  const racks = [];
+  (function buildRack() {
+    el('g', {}, yarn).innerHTML = `<g transform="translate(15 19)"><ellipse cx="0" cy="-3" rx="13" ry="4.6" fill="#b07a46" stroke="${INK}" stroke-width="1.6"/>` +
+      `<path d="M-13 -2.6Q-12 9 0 9Q12 9 13 -2.6Q0 4 -13 -2.6Z" fill="#dcae72" stroke="${INK}" stroke-width="1.6"/>` +
+      `<path d="M-9 2.5Q0 6.5 9 2.5" fill="none" stroke="#b07a46" stroke-width="1.2"/></g>`;
+    for (let e = 0; e < 4; e++) {
+      const x = 46 + e * 26, rk = el('g', { class: 'rk' }, yarn);
+      el('g', { class: 'pb' }, rk).innerHTML = cushion(x, 19, 22, 14, e, 1.6) +
+        `<g class="ears" fill="${INK}" opacity=".75"><path d="M${x - 8} 13.5l1.5 -6.5 4.5 4.5zM${x + 8} 13.5l-1.5 -6.5 -4.5 4.5z"/><path d="M${x - 8.5} 13.5q8.5 -5 17 0z"/></g>`;
+      racks.push(rk);
+    }
+  })();
+  // show which cushions are free for a rim colouring `rc` (the current one, or a preview)
+  function cushions(rc, ready) {
+    const used = new Set(rc);
+    for (let e = 0; e < 4; e++) {
+      const up = !used.has(e);
+      pils[e].setAttribute('class', 'pil p' + e + (up ? ' up' : ''));
+      if (racks[e]) racks[e].setAttribute('class', 'rk' + (up ? ' up' : ''));
+    }
+    yarn.classList.toggle('ready', !!ready);
+  }
+
+  // ---------------- juice: sound + animation ----------------
+  let ac = null;
+  const audio = () => { if (!ac) { try { ac = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { return null; } } if (ac.state === 'suspended') ac.resume(); return ac; };
+  function tone(f, dur, type, vol, f2, delay) {
+    if (!ac) return; const t = ac.currentTime + (delay || 0), o = ac.createOscillator(), v = ac.createGain();
+    o.type = type; o.frequency.setValueAtTime(f, t); if (f2) o.frequency.exponentialRampToValueAtTime(f2, t + dur);
+    v.gain.setValueAtTime(0, t); v.gain.linearRampToValueAtTime(vol, t + .01); v.gain.exponentialRampToValueAtTime(.0005, t + dur);
+    o.connect(v).connect(ac.destination); o.start(t); o.stop(t + dur + .02);
+  }
+  const pop = () => tone(480 + Math.random() * 80, .09, 'sine', .14, 920);
+  const tick = d => tone(520 + Math.min(d, 18) * 45, .05, 'triangle', .05, null);
+  const boing = () => { tone(240, .28, 'sine', .14, 120); tone(250, .2, 'triangle', .05, 170, .05); };
+  function meow(delay) {
+    if (!ac) return; const t = ac.currentTime + delay, o = ac.createOscillator(), fl = ac.createBiquadFilter(), v = ac.createGain();
+    o.type = 'sawtooth'; o.frequency.setValueAtTime(480, t); o.frequency.linearRampToValueAtTime(820, t + .16); o.frequency.linearRampToValueAtTime(540, t + .45);
+    fl.type = 'bandpass'; fl.frequency.setValueAtTime(900, t); fl.frequency.linearRampToValueAtTime(1600, t + .18); fl.frequency.linearRampToValueAtTime(800, t + .45); fl.Q.value = 3;
+    v.gain.setValueAtTime(0, t); v.gain.linearRampToValueAtTime(.13, t + .05); v.gain.exponentialRampToValueAtTime(.0005, t + .5);
+    o.connect(fl).connect(v).connect(ac.destination); o.start(t); o.stop(t + .52);
+  }
+  const chime = () => [523, 659, 784, 1047].forEach((f, k) => tone(f, .35, 'sine', .1, null, .5 + k * .09));
+
+  let jobs = [];
+  const later = (fn, ms) => { const j = { fn, id: 0 }; j.id = setTimeout(() => { jobs = jobs.filter(x => x !== j); fn(); }, ms); jobs.push(j); };
+  const flush = () => { const js = jobs; jobs = []; js.forEach(j => { clearTimeout(j.id); j.fn(); }); };
+  const anim = (node, frames, opt) => { if (!reduce && node.animate) try { return node.animate(frames, opt); } catch (e) { } return null; };
+  const wobble = (cellsList, strong) => cellsList.forEach((i, k) => anim(cellF[i], [{ transform: 'rotate(0)' }, { transform: `rotate(${strong ? 10 : 6}deg)` }, { transform: `rotate(${strong ? -9 : -5}deg)` }, { transform: 'rotate(3deg)' }, { transform: 'rotate(0)' }], { duration: 380, delay: Math.min(k * 6, 120), easing: 'ease-in-out' }));
+  const regCells = set => { const o = []; for (let i = 0; i < M; i++) if (set.has(lab[i])) o.push(i); return o; };
+  const boop = set => regCells(set).forEach(i => anim(cellF[i], [{ transform: 'scale(1)' }, { transform: 'scale(.86)' }, { transform: 'scale(1.06)' }, { transform: 'scale(1)' }], { duration: 200, easing: 'ease-out' }));
+
+  // flip every block whose region colour differs between `shown` and the target colouring, cascading from `origin`
+  function flipTo(target, origin, done) {
+    flush();
+    const regs = new Set(); for (let u = 0; u < g.n; u++) if (u !== g.hole && shown[u] !== target[u]) regs.add(u);
+    const order = cascade(grid, regs, origin), maxD = order.length ? order[order.length - 1][1] : 0, step = reduce ? 0 : Math.min(55, 700 / (maxD + 1));
+    shown = target.slice();
+    let lastD = -1;
+    order.forEach(([i, d]) => {
+      const e = target[lab[i]], at = d * step;
+      if (reduce) { paintCell(i, e); return; }
+      anim(cellF[i], [{ transform: 'scaleY(1)' }, { transform: 'scaleY(0) scaleX(1.08)', offset: .5 }, { transform: 'scaleY(1.12) scaleX(.96)', offset: .78 }, { transform: 'scaleY(1)' }], { duration: 300, delay: at, easing: 'ease-in-out' });
+      later(() => paintCell(i, e), at + 150);
+      if (d !== lastD) { lastD = d; later(() => tick(d), at); }
+    });
+    later(() => { if (done) done(); }, (maxD + 1) * step + 320);
+  }
+
+  // ---------------- state views ----------------
+  let sel = -1, selCell = -1, chips = [];
+  function clearSel() { sel = -1; chips = []; gChips.textContent = ''; lineSel.setAttribute('opacity', 0); showChain(null); }
+  let previewK = null;
+  function showChain(K) {
+    if (K === previewK) return;
+    if (previewK) regCells(previewK.set).forEach(i => cellF[i].classList.remove('k'));
+    previewK = K || null;
+    svg.classList.toggle('pv', !!K);
+    if (!K) { lineK.setAttribute('opacity', 0); if (basket < 0) { cushions(g.rimColours(), false); cue.textContent = g.won() ? 'A cushion is free!' : 'Free a cushion for the basket'; } return; }
+    lineK.setAttribute('d', outline(K.set)); lineK.setAttribute('opacity', 1);
+    regCells(K.set).forEach(i => {
+      const u = lab[i], t = g.col[u] === K.pair[0] ? K.pair[1] : K.pair[0];
+      cellF[i].classList.add('k'); cellP[i].setAttribute('fill', E[t].pastel); cellP[i].setAttribute('stroke', E[t].dark);
+    });
+    if (K.web) { cushions(g.rimColours(), false); cue.textContent = 'Hmm, that changes nothing'; return; }
+    const pv = g.preview(K);
+    cushions(g.rim.map(u => pv.col[u]), pv.won);
+    cue.textContent = pv.won ? 'Let go!' : 'Free a cushion for the basket';
+  }
+  function refresh() {
+    armHint(basket >= 0 || g.won() ? 0 : 5000);
+    cushions(g.rimColours(), false);
+    svg.classList.toggle('won', basket >= 0);
+    cue.textContent = basket >= 0 ? 'Nap time! Tap to play again' : g.won() ? 'A cushion is free!' : 'Free a cushion for the basket';
+    if (basket >= 0) { cush.setAttribute('fill', E[basket].pastel); cush.setAttribute('opacity', 1); ball.setAttribute('opacity', 1); ballC.setAttribute('fill', E[basket].hex); pils.forEach(p => p.setAttribute('opacity', 0)); }
+    else { cush.setAttribute('opacity', 0); ball.setAttribute('opacity', 0); pils.forEach(p => p.setAttribute('opacity', 1)); }
+  }
+  const unit = () => { const m = svg.getScreenCTM(); return m ? m.a : 20; };
+  function openChips(u, p) {
+    clearSel(); sel = u;
+    lineSel.setAttribute('d', outline(new Set([u]))); lineSel.setAttribute('opacity', .95);
+    const Ks = chipChains(g, u), R = Math.max(.62, 21 / unit()), D = R * 2.15, spread = Ks.length === 3 ? [-52, 0, 52] : Ks.length === 2 ? [-30, 30] : [0];
+    const below = p.y - D - R < -.4;
+    Ks.forEach((K, k) => {
+      const b = K.pair[0] === g.col[u] ? K.pair[1] : K.pair[0], ang = (below ? 90 : -90) + spread[k] * (below ? -1 : 1);
+      let x = p.x + D * Math.cos(ang * Math.PI / 180), y = p.y + D * Math.sin(ang * Math.PI / 180);
+      x = Math.max(R - .5, Math.min(N + .5 - R, x)); y = Math.max(R - .5, Math.min(N + .5 - R, y));
+      const c = el('g', { class: 'chip', transform: `translate(${q(x)} ${q(y)})` }, gChips), ci = el('g', { filter: 'url(#soft)' }, c);
+      el('circle', { r: R, fill: E[b].pastel, stroke: '#fff', 'stroke-width': R * .16 }, ci);
+      el('circle', { r: R * 1.04, fill: 'none', stroke: E[b].dark, 'stroke-width': R * .07 }, ci);
+      const pw = el('g', { transform: `scale(${R * .62})`, fill: E[b].dark }, ci);
+      el('ellipse', { cx: 0, cy: .28, rx: .42, ry: .34 }, pw);
+      [[-.5, -.14], [-.18, -.46], [.18, -.46], [.5, -.14]].forEach(([a, bb]) => el('ellipse', { cx: a, cy: bb, rx: .15, ry: .19 }, pw));
+      anim(ci, [{ transform: 'scale(0)' }, { transform: 'scale(1.15)' }, { transform: 'scale(1)' }], { duration: 240, delay: k * 45, easing: 'ease-out', fill: 'backwards' });
+      chips.push({ K, x, y, R, node: ci });
+    });
+  }
+
+  // ---------------- idle hint: a ghost paw shows one good move ----------------
+  let hintGen = 0, hintsLeft = 0, hintBusy = false;
+  function hintMove() {                               // a good chain and how a paw can pick it: drag u -> v, or tap u
+    const Ks = g.good(); if (!Ks.length) return null;
+    for (const K of Ks) for (const u of K.vs) for (const v of g.adj[u]) { const k2 = dragChain(g, u, v); if (k2 && k2.key === K.key) return { K, u, v }; }
+    return { K: Ks[0], u: Ks[0].vs[0], v: -1 };
+  }
+  function stopHint() { hintGen++; gGhost.textContent = ''; if (hintBusy && !press) showChain(null); hintBusy = false; }
+  function armHint(ms, n) { stopHint(); hintsLeft = n === undefined ? 3 : n; const my = hintGen; setTimeout(() => { if (my === hintGen) showHint(); }, ms || 4500); }
+  function showHint() {
+    if (press || sel >= 0 || basket >= 0 || g.won() || hintsLeft <= 0) return;
+    const h = hintMove(); if (!h) return;
+    hintsLeft--; const my = ++hintGen; hintBusy = true;
+    gGhost.textContent = '';
+    const a = anc[h.u], b = h.v >= 0 ? anc[h.v] : a, x0 = cx(a), y0 = cy(a), dx = cx(b) - x0, dy = cy(b) - y0;
+    const at = el('g', { transform: `translate(${x0} ${y0})` }, gGhost), paw = el('g', { opacity: reduce ? .9 : 0 }, at);
+    el('circle', { r: .5, fill: '#fff', opacity: .9, stroke: INK, 'stroke-width': .06 }, paw);
+    const pp = el('g', { transform: 'scale(.42)', fill: INK, opacity: .8 }, paw);
+    el('ellipse', { cx: 0, cy: .28, rx: .42, ry: .34 }, pp);
+    [[-.5, -.14], [-.18, -.46], [.18, -.46], [.5, -.14]].forEach(([x, y]) => el('ellipse', { cx: x, cy: y, rx: .15, ry: .19 }, pp));
+    showChain(h.K);
+    const moveTo = h.v >= 0 ? `translate(${q(dx)}px, ${q(dy)}px)` : 'translate(0px, 0px) scale(.8)';
+    anim(paw, [{ opacity: 0, transform: 'translate(0px, 0px) scale(1.4)' }, { opacity: 1, transform: 'translate(0px, 0px) scale(1)', offset: .2 },
+      { opacity: 1, transform: moveTo, offset: .7 }, { opacity: 0, transform: moveTo }], { duration: 1700, easing: 'ease-in-out', iterations: 2 });
+    setTimeout(() => {
+      if (my !== hintGen) return;
+      gGhost.textContent = ''; hintBusy = false; if (!press && sel < 0) showChain(null);
+      if (hintsLeft > 0) { const m2 = hintGen; setTimeout(() => { if (m2 === hintGen) showHint(); }, 9000); }
+    }, 3500);
+  }
+
+  // ---------------- moves ----------------
+  function doSwap(K, originCell) {
+    clearSel();
+    if (!K || g.won()) return;
+    if (K.web) { wobble(regCells(K.set), true); boing(); return; }
+    pop();
+    g.swap(K);
+    refresh();
+    const won = g.won();
+    flipTo(g.col, originCell, won ? win : null);
+  }
+  function win() {
+    basket = g.free();
+    const hc = cascade(grid, new Set([g.hole]), anc[g.hole]), step = reduce ? 0 : 60;
+    hc.forEach(([i, d]) => { anim(cellF[i], [{ transform: 'scaleY(1)' }, { transform: 'scaleY(0)', offset: .5 }, { transform: 'scaleY(1)' }], { duration: 320, delay: d * step }); later(() => paintCell(i, -1), d * step + 160); });
+    anim(bki, [{ transform: 'translateY(0) scale(1)' }, { transform: 'translateY(-.2px) scale(1.12, .9)' }, { transform: 'translateY(0) scale(1)' }], { duration: 420, delay: 120 });
+    refresh();
+    meow(.05); meow(.35); chime();
+  }
+  function restart() { flush(); basket = -1; g.reset(); clearSel(); refresh(); for (let i = 0; i < M; i++) if (lab[i] === g.hole) paintCell(i, -1); flipTo(g.col, anc[g.hole]); pop(); }
+  function undo() {
+    if (basket >= 0) { restart(); return; }
+    if (!g.moves) { wobble(regCells(new Set([g.hole]))); boing(); return; }
+    clearSel(); g.undo(); refresh(); flipTo(g.col, anc[g.hole]); pop();
+  }
+  document.getElementById('undo').addEventListener('click', () => { audio(); undo(); });
+  document.getElementById('again').addEventListener('click', () => {
+    audio(); if (!g.moves && basket < 0) { boop(new Set(g.rim)); pop(); return; }
+    restart();
+  });
+
+  // ---------------- gestures ----------------
+  const toBoard = ev => { const m = svg.getScreenCTM(); if (!m) return { x: -9, y: -9 }; const p = svg.createSVGPoint(); p.x = ev.clientX; p.y = ev.clientY; const r = p.matrixTransform(m.inverse()); return { x: r.x, y: r.y }; };
+  const cellAt = p => (p.x < 0 || p.y < 0 || p.x >= N || p.y >= N) ? -1 : Math.floor(p.y) * N + Math.floor(p.x);
+  let press = null;
+  svg.addEventListener('pointerdown', ev => {
+    audio(); ev.preventDefault(); stopHint();
+    if (basket >= 0) { press = { again: true }; return; }
+    if (g.won()) { press = null; return; } // the win is landing
+    const p = toBoard(ev);
+    const hit = chips.find(c => Math.hypot(p.x - c.x, p.y - c.y) <= c.R * 1.15);
+    if (hit) { press = { chip: hit }; showChain(hit.K); anim(hit.node, [{ transform: 'scale(1)' }, { transform: 'scale(.9)' }], { duration: 90, fill: 'forwards' }); return; }
+    const i = cellAt(p);
+    if (i < 0) { clearSel(); press = null; return; }
+    press = { u: lab[i], cell: i, p, v: lab[i], drag: false };
+    try { svg.setPointerCapture(ev.pointerId); } catch (e) { }
+  });
+  svg.addEventListener('pointermove', ev => {
+    if (!press || press.chip || press.again) return;
+    const p = toBoard(ev), i = cellAt(p), v = i < 0 ? -1 : lab[i];
+    if (v === press.v) return;
+    press.v = v;
+    if (v !== press.u) { press.drag = true; if (sel >= 0) { gChips.textContent = ''; chips = []; } }
+    const K = v >= 0 ? dragChain(g, press.u, v) : null;
+    press.K = K; showChain(K);
+    lineSel.setAttribute('d', outline(new Set([press.u]))); lineSel.setAttribute('opacity', press.drag ? .95 : lineSel.getAttribute('opacity'));
+  });
+  const end = ev => {
+    const pr = press; press = null; if (!pr) return;
+    armHint(7000);
+    if (pr.again) { restart(); return; }
+    const p = toBoard(ev);
+    if (pr.chip) {
+      const c = pr.chip;
+      if (Math.hypot(p.x - c.x, p.y - c.y) <= c.R * 1.4) doSwap(c.K, selCell);
+      else { anim(c.node, [{ transform: 'scale(.9)' }, { transform: 'scale(1)' }], { duration: 120, fill: 'forwards' }); showChain(null); }
+      return;
+    }
+    if (pr.drag) {
+      if (pr.v === pr.u) { clearSel(); return; } // dragged back home: cancel quietly
+      if (pr.K) doSwap(pr.K, pr.cell);
+      else { clearSel(); wobble(regCells(new Set([pr.u]))); boing(); }
+      return;
+    }
+    // a tap
+    if (pr.u === g.hole) { clearSel(); anim(bki, [{ transform: 'rotate(0)' }, { transform: 'rotate(-7deg)' }, { transform: 'rotate(6deg)' }, { transform: 'rotate(0)' }], { duration: 360 }); tone(330, .14, 'sine', .1, 260); armHint(400, 1); return; }
+    if (sel === pr.u) { clearSel(); return; }
+    boop(new Set([pr.u])); pop(); openChips(pr.u, pr.p); selCell = pr.cell;
+  };
+  svg.addEventListener('pointerup', end);
+  svg.addEventListener('pointercancel', () => { press = null; showChain(null); armHint(7000); });
+  addEventListener('keydown', ev => { if ((ev.ctrlKey || ev.metaKey) && ev.key === 'z') undo(); });
+
+  paintAll(); refresh();
+  window.BLOCKS = { g, grid, anc };
+})();
+</script>
+</body>
+</html>

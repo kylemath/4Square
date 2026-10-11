@@ -1,0 +1,731 @@
+<!doctype html>
+<!--
+  LINE DOODLE (lab toy, round 3; its OWN little puzzle: does not use core.js or the level data)
+
+  The project lead's childhood game. A square drawn on a sketchbook page gets n felt-tip lines straight across it
+  (each enters and leaves the square once). Then you fill in the pieces with pens so that no two pieces that share a
+  stretch of line have the same pen. With full straight lines it always works with just TWO pens (a piece's pen is the
+  parity of how many lines it lies "above"; crossing any one line flips it). Round 1 has 3 lines, then 4, 5, 6 ...
+
+  What the player sees/does: a page with a hand-drawn square and wobbly marker lines (drawn in at the start of each
+  sheet). Pens stand in a row (bottom, or right on wide screens). Tap a pen to pick it, tap or swipe across pieces to
+  fill them (fill blooms out from your finger, with a squeak). Tapping a piece that already has the picked pen's
+  colour rubs it out. Two touching pieces with the same pen get a pulsing red glow along their shared border and a
+  little spark. When every piece is filled with no sparks, a sticker says how many pens it took ("2 pens!"), and a tap
+  brings a new sheet with one more line. The star stickers at the top count sheets (each shows its pen count).
+
+  The doodle switch (top right, straight line / squiggle): strokes become doodles. Some wiggle, some curl through a
+  loop (they cross themselves: harmless, still 2 pens), and some STOP in the middle where they run into another stroke
+  (marked with an ink blob). Each stopper makes a corner where three pieces meet around one point, and three pieces
+  that all touch each other can never share two pens: the sparks keep popping up around that odd little ring. Doodle
+  sheets always contain at least one stopper, so they always need 3 pens. Pens 3 and 4 stand there with caps on; when
+  the whole sheet is filled and sparks remain, the 3rd pen's cap pops off (then, if stuck again, the 4th). Four is
+  always enough (it's a map). Line sheets only ever show two pens: that's the quiet hint that two always do it.
+
+  Geometry: strokes are polylines in the unit square. build() computes the planar arrangement exactly (all segment
+  intersections, split, merge vertices, half-edge face tracing; the outer face is dropped), giving face polygons and,
+  per pair of faces, the shared border edges. Generation is incremental with rejection (minimum gaps between
+  crossings, minimum crossing angle, minimum face area and thickness) so no piece is a sliver. Dead-end strokes
+  (stopping in empty paper) are not generated: a piece can't clash with itself, so they'd teach nothing.
+  The logic block between LOGIC-START/END is DOM-free and is smoke-tested in node.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>Line Doodle</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; touch-action: none; -webkit-user-select: none; user-select: none;
+    -webkit-tap-highlight-color: transparent; background: #e6d2ad;
+    background-image: radial-gradient(rgba(140,100,50,.13) 1.2px, transparent 1.6px); background-size: 15px 15px;
+    font-family: Fredoka, 'Baloo 2', 'Arial Rounded MT Bold', 'Trebuchet MS', system-ui, sans-serif; color: #2b2d42; }
+  #cv { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; }
+  #pal { position: fixed; display: flex; align-items: flex-end; justify-content: center; pointer-events: none; }
+  .pen { pointer-events: auto; border: 0; background: none; padding: 0; margin: 0; cursor: pointer; position: relative;
+    transition: transform .2s cubic-bezier(.3,1.7,.5,1), opacity .3s, filter .3s; transform-origin: 50% 100%; }
+  .pen svg { display: block; width: 100%; height: 100%; overflow: visible; }
+  .pen .cap { transition: transform .45s cubic-bezier(.3,1.6,.5,1), opacity .45s; transform-box: fill-box; transform-origin: 50% 100%; }
+  .pen.open .cap { transform: translate(14px,-46px) rotate(38deg); opacity: 0; }
+  .pen.sel { transform: translateY(-16%) rotate(-6deg); }
+  .pen.locked { filter: saturate(.3) brightness(1.08); opacity: .62; }
+  .pen.shake { animation: shake .4s; }
+  .pen.pop { animation: popin .6s cubic-bezier(.3,1.8,.5,1); }
+  .pen.hide { display: none; }
+  @keyframes shake { 20% { transform: rotate(-9deg); } 45% { transform: rotate(8deg); } 70% { transform: rotate(-5deg); } }
+  @keyframes popin { 0% { transform: translateY(0) scale(1); } 40% { transform: translateY(-30%) scale(1.15) rotate(8deg); } 100% { transform: translateY(0); } }
+  #stars { position: fixed; left: 8px; top: 6px; display: flex; gap: 2px; pointer-events: none; }
+  #stars svg { width: 24px; height: 24px; animation: stick .4s cubic-bezier(.3,1.8,.5,1); }
+  @keyframes stick { from { transform: scale(0) rotate(-40deg); } to { transform: scale(1); } }
+  #dood { position: fixed; right: 8px; top: 6px; width: 64px; height: 30px; border-radius: 16px; border: 2.5px solid #2b2d42;
+    background: #fffaf0; padding: 0; cursor: pointer; box-shadow: 0 2px 0 #2b2d42; }
+  #dood svg { width: 100%; height: 100%; display: block; }
+  #dood .knob { transition: transform .25s cubic-bezier(.3,1.6,.5,1); }
+  #dood[aria-checked=true] { background: #fff1c7; }
+  #dood[aria-checked=true] .knob { transform: translateX(30px); }
+  #stamp { position: fixed; pointer-events: none; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    opacity: 0; transform: scale(.3) rotate(-25deg); transition: opacity .2s, transform .45s cubic-bezier(.3,1.8,.5,1); }
+  #stamp.on { opacity: 1; transform: scale(1) rotate(-8deg); }
+  #stamp .st { background: #fffdf5; border: 3px solid #2b2d42; border-radius: 18px; padding: .2em .6em; font-weight: 700;
+    box-shadow: 4px 5px 0 rgba(43,45,66,.85); white-space: nowrap; }
+  #stamp .nx { margin-top: .5em; font-size: .45em; font-weight: 500; background: #fff59d; padding: .25em .7em;
+    transform: rotate(5deg); box-shadow: 2px 3px 0 rgba(0,0,0,.15); }
+  @media (prefers-reduced-motion: reduce) { .pen, .pen .cap, #stamp, #dood .knob { transition: none; } .pen.shake, .pen.pop, #stars svg { animation: none; } }
+</style>
+</head>
+<body>
+<canvas id="cv"></canvas>
+<div id="stars"></div>
+<button id="dood" role="switch" aria-checked="false" aria-label="doodle strokes">
+  <svg viewBox="0 0 64 30"><path d="M8 15 H24" stroke="#2b2d42" stroke-width="3" stroke-linecap="round"/>
+  <path d="M38 15 q3-8 6 0 t6 0 t6 0" fill="none" stroke="#2b2d42" stroke-width="3" stroke-linecap="round"/>
+  <circle class="knob" cx="16" cy="15" r="11" fill="none" stroke="#ff5d5d" stroke-width="3"/></svg>
+</button>
+<div id="pal"></div>
+<div id="stamp"><div class="st"></div><div class="nx">tap for a new sheet</div></div>
+
+<script>
+/*LOGIC-START*/
+const LD = (() => {
+  const EPS = 1e-9;
+  function rng(seed) {
+    let a = seed >>> 0;
+    return () => { a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a);
+      t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+  }
+  const onB = p => p[0] < EPS || p[0] > 1 - EPS || p[1] < EPS || p[1] > 1 - EPS;
+  function perimT(p) {
+    const x = p[0], y = p[1];
+    if (y < EPS) return x; if (x > 1 - EPS) return 1 + y; if (y > 1 - EPS) return 3 - x; return 4 - y;
+  }
+  function segX(a, b, c, d) {
+    const rx = b[0] - a[0], ry = b[1] - a[1], sx = d[0] - c[0], sy = d[1] - c[1];
+    const den = rx * sy - ry * sx;
+    if (Math.abs(den) < 1e-14) return null;
+    const qx = c[0] - a[0], qy = c[1] - a[1];
+    const t = (qx * sy - qy * sx) / den, u = (qx * ry - qy * rx) / den, e = 1e-9;
+    if (t < -e || t > 1 + e || u < -e || u > 1 + e) return null;
+    return [t, u];
+  }
+
+  // Planar arrangement of polylines inside the unit square.
+  function build(strokes) {
+    const segs = [];
+    strokes.forEach((st, s) => { for (let i = 0; i + 1 < st.pts.length; i++) {
+      const a = st.pts[i], b = st.pts[i + 1];
+      segs.push({ a, b, s, i, cuts: [], x0: Math.min(a[0], b[0]), x1: Math.max(a[0], b[0]), y0: Math.min(a[1], b[1]), y1: Math.max(a[1], b[1]) });
+    } });
+    const verts = [], grid = new Map();
+    function vid(p) {
+      const gx = Math.round(p[0] * 2000), gy = Math.round(p[1] * 2000);
+      for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) {
+        const L = grid.get((gx + dx) + ',' + (gy + dy));
+        if (L) for (const k of L) { const q = verts[k]; if (Math.abs(q[0] - p[0]) < 1e-8 && Math.abs(q[1] - p[1]) < 1e-8) return k; }
+      }
+      const k = verts.length; verts.push([p[0], p[1]]);
+      const key = gx + ',' + gy; if (!grid.has(key)) grid.set(key, []); grid.get(key).push(k); return k;
+    }
+    for (let i = 0; i < segs.length; i++) for (let j = i + 1; j < segs.length; j++) {
+      const A = segs[i], B = segs[j];
+      if (A.s === B.s && Math.abs(A.i - B.i) === 1) continue;
+      if (A.x1 < B.x0 - 1e-9 || B.x1 < A.x0 - 1e-9 || A.y1 < B.y0 - 1e-9 || B.y1 < A.y0 - 1e-9) continue;
+      const r = segX(A.a, A.b, B.a, B.b); if (!r) continue;
+      const [t, u] = r, sn = 1e-7;
+      const p = t < sn ? A.a : t > 1 - sn ? A.b : u < sn ? B.a : u > 1 - sn ? B.b
+        : [A.a[0] + t * (A.b[0] - A.a[0]), A.a[1] + t * (A.b[1] - A.a[1])];
+      A.cuts.push([t, p]); B.cuts.push([u, p]);
+    }
+    const E = new Map();
+    const addE = (u, v, s) => { if (u === v) return; const k = u < v ? u + '_' + v : v + '_' + u; if (!E.has(k)) E.set(k, { u, v, s }); };
+    for (const sg of segs) {
+      const c = [[0, sg.a], [1, sg.b], ...sg.cuts].sort((x, y) => x[0] - y[0]);
+      let prev = vid(c[0][1]);
+      for (let k = 1; k < c.length; k++) { const v = vid(c[k][1]); addE(prev, v, sg.s); prev = v; }
+    }
+    const corners = [[0, 0], [1, 0], [1, 1], [0, 1]].map(vid);
+    const bv = []; for (let k = 0; k < verts.length; k++) if (onB(verts[k])) bv.push(k);
+    bv.sort((x, y) => perimT(verts[x]) - perimT(verts[y]));
+    for (let k = 0; k < bv.length; k++) addE(bv[k], bv[(k + 1) % bv.length], -1);
+    void corners;
+    const edges = [...E.values()];
+    const nb = verts.map(() => []);
+    for (const e of edges) { nb[e.u].push(e.v); nb[e.v].push(e.u); }
+    const ang = (a, b) => Math.atan2(verts[b][1] - verts[a][1], verts[b][0] - verts[a][0]);
+    nb.forEach((L, a) => L.sort((x, y) => ang(a, x) - ang(a, y)));
+    const N = verts.length, hf = new Map(), faces = [];
+    for (const e of edges) for (const [u0, v0] of [[e.u, e.v], [e.v, e.u]]) {
+      if (hf.has(u0 * N + v0)) continue;
+      const fi = faces.length, vids = [];
+      let a = u0, b = v0, guard = 0;
+      do {
+        hf.set(a * N + b, fi); vids.push(a);
+        const L = nb[b], idx = L.indexOf(a), w = L[(idx - 1 + L.length) % L.length];
+        a = b; b = w;
+        if (++guard > 100000) return { ok: false };
+      } while (!(a === u0 && b === v0));
+      let ar = 0; for (let k = 0; k < vids.length; k++) { const p = verts[vids[k]], q = verts[vids[(k + 1) % vids.length]]; ar += p[0] * q[1] - q[0] * p[1]; }
+      faces.push({ vids, area: ar / 2 });
+    }
+    const outer = faces.filter(f => f.area <= 0);
+    if (outer.length !== 1) return { ok: false };
+    const map = [], F = [];
+    faces.forEach((f, i) => { if (f.area > 0) { map[i] = F.length; f.poly = f.vids.map(k => verts[k]); F.push(f); } else map[i] = -1; });
+    const pairs = new Map(), adj = F.map(() => new Set());
+    let selfEdges = 0;
+    edges.forEach((e, ei) => {
+      e.fl = map[hf.get(e.u * N + e.v)]; e.fr = map[hf.get(e.v * N + e.u)];
+      if (e.s < 0) return;
+      if (e.fl === e.fr) { selfEdges++; return; }
+      if (e.fl < 0 || e.fr < 0) return;
+      const a = Math.min(e.fl, e.fr), b = Math.max(e.fl, e.fr), k = a + '_' + b;
+      if (!pairs.has(k)) pairs.set(k, { a, b, edges: [] });
+      pairs.get(k).edges.push(ei); adj[a].add(b); adj[b].add(a);
+    });
+    F.forEach(f => {
+      let per = 0, x0 = 1, y0 = 1, x1 = 0, y1 = 0;
+      f.poly.forEach((p, k) => { const q = f.poly[(k + 1) % f.poly.length]; per += Math.hypot(q[0] - p[0], q[1] - p[1]);
+        x0 = Math.min(x0, p[0]); x1 = Math.max(x1, p[0]); y0 = Math.min(y0, p[1]); y1 = Math.max(y1, p[1]); });
+      f.thick = 2 * f.area / per; f.box = [x0, y0, x1, y1];
+    });
+    const deg = nb.map(L => L.length);
+    return { ok: true, verts, edges, faces: F, pairs: [...pairs.values()], adj, nb, deg, selfEdges };
+  }
+
+  // quality: crossings apart, crossing angles open, no sliver faces
+  function quality(A, f) {
+    if (!A.ok || A.selfEdges) return false;
+    const sp = [];
+    A.verts.forEach((p, k) => { if (A.deg[k] !== 2 || onB(p)) sp.push(k); });
+    const dmin = 0.042 * f;
+    for (let i = 0; i < sp.length; i++) for (let j = i + 1; j < sp.length; j++) {
+      const p = A.verts[sp[i]], q = A.verts[sp[j]];
+      if (Math.hypot(p[0] - q[0], p[1] - q[1]) < dmin) {
+        const bothCorner = [p, q].every(r => (r[0] < EPS || r[0] > 1 - EPS) && (r[1] < EPS || r[1] > 1 - EPS));
+        if (!bothCorner) return false;
+      }
+    }
+    const amin = 0.30;
+    for (const k of sp) {
+      const L = A.nb[k]; if (L.length < 3 || onB(A.verts[k])) continue;
+      const a = L.map(v => Math.atan2(A.verts[v][1] - A.verts[k][1], A.verts[v][0] - A.verts[k][0]));
+      for (let i = 0; i < a.length; i++) { let d = (i + 1 < a.length ? a[i + 1] : a[0] + 2 * Math.PI) - a[i]; if (d < amin) return false; }
+    }
+    for (const fc of A.faces) if (fc.area < 0.0032 * f * f || fc.thick < 0.0125 * f) return false;
+    return true;
+  }
+
+  function chord(R) {
+    for (;;) {
+      const p = [0.15 + 0.7 * R(), 0.15 + 0.7 * R()], th = R() * Math.PI, d = [Math.cos(th), Math.sin(th)];
+      let tmin = -Infinity, tmax = Infinity, amin = 0, amax = 0;
+      for (let k = 0; k < 2; k++) {
+        if (Math.abs(d[k]) < 1e-9) continue;
+        const t1 = -p[k] / d[k], t2 = (1 - p[k]) / d[k], lo = Math.min(t1, t2), hi = Math.max(t1, t2);
+        if (lo > tmin) { tmin = lo; amin = k; } if (hi < tmax) { tmax = hi; amax = k; }
+      }
+      const A = [p[0] + tmin * d[0], p[1] + tmin * d[1]], B = [p[0] + tmax * d[0], p[1] + tmax * d[1]];
+      A[amin] = A[amin] < 0.5 ? 0 : 1; B[amax] = B[amax] < 0.5 ? 0 : 1;
+      const nearC = q => Math.min(q[0], 1 - q[0]) < 0.06 && Math.min(q[1], 1 - q[1]) < 0.06;
+      if (nearC(A) || nearC(B)) continue;
+      return [A, B];
+    }
+  }
+  const inside = (pts) => pts.every((q, i) => {
+    if (i === 0 || i === pts.length - 1) return true;
+    const m = Math.min(i, pts.length - 1 - i) < 5 ? 0.0005 : 0.012;
+    return q[0] > m && q[0] < 1 - m && q[1] > m && q[1] < 1 - m;
+  });
+
+  function straight(R) { const [A, B] = chord(R); return { kind: 'line', pts: [A, B] }; }
+  function wiggle(R, curl) {
+    const [A, B] = chord(R), dx = B[0] - A[0], dy = B[1] - A[1], L = Math.hypot(dx, dy), n = [-dy / L, dx / L], u = [dx / L, dy / L];
+    const k1 = 1 + Math.floor(R() * 3), amp = (curl ? 0.012 : 0.018) + R() * (curl ? 0.012 : 0.03), amp2 = R() * 0.012, sg = R() < 0.5 ? 1 : -1;
+    const m = Math.max(12, Math.ceil(L / 0.012)), pts = [];
+    let t0 = 0, W = 0, b = 0;
+    if (curl) { b = 0.035 + R() * 0.02; W = 2 * Math.PI * b * 0.38; t0 = 0.3 + 0.4 * R(); }
+    const base = t => [A[0] + t * dx + n[0] * sg * (amp * Math.sin(Math.PI * k1 * t) + amp2 * Math.sin(Math.PI * (k1 + 1) * t)),
+                       A[1] + t * dy + n[1] * sg * (amp * Math.sin(Math.PI * k1 * t) + amp2 * Math.sin(Math.PI * (k1 + 1) * t))];
+    if (!curl) { for (let i = 0; i <= m; i++) pts.push(i === 0 ? A : i === m ? B : base(i / m)); }
+    else {
+      const ws = t0 - W / L / 2, we = t0 + W / L / 2;
+      const m1 = Math.max(3, Math.round(m * ws)), m2 = Math.max(3, Math.round(m * (1 - we)));
+      for (let i = 0; i < m1; i++) pts.push(i === 0 ? A : base(ws * i / m1));
+      const c = base(t0), a = W / (2 * Math.PI), sgl = R() < 0.5 ? 1 : -1;
+      for (let i = 0; i <= 40; i++) {
+        const th = -Math.PI + 2 * Math.PI * i / 40, al = a * th - b * Math.sin(th), no = -b * (1 + Math.cos(th)) * sgl;
+        pts.push([c[0] + u[0] * al + n[0] * no, c[1] + u[1] * al + n[1] * no]);
+      }
+      for (let i = 1; i <= m2; i++) pts.push(i === m2 ? B : base(we + (1 - we) * i / m2));
+    }
+    if (!inside(pts)) return null;
+    return { kind: curl ? 'loop' : 'wiggle', pts };
+  }
+  // starts at the paper edge and stops where it runs into an earlier stroke
+  function stopper(R, strokes) {
+    const t = R() * 4, sd = Math.floor(t), f = 0.12 + 0.76 * (t - sd);
+    const P = sd === 0 ? [f, 0] : sd === 1 ? [1, f] : sd === 2 ? [1 - f, 1] : [0, 1 - f];
+    const inw = [Math.PI / 2, Math.PI, -Math.PI / 2, 0][sd];
+    let h = inw + (R() - 0.5) * 1.3, dh = 0, q = P, len = 0;
+    const pts = [P], st = 0.012, segsO = [];
+    strokes.forEach(s => { for (let i = 0; i + 1 < s.pts.length; i++) segsO.push([s.pts[i], s.pts[i + 1]]); });
+    for (let step = 0; step < 200; step++) {
+      dh = dh * 0.8 + (R() - 0.5) * 0.12; h += dh;
+      const q2 = [q[0] + st * Math.cos(h), q[1] + st * Math.sin(h)];
+      let best = null;
+      for (const [a, b] of segsO) { const r = segX(q, q2, a, b); if (r && (!best || r[0] < best[0])) best = [r[0], r[1], a, b]; }
+      if (best) {
+        if (len < 0.12) return null;
+        const X = [q[0] + best[0] * (q2[0] - q[0]), q[1] + best[0] * (q2[1] - q[1])];
+        const v1 = [q2[0] - q[0], q2[1] - q[1]], v2 = [best[3][0] - best[2][0], best[3][1] - best[2][1]];
+        const cs = Math.abs(v1[0] * v2[0] + v1[1] * v2[1]) / Math.hypot(...v1) / Math.hypot(...v2);
+        if (cs > 0.9) return null;
+        if (best[0] < 0.25) pts.pop(); // avoid a stub segment right before the stop
+        if (pts.length < 2) return null;
+        pts.push(X);
+        return { kind: 'stop', pts };
+      }
+      const mg = len < 0.05 ? 0.0005 : 0.012;
+      if (q2[0] < mg || q2[0] > 1 - mg || q2[1] < mg || q2[1] > 1 - mg) return null;
+      pts.push(q2); q = q2; len += st;
+    }
+    return null;
+  }
+
+  function makeSheet(n, doodle, seed) {
+    const R = rng(seed);
+    for (let attempt = 0; attempt < 40; attempt++) {
+      let strokes = [], A = null, failed = false, stops = 0, loops = 0;
+      const f0 = Math.max(0.42, Math.min(1, 5 / n));
+      for (let k = 0; k < n && !failed; k++) {
+        let ok = false;
+        for (let tries = 0; tries < 90 && !ok; tries++) {
+          const f = f0 * (tries < 45 ? 1 : 0.75);
+          let st;
+          if (!doodle) st = straight(R);
+          else {
+            const needStop = stops === 0 && k >= 1 && (k === n - 1 || R() < 0.55);
+            const r = R();
+            const type = k === 0 ? 'wiggle' : needStop ? 'stop' : r < 0.32 ? 'stop' : r < 0.6 ? 'wiggle' : r < 0.8 && loops < 2 ? 'loop' : 'line';
+            st = type === 'stop' ? stopper(R, strokes) : type === 'line' ? straight(R) : wiggle(R, type === 'loop');
+          }
+          if (!st) continue;
+          const cand = strokes.concat([st]), B = build(cand);
+          if (!quality(B, f)) continue;
+          strokes = cand; A = B; ok = true;
+          if (st.kind === 'stop') stops++; if (st.kind === 'loop') loops++;
+        }
+        if (!ok) failed = true;
+      }
+      if (failed) continue;
+      if (doodle && bfs2(A)) continue;
+      return { strokes, A, n, doodle };
+    }
+    return null;
+  }
+
+  function conflicts(A, col) {
+    return A.pairs.filter(p => col[p.a] && col[p.a] === col[p.b]);
+  }
+  // exact k-colourability by backtracking (faces <= ~150)
+  function colourable(A, k) {
+    const n = A.faces.length, col = new Array(n).fill(0);
+    const order = [...Array(n).keys()].sort((x, y) => A.adj[y].size - A.adj[x].size);
+    function go(i) {
+      if (i === n) return true;
+      const v = order[i];
+      for (let c = 1; c <= k; c++) {
+        let okc = true; for (const w of A.adj[v]) if (col[w] === c) { okc = false; break; }
+        if (!okc) continue;
+        col[v] = c; if (go(i + 1)) return true; col[v] = 0;
+      }
+      return false;
+    }
+    return go(0) ? col : null;
+  }
+  // 2-colouring by BFS (null if an odd ring exists)
+  function bfs2(A) {
+    const col = new Array(A.faces.length).fill(0);
+    for (let s = 0; s < col.length; s++) {
+      if (col[s]) continue; col[s] = 1; const Q = [s];
+      while (Q.length) { const v = Q.shift(); for (const w of A.adj[v]) { if (!col[w]) { col[w] = 3 - col[v]; Q.push(w); } else if (col[w] === col[v]) return null; } }
+    }
+    return col;
+  }
+  function interiorPt(f) { // a point well inside a face (faces in line mode are convex; generic fallback by sampling)
+    const P = f.poly; let cx = 0, cy = 0, a = 0;
+    for (let k = 0; k < P.length; k++) { const p = P[k], q = P[(k + 1) % P.length], c = p[0] * q[1] - q[0] * p[1]; a += c; cx += (p[0] + q[0]) * c; cy += (p[1] + q[1]) * c; }
+    return [cx / (3 * a), cy / (3 * a)];
+  }
+  function pip(P, x, y) {
+    let c = false;
+    for (let i = 0, j = P.length - 1; i < P.length; j = i++) {
+      const a = P[i], b = P[j];
+      if ((a[1] > y) !== (b[1] > y) && x < (b[0] - a[0]) * (y - a[1]) / (b[1] - a[1]) + a[0]) c = !c;
+    }
+    return c;
+  }
+  function faceAt(A, x, y) {
+    for (let i = 0; i < A.faces.length; i++) { const f = A.faces[i], b = f.box;
+      if (x >= b[0] && x <= b[2] && y >= b[1] && y <= b[3] && pip(f.poly, x, y)) return i; }
+    return -1;
+  }
+  // the "why two pens" colouring for full lines: parity of the lines a point lies to the left of
+  function parity(A, strokes) {
+    return A.faces.map(f => { const [x, y] = interiorPt(f); let s = 0;
+      for (const st of strokes) { const a = st.pts[0], b = st.pts[st.pts.length - 1]; if ((b[0] - a[0]) * (y - a[1]) - (b[1] - a[1]) * (x - a[0]) > 0) s++; }
+      return 1 + (s & 1); });
+  }
+  return { rng, build, quality, makeSheet, conflicts, colourable, bfs2, parity, faceAt, interiorPt, pip, onB };
+})();
+/*LOGIC-END*/
+</script>
+<script>
+(() => {
+  const RM = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
+  const palEl = document.getElementById('pal'), starsEl = document.getElementById('stars');
+  const dood = document.getElementById('dood'), stamp = document.getElementById('stamp');
+  const INK = '#2b2d42';
+  const PENS = [
+    { c: '#ff5d5d', d: '#c93636', a: Math.PI / 4 }, { c: '#3fa7f5', d: '#1f74b8', a: -Math.PI / 4 },
+    { c: '#ffc928', d: '#c9900a', a: 0 }, { c: '#3ccf6e', d: '#1f8f45', a: Math.PI / 2 }];
+
+  // ---------- state ----------
+  let doodle = false, round = 0, sheet = null, col = [], pen = 1, unlocked = 2, won = false, wonAt = 0;
+  let fillAnim = [], drawStart = 0, drawTotal = 0, sparks = [], confetti = [], stuckTimer = 0, lastConf = 0;
+  const nLines = () => 3 + round;
+
+  // ---------- layout ----------
+  let W = 0, H = 0, dpr = 1, PX = 0, PY = 0, PS = 0, RX = 0, RY = 0, RS = 0, penW = 0, penH = 0, paper = null, paths = [];
+  function layout() {
+    W = innerWidth; H = innerHeight; dpr = Math.min(3, window.devicePixelRatio || 1);
+    cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+    const land = W > H * 1.15, top = 40, nv = doodle ? 4 : 2;
+    if (land) {
+      penH = Math.max(70, Math.min(170, H * 0.34)); penW = penH * 0.3;
+      const palW = 4 * penW + 3 * penW * 0.35 + 24;
+      PS = Math.max(120, Math.min(W - palW - 24, H - top - 12));
+      PX = Math.max(12, (W - palW - PS) / 2); PY = top + Math.max(0, (H - top - 12 - PS) / 2);
+      Object.assign(palEl.style, { left: (PX + PS + 12) + 'px', top: '0px', width: palW + 'px', height: (H / 2 + penH / 2) + 'px', bottom: '' });
+    } else {
+      penH = Math.max(56, Math.min(130, H * 0.16)); penW = penH * 0.3;
+      const palH = penH + 14;
+      PS = Math.max(120, Math.min(W - 20, H - top - palH - 14));
+      PX = (W - PS) / 2; PY = top + Math.max(0, (H - top - palH - 14 - PS) / 2);
+      Object.assign(palEl.style, { left: '0px', width: W + 'px', top: (H - palH - 4) + 'px', height: palH + 'px' });
+    }
+    palEl.style.gap = (penW * (nv > 2 ? 0.35 : 0.7)) + 'px';
+    [...palEl.children].forEach(b => { b.style.width = penW + 'px'; b.style.height = penH + 'px'; });
+    RS = PS * 0.86; RX = PX + PS * 0.07; RY = PY + PS * 0.07;
+    stamp.style.left = PX + 'px'; stamp.style.top = PY + 'px'; stamp.style.width = PS + 'px'; stamp.style.height = PS + 'px';
+    stamp.style.fontSize = Math.max(22, PS * 0.11) + 'px';
+    makePaper(); makePaths(); makePatterns(); render();
+  }
+  const X = p => (RX + p[0] * RS) * dpr, Y = p => (RY + p[1] * RS) * dpr;
+  function makePaper() {
+    const c = document.createElement('canvas'), s = Math.round(PS * dpr); c.width = c.height = s;
+    const g = c.getContext('2d'); g.fillStyle = '#fffcf3'; g.fillRect(0, 0, s, s);
+    const R = LD.rng(7);
+    for (let i = 0; i < s * s / 260; i++) { g.fillStyle = `rgba(120,100,60,${0.025 + R() * 0.05})`; g.fillRect(R() * s, R() * s, 1.2 * dpr, 1.2 * dpr); }
+    g.strokeStyle = 'rgba(80,140,200,.10)'; g.lineWidth = dpr;
+    for (let y = s * 0.035; y < s; y += s * 0.07) { g.beginPath(); g.moveTo(0, y); g.lineTo(s, y); g.stroke(); }
+    paper = c;
+  }
+  let pats = [];
+  function makePatterns() {
+    pats = PENS.map(P => {
+      const s = Math.round(9 * dpr), c = document.createElement('canvas'); c.width = c.height = s;
+      const g = c.getContext('2d'); g.strokeStyle = P.d; g.globalAlpha = 0.33; g.lineWidth = 1.6 * dpr; g.beginPath();
+      if (P.a === 0) { g.moveTo(0, s / 2); g.lineTo(s, s / 2); }
+      else if (P.a === Math.PI / 2) { g.moveTo(s / 2, 0); g.lineTo(s / 2, s); }
+      else if (P.a > 0) { for (const o of [-s, 0, s]) { g.moveTo(o, 0); g.lineTo(o + s, s); } }
+      else { for (const o of [-s, 0, s]) { g.moveTo(o, s); g.lineTo(o + s, 0); } }
+      g.stroke(); return ctx.createPattern(c, 'repeat');
+    });
+  }
+  function makePaths() {
+    if (!sheet) return;
+    paths = sheet.A.faces.map(f => { const p = new Path2D(); f.poly.forEach((q, i) => i ? p.lineTo(X(q), Y(q)) : p.moveTo(X(q), Y(q))); p.closePath(); return p; });
+  }
+
+  // ---------- hand-drawn ink ----------
+  function inkify(st, R) { // resample + wobble + overshoot past the paper border
+    const P = st.pts, out = [];
+    const ph1 = R() * 9, ph2 = R() * 9, a1 = 0.0012 + R() * 0.001;
+    let s = 0;
+    for (let i = 0; i + 1 < P.length; i++) {
+      const a = P[i], b = P[i + 1], L = Math.hypot(b[0] - a[0], b[1] - a[1]), m = Math.max(1, Math.ceil(L / 0.006));
+      const nx = -(b[1] - a[1]) / (L || 1), ny = (b[0] - a[0]) / (L || 1);
+      for (let k = 0; k < m; k++) { const t = k / m, w = a1 * Math.sin(s * 41 + ph1) + 0.0008 * Math.sin(s * 97 + ph2);
+        out.push([a[0] + t * (b[0] - a[0]) + nx * w, a[1] + t * (b[1] - a[1]) + ny * w]); s += L / m; }
+    }
+    out.push(P[P.length - 1]);
+    const ext = (p, q, d) => { const L = Math.hypot(p[0] - q[0], p[1] - q[1]) || 1; return [p[0] + (p[0] - q[0]) / L * d, p[1] + (p[1] - q[1]) / L * d]; };
+    out.unshift(ext(P[0], P[1], 0.022 + R() * 0.025));
+    if (st.kind !== 'stop') out.push(ext(P[P.length - 1], P[P.length - 2], 0.022 + R() * 0.025));
+    let len = 0; for (let i = 1; i < out.length; i++) len += Math.hypot(out[i][0] - out[i - 1][0], out[i][1] - out[i - 1][1]);
+    return { pts: out, len, stop: st.kind === 'stop' ? P[P.length - 1] : null };
+  }
+  let ink = [], frame = [];
+  function prepInk(seed) {
+    const R = LD.rng(seed ^ 0x5bd1);
+    ink = sheet.strokes.map(st => inkify(st, R));
+    const o = 0.025;
+    frame = [[[-o, 0], [1 + o, 0]], [[1, -o], [1, 1 + o]], [[1 + o, 1], [-o, 1]], [[0, 1 + o], [0, -o]]]
+      .map(([a, b]) => inkify({ kind: 'line', pts: [a, b] }, R));
+    drawTotal = ink.reduce((s, k) => s + 0.18 + k.len * 0.55, 0);
+  }
+
+  // ---------- render ----------
+  const ease = t => 1 - Math.pow(1 - t, 3);
+  function drawPoly(pts, upto) {
+    ctx.beginPath(); let acc = 0;
+    ctx.moveTo(X(pts[0]), Y(pts[0]));
+    for (let i = 1; i < pts.length; i++) {
+      const d = Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
+      if (acc + d > upto) { const t = (upto - acc) / d; const q = [pts[i - 1][0] + t * (pts[i][0] - pts[i - 1][0]), pts[i - 1][1] + t * (pts[i][1] - pts[i - 1][1])];
+        ctx.lineTo(X(q), Y(q)); break; }
+      ctx.lineTo(X(pts[i]), Y(pts[i])); acc += d;
+    }
+    ctx.stroke();
+  }
+  function fillFace(i, c, now) {
+    const P = PENS[c - 1], an = fillAnim[i];
+    ctx.save(); ctx.clip(paths[i]);
+    let r = Infinity;
+    if (an) { const t = (now - an.t0) / 130; /* quick bloom: a tap should feel instant */ if (t < 1) r = ease(Math.max(0, t)) * an.R; else fillAnim[i] = null; }
+    if (r !== Infinity) { ctx.beginPath(); ctx.arc(an.x, an.y, r, 0, 7); ctx.clip(); }
+    ctx.globalAlpha = 0.72; ctx.fillStyle = P.c; ctx.fill(paths[i]);
+    ctx.globalAlpha = 1; ctx.fillStyle = pats[c - 1]; ctx.fill(paths[i]);
+    ctx.restore();
+  }
+  function render(now) {
+    now = now || performance.now();
+    ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, cv.width, cv.height);
+    if (!sheet) return;
+    // paper
+    ctx.save(); ctx.shadowColor = 'rgba(80,50,20,.28)'; ctx.shadowBlur = 10 * dpr; ctx.shadowOffsetY = 4 * dpr;
+    ctx.fillStyle = '#fffcf3'; ctx.fillRect(PX * dpr, PY * dpr, PS * dpr, PS * dpr); ctx.restore();
+    ctx.drawImage(paper, PX * dpr, PY * dpr);
+    // tape
+    ctx.save(); ctx.translate((PX + PS / 2) * dpr, PY * dpr); ctx.rotate(-0.04);
+    ctx.fillStyle = 'rgba(255,236,160,.75)'; ctx.fillRect(-PS * 0.09 * dpr, -PS * 0.022 * dpr, PS * 0.18 * dpr, PS * 0.045 * dpr); ctx.restore();
+    // fills
+    for (let i = 0; i < col.length; i++) if (col[i]) fillFace(i, col[i], now);
+    const lw = Math.max(2.4, RS * 0.0105) * dpr;
+    // conflict glow under the ink
+    const cf = LD.conflicts(sheet.A, col), pulse = RM ? 0.6 : 0.45 + 0.3 * Math.sin(now / 130);
+    if (cf.length) {
+      ctx.save(); ctx.lineCap = 'round'; ctx.strokeStyle = `rgba(255,50,0,${pulse})`; ctx.lineWidth = lw * 3.2; ctx.beginPath();
+      for (const p of cf) for (const ei of p.edges) { const e = sheet.A.edges[ei], a = sheet.A.verts[e.u], b = sheet.A.verts[e.v]; ctx.moveTo(X(a), Y(a)); ctx.lineTo(X(b), Y(b)); }
+      ctx.stroke(); ctx.restore();
+    }
+    // ink
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    const tDraw = RM ? Infinity : (now - drawStart) / 1000;
+    ctx.strokeStyle = INK; ctx.globalAlpha = 0.9; ctx.lineWidth = lw * 0.8;
+    for (const f of frame) drawPoly(f.pts, Infinity);
+    let tt = tDraw;
+    ink.forEach(k => {
+      const dur = 0.18 + k.len * 0.55; if (tt <= 0) return;
+      const upto = tt >= dur ? Infinity : k.len * ease(tt / dur); tt -= dur;
+      ctx.globalAlpha = 0.22; ctx.lineWidth = lw * 1.5; drawPoly(k.pts, upto);
+      ctx.globalAlpha = 0.95; ctx.lineWidth = lw; drawPoly(k.pts, upto);
+      if (k.stop && upto === Infinity) { ctx.globalAlpha = 1; ctx.fillStyle = INK; ctx.beginPath(); ctx.arc(X(k.stop), Y(k.stop), lw * 1.05, 0, 7); ctx.fill(); }
+    });
+    ctx.globalAlpha = 1;
+    // sparks on each clashing border
+    for (const p of cf) {
+      const E = p.edges.map(ei => sheet.A.edges[ei]), ls = E.map(e => Math.hypot(...[0, 1].map(k => sheet.A.verts[e.u][k] - sheet.A.verts[e.v][k])));
+      let half = ls.reduce((a, b) => a + b, 0) / 2, j = 0; while (j < E.length - 1 && half > ls[j]) { half -= ls[j]; j++; }
+      const e = E[j], t = Math.min(1, half / (ls[j] || 1)), a = sheet.A.verts[e.u], b = sheet.A.verts[e.v];
+      const q = [a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1])];
+      spark(X(q), Y(q), lw, now, p.a * 7 + p.b);
+    }
+    // confetti
+    if (confetti.length) {
+      const live = [];
+      for (const c of confetti) {
+        const t = (now - c.t0) / 1000; if (t > 1.8) continue; live.push(c);
+        const x = c.x + c.vx * t, y = c.y + c.vy * t + 900 * dpr * t * t / 2;
+        ctx.save(); ctx.translate(x, y); ctx.rotate(c.r + t * c.vr); ctx.globalAlpha = Math.min(1, 2 * (1.8 - t));
+        ctx.strokeStyle = c.c; ctx.lineWidth = 3 * dpr; ctx.beginPath(); ctx.moveTo(-8 * dpr, 0); ctx.quadraticCurveTo(-4 * dpr, -6 * dpr, 0, 0); ctx.quadraticCurveTo(4 * dpr, 6 * dpr, 8 * dpr, 0); ctx.stroke(); ctx.restore();
+      }
+      confetti = live;
+    }
+    return cf;
+  }
+  function spark(x, y, lw, now, seed) {
+    const s = lw * 2.4 * (RM ? 1 : 0.85 + 0.25 * Math.sin(now / 90 + seed)), rot = RM ? 0 : now / 400 + seed;
+    ctx.save(); ctx.translate(x, y); ctx.rotate(rot);
+    ctx.fillStyle = '#ffe14d'; ctx.strokeStyle = '#ff3d00'; ctx.lineWidth = lw * 0.45; ctx.beginPath();
+    for (let k = 0; k < 8; k++) { const r = k % 2 ? s * 0.42 : s * 1.25, a = k * Math.PI / 4; k ? ctx.lineTo(r * Math.cos(a), r * Math.sin(a)) : ctx.moveTo(r, 0); }
+    ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.restore();
+  }
+  let looping = false;
+  function busy(now) {
+    if (RM) return confetti.length > 0;
+    return fillAnim.some(a => a) || (now - drawStart) / 1000 < drawTotal + 0.05 || confetti.length > 0 || LD.conflicts(sheet.A, col).length > 0;
+  }
+  function loop(now) { render(now); if (busy(now)) requestAnimationFrame(loop); else { looping = false; render(); } }
+  function kick() { if (!looping) { looping = true; requestAnimationFrame(loop); } else render(); }
+
+  // ---------- sound ----------
+  let AC = null;
+  function au() {
+    if (!AC) { try { AC = new (window.AudioContext || window.webkitAudioContext)(); } catch (_) { AC = null; } }
+    if (AC && AC.state === 'suspended') AC.resume(); return AC;
+  }
+  function env(g, t, a, peak, d) { g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(peak, t + a); g.gain.exponentialRampToValueAtTime(0.0001, t + d); }
+  function squeak(i) {
+    const A = AC; if (!A) return; const t = A.currentTime, n = Math.floor(A.sampleRate * 0.13), b = A.createBuffer(1, n, A.sampleRate), d = b.getChannelData(0);
+    for (let k = 0; k < n; k++) d[k] = Math.random() * 2 - 1;
+    const s = A.createBufferSource(); s.buffer = b; const f = A.createBiquadFilter(); f.type = 'bandpass'; f.Q.value = 4;
+    f.frequency.setValueAtTime(1400 + i * 380, t); f.frequency.linearRampToValueAtTime(2300 + i * 380, t + 0.12);
+    const g = A.createGain(); env(g, t, 0.015, 0.22, 0.13); s.connect(f); f.connect(g); g.connect(A.destination); s.start(t);
+  }
+  function tone(type, f0, f1, dur, peak, delay) {
+    const A = AC; if (!A) return; const t = A.currentTime + (delay || 0), o = A.createOscillator(), g = A.createGain();
+    o.type = type; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f1, t + dur);
+    env(g, t, 0.01, peak, dur); o.connect(g); g.connect(A.destination); o.start(t); o.stop(t + dur + 0.02);
+  }
+  const tink = () => tone('sine', 1500, 800, 0.14, 0.07);
+  const pop = () => { tone('triangle', 260, 900, 0.12, 0.2); tone('sine', 1200, 1600, 0.1, 0.06, 0.08); };
+  const fanfare = () => [523, 659, 784, 1047].forEach((f, i) => tone('triangle', f, f * 1.01, 0.22, 0.14, i * 0.09));
+  const thud = () => tone('sine', 180, 90, 0.12, 0.12);
+
+  // ---------- pens ----------
+  const penBtns = PENS.map((P, i) => {
+    const b = document.createElement('button'); b.className = 'pen'; b.setAttribute('aria-label', 'pen ' + (i + 1));
+    b.innerHTML = `<svg viewBox="0 0 40 130" preserveAspectRatio="xMidYMax meet">
+      <path d="M12 30 L14 15 Q20 7 26 15 L28 30 Z" fill="${P.c}" stroke="${INK}" stroke-width="2.5" stroke-linejoin="round"/>
+      <rect x="8" y="28" width="24" height="12" rx="3" fill="#fffaf0" stroke="${INK}" stroke-width="2.5"/>
+      <rect x="6" y="38" width="28" height="88" rx="9" fill="${P.c}" stroke="${INK}" stroke-width="2.5"/>
+      <rect x="10" y="62" width="20" height="34" rx="4" fill="#fffaf0" stroke="${INK}" stroke-width="2"/>
+      <g stroke="${P.d}" stroke-width="2.4" opacity=".75">${hatchIcon(P.a)}</g>
+      <path d="M11 46 v10" stroke="#fff" stroke-width="3" stroke-linecap="round" opacity=".55"/>
+      <g class="cap"><rect x="5" y="2" width="30" height="42" rx="9" fill="${P.d}" stroke="${INK}" stroke-width="2.5"/>
+      <rect x="27" y="8" width="5" height="26" rx="2" fill="${P.c}" stroke="${INK}" stroke-width="1.5"/></g></svg>`;
+    b.addEventListener('pointerdown', e => { e.preventDefault(); au(); pickPen(i + 1); });
+    palEl.appendChild(b); return b;
+  });
+  function hatchIcon(a) {
+    if (a === 0) return '<path d="M12 72h16M12 79h16M12 86h16"/>';
+    if (a === Math.PI / 2) return '<path d="M14 66v26M20 66v26M26 66v26"/>';
+    if (a > 0) return '<path d="M12 70l12 12M12 80l12 12M18 66l10 10"/>';
+    return '<path d="M12 82l12-12M12 92l14-14M20 92l8-8"/>';
+  }
+  function pickPen(i) {
+    const b = penBtns[i - 1];
+    if (i > unlocked) { b.classList.remove('shake'); void b.offsetWidth; b.classList.add('shake'); thud(); return; }
+    pen = i; syncPens(); squeak(i - 1);
+  }
+  function syncPens() {
+    const nv = doodle ? 4 : 2;
+    penBtns.forEach((b, k) => {
+      b.classList.toggle('hide', k >= nv);
+      b.classList.toggle('locked', k >= unlocked);
+      b.classList.toggle('open', k < unlocked);
+      b.classList.toggle('sel', k === pen - 1);
+    });
+  }
+  function unlockNext() {
+    if (unlocked >= 4) return;
+    unlocked++; const b = penBtns[unlocked - 1];
+    syncPens(); b.classList.remove('pop'); void b.offsetWidth; b.classList.add('pop'); pop();
+  }
+
+  // ---------- stars ----------
+  function addStar(nPens) {
+    const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); s.setAttribute('viewBox', '0 0 24 24');
+    const c = '#ffd43b';
+    s.innerHTML = `<path d="M12 1.5l3.1 6.6 7.1.8-5.3 4.9 1.5 7.1L12 17.3 5.6 20.9l1.5-7.1L1.8 8.9l7.1-.8z" fill="${c}" stroke="${INK}" stroke-width="1.6" stroke-linejoin="round"/>
+      <text x="12" y="15.4" text-anchor="middle" font-size="8.5" font-weight="700" fill="${INK}" font-family="Fredoka,system-ui,sans-serif">${nPens}</text>`;
+    starsEl.appendChild(s);
+    while (starsEl.children.length > Math.max(4, Math.floor((W - 90) / 26))) starsEl.removeChild(starsEl.firstChild);
+  }
+
+  // ---------- rounds ----------
+  function newSheet() {
+    const seed = (Math.random() * 2 ** 31) | 0;
+    sheet = LD.makeSheet(nLines(), doodle, seed) || LD.makeSheet(Math.min(nLines(), 6), doodle, seed + 1);
+    col = new Array(sheet.A.faces.length).fill(0); fillAnim = []; won = false; confetti = [];
+    stamp.classList.remove('on');
+    prepInk(seed); makePaths(); drawStart = performance.now(); kick();
+  }
+  function nextRound() {
+    round = Math.min(round + 1, doodle ? 6 : 9); // caps: 12 lines / 9 doodles
+    newSheet();
+  }
+
+  // ---------- play ----------
+  let down = false, act = 0, lastFace = -1;
+  function toSheet(e) { return [(e.clientX - RX) / RS, (e.clientY - RY) / RS]; }
+  function apply(f, e) {
+    if (f < 0 || f === lastFace) return; lastFace = f;
+    if (act === 0) { if (!col[f]) return; col[f] = 0; fillAnim[f] = null; thud(); }
+    else {
+      if (col[f] === act) return;
+      col[f] = act;
+      const [x, y] = [e.clientX * dpr, e.clientY * dpr];
+      let R = 0; for (const q of sheet.A.faces[f].poly) R = Math.max(R, Math.hypot(X(q) - x, Y(q) - y));
+      fillAnim[f] = RM ? null : { t0: performance.now(), x, y, R };
+      squeak(act - 1);
+    }
+    afterChange();
+  }
+  function afterChange() {
+    const cf = LD.conflicts(sheet.A, col);
+    if (cf.length > lastConf) tink();
+    lastConf = cf.length;
+    const full = col.every(c => c);
+    clearTimeout(stuckTimer);
+    if (full && !cf.length) return win();
+    if (full && cf.length && doodle && unlocked < 4) stuckTimer = setTimeout(() => {
+      if (col.every(c => c) && LD.conflicts(sheet.A, col).length) unlockNext();
+    }, 650);
+    kick();
+  }
+  function win() {
+    won = true; wonAt = performance.now();
+    const used = new Set(col).size;
+    stamp.querySelector('.st').textContent = used + ' pens!';
+    stamp.classList.add('on'); addStar(used); fanfare();
+    if (!RM) for (let k = 0; k < 46; k++) {
+      const a = Math.random() * Math.PI * 2, v = (200 + Math.random() * 500) * dpr;
+      confetti.push({ x: (PX + PS / 2) * dpr, y: (PY + PS / 2) * dpr, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 300 * dpr,
+        r: Math.random() * 6, vr: (Math.random() - 0.5) * 12, c: PENS[k % (doodle ? 4 : 2)].c, t0: performance.now() });
+    }
+    kick();
+  }
+  cv.addEventListener('pointerdown', e => {
+    e.preventDefault(); au();
+    if (won) { if (performance.now() - wonAt > 450) nextRound(); return; }
+    const [x, y] = toSheet(e); if (x < 0 || x > 1 || y < 0 || y > 1) return;
+    const f = LD.faceAt(sheet.A, x, y); if (f < 0) return;
+    down = true; lastFace = -1; act = col[f] === pen ? 0 : pen;
+    try { cv.setPointerCapture(e.pointerId); } catch (_) {}
+    apply(f, e);
+  });
+  cv.addEventListener('pointermove', e => {
+    if (!down || won) return;
+    const [x, y] = toSheet(e); if (x < 0 || x > 1 || y < 0 || y > 1) return;
+    apply(LD.faceAt(sheet.A, x, y), e);
+  });
+  const up = () => { down = false; lastFace = -1; };
+  cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up);
+  dood.addEventListener('click', () => {
+    au(); doodle = !doodle; dood.setAttribute('aria-checked', String(doodle));
+    if (!doodle && pen > 2) pen = 1;
+    round = Math.min(round, doodle ? 6 : 9);
+    syncPens(); layout(); newSheet(); squeak(doodle ? 2 : 0);
+  });
+  addEventListener('resize', layout);
+  document.addEventListener('contextmenu', e => e.preventDefault());
+
+  syncPens(); layout(); newSheet();
+})();
+</script>
+</body>
+</html>

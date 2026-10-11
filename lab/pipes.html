@@ -1,0 +1,523 @@
+<!doctype html>
+<!--
+  PIPES: Fill the Hole as a neon plumbing network.
+
+  What the player sees: a black workshop floor with steel pipes. Every region is a glass TANK of glowing liquid (its
+  element: fire, water, air, earth). Every graph edge is a PIPE. The hole is the DRAIN in the middle: a grated outlet
+  fed by 5 inlet pipes from the rim tanks (liquid visibly streams down them). Four lamps on the drain show which
+  liquids reach it; the drain only opens when just 3 liquids reach it (one lamp dark).
+
+  What the player does:
+    - Touch (or hover with a mouse) a tank: its circuits light up, each as an animated dashed route in the partner
+      liquid's colour, and every tank on the route gets a thin ring of the colour it WILL turn. So you see the whole
+      route and its result before committing. A valve (hand wheel) sits on each circuit, next to the tank.
+    - Tap a valve (or tap any lit pipe of that circuit) to FLUSH it: liquid races along the pipes outward from the
+      touched tank, tanks change colour in order of distance, the hand wheel spins.
+    - Grey dashed circuits with a cracked valve are dead circuits: flushing them only gurgles.
+    - Win: 3 liquids at the drain, the grate swings open and the drain fills with the missing liquid. Tap to replay.
+    - Small undo / restart buttons in the bottom corners.
+
+  Exact mapping onto the math (lab/core.js does all rules):
+    tank u              = region u, liquid = g.col[u];   drain = g.hole;  inlet pipes = edges hole-rim (g.rim)
+    pipe                = edge of g.edges
+    circuits of tank u  = g.chainsThrough(u)  (one per partner liquid b != col[u]; the {col[u], b} Kempe chain)
+    lit route of K      = edges with both ends in K.set; preview ring colour on v = the other element of K.pair
+    tap valve of K / tap a lit pipe of K  -> g.swap(K)   (K.web === true: gurgle, no swap)
+    drain lamps         = distinct elements in g.rimColours(); open = g.won(); fill colour = g.free()
+    undo / restart      = g.undo() / g.reset();  tap after win = g.reset()
+  Layout: g.pos is re-embedded (outer face = g.border pinned as a big triangle, Tutte barycentric start, then a
+  spring relaxation that rejects any move creating a pipe crossing), so the network is always planar.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>Pipes</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #05070b; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent; }
+  body { font: 600 13px/1.2 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: #9fb3c8; }
+  #sv { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; }
+  #cue { position: fixed; top: 8px; left: 0; right: 0; text-align: center; pointer-events: none; letter-spacing: .08em; text-transform: uppercase; font-size: 11px; color: #7f93ab; text-shadow: 0 0 6px #000; padding: 0 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #cue b { color: #e8f3ff; }
+  .btn { position: fixed; bottom: 8px; width: 40px; height: 40px; border-radius: 12px; border: 1.5px solid #27323f; background: #0b1017; color: #8fa5bd; display: grid; place-items: center; cursor: pointer; padding: 0; }
+  .btn:active { background: #141c27; }
+  .btn svg { width: 22px; height: 22px; }
+  #undo { left: 8px; } #rst { right: 8px; }
+  .flow { animation: flow .7s linear infinite; }
+  .flow.slow { animation-duration: 1.4s; }
+  @keyframes flow { to { stroke-dashoffset: -14; } }
+  .spin { animation: spin .6s cubic-bezier(.3,.6,.4,1); }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .wob { animation: wob .45s ease; }
+  @keyframes wob { 20% { transform: translateX(-3px) rotate(-8deg); } 45% { transform: translateX(3px) rotate(7deg); } 70% { transform: translateX(-2px); } }
+  .pop { animation: pop .35s ease-out; }
+  @keyframes pop { 40% { transform: scale(1.22); } }
+  .pulse { animation: pulse 1.6s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: .15; } }
+  .bub { animation: bub .9s ease-out forwards; }
+  @keyframes bub { to { transform: translateY(-26px) scale(1.4); opacity: 0; } }
+  .ripple { animation: ripple 1.6s ease-out infinite; }
+  @keyframes ripple { from { transform: scale(1); opacity: .9; } to { transform: scale(2.6); opacity: 0; } }
+  .tk, .vg, .gate { transform-box: fill-box; transform-origin: center; }
+  @media (prefers-reduced-motion: reduce) { .flow, .spin, .wob, .pop, .pulse, .bub, .ripple { animation: none !important; } }
+</style>
+</head>
+<body>
+<svg id="sv" xmlns="http://www.w3.org/2000/svg"></svg>
+<div id="cue"></div>
+<button class="btn" id="undo" aria-label="Undo last flush"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M8 9h8a5 5 0 0 1 0 10h-5M11 5 7 9l4 4"/></svg></button>
+<button class="btn" id="rst" aria-label="Restart"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12a7 7 0 1 1-2.1-5M19 4v4h-4"/></svg></button>
+<script src="../levels.js"></script>
+<script src="../layout.js"></script>
+<script src="core.js"></script>
+<script>
+'use strict';
+// ---------- pure helpers (DOM-free; smoke-tested in node) ----------
+// Planar layout: outer face (g.border) pinned to a big triangle, Tutte barycentric start, then spring relaxation in
+// which a vertex move is only accepted if it creates no pipe crossing and does not squeeze a tank against a pipe.
+function relaxLayout(g, iters) {
+  const n = g.n, E = g.edges, P = g.pos.map(p => [p[0], -p[1]]);
+  const outer = new Set(g.border && g.border.length === 3 ? g.border : []);
+  if (outer.size === 3) {
+    const B = g.border.slice().sort((a, b) => P[a][1] - P[b][1]);
+    const tl = P[B[0]][0] < P[B[1]][0] ? B[0] : B[1], tr = tl === B[0] ? B[1] : B[0];
+    P[tl] = [-1, -1]; P[tr] = [1, -1]; P[B[2]] = [0, 1];
+    for (let it = 0; it < 400; it++) for (let u = 0; u < n; u++) {
+      if (outer.has(u)) continue; let x = 0, y = 0;
+      for (const w of g.adj[u]) { x += P[w][0]; y += P[w][1]; } P[u] = [x / g.adj[u].length, y / g.adj[u].length];
+    }
+  }
+  const inc = Array.from({ length: n }, () => []); E.forEach((e, i) => { inc[e[0]].push(i); inc[e[1]].push(i); });
+  const ccw = (a, b, c) => (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+  const segX = (A, B, C, D) => ccw(A, B, C) * ccw(A, B, D) < 0 && ccw(C, D, A) * ccw(C, D, B) < 0;
+  const sz = u => u === g.hole ? 1.9 : 1;
+  const clr = u => {
+    let m = 9; const q = P[u];
+    for (const [c, d] of E) { if (c === u || d === u) continue; m = Math.min(m, segDist(q, P[c], P[d]) / sz(u)); }
+    for (const i of inc[u]) { const [a, b] = E[i], o = a === u ? b : a; for (let w = 0; w < n; w++) if (w !== u && w !== o) m = Math.min(m, segDist(P[w], q, P[o]) / sz(w)); }
+    return m;
+  };
+  const ok = (u, q) => {
+    const old = P[u], c0 = clr(u); P[u] = q; let good = true;
+    for (const i of inc[u]) {
+      const [a, b] = E[i];
+      for (let j = 0; j < E.length && good; j++) { const [c, d] = E[j]; if (c === a || c === b || d === a || d === b) continue; if (segX(P[a], P[b], P[c], P[d])) good = false; }
+      if (!good) break;
+    }
+    if (good && clr(u) < Math.min(c0, 0.1)) good = false;
+    P[u] = old; return good;
+  };
+  const k = 0.55, cl = v => Math.max(-1, Math.min(1, v));
+  for (let it = 0; it < iters; it++) {
+    const step = 0.03 * (1 - it / iters) + 0.004;
+    for (let u = 0; u < n; u++) {
+      if (outer.has(u) && it < iters * 0.6) continue;
+      let fx = 0, fy = 0;
+      for (let w = 0; w < n; w++) { if (w === u) continue; const dx = P[u][0] - P[w][0], dy = P[u][1] - P[w][1], d = Math.hypot(dx, dy) || 1e-4, s = k * k * sz(u) * sz(w) / d / d * 0.5; fx += dx / d * s; fy += dy / d * s; }
+      for (const w of g.adj[u]) { const dx = P[w][0] - P[u][0], dy = P[w][1] - P[u][1], d = Math.hypot(dx, dy) || 1e-4, s = d / k; fx += dx / d * s; fy += dy / d * s; }
+      const m = Math.hypot(fx, fy); if (m < 1e-6) continue;
+      const q = [cl(P[u][0] + fx / m * Math.min(step, m * 0.05)), cl(P[u][1] + fy / m * Math.min(step, m * 0.05))];
+      if (ok(u, q)) P[u] = q;
+    }
+  }
+  // normalise to [-1,1]^2
+  let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
+  P.forEach(([x, y]) => { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); });
+  return P.map(([x, y]) => [(x - x0) / (x1 - x0 || 1) * 2 - 1, (y - y0) / (y1 - y0 || 1) * 2 - 1]);
+}
+function segDist(p, A, B) {
+  const dx = B[0] - A[0], dy = B[1] - A[1], L = dx * dx + dy * dy || 1e-9;
+  let t = ((p[0] - A[0]) * dx + (p[1] - A[1]) * dy) / L; t = Math.max(0, Math.min(1, t));
+  return Math.hypot(p[0] - A[0] - t * dx, p[1] - A[1] - t * dy);
+}
+// BFS distance from u inside chain K (the order in which the flush reaches tanks)
+function chainDist(g, K, u) {
+  const d = new Map([[u, 0]]); let f = [u];
+  while (f.length) { const nx = []; for (const v of f) for (const w of g.adj[v]) if (K.set.has(w) && !d.has(w)) { d.set(w, d.get(v) + 1); nx.push(w); } f = nx; }
+  return d;
+}
+// pipes of a circuit: chain edges, oriented away from u
+function chainPipes(g, K, u) {
+  const d = chainDist(g, K, u), out = [];
+  g.edges.forEach(([a, b]) => { if (K.set.has(a) && K.set.has(b)) out.push(d.get(a) <= d.get(b) ? [a, b] : [b, a]); });
+  return { d, pipes: out };
+}
+// valve angles for the circuits of tank u: toward its chain neighbours, spread apart
+function valveAngles(g, P, u, Ks, minSep) {
+  const ang = Ks.map(K => {
+    let x = 0, y = 0; for (const w of g.adj[u]) if (K.set.has(w)) { const dx = P[w][0] - P[u][0], dy = P[w][1] - P[u][1], L = Math.hypot(dx, dy) || 1; x += dx / L; y += dy / L; }
+    if (Math.hypot(x, y) < 1e-3) { // lone tank: point into the widest free gap
+      const a = g.adj[u].map(w => Math.atan2(P[w][1] - P[u][1], P[w][0] - P[u][0])).sort((p, q) => p - q);
+      let best = 0, bg = -1; a.forEach((t, i) => { const nx = i + 1 < a.length ? a[i + 1] : a[0] + 2 * Math.PI; if (nx - t > bg) { bg = nx - t; best = t + (nx - t) / 2; } });
+      return best;
+    }
+    return Math.atan2(y, x);
+  });
+  for (let it = 0; it < 30; it++) for (let i = 0; i < ang.length; i++) for (let j = i + 1; j < ang.length; j++) {
+    let d = ang[j] - ang[i]; d = Math.atan2(Math.sin(d), Math.cos(d));
+    if (Math.abs(d) < minSep) { const push = (minSep - Math.abs(d)) / 2 + 0.01, s = d >= 0 ? 1 : -1; ang[i] -= s * push; ang[j] += s * push; }
+  }
+  return ang;
+}
+// valve spot for circuit K of tank u: on its longest pipe out of u, a little way along (never past the middle), so
+// it sits on the circuit itself and clear of other tanks. Lone tanks (no pipes) get a spot in the widest free gap.
+function valveSpot(g, P, u, K, r, VR, fallbackAng) {
+  let best = -1, bl = -1;
+  for (const w of g.adj[u]) if (K.set.has(w)) { const L = Math.hypot(P[w][0] - P[u][0], P[w][1] - P[u][1]); if (L > bl) { bl = L; best = w; } }
+  if (best < 0) { const D = r + VR + 4; return { x: P[u][0] + Math.cos(fallbackAng) * D, y: P[u][1] + Math.sin(fallbackAng) * D, vr: VR }; }
+  const vr = Math.max(7, Math.min(VR, bl / 2 - r * 0.55)), t = Math.min(0.5, (r + vr + 4) / bl);
+  return { x: P[u][0] + (P[best][0] - P[u][0]) * t, y: P[u][1] + (P[best][1] - P[u][1]) * t, vr };
+}
+if (typeof module !== 'undefined') module.exports = { relaxLayout, chainDist, chainPipes, valveAngles, valveSpot, segDist };
+
+// ---------- the page ----------
+if (typeof document !== 'undefined') (function () {
+  const g = LAB.game(), EL = LAB.ELEM, ICON = LAB.ICON, NS = 'http://www.w3.org/2000/svg';
+  const reduced = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
+  const sv = document.getElementById('sv'), cue = document.getElementById('cue');
+  const BASE = relaxLayout(g, 260);
+  const eIndex = new Map(); g.edges.forEach(([a, b], i) => eIndex.set(Math.min(a, b) * g.n + Math.max(a, b), i));
+  const ek = (a, b) => eIndex.get(Math.min(a, b) * g.n + Math.max(a, b));
+  const lit = c => c < 0 ? '#2a3340' : EL[c].neon, deep = c => c < 0 ? '#11161d' : EL[c].dark;
+
+  let W = 0, H = 0, P = [], r = 12, R = 20, VR = 16;
+  let sc = g.col.slice();           // colours currently SHOWN (lag behind g.col during a flush)
+  let winAt = 0, sel = -1, hoverK = null, flushing = null, winShown = false, lastAct = performance.now(), hintOn = false;
+  let T = {};                       // element refs
+
+  function el(tag, at, parent) { const e = document.createElementNS(NS, tag); for (const k in at) e.setAttribute(k, at[k]); if (parent) parent.appendChild(e); return e; }
+  const line = (a, b, at, par) => el('line', Object.assign({ x1: a[0], y1: a[1], x2: b[0], y2: b[1] }, at), par);
+
+  // ---------- layout ----------
+  function fit() {
+    W = innerWidth; H = innerHeight;
+    const top = 30, bot = 52;
+    let pad = 16;
+    for (let pass = 0; pass < 2; pass++) {
+      const aw = W - 2 * pad, ah = H - top - bot - 2 * pad, s = Math.min(aw, ah) / 2;
+      const sx = Math.min(aw / 2, s * 1.45), sy = Math.min(ah / 2, s * 1.6);
+      const cx = W / 2, cy = top + pad + ah / 2;
+      P = BASE.map(([x, y]) => [cx + x * sx, cy + y * sy]);
+      let m = 1e9; for (let i = 0; i < g.n; i++) for (let j = i + 1; j < g.n; j++) m = Math.min(m, Math.hypot(P[i][0] - P[j][0], P[i][1] - P[j][1]));
+      r = Math.max(7, Math.min(30, m * 0.36)); pad = r + 6;
+    }
+    R = r * 1.65; VR = Math.max(13, Math.min(24, r * 1.05));
+  }
+
+  // ---------- build the scene ----------
+  function build() {
+    fit();
+    sv.setAttribute('viewBox', `0 0 ${W} ${H}`); sv.innerHTML = '';
+    const defs = el('defs', {}, sv);
+    defs.innerHTML = `<pattern id="grid" width="24" height="24" patternUnits="userSpaceOnUse"><path d="M24 0H0V24" fill="none" stroke="#0d131b" stroke-width="1"/></pattern>
+      <filter id="glow" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="${Math.max(2, r * 0.35)}"/></filter>
+      <radialGradient id="glass" cx="35%" cy="30%" r="75%"><stop offset="0" stop-color="#fff" stop-opacity=".55"/><stop offset=".35" stop-color="#fff" stop-opacity=".08"/><stop offset="1" stop-color="#000" stop-opacity=".35"/></radialGradient>`;
+    el('rect', { width: W, height: H, fill: 'url(#grid)' }, sv);
+    const pw = Math.max(5, r * 0.62);
+    T.pipes = el('g', {}, sv); T.half = [];
+    g.edges.forEach(([a, b]) => {
+      if (a === g.hole || b === g.hole) { T.half.push(null); return; }
+      line(P[a], P[b], { stroke: '#1d2631', 'stroke-width': pw + 3, 'stroke-linecap': 'round' }, T.pipes);
+      line(P[a], P[b], { stroke: '#2d3947', 'stroke-width': pw, 'stroke-linecap': 'round' }, T.pipes);
+      const m = [(P[a][0] + P[b][0]) / 2, (P[a][1] + P[b][1]) / 2];
+      const h1 = line(P[a], m, { 'stroke-width': pw * 0.42, 'stroke-opacity': .45 }, T.pipes);
+      const h2 = line(P[b], m, { 'stroke-width': pw * 0.42, 'stroke-opacity': .45 }, T.pipes);
+      T.half.push([h1, h2, a, b]);
+    });
+    // inlet pipes into the drain
+    T.inlets = el('g', {}, sv); T.inl = [];
+    g.rim.forEach(u => {
+      line(P[u], P[g.hole], { stroke: '#3a4757', 'stroke-width': pw + 5, 'stroke-linecap': 'round' }, T.inlets);
+      line(P[u], P[g.hole], { stroke: '#0a0e14', 'stroke-width': pw + 1, 'stroke-linecap': 'round' }, T.inlets);
+      const f = line(P[u], P[g.hole], { 'stroke-width': pw * 0.6, 'stroke-linecap': 'round', 'stroke-dasharray': '4 10', class: 'flow slow' }, T.inlets);
+      T.inl.push([u, f]);
+    });
+    T.over = el('g', {}, sv);      // circuit routes
+    T.race = el('g', {}, sv);      // racing liquid during a flush
+    T.tanks = el('g', {}, sv); T.tk = [];
+    for (let u = 0; u < g.n; u++) {
+      if (u === g.hole) { T.tk.push(null); continue; }
+      const gr = el('g', { class: 'tk' }, T.tanks);
+      const halo = el('circle', { cx: P[u][0], cy: P[u][1], r: r * 1.05, filter: 'url(#glow)', opacity: .55 }, gr);
+      el('circle', { cx: P[u][0], cy: P[u][1], r: r + 2.5, fill: '#0b0f15', stroke: '#4a5868', 'stroke-width': 2 }, gr);
+      const liq = el('circle', { cx: P[u][0], cy: P[u][1], r: r - 0.5 }, gr);
+      const s = r * 1.15 / 24;
+      const ic = el('path', { transform: `translate(${P[u][0] - 12 * s} ${P[u][1] - 12 * s}) scale(${s})`, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }, gr);
+      el('circle', { cx: P[u][0], cy: P[u][1], r: r - 0.5, fill: 'url(#glass)' }, gr);
+      T.tk.push({ gr, halo, liq, ic });
+    }
+    T.rings = el('g', {}, sv);
+    // drain
+    const h = P[g.hole]; T.dr = {};
+    const dg = el('g', {}, sv);
+    T.dr.rip = el('circle', { cx: h[0], cy: h[1], r: R, fill: 'none', 'stroke-width': 3, opacity: 0, class: 'gate' }, dg);
+    el('circle', { cx: h[0], cy: h[1], r: R + 4, fill: '#0b0f15', stroke: '#5b6b7e', 'stroke-width': 3 }, dg);
+    T.dr.fill = el('circle', { cx: h[0], cy: h[1], r: 0, opacity: .95 }, dg);
+    const gate = el('g', { class: 'gate' }, dg); T.dr.gate = gate;
+    el('circle', { cx: h[0], cy: h[1], r: R * 0.92, fill: '#06080c' }, gate);
+    for (let i = 0; i < 4; i++) { const yy = h[1] + R * (0.2 + i * 0.17); const hw = Math.sqrt(Math.max(0, (R * .78) ** 2 - (yy - h[1]) ** 2)); line([h[0] - hw, yy], [h[0] + hw, yy], { stroke: '#2a3542', 'stroke-width': Math.max(1.5, R * 0.07), 'stroke-linecap': 'round' }, gate); }
+    T.dr.num = el('text', { x: h[0], y: h[1] + R * 0.18, 'text-anchor': 'middle', 'font-size': R * 0.62, 'font-weight': 800, fill: '#cfe0f2', 'font-family': 'ui-monospace,Menlo,monospace' }, gate);
+    T.dr.lamps = [];
+    for (let e = 0; e < 4; e++) {
+      const a = -Math.PI / 2 + (e - 1.5) * 0.62, lx = h[0] + Math.cos(a) * R * 0.62, ly = h[1] + Math.sin(a) * R * 0.62;
+      const lr = Math.max(2.5, R * 0.15);
+      const gl = el('circle', { cx: lx, cy: ly, r: lr * 1.6, filter: 'url(#glow)', opacity: 0 }, gate);
+      const lp = el('circle', { cx: lx, cy: ly, r: lr, stroke: '#000', 'stroke-width': 1 }, gate);
+      T.dr.lamps.push({ gl, lp });
+    }
+    T.dr.icon = el('path', { opacity: 0 }, dg);
+    T.hint = el('circle', { r: r + 7, fill: 'none', stroke: '#fff', 'stroke-width': 2.5, class: 'pulse', 'pointer-events': 'none' }, sv); T.hint.style.display = 'none'; hintOn = false;
+    T.valves = el('g', {}, sv);
+    T.fx = el('g', {}, sv);
+    paint(); showSel();
+  }
+
+  // ---------- paint the shown colours ----------
+  function paintTank(u) {
+    const t = T.tk[u]; if (!t) return; const c = sc[u];
+    t.halo.setAttribute('fill', lit(c)); t.liq.setAttribute('fill', lit(c));
+    t.ic.setAttribute('d', ICON[c] || '');
+    const strokeIcon = c === 2 || c === 3;
+    t.ic.setAttribute('fill', c === 2 ? 'none' : deep(c)); t.ic.setAttribute('stroke', strokeIcon ? deep(c) : 'none'); t.ic.setAttribute('stroke-width', strokeIcon ? 2.4 : 0);
+  }
+  function paintPipes() {
+    T.half.forEach(h => { if (!h) return; h[0].setAttribute('stroke', lit(sc[h[2]])); h[1].setAttribute('stroke', lit(sc[h[3]])); });
+    T.inl.forEach(([u, f]) => f.setAttribute('stroke', lit(sc[u])));
+  }
+  function paintDrain(colsForLamps) {
+    const rimSet = new Set(g.rim.map(u => colsForLamps[u])), cnt = rimSet.size, open = winShown;
+    T.dr.lamps.forEach((L, e) => {
+      const on = rimSet.has(e), now = new Set(g.rim.map(u => sc[u])).has(e);
+      L.lp.setAttribute('fill', on ? EL[e].neon : '#151b23'); L.gl.setAttribute('fill', EL[e].neon); L.gl.setAttribute('opacity', on ? .7 : 0);
+      L.lp.setAttribute('stroke', on !== now ? '#fff' : '#000'); L.lp.setAttribute('stroke-width', on !== now ? 2 : 1);
+    });
+    T.dr.num.textContent = cnt; T.dr.num.setAttribute('fill', cnt <= g.goal ? '#bfffd0' : '#ff9a8a');
+    const f = g.free(), h = P[g.hole];
+    if (open && f >= 0) {
+      T.dr.gate.style.transition = reduced ? 'none' : 'transform .7s cubic-bezier(.5,-0.4,.5,1.4), opacity .7s';
+      T.dr.gate.style.transform = 'scale(0) rotate(200deg)'; T.dr.gate.style.opacity = 0;
+      T.dr.fill.setAttribute('fill', EL[f].neon); T.dr.fill.style.transition = reduced ? 'none' : 'r .9s ease .35s';
+      T.dr.fill.setAttribute('r', R * 0.94); T.dr.fill.style.r = R * 0.94;
+      T.dr.rip.setAttribute('stroke', EL[f].neon); T.dr.rip.setAttribute('opacity', 1); T.dr.rip.setAttribute('class', 'gate ripple');
+      const s = R * 1.1 / 24;
+      T.dr.icon.setAttribute('d', ICON[f]); T.dr.icon.setAttribute('transform', `translate(${h[0] - 12 * s} ${h[1] - 12 * s}) scale(${s})`);
+      T.dr.icon.setAttribute('fill', f === 2 ? 'none' : EL[f].dark); T.dr.icon.setAttribute('stroke', f >= 2 ? EL[f].dark : 'none'); T.dr.icon.setAttribute('stroke-width', 2.4);
+      T.dr.icon.setAttribute('stroke-linecap', 'round'); T.dr.icon.style.transition = reduced ? 'none' : 'opacity .5s 1s'; T.dr.icon.setAttribute('opacity', 1);
+    } else {
+      T.dr.gate.style.transition = 'none'; T.dr.gate.style.transform = ''; T.dr.gate.style.opacity = 1;
+      T.dr.fill.style.transition = 'none'; T.dr.fill.setAttribute('r', 0); T.dr.fill.style.r = 0;
+      T.dr.rip.setAttribute('opacity', 0); T.dr.rip.setAttribute('class', 'gate'); T.dr.icon.setAttribute('opacity', 0);
+    }
+  }
+  function paint() { for (let u = 0; u < g.n; u++) paintTank(u); paintPipes(); paintDrain(hoverK ? g.preview(hoverK).col : sc); setCue(); }
+  function setCue() {
+    if (winShown) cue.innerHTML = '<b>drain open</b> · tap to replay';
+    else if (sel >= 0) cue.innerHTML = 'tap a <b>valve</b> to flush';
+    else cue.innerHTML = 'only <b>3 liquids</b> into the drain';
+  }
+
+  // ---------- circuits of the selected tank ----------
+  let shown = [];   // [{K, pipes, valve:[x,y], vg}]
+  function showSel() {
+    T.over.innerHTML = ''; T.valves.innerHTML = ''; T.rings.innerHTML = ''; shown = [];
+    if (sel < 0 || flushing || winShown) { setCue(); return; }
+    const u = sel, Ks = g.chainsThrough(u);
+    const D = r + VR + 5, ang = valveAngles(g, P, u, Ks, 2 * Math.asin(Math.min(1, (VR + 3) / D)));
+    const pw = Math.max(5, r * 0.62), stack = new Map();
+    // selected tank marker
+    el('circle', { cx: P[u][0], cy: P[u][1], r: r + 6, fill: 'none', stroke: '#e8f3ff', 'stroke-width': 2, 'stroke-dasharray': '3 4', class: 'flow' }, T.rings);
+    Ks.forEach((K, i) => {
+      const b = K.pair[0] === g.col[u] ? K.pair[1] : K.pair[0];
+      const { pipes } = chainPipes(g, K, u);
+      const col = K.web ? '#55606e' : EL[b].neon;
+      pipes.forEach(([v, w]) => {
+        if (!K.web) line(P[v], P[w], { stroke: col, 'stroke-width': pw + 6, 'stroke-opacity': .18, 'stroke-linecap': 'round' }, T.over);
+        line(P[v], P[w], { stroke: col, 'stroke-width': K.web ? pw * 0.5 : pw * 0.75, 'stroke-linecap': 'round', 'stroke-dasharray': K.web ? '2 8' : '6 8', class: K.web ? 'flow slow' : 'flow', opacity: K.web ? .7 : 1 }, T.over);
+      });
+      // preview rings: the colour each tank on the route will turn
+      if (!K.web) K.vs.forEach(v => {
+        if (v === u) return;
+        const nc = g.col[v] === K.pair[0] ? K.pair[1] : K.pair[0], k = stack.get(v) || 0; stack.set(v, k + 1);
+        el('circle', { cx: P[v][0], cy: P[v][1], r: r + 4 + k * Math.max(2.5, r * 0.25), fill: 'none', stroke: EL[nc].neon, 'stroke-width': Math.max(2, r * 0.22), opacity: .95 }, T.rings);
+      });
+      // valve
+      const sp = valveSpot(g, P, u, K, r, VR, ang[i]), vr = sp.vr;
+      const vx = Math.max(vr + 2, Math.min(W - vr - 2, sp.x)), vy = Math.max(vr + 26, Math.min(H - vr - 50, sp.y));
+      const vg = el('g', { class: 'vg' }, T.valves);
+      el('circle', { cx: vx, cy: vy, r: vr + 3, fill: '#05070b', opacity: .85 }, vg);
+      el('circle', { cx: vx, cy: vy, r: vr, fill: '#121922', stroke: col, 'stroke-width': 3, 'stroke-dasharray': K.web ? '4 3' : 'none' }, vg);
+      const wheel = el('g', { class: 'vg' }, vg);
+      el('circle', { cx: vx, cy: vy, r: vr * 0.62, fill: 'none', stroke: K.web ? '#55606e' : '#d8e4f0', 'stroke-width': 2.2 }, wheel);
+      for (let s = 0; s < 3; s++) { const a = s * Math.PI / 3; line([vx - Math.cos(a) * vr * .62, vy - Math.sin(a) * vr * .62], [vx + Math.cos(a) * vr * .62, vy + Math.sin(a) * vr * .62], { stroke: K.web ? '#55606e' : '#d8e4f0', 'stroke-width': 1.8 }, wheel); }
+      el('circle', { cx: vx, cy: vy, r: vr * 0.26, fill: col }, wheel);
+      if (K.web) line([vx - vr * .5, vy + vr * .5], [vx + vr * .5, vy - vr * .5], { stroke: '#ff6b5a', 'stroke-width': 2.4, 'stroke-linecap': 'round' }, vg);
+      shown.push({ K, pipes, valve: [vx, vy], vr, vg, wheel });
+    });
+    setCue();
+  }
+
+  // ---------- flush (the swap) ----------
+  const timers = [];
+  function later(fn, ms) { timers.push(setTimeout(fn, ms)); }
+  function finishFlush() {
+    if (!flushing) return;
+    timers.forEach(clearTimeout); timers.length = 0; T.race.innerHTML = ''; flushing = null;
+    sc = g.col.slice(); paint();
+    if (g.won()) win(); else showSel();
+  }
+  function flush(item) {
+    const K = item.K; lastAct = performance.now(); hideHint();
+    if (K.web) { gurgle(item); return; }
+    if (g.won()) return;
+    const u = sel >= 0 && K.set.has(sel) ? sel : K.vs[0];
+    const old = g.col.slice(), { d, pipes } = chainPipes(g, K, u);
+    if (!reduced) item.wheel.setAttribute('class', 'vg spin');
+    hoverK = null;
+    g.swap(K);
+    sfx.flush([...d.values()]);
+    if (reduced) { sc = g.col.slice(); paint(); if (g.won()) win(); else showSel(); return; }
+    flushing = K;
+    T.over.innerHTML = ''; T.rings.innerHTML = '';
+    const STEP = Math.max(70, Math.min(140, 900 / (Math.max(...d.values()) + 1)));
+    const pw = Math.max(5, r * 0.62);
+    pipes.forEach(([v, w]) => {
+      if (d.get(v) === d.get(w)) return;
+      const len = Math.hypot(P[w][0] - P[v][0], P[w][1] - P[v][1]);
+      const glowL = line(P[v], P[w], { stroke: EL[old[v]].neon, 'stroke-width': pw * 1.6, 'stroke-linecap': 'round', 'stroke-dasharray': `${len} ${len}`, 'stroke-dashoffset': len, filter: 'url(#glow)' }, T.race);
+      const core = line(P[v], P[w], { stroke: '#fff', 'stroke-width': pw * 0.45, 'stroke-linecap': 'round', 'stroke-dasharray': `${len} ${len}`, 'stroke-dashoffset': len }, T.race);
+      const fill = line(P[v], P[w], { stroke: EL[old[v]].neon, 'stroke-width': pw * 0.8, 'stroke-linecap': 'round', 'stroke-dasharray': `${len} ${len}`, 'stroke-dashoffset': len }, T.race);
+      [glowL, fill, core].forEach(L => L.animate([{ strokeDashoffset: len }, { strokeDashoffset: 0 }], { duration: STEP, delay: d.get(v) * STEP, fill: 'forwards', easing: 'ease-in' }));
+    });
+    d.forEach((dv, v) => later(() => {
+      sc[v] = g.col[v]; paintTank(v); paintPipes(); paintDrain(sc);
+      const t = T.tk[v]; t.gr.classList.remove('pop'); void t.gr.getBBox(); t.gr.classList.add('pop');
+    }, dv * STEP + (dv ? STEP * 0.85 : 30)));
+    const end = (Math.max(...d.values()) + 1) * STEP + 260;
+    later(() => T.race.querySelectorAll('line').forEach(L => L.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 220, fill: 'forwards' })), end - 200);
+    later(finishFlush, end + 40);
+  }
+  function gurgle(item) {
+    sfx.gurgle();
+    item.vg.classList.remove('wob'); void item.vg.getBBox(); if (!reduced) item.vg.classList.add('wob');
+    if (reduced) return;
+    const [x, y] = item.valve, vr = item.vr;
+    for (let i = 0; i < 5; i++) {
+      const b = el('circle', { cx: x + (Math.random() - .5) * vr * 1.4, cy: y - vr * .3, r: 2 + Math.random() * 3, fill: 'none', stroke: '#8fa5bd', 'stroke-width': 1.4, class: 'bub' }, T.fx);
+      b.style.animationDelay = (i * 0.09) + 's'; setTimeout(() => b.remove(), 1500);
+    }
+  }
+  function win() {
+    winShown = true; winAt = performance.now(); sel = -1; hoverK = null; showSel(); paint(); sfx.win();
+    T.inl.forEach(([, f]) => f.setAttribute('class', 'flow'));
+  }
+  function nudgeDrain() {
+    sfx.buzz();
+    if (reduced) return;
+    T.dr.lamps.forEach(L => L.lp.animate([{ opacity: 1 }, { opacity: .2 }, { opacity: 1 }, { opacity: .2 }, { opacity: 1 }], { duration: 600 }));
+  }
+
+  // ---------- hint (gentle, after idling) ----------
+  function hideHint() { hintOn = false; if (T.hint) T.hint.style.display = 'none'; }
+  setInterval(() => {
+    if (hintOn || winShown || flushing || performance.now() - lastAct < 14000) return;
+    const K = g.good()[0]; if (!K) return;
+    const u = K.vs.find(v => g.rim.includes(v)) ?? K.vs[0];
+    T.hint.setAttribute('cx', P[u][0]); T.hint.setAttribute('cy', P[u][1]); T.hint.setAttribute('stroke', lit(K.pair[0] === g.col[u] ? K.pair[1] : K.pair[0]));
+    T.hint.style.display = ''; hintOn = true;
+  }, 1000);
+
+  // ---------- input ----------
+  function pt(e) { const b = sv.getBoundingClientRect(); return [(e.clientX - b.left) * W / b.width, (e.clientY - b.top) * H / b.height]; }
+  function hitValve(p) {
+    let best = null, bd = 1e9; shown.forEach(s => { const d = Math.hypot(p[0] - s.valve[0], p[1] - s.valve[1]); if (d < s.vr + 8 && d < bd) { bd = d; best = s; } });
+    if (best) for (let u = 0; u < g.n; u++) if (u !== g.hole && Math.hypot(p[0] - P[u][0], p[1] - P[u][1]) < Math.min(bd, r * 0.9)) return null;   // a tank right under the finger wins
+    return best;
+  }
+  function hitPipe(p) { let best = null, bd = 1e9; shown.forEach(s => { if (s.K.web) return; s.pipes.forEach(([v, w]) => { const d = segDist(p, P[v], P[w]); if (d < Math.max(9, r * 0.6) && d < bd) { bd = d; best = s; } }); }); return best; }
+  function hitTank(p, rad) { let best = -1, bd = 1e9; for (let u = 0; u < g.n; u++) { if (u === g.hole) continue; const d = Math.hypot(p[0] - P[u][0], p[1] - P[u][1]); if (d < bd) { bd = d; best = u; } } return bd < rad ? best : -1; }
+  function select(u) {
+    if (u === sel) return; sel = u; hoverK = null; lastAct = performance.now(); hideHint();
+    if (u >= 0) sfx.tick(); showSel(); paintDrain(sc);
+  }
+  sv.addEventListener('pointerdown', e => {
+    sfx.wake(); e.preventDefault();
+    if (winShown) { if (performance.now() - winAt > 700) { winShown = false; T.inl.forEach(([, f]) => f.setAttribute('class', 'flow slow')); g.reset(); } return; }
+    if (flushing) finishFlush();
+    if (winShown) return;
+    const p = pt(e);
+    const v = hitValve(p); if (v) { flush(v); return; }
+    const tankTight = hitTank(p, r * 1.15); if (tankTight >= 0) { if (tankTight === sel && e.pointerType !== 'mouse') select(-1); else select(tankTight); return; }
+    const pp = hitPipe(p); if (pp) { flush(pp); return; }
+    const t = hitTank(p, Math.max(r * 1.9, 26)); if (t >= 0) { select(t); return; }
+    if (Math.hypot(p[0] - P[g.hole][0], p[1] - P[g.hole][1]) < R + 6) { nudgeDrain(); return; }
+    select(-1);
+  });
+  sv.addEventListener('pointermove', e => {
+    if (e.pointerType !== 'mouse' || flushing || winShown) return;
+    const p = pt(e), v = hitValve(p);
+    const hk = v && !v.K.web ? v.K : null;
+    if (hk !== hoverK) { hoverK = hk; paintDrain(hk ? g.preview(hk).col : sc); }
+    sv.style.cursor = v || hitPipe(p) || hitTank(p, r * 1.2) >= 0 ? 'pointer' : 'default';
+    if (v) return;
+    const t = hitTank(p, r * 1.1); if (t >= 0 && t !== sel) select(t);
+  });
+  document.getElementById('undo').onclick = () => { sfx.wake(); if (flushing) finishFlush(); if (!g.history.length) { sfx.buzz(); return; } winShown = false; T.inl.forEach(([, f]) => f.setAttribute('class', 'flow slow')); g.undo(); };
+  document.getElementById('rst').onclick = () => { sfx.wake(); if (flushing) finishFlush(); winShown = false; T.inl.forEach(([, f]) => f.setAttribute('class', 'flow slow')); g.reset(); };
+  g.on((gg, info) => {
+    if (info.type === 'swap') return;     // flush() animates swaps itself
+    timers.forEach(clearTimeout); timers.length = 0; T.race.innerHTML = ''; flushing = null; hoverK = null;
+    sc = g.col.slice(); lastAct = performance.now(); hideHint();
+    if (info.type === 'reset') sel = -1;
+    paint(); showSel(); sfx.tick(true);
+  });
+  let rz; addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(() => { if (flushing) finishFlush(); build(); }, 80); });
+
+  // ---------- sound (WebAudio, after first gesture) ----------
+  const sfx = (() => {
+    let ac = null, noiseBuf = null;
+    const PENT = [0, 3, 5, 7, 10, 12, 15, 17, 19, 22];
+    function wake() {
+      if (ac) { if (ac.state === 'suspended') ac.resume(); return; }
+      try { ac = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { ac = null; return; }
+      noiseBuf = ac.createBuffer(1, ac.sampleRate, ac.sampleRate); const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    }
+    function tone(f, t, dur, type, vol, f2) {
+      if (!ac) return; const o = ac.createOscillator(), gn = ac.createGain();
+      o.type = type || 'sine'; o.frequency.setValueAtTime(f, t); if (f2) o.frequency.exponentialRampToValueAtTime(f2, t + dur);
+      gn.gain.setValueAtTime(0.0001, t); gn.gain.exponentialRampToValueAtTime(vol || .12, t + 0.012); gn.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      o.connect(gn).connect(ac.destination); o.start(t); o.stop(t + dur + .02);
+    }
+    function noise(t, dur, f1, f2, vol) {
+      if (!ac) return; const s = ac.createBufferSource(), bp = ac.createBiquadFilter(), gn = ac.createGain();
+      s.buffer = noiseBuf; bp.type = 'bandpass'; bp.Q.value = 1.4; bp.frequency.setValueAtTime(f1, t); bp.frequency.exponentialRampToValueAtTime(f2, t + dur);
+      gn.gain.setValueAtTime(0.0001, t); gn.gain.exponentialRampToValueAtTime(vol, t + 0.06); gn.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      s.connect(bp).connect(gn).connect(ac.destination); s.start(t); s.stop(t + dur + .05);
+    }
+    return {
+      wake,
+      tick(back) { if (!ac) return; const t = ac.currentTime; tone(back ? 520 : 880, t, .05, 'triangle', .07); },
+      flush(dists) {
+        if (!ac) return; const t = ac.currentTime, mx = Math.max(...dists);
+        noise(t, .35 + mx * .1, 300, 2400, .16);
+        const step = Math.max(.07, Math.min(.14, .9 / (mx + 1)));
+        for (let k = 0; k <= mx; k++) tone(392 * Math.pow(2, PENT[Math.min(k, PENT.length - 1)] / 12), t + k * step + .05, .18, 'sine', .09);
+      },
+      gurgle() {
+        if (!ac) return; const t = ac.currentTime;
+        noise(t, .45, 220, 140, .12);
+        for (let i = 0; i < 4; i++) tone(160 + Math.random() * 120, t + i * .09 + Math.random() * .03, .08, 'sine', .14, 420 + Math.random() * 200);
+      },
+      buzz() { if (!ac) return; const t = ac.currentTime; tone(150, t, .12, 'square', .04); tone(120, t + .13, .14, 'square', .04); },
+      win() {
+        if (!ac) return; const t = ac.currentTime + .1;
+        noise(t, 1.4, 1800, 260, .14);
+        [0, 4, 7, 12, 16].forEach((s, i) => tone(523 * Math.pow(2, s / 12), t + .35 + i * .08, .7, 'triangle', .08));
+      },
+    };
+  })();
+
+  build();
+})();
+</script>
+</body>
+</html>

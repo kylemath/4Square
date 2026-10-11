@@ -1,0 +1,473 @@
+<!doctype html>
+<!--
+  Island map (lab/map.html): the flat "map" version of Fill the Hole, remade in the current game's cartoon look.
+
+  What the player sees: one rounded island in a blue sea (surf, sand, grass), cut into countries. Every region of the
+  level is a country filled with its element colour (fire, water, air, earth) with a thick dark cartoon outline and a
+  small element icon on a dark plate at its heart. The hole is a grey "?" country in the middle; its five neighbours
+  (the rim, g.rim) carry a marching gold dotted outline. The three far regions (g.border) are the coast lands that
+  wrap around the island's edge. The goal is told as a flag story (no numbers or maths words on screen): the "?"
+  country wants a flag, but it may only fly a flag that none of its neighbours (the gold-dotted rim countries) flies.
+  A flag pole rack at the top (a mini "?" plate and the four element flags) shows it: every flag a rim country already
+  flies is lowered and greyed; a flag no neighbour flies is raised and waves (that is g.free()). At the start all four
+  are lowered.
+
+  What the player does, and how it maps onto the puzzle:
+  - Press in country S and drag across a border into another country T of a different element. That picks the chain
+    K = g.chainAt(S, g.col[T]): the connected run of countries through S using only S's element and T's element. While
+    dragging, K lights up (white edge, pulsing stripes of the element each country will become), everything else dims,
+    and the flag rack shows g.preview(K): if the swap frees a flag, that flag rises and a green badge at the finger
+    shows it ("let go!"). Release = g.swap(K); the colours ripple through the chain outward from S. A drag onto the
+    same element, the hole, or the sea picks nothing.
+  - A chain with K.web (the only {a,b} chain on the map) is a dud: it only renames two elements, so releasing it
+    wobbles the map and nothing changes.
+  - Tap a country: its (up to) three chains, g.chainsThrough(S), light up one after another.
+  - Idle hint: after a few quiet seconds (and at once when the "?" country is tapped) a ghost finger drags across a
+    border along a chain of g.good() while that chain lights up (at most 3 times per quiet stretch; any touch stops it).
+  - Win (g.won()): the "?" country floods with g.free() with a splash ("Flag up!"); tap anywhere to play again (g.reset()).
+  Small undo / restart buttons sit in the bottom corners. All state goes through lab/core.js.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>Island Map</title>
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #2a9fd8; overscroll-behavior: none;
+    font-family: ui-rounded, "SF Pro Rounded", system-ui, -apple-system, "Segoe UI", sans-serif; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+  #cv { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; touch-action: none; }
+  /* countries: element body, neon inner rim, dark plate, neon icon (the game's tile palette) */
+  .ct { --c: #aab4bf; --d: #5a636e; --n: #e6edf3; transition: filter .22s, opacity .22s; }
+  .e0 { --c: #ef5a3c; --d: #8e1c17; --n: #ff7a52; } .e1 { --c: #3d8fe8; --d: #1b4f91; --n: #5ab4ff; }
+  .e2 { --c: #e8c547; --d: #8a6510; --n: #ffe066; } .e3 { --c: #4caf50; --d: #1a6b2a; --n: #5cff8a; }
+  .eq { --c: #aab4bf; --d: #5a636e; --n: #e6edf3; }
+  .ct .bd { fill: var(--c); transition: fill .32s ease-out; }
+  .ct .sh { fill: none; stroke: var(--d); opacity: .55; }
+  .ct .gl { fill: none; stroke: var(--n); opacity: .55; transition: stroke .32s; }
+  .ct .hx { opacity: 0; transition: opacity .18s; pointer-events: none; }
+  .ct .lt { fill: none; stroke: #fff; opacity: 0; transition: opacity .18s; }
+  .ct .rm { fill: none; stroke: #ffd84a; stroke-linecap: round; animation: march 1.6s linear infinite; filter: drop-shadow(0 0 3px #ffe98a); }
+  @keyframes march { to { stroke-dashoffset: -24; } }
+  .ct.lit .hx { opacity: .62; } .ct.lit .lt { opacity: 1; }
+  .ct.dim { filter: saturate(.35) brightness(.58); }
+  .ct.no { animation: no .32s ease-in-out; }
+  @keyframes no { 25% { transform: translateX(-3px); } 75% { transform: translateX(3px); } }
+  .pl { --c: #aab4bf; --d: #5a636e; --n: #e6edf3; transition: filter .22s; }
+  .pl .pt { transform-box: fill-box; transform-origin: center; }
+  .pl .pp { fill: #07090d; stroke: var(--n); transition: stroke .32s; }
+  .pl .ps { fill: var(--d); }
+  .pl .ti, .pl .tq { display: none; }
+  .pl.e0 .ti0, .pl.e1 .ti1, .pl.e3 .ti3 { display: inline; fill: var(--n); }
+  .pl.e2 .ti2 { display: inline; fill: none; stroke: var(--n); stroke-width: 2.4; stroke-linecap: round; }
+  .pl.eq .tq { display: inline; }
+  .pl.dim { filter: saturate(.35) brightness(.58); }
+  .pl.pop .pt { animation: pop .42s cubic-bezier(.3, 1.6, .5, 1); }
+  @keyframes pop { 0% { transform: scale(.4) rotate(-20deg); } 100% { transform: scale(1) rotate(0); } }
+  .pl.hole .pt { animation: bob 1.6s ease-in-out infinite alternate; }
+  @keyframes bob { to { transform: translateY(-3px) scale(1.06); } }
+  .pl.lit .pt { filter: drop-shadow(0 0 5px #fff); }
+  .wv { animation: wave 5s ease-in-out infinite alternate; }
+  @keyframes wave { to { transform: translateX(7px); } }
+  .ring { fill: none; animation: ring .9s ease-out forwards; transform-box: fill-box; transform-origin: center; }
+  @keyframes ring { from { transform: scale(.2); opacity: 1; } to { transform: scale(2.6); opacity: 0; } }
+  .cf { animation: cf 1.3s cubic-bezier(.15, .7, .4, 1) forwards; }
+  @keyframes cf { from { transform: translate(0, 0) rotate(0); opacity: 1; } to { transform: translate(var(--x), var(--y)) rotate(var(--r)); opacity: 0; } }
+  .shake { animation: shake .45s ease-in-out; }
+  @keyframes shake { 20% { transform: translate(-4px, 1px) rotate(-.4deg); } 50% { transform: translate(4px, -1px) rotate(.4deg); } 80% { transform: translate(-2px, 0); } }
+  /* top cue: which elements the rim uses */
+  #cue { position: fixed; left: 50%; top: max(6px, env(safe-area-inset-top)); transform: translateX(-50%); display: flex; align-items: center; gap: 5px;
+    background: #fff; border: 3px solid #1c1640; border-radius: 999px; padding: 3px 10px 3px 5px; box-shadow: 0 4px 0 rgba(28,22,64,.35);
+    font-weight: 900; color: #1c1640; font-size: 15px; white-space: nowrap; pointer-events: none; transition: transform .2s; }
+  #cue svg { display: block; overflow: visible; }
+  #cue .qm { width: 26px; height: 26px; margin-right: 2px; }
+  #cue .fg { width: 24px; height: 30px; }
+  /* a flag a neighbour already flies: lowered and greyed; a free flag: raised and waving */
+  .fgf { transition: transform .45s cubic-bezier(.3, 1.5, .5, 1), filter .3s, opacity .3s; transform: translateY(12px); filter: saturate(.45) brightness(1.05); opacity: .6; }
+  .fg.up .fgf { transform: translateY(0); filter: none; opacity: 1; }
+  .fg.up .wv2 { animation: flap .7s ease-in-out infinite alternate; transform-box: fill-box; transform-origin: 0 50%; }
+  @keyframes flap { to { transform: skewY(-7deg) scaleX(.9); } }
+  #cue.prev { transform: translateX(-50%) scale(1.06); } #cue.good { background: #d9ffcf; }
+  #cue.win { background: #ffd84a; }
+  .ct.lit .hx { animation: peek 1s ease-in-out infinite alternate; }
+  @keyframes peek { from { opacity: .45; } to { opacity: .85; } }
+  .btn { position: fixed; bottom: max(8px, env(safe-area-inset-bottom)); width: 42px; height: 42px; border: 3px solid #1c1640; border-radius: 14px; padding: 0;
+    box-shadow: 0 4px 0 #1c1640; display: grid; place-items: center; cursor: pointer; touch-action: manipulation; transition: transform .08s, box-shadow .08s; }
+  .btn:active { transform: translateY(3px); box-shadow: 0 1px 0 #1c1640; }
+  .btn svg { width: 26px; height: 26px; }
+  #bU { left: 10px; background: linear-gradient(180deg, #ffb35c, #ff7a1a); } #bR { right: 10px; background: linear-gradient(180deg, #6cc8ff, #2a7fdc); }
+  .fl { position: fixed; pointer-events: none; font-weight: 900; color: #fff; transform: translate(-50%, -50%); white-space: nowrap; text-align: center;
+    text-shadow: 2px 0 #1c1640, -2px 0 #1c1640, 0 2px #1c1640, 0 -2px #1c1640, 2px 2px #1c1640, -2px 2px #1c1640, 2px -2px #1c1640, -2px -2px #1c1640, 0 4px 0 #1c1640; }
+  .fl.rise { animation: rise 1.1s ease-out forwards; }
+  @keyframes rise { from { opacity: 0; transform: translate(-50%, -30%) scale(.7); } 20% { opacity: 1; transform: translate(-50%, -50%) scale(1.05); } to { opacity: 0; transform: translate(-50%, -120%); } }
+  #win { position: fixed; left: 50%; top: 50%; font-size: clamp(30px, 9vw, 52px); display: none; }
+  #win small { display: block; font-size: 15px; margin-top: 6px; text-shadow: 0 2px 0 #1c1640; opacity: .95; }
+  #win.on { display: block; animation: winIn .6s cubic-bezier(.3, 1.5, .5, 1); }
+  @keyframes winIn { from { transform: translate(-50%, -50%) scale(.3); opacity: 0; } }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: .001s !important; animation-iteration-count: 1 !important; transition-duration: .001s !important; }
+  }
+</style>
+</head>
+<body>
+<svg id="cv" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid slice"></svg>
+<div id="cue" aria-live="polite"></div>
+<button class="btn" id="bU" aria-label="Undo" title="Undo"><svg viewBox="0 0 28 28" aria-hidden="true"><g fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11h9a6 6 0 0 1 0 12h-6M13 6l-5 5 5 5" stroke="#1c1640" stroke-width="7"/><path d="M9 11h9a6 6 0 0 1 0 12h-6M13 6l-5 5 5 5" stroke="#fff" stroke-width="3.6"/></g></svg></button>
+<button class="btn" id="bR" aria-label="Restart" title="Restart"><svg viewBox="0 0 28 28" aria-hidden="true"><g fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 10.5A8.5 8.5 0 1 0 22.5 16M22 4.5v6h-6" stroke="#1c1640" stroke-width="7"/><path d="M21.5 10.5A8.5 8.5 0 1 0 22.5 16M22 4.5v6h-6" stroke="#fff" stroke-width="3.6"/></g></svg></button>
+<div class="fl" id="win">Flag up!<small>tap to play again</small></div>
+<script src="../levels.js"></script>
+<script src="../layout.js"></script>
+<script src="core.js"></script>
+<script>
+(function () {
+  'use strict';
+  const g = LAB.game();
+  const E = LAB.ELEM, IC = LAB.ICON, N = g.n, HOLE = g.hole;
+  const RIM = new Set(g.rim);
+  const q1 = v => Math.round(v * 10) / 10;
+
+  // ---------------- geometry (pure: no DOM) ----------------
+  // the dual map lives in the square [-1,1]^2; warp it radially onto a rounded, slightly wobbly island so the
+  // square's border (owned by the 3 coast lands) becomes the coastline. A homeomorphism: adjacency is untouched.
+  const SEP = 4;
+  const seR = th => Math.pow(Math.pow(Math.abs(Math.cos(th)), SEP) + Math.pow(Math.abs(Math.sin(th)), SEP), -1 / SEP);
+  const wob = th => 1 + .03 * Math.sin(3 * th + .7) + .018 * Math.sin(5 * th + 2.1) + .01 * Math.sin(8 * th + 4);
+  function warp(p, box) {
+    const th = Math.atan2(p[1], p[0]), rSq = 1 / Math.max(Math.abs(Math.cos(th)), Math.abs(Math.sin(th)), 1e-9), k = seR(th) * wob(th) / rSq;
+    return [box.cx + p[0] * k * box.a, box.cy - p[1] * k * box.b];
+  }
+  function subdivide(poly) {                          // split every edge so warped borders bend smoothly
+    const out = [];
+    for (let i = 0; i < poly.length; i++) {
+      const a = poly[i], b = poly[(i + 1) % poly.length], m = Math.max(1, Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) / .03));
+      for (let j = 0; j < m; j++) out.push([a[0] + (b[0] - a[0]) * j / m, a[1] + (b[1] - a[1]) * j / m]);
+    }
+    return out;
+  }
+  const sqPerim = t => { t = ((t % 4) + 4) % 4; const q = Math.floor(t), f = t - q; return [[-1 + 2 * f, -1], [1, -1 + 2 * f], [1 - 2 * f, 1], [-1, 1 - 2 * f]][q]; };
+  function coast(box, grow, k) { const b2 = { cx: box.cx, cy: box.cy, a: box.a + grow, b: box.b + grow }; const pts = []; for (let i = 0; i < k; i++) pts.push(warp(sqPerim(4 * i / k), b2)); return pts; }
+  function inside(pt, poly) {
+    let c = false;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      const a = poly[i], b = poly[j];
+      if ((a[1] > pt[1]) !== (b[1] > pt[1]) && pt[0] < (b[0] - a[0]) * (pt[1] - a[1]) / (b[1] - a[1]) + a[0]) c = !c;
+    }
+    return c;
+  }
+  function edgeDist(pt, poly) {
+    let m = Infinity;
+    for (let i = 0; i < poly.length; i++) {
+      const a = poly[i], b = poly[(i + 1) % poly.length], dx = b[0] - a[0], dy = b[1] - a[1], L2 = dx * dx + dy * dy || 1;
+      let t = ((pt[0] - a[0]) * dx + (pt[1] - a[1]) * dy) / L2; t = Math.max(0, Math.min(1, t));
+      m = Math.min(m, Math.hypot(a[0] + dx * t - pt[0], a[1] + dy * t - pt[1]));
+    }
+    return m;
+  }
+  function pole(poly) {                               // roomiest interior point (where the icon plate goes)
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    poly.forEach(p => { x0 = Math.min(x0, p[0]); y0 = Math.min(y0, p[1]); x1 = Math.max(x1, p[0]); y1 = Math.max(y1, p[1]); });
+    let best = [(x0 + x1) / 2, (y0 + y1) / 2, -1], step = Math.max(x1 - x0, y1 - y0) / 18;
+    const probe = (x, y) => { const p = [x, y]; if (!inside(p, poly)) return; const d = edgeDist(p, poly); if (d > best[2]) best = [x, y, d]; };
+    for (let x = x0 + step / 2; x < x1; x += step) for (let y = y0 + step / 2; y < y1; y += step) probe(x, y);
+    for (let r = 0; r < 2; r++) { const c = best.slice(); step /= 4; for (let i = -4; i <= 4; i++) for (let j = -4; j <= 4; j++) probe(c[0] + i * step, c[1] + j * step); }
+    return best;
+  }
+  function buildGeom(W, H) {
+    const top = 46, bot = 54, avH = Math.max(120, H - top - bot), mg = Math.max(18, Math.min(W, H) * .05);
+    let a = W / 2 - mg, b = avH / 2 - mg;
+    if (b > a * 1.5) b = a * 1.5; if (a > b * 1.5) a = b * 1.5;
+    const box = { cx: W / 2, cy: top + avH / 2, a, b };
+    const polys = g.cells.map(c => subdivide(c).map(p => warp(p, box)));
+    return { box, polys, poles: polys.map(pole), mg };
+  }
+  const hit = (G, pt) => { for (let u = 0; u < N; u++) if (inside(pt, G.polys[u])) return u; return -1; };
+  // the gesture rule: start country S, country under the finger T -> the chain to swap (or null)
+  function pick(S, T) {
+    if (S < 0 || T < 0 || S === HOLE || T === HOLE || S === T || g.col[S] === g.col[T]) return null;
+    return g.chainAt(S, g.col[T]);
+  }
+  window.MAPLAB = { warp, buildGeom, hit, pick, pole, g };
+  if (typeof document === 'undefined' || !document.getElementById) return;
+
+  // ---------------- sound (WebAudio, only after a gesture) ----------------
+  let AC = null;
+  function tone(f, dur, type, vol, slide) {
+    try {
+      AC = AC || new (window.AudioContext || window.webkitAudioContext)();
+      const o = AC.createOscillator(), gn = AC.createGain(), t = AC.currentTime;
+      o.type = type || 'sine'; o.frequency.setValueAtTime(f, t); o.frequency.exponentialRampToValueAtTime(f * (slide || 1.3), t + dur);
+      gn.gain.setValueAtTime(vol || .06, t); gn.gain.exponentialRampToValueAtTime(.0001, t + dur);
+      o.connect(gn); gn.connect(AC.destination); o.start(t); o.stop(t + dur + .02);
+    } catch (e) {}
+  }
+  const PENT = [0, 2, 4, 7, 9, 12, 14, 16, 19, 21];
+  const note = (i, v) => tone(392 * Math.pow(2, PENT[i % PENT.length] / 12), .16, 'triangle', v || .05, 1.02);
+  const thud = () => tone(150, .18, 'sine', .08, .6);
+
+  // ---------------- DOM ----------------
+  const NS = 'http://www.w3.org/2000/svg', svg = document.getElementById('cv'), cue = document.getElementById('cue'), winEl = document.getElementById('win');
+  const mk = (tag, at, par) => { const el = document.createElementNS(NS, tag); for (const k in at) el.setAttribute(k, at[k]); if (par) par.appendChild(el); return el; };
+  const dOf = pts => 'M' + pts.map(p => q1(p[0]) + ' ' + q1(p[1])).join('L') + 'Z';
+  const icons = size => { const sc = size / 24, off = q1(-12 * sc); return IC.map((d, k) => '<path class="ti ti' + k + '" d="' + d + '" transform="translate(' + off + ' ' + off + ') scale(' + (Math.round(sc * 100) / 100) + ')"/>').join(''); };
+  const hash = (i, k) => { const s = Math.sin(i * 127.1 + k * 311.7) * 43758.5453; return s - Math.floor(s); };
+  let G = null, W = 0, H = 0, T = [], gFx = null, arrow = null, badge = null, ghost = null, OW = 3;
+  let busy = false, celebrated = false, showTimer = null;
+
+  function build() {
+    const br = svg.getBoundingClientRect(); W = Math.round(br.width) || window.innerWidth; H = Math.round(br.height) || window.innerHeight; if (!W || !H) return;
+    svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+    G = buildGeom(W, H); const box = G.box, S = Math.min(box.a, box.b);
+    OW = Math.max(2.2, Math.min(4.6, S / 34));
+    svg.innerHTML = '';
+    // patterns: diagonal stripes of each element (shown on a lit chain: "this country will become ...")
+    let defs = '<defs>';
+    E.forEach((e, k) => { defs += '<pattern id="hp' + k + '" width="12" height="12" patternUnits="userSpaceOnUse" patternTransform="rotate(40)"><rect width="6" height="12" fill="' + e.hex + '"/><rect x="5.2" width="1.3" height="12" fill="#1c1640" opacity=".35"/></pattern>'; });
+    G.polys.forEach((p, u) => { defs += '<clipPath id="cp' + u + '"><path d="' + dOf(p) + '"/></clipPath>'; });
+    defs += '<radialGradient id="seaG" cx="50%" cy="45%" r="75%"><stop offset="0" stop-color="#46b8ea"/><stop offset="1" stop-color="#1f86c4"/></radialGradient></defs>';
+    // sea, wave marks, surf, sand, grass
+    let s = defs + '<rect width="' + W + '" height="' + H + '" fill="url(#seaG)"/><g class="wv">';
+    for (let k = 0; k < 26; k++) {
+      const x = 8 + hash(k, 3) * (W - 30), y = 8 + hash(k, 7) * (H - 16), dx = (x - box.cx) / (box.a + G.mg + 14), dy = (y - box.cy) / (box.b + G.mg + 14);
+      if (Math.pow(Math.abs(dx), 3.2) + Math.pow(Math.abs(dy), 3.2) < 1) continue;
+      s += '<path d="M' + q1(x) + ' ' + q1(y) + 'q5 -5 10 0t10 0" stroke="#fff" stroke-width="2.2" fill="none" opacity=".45" stroke-linecap="round"/>';
+    }
+    const sand = Math.max(9, G.mg * .55);
+    s += '</g><path d="' + dOf(coast(box, sand + 10, 160)) + '" fill="#7fd6ff" opacity=".55"/>' +
+      '<path d="' + dOf(coast(box, sand + 3, 160)) + '" fill="#bfefff" opacity=".5"/>' +
+      '<path d="' + dOf(coast(box, sand, 160)) + '" fill="#f7d98a" stroke="#fff3c4" stroke-width="4"/>' +
+      '<path d="' + dOf(coast(box, sand * .55, 160)) + '" fill="#e9c470" opacity=".5"/>' +
+      '<path d="' + dOf(coast(box, sand * .3, 160)) + '" fill="#8fd36b" stroke="#1c1640" stroke-width="' + q1(OW * .8) + '"/>';
+    // pebbles on the sand
+    for (let k = 0; k < 9; k++) { const t = 4 * hash(k, 11), q = warp(sqPerim(t), { cx: box.cx, cy: box.cy, a: box.a + sand * .72, b: box.b + sand * .72 }); s += '<ellipse cx="' + q1(q[0]) + '" cy="' + q1(q[1]) + '" rx="' + q1(1.6 + hash(k, 5) * 1.6) + '" ry="1.3" fill="#d9b25e"/>'; }
+    svg.insertAdjacentHTML('beforeend', s);
+    const gC = mk('g', {}, svg), gL = mk('g', { 'pointer-events': 'none' }, svg), gP = mk('g', { 'pointer-events': 'none' }, svg);
+    gFx = mk('g', { 'pointer-events': 'none' }, svg);
+    T = [];
+    G.polys.forEach((p, u) => {
+      const d = dOf(p), cp = 'url(#cp' + u + ')', grp = mk('g', { class: 'ct' }, gC);
+      grp.innerHTML = '<path class="bd" d="' + d + '"/>' +
+        '<path class="sh" d="' + d + '" clip-path="' + cp + '" stroke-width="' + q1(OW * 4.2) + '" transform="translate(0 ' + q1(OW * .9) + ')"/>' +
+        '<path class="gl" d="' + d + '" clip-path="' + cp + '" stroke-width="' + q1(OW * 2.4) + '"/>' +
+        '<path class="hx" d="' + d + '" fill="url(#hp0)"/>' +
+        '<path class="lt" d="' + d + '" clip-path="' + cp + '" stroke-width="' + q1(OW * 3.2) + '"/>' +
+        (RIM.has(u) ? '<path class="rm" d="' + d + '" clip-path="' + cp + '" stroke-width="' + q1(OW * 2.2) + '" stroke-dasharray="0.1 ' + q1(OW * 3) + '"/>' : '');
+      mk('path', { d, fill: 'none', stroke: '#1c1640', 'stroke-width': q1(OW), 'stroke-linejoin': 'round' }, gL);
+      const [cx, cy, rr] = G.poles[u], isH = u === HOLE;
+      const r = Math.max(7, Math.min(rr * (isH ? .8 : .6), S * (isH ? .14 : .085)));
+      const pl = mk('g', { class: 'pl' + (isH ? ' hole' : ''), transform: 'translate(' + q1(cx) + ' ' + q1(cy) + ')' }, gP);
+      pl.innerHTML = '<g class="pt"><circle class="ps" cy="' + q1(r * .16) + '" r="' + q1(r) + '"/><circle class="pp" r="' + q1(r) + '" stroke-width="' + q1(Math.max(1.6, r * .16)) + '"/>' +
+        icons(r * 1.25) + '<text class="tq" y="' + q1(r * .08) + '" text-anchor="middle" dominant-baseline="central" fill="#fff" font-weight="900" font-size="' + q1(r * 1.35) + '">?</text></g>';
+      T[u] = { grp, pl, hx: grp.querySelector('.hx'), c: [cx, cy], r };
+    });
+    // the hole gets a thick gold coastline of its own (the ring the rim sits on)
+    mk('path', { d: dOf(G.polys[HOLE]), fill: 'none', stroke: '#ffd84a', 'stroke-width': q1(OW * 1.1), 'stroke-dasharray': q1(OW * 2) + ' ' + q1(OW * 1.6), 'stroke-linecap': 'round', opacity: .95 }, gL);
+    // outer coast of the map, a bit heavier
+    mk('path', { d: dOf(coast(box, 0, 200)), fill: 'none', stroke: '#1c1640', 'stroke-width': q1(OW * 1.3), 'stroke-linejoin': 'round' }, gL);
+    arrow = mk('g', { opacity: 0 }, gFx);
+    arrow.innerHTML = '<path class="a1" fill="none" stroke="#1c1640" stroke-width="' + q1(OW * 3.2) + '" stroke-linecap="round" stroke-linejoin="round"/><path class="a2" fill="none" stroke="#fff" stroke-width="' + q1(OW * 1.5) + '" stroke-linecap="round" stroke-linejoin="round"/>';
+    badge = mk('g', { opacity: 0 }, gFx);
+    badge.innerHTML = '<rect x="-42" y="-17" width="84" height="34" rx="17" fill="#8af574" stroke="#1c1640" stroke-width="3"/>' +
+      '<g class="bf" transform="translate(-37 -15)"></g><text class="bn" x="13" y="1" text-anchor="middle" dominant-baseline="central" font-size="13" font-weight="900" fill="#1c1640">let go!</text>';
+    ghost = mk('g', { opacity: 0 }, gFx);             // the idle-hint fingertip
+    ghost.innerHTML = '<circle r="' + q1(OW * 5.5) + '" fill="#fff" opacity=".35"/><circle r="' + q1(OW * 3.6) + '" fill="#fff" opacity=".9" stroke="#1c1640" stroke-width="' + q1(OW * .8) + '"/>';
+    paint(); celebrated && winPaint(false);
+  }
+
+  // ---------------- state -> picture ----------------
+  const ECLS = ['e0', 'e1', 'e2', 'e3', 'eq'];
+  function setEl(u, c) { const cls = c < 0 ? 'eq' : 'e' + c; [T[u].grp, T[u].pl].forEach(el => { el.classList.remove(...ECLS); el.classList.add(cls); }); }
+  function paint() { for (let u = 0; u < N; u++) setEl(u, u === HOLE && celebrated ? g.free() : g.col[u]); setCue(); }
+  // the flag rack: a mini "?" plate, then one flag pole per element (built once; setCue only raises / lowers flags)
+  const flagIcon = (e, sc, x, y) => '<path d="' + IC[e] + '" transform="translate(' + x + ' ' + y + ') scale(' + sc + ')" ' + (e === 2 ? 'fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round"' : 'fill="#fff"') + '/>';
+  const flagSvg = e => '<svg class="fg" viewBox="0 0 24 30" aria-hidden="true"><path d="M4.5 3V29" stroke="#1c1640" stroke-width="2.6" stroke-linecap="round"/><circle cx="4.5" cy="2.6" r="2.2" fill="#ffd84a" stroke="#1c1640" stroke-width="1.2"/>' +
+    '<g class="fgf"><g class="wv2"><path d="M5.5 4H22L18.6 9.2L22 14.4H5.5Z" fill="' + E[e].hex + '" stroke="#1c1640" stroke-width="1.8" stroke-linejoin="round"/>' + flagIcon(e, .32, 8.8, 5.4) + '</g></g></svg>';
+  cue.innerHTML = '<svg class="qm" viewBox="-14 -14 28 28" aria-hidden="true"><circle r="11.5" fill="#07090d" stroke="#ffd84a" stroke-width="2.6" stroke-dasharray="4 2.6"/><text y="1" text-anchor="middle" dominant-baseline="central" fill="#fff" font-weight="900" font-size="14">?</text></svg>' + [0, 1, 2, 3].map(flagSvg).join('');
+  const flags = [...cue.querySelectorAll('.fg')];
+  function setCue(prev) {
+    const cols = prev ? g.rim.map(x => prev.col[x]) : g.rimColours(), set = new Set(cols), free = [0, 1, 2, 3].filter(e => !set.has(e));
+    cue.className = (prev ? 'prev ' : '') + (free.length && !celebrated ? 'good ' : '') + (celebrated ? 'win' : '');
+    flags.forEach((f, e) => f.classList.toggle('up', !set.has(e)));
+    cue.setAttribute('aria-label', free.length ? 'A flag is free for the ? country' : 'Every flag is already flown by a neighbour of the ? country');
+  }
+  function light(K, label) {                          // light chain K (others dim); null clears
+    for (let u = 0; u < N; u++) {
+      const on = K && K.set.has(u), dim = K && !on;
+      T[u].grp.classList.toggle('lit', !!on); T[u].grp.classList.toggle('dim', !!dim);
+      T[u].pl.classList.toggle('lit', !!on); T[u].pl.classList.toggle('dim', !!dim);
+      if (on) T[u].hx.setAttribute('fill', 'url(#hp' + (g.col[u] === K.pair[0] ? K.pair[1] : K.pair[0]) + ')');
+    }
+    if (!K) setCue();
+  }
+  function float(txt, x, y, size) {
+    const r = svg.getBoundingClientRect(), el = document.createElement('div');
+    el.className = 'fl rise'; el.textContent = txt; el.style.left = (r.left + x) + 'px'; el.style.top = (r.top + y) + 'px'; el.style.fontSize = (size || 20) + 'px';
+    document.body.appendChild(el); setTimeout(() => el.remove(), 1200);
+  }
+  function ring(x, y, r, col, delay) {
+    const c = mk('circle', { class: 'ring', cx: q1(x), cy: q1(y), r: q1(r), stroke: col, 'stroke-width': 4 }, gFx);
+    c.style.animationDelay = (delay || 0) + 'ms'; setTimeout(() => c.remove(), 1000 + (delay || 0));
+  }
+
+  // ---------------- idle hint: a ghost finger drags across one border of a good move ----------------
+  let hintGen = 0, hintsLeft = 0, hintRaf = 0, hintOn = false;
+  function hintMove() {                                 // a good chain and a (start, target) pair whose drag picks it
+    for (const K of g.good()) for (const S of K.vs) for (const t of g.adj[S]) { const k2 = pick(S, t); if (k2 && k2.key === K.key) return { K, S, t }; }
+    return null;
+  }
+  function stopHint() { hintGen++; cancelAnimationFrame(hintRaf); if (hintOn) { hintOn = false; ghost.setAttribute('opacity', 0); arrow.setAttribute('opacity', 0); if (!drag) light(null); } }
+  function armHint(ms, n) { stopHint(); hintsLeft = n === undefined ? 3 : n; const my = hintGen; setTimeout(() => { if (my === hintGen) showHint(); }, ms || 4500); }
+  function showHint() {
+    if (drag || busy || celebrated || g.won() || showTimer || hintsLeft <= 0 || !ghost) return;
+    const h = hintMove(); if (!h) return;
+    hintsLeft--; const my = ++hintGen, RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const a = T[h.S].c, b = T[h.t].c, b2 = [b[0] + (b[0] - a[0]) * .15, b[1] + (b[1] - a[1]) * .15], t0 = performance.now(), DUR = 1900, REPS = 2;
+    hintOn = true; light(h.K); setCue(g.preview(h.K));
+    const ease = x => x < .5 ? 2 * x * x : 1 - Math.pow(-2 * x + 2, 2) / 2;
+    const tickF = () => {
+      if (my !== hintGen) return;
+      const el = performance.now() - t0, rep = Math.floor(el / DUR), k = (el % DUR) / DUR;
+      if (rep >= REPS) {
+        hintOn = false; ghost.setAttribute('opacity', 0); arrow.setAttribute('opacity', 0); light(null);
+        if (hintsLeft > 0) { const m2 = hintGen; setTimeout(() => { if (m2 === hintGen) showHint(); }, 9000); }
+        return;
+      }
+      const m = RM ? 1 : ease(Math.max(0, Math.min(1, (k - .15) / .55))), x = a[0] + (b2[0] - a[0]) * m, y = a[1] + (b2[1] - a[1]) * m;
+      ghost.setAttribute('transform', 'translate(' + q1(x) + ' ' + q1(y) + ')');
+      ghost.setAttribute('opacity', RM ? 1 : k < .1 ? k / .1 : k > .85 ? (1 - k) / .15 : 1);
+      if (m > .02) {
+        const ang = Math.atan2(y - a[1], x - a[0]), hl = OW * 4;
+        const d = 'M' + q1(a[0]) + ' ' + q1(a[1]) + 'L' + q1(x) + ' ' + q1(y) + 'M' + q1(x - hl * Math.cos(ang - .5)) + ' ' + q1(y - hl * Math.sin(ang - .5)) + 'L' + q1(x) + ' ' + q1(y) + 'L' + q1(x - hl * Math.cos(ang + .5)) + ' ' + q1(y - hl * Math.sin(ang + .5));
+        arrow.querySelector('.a1').setAttribute('d', d); arrow.querySelector('.a2').setAttribute('d', d); arrow.setAttribute('opacity', .6 * +ghost.getAttribute('opacity'));
+      } else arrow.setAttribute('opacity', 0);
+      hintRaf = requestAnimationFrame(tickF);
+    };
+    tickF();
+  }
+
+  // ---------------- gestures ----------------
+  let drag = null;
+  const ptOf = ev => { const r = svg.getBoundingClientRect(); return [ev.clientX - r.left, ev.clientY - r.top]; };
+  function stopShow() { if (showTimer) { clearTimeout(showTimer); showTimer = null; light(null); } }
+  svg.addEventListener('pointerdown', ev => {
+    if (busy) return;
+    if (celebrated) { g.reset(); return; }
+    stopHint(); stopShow();
+    const p = ptOf(ev), u = hit(G, p);
+    if (u < 0) return;
+    if (u === HOLE) { T[u].pl.classList.remove('pop'); void T[u].pl.getBBox(); T[u].pl.classList.add('pop'); float('I need a free flag!', T[u].c[0], T[u].c[1] - T[u].r - 14, 15); thud(); armHint(700, 1); return; }
+    try { svg.setPointerCapture(ev.pointerId); } catch (e) {}
+    drag = { id: ev.pointerId, s: u, p0: p, t0: performance.now(), tgt: u, K: null, moved: false };
+    note(0, .035);
+  });
+  svg.addEventListener('pointermove', ev => {
+    if (!drag || ev.pointerId !== drag.id) return;
+    const p = ptOf(ev); if (Math.hypot(p[0] - drag.p0[0], p[1] - drag.p0[1]) > 8) drag.moved = true;
+    if (!drag.moved) return;
+    const t = hit(G, p), S = drag.s, c = T[S].c;
+    // the arrow from the start country to the finger
+    const ang = Math.atan2(p[1] - c[1], p[0] - c[0]), hl = OW * 4, hx = p[0], hy = p[1];
+    const head = 'M' + q1(hx - hl * Math.cos(ang - .5)) + ' ' + q1(hy - hl * Math.sin(ang - .5)) + 'L' + q1(hx) + ' ' + q1(hy) + 'L' + q1(hx - hl * Math.cos(ang + .5)) + ' ' + q1(hy - hl * Math.sin(ang + .5));
+    const d = 'M' + q1(c[0]) + ' ' + q1(c[1]) + 'L' + q1(hx) + ' ' + q1(hy) + head;
+    arrow.querySelector('.a1').setAttribute('d', d); arrow.querySelector('.a2').setAttribute('d', d); arrow.setAttribute('opacity', 1);
+    const bx = Math.max(46, Math.min(W - 46, p[0])), by = Math.max(60, p[1] - 46);
+    badge.setAttribute('transform', 'translate(' + q1(bx) + ' ' + q1(by) + ')');
+    if (t === drag.tgt) return;
+    drag.tgt = t;
+    const K = pick(S, t);
+    if (t >= 0 && t !== S && !K) { T[t].grp.classList.remove('no'); void T[t].grp.getBBox(); T[t].grp.classList.add('no'); }
+    drag.K = K; light(K);
+    if (K) {
+      const pv = g.preview(K); setCue(K.web ? null : pv);
+      // the finger badge only speaks when it matters: this frees a flag ("let go!"), or this changes nothing
+      const fe = pv.won && !K.web ? [0, 1, 2, 3].find(e => !g.rim.some(x => pv.col[x] === e)) : -1;
+      badge.querySelector('.bf').innerHTML = fe >= 0 ? flagSvg(fe).replace('class="fg"', 'class="fg up" width="24" height="30"') : '';
+      badge.querySelector('.bn').textContent = K.web ? 'same map' : 'let go!';
+      badge.querySelector('.bn').setAttribute('x', K.web ? 0 : 13);
+      badge.querySelector('rect').setAttribute('fill', K.web ? '#d6d9e6' : '#8af574');
+      badge.setAttribute('opacity', K.web || fe >= 0 ? 1 : 0);
+      K.vs.forEach((u, i) => setTimeout(() => note(i, .03), i * 28));
+    } else { badge.setAttribute('opacity', 0); setCue(); }
+  });
+  function endDrag(ev, cancel) {
+    if (!drag || ev.pointerId !== drag.id) return;
+    const D = drag; drag = null; arrow.setAttribute('opacity', 0); badge.setAttribute('opacity', 0);
+    armHint(7000);
+    if (!D.moved && !cancel) { if (performance.now() - D.t0 < 600) showChains(D.s); return; }
+    const K = D.K; light(null);
+    if (cancel || !K) { if (D.tgt >= 0 && D.tgt !== D.s && !cancel) thud(); return; }
+    if (K.web) {                                      // the only {a,b} chain: swapping just renames two elements
+      svg.classList.remove('shake'); void svg.getBBox(); svg.classList.add('shake'); thud();
+      float('nothing changes!', T[D.s].c[0], T[D.s].c[1] - 20, 17); return;
+    }
+    swapFrom(K, D.s);
+  }
+  svg.addEventListener('pointerup', ev => endDrag(ev, false));
+  svg.addEventListener('pointercancel', ev => endDrag(ev, true));
+  function showChains(u) {                            // tap: flash the country's three chains one after another
+    const Ks = g.chainsThrough(u); let i = 0;
+    const step = () => {
+      if (i >= Ks.length) { showTimer = null; light(null); return; }
+      const K = Ks[i++]; light(K); setCue(g.preview(K)); note(i * 2, .04);
+      showTimer = setTimeout(step, 650);
+    };
+    step();
+  }
+
+  // ---------------- the swap ripple and the win ----------------
+  let rippleFrom = -1;
+  function swapFrom(K, s) { rippleFrom = s; g.swap(K); }
+  g.on((gg, info) => {
+    winEl.classList.remove('on');
+    stopHint();
+    if (info.type !== 'swap') { gFx && [...gFx.querySelectorAll('.pl')].forEach(n => n.remove()); celebrated = false; busy = false; light(null); paint(); armHint(5000); return; }
+    const K = info.chain, depth = new Map([[rippleFrom >= 0 && K.set.has(rippleFrom) ? rippleFrom : K.vs[0], 0]]);
+    let front = [...depth.keys()];
+    while (front.length) { const nx = []; front.forEach(u => g.adj[u].forEach(w => { if (K.set.has(w) && !depth.has(w)) { depth.set(w, depth.get(u) + 1); nx.push(w); } })); front = nx; }
+    const RM = matchMedia('(prefers-reduced-motion: reduce)').matches, gap = RM ? 0 : 85;
+    let maxD = 0; busy = true;
+    K.vs.forEach(u => {
+      const d = depth.has(u) ? depth.get(u) : 0; maxD = Math.max(maxD, d);
+      setTimeout(() => {
+        setEl(u, g.col[u]); T[u].pl.classList.remove('pop'); void T[u].pl.getBBox(); T[u].pl.classList.add('pop');
+        if (!RM) ring(T[u].c[0], T[u].c[1], T[u].r, E[g.col[u]].neon, 0);
+        note(d + 2, .05);
+      }, d * gap);
+    });
+    setTimeout(() => {
+      busy = false; setCue();
+      if (g.won()) celebrate(); else armHint(6000);
+    }, maxD * gap + 380);
+  });
+  function winPaint(fx) {
+    const e = g.free(), c = T[HOLE].c, r = T[HOLE].r;
+    setEl(HOLE, e); T[HOLE].pl.classList.remove('hole');
+    // plant the free flag on the "?" country's plate
+    const fs = Math.max(.9, r / 11), fl = mk('g', { class: 'pl', transform: 'translate(' + q1(c[0] + r * .35) + ' ' + q1(c[1] - r * .55 - 27 * fs) + ') scale(' + q1(fs) + ')' }, gFx);
+    fl.innerHTML = flagSvg(e).replace('<svg class="fg"', '<svg class="fg up" width="24" height="30"');
+    setCue(); const sr = svg.getBoundingClientRect(); winEl.style.top = (sr.top + Math.min(H - 110, c[1] + r * 1.4 + 44)) + 'px'; winEl.classList.add('on');
+    if (!fx) return;
+    T[HOLE].pl.classList.remove('pop'); void T[HOLE].pl.getBBox(); T[HOLE].pl.classList.add('pop');
+    const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (!RM) {
+      [0, 140, 300].forEach((dl, k) => ring(c[0], c[1], r * (1 + k * .5), k === 1 ? '#fff' : E[e].neon, dl));
+      for (let k = 0; k < 26; k++) {
+        const a = 2 * Math.PI * k / 26 + hash(k, 2), dist = 60 + hash(k, 9) * Math.min(W, H) * .35, cc = k % 3 ? E[e].hex : E[k % 4].neon;
+        const p = mk('rect', { x: q1(c[0] - 4), y: q1(c[1] - 3), width: 8, height: 6, rx: 1.5, fill: cc, stroke: '#1c1640', 'stroke-width': 1.4, class: 'cf' }, gFx);
+        p.style.setProperty('--x', q1(Math.cos(a) * dist) + 'px'); p.style.setProperty('--y', q1(Math.sin(a) * dist) + 'px'); p.style.setProperty('--r', (hash(k, 4) * 720 - 360) + 'deg');
+        p.style.transformBox = 'fill-box'; p.style.transformOrigin = 'center';
+        setTimeout(() => p.remove(), 1400);
+      }
+    }
+    [0, 4, 7, 12].forEach((s, i) => setTimeout(() => tone(523 * Math.pow(2, s / 12), .3, 'triangle', .07, 1.01), i * 110));
+  }
+  function celebrate() { celebrated = true; light(null); winPaint(true); }
+
+  document.getElementById('bU').addEventListener('click', () => { if (!busy) { stopShow(); g.undo(); } });
+  document.getElementById('bR').addEventListener('click', () => { if (!busy) { stopShow(); g.reset(); } });
+  let rz = 0; window.addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(build, 80); });
+  Object.assign(window.MAPLAB, { light, setCue, celebrate, swapFrom, showHint });   // for debugging in the console
+  build(); armHint(4000);
+})();
+</script>
+</body>
+</html>

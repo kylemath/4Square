@@ -1,0 +1,411 @@
+<!doctype html>
+<!--
+  Spheres: a remake of the very first test of Fill the Hole, the plain graph drawn as a ball-and-stick model.
+
+  What the player sees: every region of the map is a glossy shaded sphere in its element colour (fire, water, air,
+  earth), and every pair of neighbouring regions is joined by a stick, so the picture is the triangulation itself,
+  laid out as one big triangle (the 3 far "border" regions g.border sit at the corners; everything else starts from the
+  planar drawing g.pos mapped affinely into the triangle, then is spread out by a planarity-preserving relaxation). The hole is a hollow glass sphere with a "?". Its 5 neighbours (the rim) are joined by a glowing
+  ring of sticks, and a row of small balls at the top shows which elements the ring uses (4, need 3).
+
+  What the player does, and how it maps to the puzzle:
+    - Trace: press a sphere u and drag along a stick onto a neighbour v of a different element. That picks the chain
+      g.chainAt(u, col[v]) (the connected run of col[u]/col[v] spheres through u). The whole chain lights up with
+      glowing sticks; keep dragging through its spheres to trace it. Releasing once every sphere of the chain has been
+      traced swaps it (g.swap(K)); releasing early leaves the chain selected.
+    - Tap-tap: tap sphere u (it gets a dashed halo), then tap a sphere v of another element that lies in u's chain
+      with that element (normally a neighbour): the chain g.chainAt(u, col[v]) is selected in one go.
+    - With a chain selected, tapping any sphere of it swaps it (g.swap(K)); a ripple runs out along the sticks from
+      the sphere you started on, each sphere flipping a<->b as it arrives. Tapping elsewhere starts over.
+    - Duds: a chain with K.web === true (the only {a,b} chain on the map) only renames two elements everywhere, so it
+      is refused with a gentle shake. Dragging onto a sphere outside the chain, or onto the hole, wobbles it.
+    - Tapping the glass hole flashes a hint (a chain from g.good()). Undo / restart are the two tiny corner buttons.
+  Win: when the ring uses 3 elements (g.won()), the glass sphere fills with g.free(); tap to play again (g.reset()).
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#0d1117">
+<title>Spheres</title>
+<style>
+  :root { --bg: #0d1117; --fg: #e6edf3; --dim: #8b949e; --line: #30363d; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; width: 100vw; height: 100vh; overflow: hidden; overscroll-behavior: none; }
+  body { background: radial-gradient(120% 90% at 50% 10%, #1a2130 0%, var(--bg) 62%); background-color: var(--bg);
+    color: var(--fg); font: 600 14px/1.2 ui-rounded, "SF Pro Rounded", system-ui, -apple-system, "Segoe UI", sans-serif;
+    -webkit-user-select: none; user-select: none; touch-action: none; }
+  canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; touch-action: none; }
+  #cue { position: fixed; left: 0; right: 0; top: max(8px, env(safe-area-inset-top)); display: flex; justify-content: center;
+    align-items: center; gap: 7px; pointer-events: none; font-size: clamp(12px, 3.6vw, 15px); color: var(--dim); white-space: nowrap; }
+  #cue .ball { width: 13px; height: 13px; border-radius: 50%; display: inline-block; box-shadow: 0 1px 3px rgba(0,0,0,.6);
+    transition: transform .25s, opacity .25s; }
+  #cue b { color: var(--fg); font-variant-numeric: tabular-nums; }
+  #cue .q { display: inline-grid; place-items: center; width: 17px; height: 17px; border-radius: 50%; font-size: 11px; color: #cfe0ff;
+    border: 1px solid rgba(190,215,255,.55); background: radial-gradient(circle at 35% 30%, rgba(255,255,255,.25), rgba(120,140,180,.08)); }
+  #cue .pv { color: #ffd84a; }
+  #toast { position: fixed; left: 0; right: 0; top: calc(max(8px, env(safe-area-inset-top)) + 24px); text-align: center; pointer-events: none;
+    font-size: 12px; color: #c9d1d9; opacity: 0; transition: opacity .3s; }
+  .tb { position: fixed; bottom: max(8px, env(safe-area-inset-bottom)); width: 40px; height: 40px; border-radius: 50%;
+    border: 1px solid var(--line); background: rgba(22,27,34,.75); color: var(--dim); font-size: 18px; display: grid; place-items: center;
+    cursor: pointer; padding: 0; touch-action: manipulation; }
+  .tb:active { background: #21262d; color: var(--fg); }
+  #undo { left: 10px; } #reset { right: 10px; }
+</style>
+</head>
+<body>
+<canvas id="cv"></canvas>
+<div id="cue"></div>
+<div id="toast"></div>
+<button class="tb" id="undo" aria-label="Undo">&#8630;</button>
+<button class="tb" id="reset" aria-label="Restart">&#10227;</button>
+<script src="../levels.js"></script>
+<script src="../layout.js"></script>
+<script src="core.js"></script>
+<script>
+'use strict';
+// ---------- pure helpers (no DOM; smoke-tested in node) ----------
+// Layout: g.pos is already a planar straight-line drawing whose outer face is the border triangle. Map it affinely
+// onto the triangle apex (0.5,0), (1,1), (0,1), then spread the spheres by random hill-climbing on an inverse-power
+// repulsion (sphere-sphere and sphere-stick), rejecting any move that flips an inner face (so it stays planar).
+function buildLayout(g, its = 120) {
+  const n = g.n, C = [[0.5, 0.0], [1.0, 1.0], [0.0, 1.0]], B = g.border;
+  const P = Array.from({ length: n }, () => [0.5, 0.66]);
+  if (!B || B.length !== 3) { // not a triangulation: just fit g.pos into the unit box
+    const xs = g.pos.map(p => p[0]), ys = g.pos.map(p => p[1]), x0 = Math.min(...xs), y0 = Math.min(...ys);
+    const s = 1 / Math.max(Math.max(...xs) - x0, Math.max(...ys) - y0, 1e-9);
+    return g.pos.map(([x, y]) => [0.5 + (x - (x0 + Math.max(...xs)) / 2) * s, 0.5 + (y - (y0 + Math.max(...ys)) / 2) * s]);
+  }
+  // affine map of g.pos (border = outer face) onto the triangle
+  const [a, b, c] = B.map(x => g.pos[x]), det = (b[0] - a[0]) * (c[1] - a[1]) - (c[0] - a[0]) * (b[1] - a[1]);
+  for (let u = 0; u < n; u++) { const p = g.pos[u];
+    const l1 = ((p[0] - a[0]) * (c[1] - a[1]) - (c[0] - a[0]) * (p[1] - a[1])) / det, l2 = ((b[0] - a[0]) * (p[1] - a[1]) - (p[0] - a[0]) * (b[1] - a[1])) / det, l0 = 1 - l1 - l2;
+    P[u] = [l0 * C[0][0] + l1 * C[1][0] + l2 * C[2][0], l0 * C[0][1] + l1 * C[1][1] + l2 * C[2][1]]; }
+  const fixed = new Set(B), key = (x, y) => x < y ? x * 1000 + y : y * 1000 + x;
+  // inner faces, from the rotation system; their orientation must never flip (keeps the drawing planar)
+  const faces = [], seen = new Set([B.slice().sort((x, y) => x - y).join()]);
+  for (let u = 0; u < n; u++) { const r = g.rot[u]; for (let i = 0; i < r.length; i++) { const p = r[i], q = r[(i + 1) % r.length];
+    if (!g.adj[p].includes(q)) continue; const k = [u, p, q].sort((x, y) => x - y).join(); if (seen.has(k)) continue; seen.add(k); faces.push([u, p, q]); } }
+  const area = f => { const [A, Bq, Cq] = f.map(x => P[x]); return (Bq[0] - A[0]) * (Cq[1] - A[1]) - (Bq[1] - A[1]) * (Cq[0] - A[0]); };
+  const sg = faces.map(f => Math.sign(area(f)));
+  const inc = Array.from({ length: n }, () => []); faces.forEach((f, i) => f.forEach(x => inc[x].push(i)));
+  const segD2 = (p, q, r) => { const dx = r[0] - q[0], dy = r[1] - q[1], L = dx * dx + dy * dy; let t = ((p[0] - q[0]) * dx + (p[1] - q[1]) * dy) / L; t = Math.max(0, Math.min(1, t));
+    const x = q[0] + t * dx - p[0], y = q[1] + t * dy - p[1]; return x * x + y * y; };
+  // energy felt by u: inverse-power repulsion from every other sphere and from sticks not touching u (and u's sticks from spheres)
+  const local = u => { let e = 0; const p = P[u];
+    for (let v = 0; v < n; v++) if (v !== u) { const d2 = (p[0] - P[v][0]) ** 2 + (p[1] - P[v][1]) ** 2 + 1e-12; e += 1 / (d2 * d2); }
+    for (const [x, y] of g.edges) { if (x === u || y === u) { const o = x === u ? y : x; for (let v = 0; v < n; v++) if (v !== u && v !== o) { const d2 = segD2(P[v], p, P[o]) + 1e-12; e += 0.5 / (d2 * d2); } }
+      else { const d2 = segD2(p, P[x], P[y]) + 1e-12; e += 0.5 / (d2 * d2); } }
+    return e; };
+  let seed = 7; const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+  for (let it = 0; it < its; it++) {
+    const step = 0.06 * (1 - it / its) + 0.004;
+    for (let u = 0; u < n; u++) {
+      if (fixed.has(u)) continue;
+      const old = P[u], e0 = local(u);
+      for (let k = 0; k < 4; k++) {
+        const ang = rnd() * 6.2832, s = step * (0.3 + rnd());
+        P[u] = [old[0] + Math.cos(ang) * s, old[1] + Math.sin(ang) * s];
+        if (inc[u].every(i => area(faces[i]) * sg[i] > 1e-4) && local(u) < e0) break;
+        P[u] = old;
+      }
+    }
+  }
+  return P;
+}
+// what a gesture from sphere u onto sphere v means: the {col[u], col[v]} chain through u, if it reaches v
+function chainFor(g, u, v) {
+  if (u == null || v == null || u === v || u === g.hole || v === g.hole) return null;
+  if (g.col[u] === g.col[v]) return null;
+  const K = g.chainAt(u, g.col[v]);
+  return K && K.set.has(v) ? K : null;
+}
+// ripple order: BFS depth inside the chain from the sphere the player started on
+function rippleDepth(g, K, from) {
+  const d = {}; const s = K.set.has(from) ? from : K.vs[0]; d[s] = 0; let fr = [s];
+  while (fr.length) { const nx = []; for (const u of fr) for (const v of g.adj[u]) if (K.set.has(v) && d[v] === undefined) { d[v] = d[u] + 1; nx.push(v); } fr = nx; }
+  return d;
+}
+if (typeof document === 'undefined') { module.exports = { buildLayout, chainFor, rippleDepth }; } else (function () {
+// ---------- page ----------
+const g = LAB.game();
+const E = LAB.ELEM, ICONS = LAB.ICON.map(p => new Path2D(p));
+const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
+const cueEl = document.getElementById('cue'), toastEl = document.getElementById('toast');
+const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const L = buildLayout(g);
+let W = 0, H = 0, DPR = 1, S = [], R = 12, stick = 4;
+
+function fit() {
+  DPR = Math.min(3, window.devicePixelRatio || 1); W = innerWidth; H = innerHeight;
+  cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR);
+  const top = 40, bot = 54, side = 10;
+  let pad = Math.max(14, Math.min(W, H) * 0.06);
+  for (let pass = 0; pass < 2; pass++) {
+    const bw = W - 2 * (side + pad), bh = H - top - bot - 2 * pad;
+    let tw, th;
+    if (bh > bw * 0.866) { tw = bw; th = Math.min(bh, bw * 1.4); } else { th = bh; tw = Math.min(bw, th / 0.866 * 1.18); }
+    const ox = (W - tw) / 2, oy = top + pad + (bh - th) / 2;
+    S = L.map(([x, y]) => [ox + x * tw, oy + y * th]);
+    const ls = g.edges.map(([a, b]) => Math.hypot(S[a][0] - S[b][0], S[a][1] - S[b][1])).sort((a, b) => a - b);
+    const med = ls[ls.length >> 1], mn = ls[0];
+    R = Math.max(7, Math.min(med * 0.36, mn * 0.46, 30));
+    stick = Math.max(2.2, R * 0.3);
+    pad = R + 6;
+  }
+}
+
+// ---------- colour helpers ----------
+const hexRgb = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
+const mix = (a, b, t) => { const A = hexRgb(a), B = hexRgb(b); return 'rgb(' + A.map((x, i) => Math.round(x + (B[i] - x) * t)).join(',') + ')'; };
+const rgba = (h, a) => 'rgba(' + hexRgb(h).join(',') + ',' + a + ')';
+
+// ---------- sound (after first gesture) ----------
+let AC = null;
+function audio() { if (AC) return; try { AC = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { AC = null; } }
+function tone(f, dur = 0.12, type = 'sine', gain = 0.08, when = 0) {
+  if (!AC) return; const t = AC.currentTime + when, o = AC.createOscillator(), gn = AC.createGain();
+  o.type = type; o.frequency.setValueAtTime(f, t); gn.gain.setValueAtTime(0.0001, t);
+  gn.gain.exponentialRampToValueAtTime(gain, t + 0.01); gn.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(gn); gn.connect(AC.destination); o.start(t); o.stop(t + dur + 0.02);
+}
+const PENTA = [392, 440, 523, 587, 659, 784, 880, 1047, 1175, 1319, 1568];
+
+// ---------- state ----------
+let sel = null;      // { K, anchor, traced: Set }
+let pend = null;     // a tapped sphere waiting for its partner
+let drag = null;     // { start, cur, K, moved }
+let anim = null;     // swap ripple { t0, depth, old, K, maxD }
+let winT = 0, hint = null, wob = {}, toastT = 0;
+const STEP = RM ? 0 : 95;
+const now = () => performance.now();
+
+function toast(msg) { toastEl.textContent = msg; toastEl.style.opacity = 1; clearTimeout(toastT); toastT = setTimeout(() => { toastEl.style.opacity = 0; }, 1600); }
+function wobble(u) { wob[u] = now(); }
+
+function cue() {
+  const rc = [...new Set(g.rimColours())].sort((a, b) => a - b);
+  const balls = rc.map(c => `<span class="ball" style="background:radial-gradient(circle at 35% 30%, ${E[c].pastel}, ${E[c].hex} 55%, ${E[c].dark})"></span>`).join('');
+  if (g.won()) {
+    const f = g.free();
+    cueEl.innerHTML = `${balls}<span class="q" style="background:${E[f].hex};color:#fff;border-color:#fff">&#10003;</span><b>${E[f].name}!</b> tap to play again`;
+    return;
+  }
+  let pv = '';
+  if (sel && !sel.K.web) { const p = g.preview(sel.K); pv = `<span class="pv">&middot; swap &rarr; ${p.rimCount}</span>`; }
+  cueEl.innerHTML = `<span class="q">?</span> ring ${balls}<b>${rc.length}</b> need <b>${g.goal}</b>${pv}`;
+}
+
+// ---------- gestures ----------
+function hit(x, y, tight) {
+  let best = null, bd = Infinity; const lim = tight ? R * 1.05 : Math.max(R * 1.35, 22);
+  for (let u = 0; u < g.n; u++) { const d = Math.hypot(S[u][0] - x, S[u][1] - y); if (d < bd) { bd = d; best = u; } }
+  return bd <= lim ? best : null;
+}
+function select(K, anchor, traced) {
+  sel = { K, anchor, traced: new Set(traced) }; pend = null;
+  tone(K.web ? 220 : 523, 0.1, 'triangle', 0.06); cue();
+  if (K.web) toast('this pair is one big web: swapping only renames');
+}
+function doSwap(K, from) {
+  if (K.web) {
+    K.vs.forEach(wobble); tone(150, 0.25, 'sine', 0.07);
+    toast('one web of these two: a swap would just rename them'); sel = null; cue(); return;
+  }
+  const depth = rippleDepth(g, K, from), old = {}; K.vs.forEach(u => { old[u] = g.col[u]; });
+  const maxD = Math.max(...Object.values(depth));
+  sel = null; pend = null;
+  g.swap(K);
+  anim = { t0: now(), depth, old, K, maxD };
+  if (AC) for (let d = 0; d <= maxD; d++) tone(PENTA[Math.min(PENTA.length - 1, d + 2)], 0.14, 'sine', 0.05, d * STEP / 1000);
+  if (g.won()) {
+    winT = now() + (maxD + 1) * STEP + 120;
+    if (AC) [523, 659, 784, 1047].forEach((f, i) => tone(f, 0.5, 'triangle', 0.06, (winT - now()) / 1000 + i * 0.09));
+    setTimeout(cue, winT - now());
+  }
+  cue();
+}
+function tap(u) {
+  if (u == null) { sel = null; pend = null; cue(); return; }
+  if (u === g.hole) { wobble(u); const gd = g.good(); if (gd.length) { hint = { K: gd[0], t0: now() }; tone(330, 0.15, 'sine', 0.05); } return; }
+  if (sel && sel.K.set.has(u)) { doSwap(sel.K, sel.anchor); return; }
+  if (pend != null && pend !== u) {
+    const K = chainFor(g, pend, u);
+    if (K) { select(K, pend, [pend, u]); return; }
+  }
+  if (pend === u) { pend = null; cue(); return; }
+  pend = u; sel = null; tone(440, 0.06, 'sine', 0.04); cue();
+}
+cv.addEventListener('pointerdown', e => {
+  audio(); e.preventDefault();
+  if (g.won()) { if (now() > winT + 300) g.reset(); return; }
+  const u = hit(e.clientX, e.clientY);
+  try { cv.setPointerCapture(e.pointerId); } catch (_) {}
+  drag = { id: e.pointerId, start: u, cur: u, K: null, bad: null };
+});
+cv.addEventListener('pointermove', e => {
+  if (!drag || drag.id !== e.pointerId || drag.start == null || drag.start === g.hole) return;
+  const v = hit(e.clientX, e.clientY, true);
+  if (v == null || v === drag.cur) return;
+  if (!drag.K) {
+    if (!g.adj[drag.cur].includes(v)) return;              // passing over, not along a stick
+    const K = chainFor(g, drag.start, v);
+    if (!K) { if (drag.bad !== v) { drag.bad = v; wobble(v); tone(180, 0.08, 'sine', 0.04); } return; }
+    drag.K = K; drag.cur = v; select(K, drag.start, [drag.start, v]);
+    return;
+  }
+  if (drag.K.set.has(v)) {
+    if (!sel.traced.has(v)) { sel.traced.add(v); tone(PENTA[Math.min(PENTA.length - 1, sel.traced.size)], 0.08, 'sine', 0.045); }
+    drag.cur = v;
+  } else if (g.adj[drag.cur].includes(v) && drag.bad !== v) { drag.bad = v; wobble(v); tone(180, 0.08, 'sine', 0.04); }
+});
+function up(e) {
+  if (!drag || drag.id !== e.pointerId) return;
+  const d = drag; drag = null;
+  if (d.K) { if (sel && sel.K === d.K && sel.traced.size === d.K.size) doSwap(d.K, sel.anchor); return; }
+  if (d.start === g.hole || d.start == null || hit(e.clientX, e.clientY) === d.start) tap(d.start);
+}
+cv.addEventListener('pointerup', up);
+cv.addEventListener('pointercancel', e => { if (drag && drag.id === e.pointerId) drag = null; });
+document.getElementById('undo').addEventListener('click', () => { audio(); if (!g.won() || now() > winT) g.undo(); });
+document.getElementById('reset').addEventListener('click', () => { audio(); g.reset(); });
+g.on((_, info) => { if (info.type !== 'swap') { sel = null; pend = null; anim = null; winT = 0; hint = null; } cue(); });
+
+// ---------- drawing ----------
+function shadow(x, y, r) {
+  const gr = ctx.createRadialGradient(x + r * 0.2, y + r * 0.9, 0, x + r * 0.2, y + r * 0.9, r * 1.05);
+  gr.addColorStop(0, 'rgba(0,0,0,.5)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = gr; ctx.beginPath(); ctx.ellipse(x + r * 0.2, y + r * 0.9, r * 1.05, r * 0.38, 0, 0, 7); ctx.fill();
+}
+function ball(x, y, r, c) {
+  const e = E[c];
+  const gr = ctx.createRadialGradient(x - r * 0.35, y - r * 0.42, r * 0.05, x, y, r * 1.02);
+  gr.addColorStop(0, mix(e.pastel, '#ffffff', 0.55)); gr.addColorStop(0.25, e.neon); gr.addColorStop(0.6, e.hex); gr.addColorStop(1, e.dark);
+  ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill();
+  // rim light from below
+  const rl = ctx.createRadialGradient(x + r * 0.2, y + r * 0.55, r * 0.55, x, y, r);
+  rl.addColorStop(0, 'rgba(255,255,255,0)'); rl.addColorStop(1, rgba(e.pastel, 0.28));
+  ctx.fillStyle = rl; ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill();
+  // icon
+  if (r >= 11) {
+    ctx.save(); ctx.translate(x - r * 0.5, y - r * 0.47); ctx.scale(r / 24, r / 24);
+    if (c < 2) { ctx.fillStyle = 'rgba(255,255,255,.33)'; ctx.fill(ICONS[c]); }
+    else { ctx.strokeStyle = 'rgba(255,255,255,.4)'; ctx.lineWidth = 2.2; ctx.lineCap = 'round'; ctx.stroke(ICONS[c]); }
+    ctx.restore();
+  }
+  // specular
+  ctx.fillStyle = 'rgba(255,255,255,.75)'; ctx.beginPath(); ctx.ellipse(x - r * 0.38, y - r * 0.46, r * 0.22, r * 0.13, -0.6, 0, 7); ctx.fill();
+}
+function glass(x, y, r, t) {
+  const gr = ctx.createRadialGradient(x - r * 0.3, y - r * 0.35, r * 0.1, x, y, r);
+  gr.addColorStop(0, 'rgba(220,232,255,.22)'); gr.addColorStop(0.7, 'rgba(110,130,170,.10)'); gr.addColorStop(1, 'rgba(190,210,245,.38)');
+  ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill();
+  if (winT && t > winT) {                                  // fills with the free element
+    const k = RM ? 1 : Math.min(1, (t - winT) / 650), f = g.free();
+    if (f >= 0) { const e = 1 - Math.pow(1 - k, 3); ctx.save(); ctx.globalAlpha = 0.25 + 0.75 * e; ball(x, y, r * (0.15 + 0.85 * e), f); ctx.restore(); }
+  } else {
+    ctx.fillStyle = 'rgba(215,228,255,.85)'; ctx.font = `800 ${Math.round(r * 1.15)}px ui-rounded, system-ui, sans-serif`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('?', x, y + r * 0.06);
+  }
+  ctx.strokeStyle = 'rgba(200,220,255,.6)'; ctx.lineWidth = 1.4; ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.stroke();
+  ctx.fillStyle = 'rgba(255,255,255,.7)'; ctx.beginPath(); ctx.ellipse(x - r * 0.38, y - r * 0.46, r * 0.2, r * 0.11, -0.6, 0, 7); ctx.fill();
+}
+function stickLine(a, b, w, col) { ctx.strokeStyle = col; ctx.lineWidth = w; ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke(); }
+function dispCol(u, t) {
+  if (anim && anim.old[u] !== undefined && t < anim.t0 + anim.depth[u] * STEP + STEP * 0.5) return anim.old[u];
+  return g.col[u];
+}
+
+function frame() {
+  const t = now(); ctx.setTransform(DPR, 0, 0, DPR, 0, 0); ctx.clearRect(0, 0, W, H); ctx.lineCap = 'round';
+  if (anim && t > anim.t0 + (anim.maxD + 2) * STEP + 300) anim = null;
+  if (hint && t > hint.t0 + 1800) hint = null;
+  const P = S.map((p, u) => { const w = wob[u]; if (w === undefined) return p; const k = (t - w) / 380; if (k > 1 || RM) { delete wob[u]; return p; }
+    return [p[0] + Math.sin(k * 26) * R * 0.16 * (1 - k), p[1]]; });
+  const h = g.hole, rimSet = new Set(g.rim), won = winT && t > winT;
+  // shadows
+  for (let u = 0; u < g.n; u++) shadow(P[u][0], P[u][1], R);
+  // plain sticks: dark core plus a lit top edge
+  for (const [a, b] of g.edges) {
+    if (a === h || b === h) continue;
+    stickLine(P[a], P[b], stick, '#2b3240');
+    ctx.save(); ctx.translate(0, -stick * 0.18); stickLine(P[a], P[b], stick * 0.4, 'rgba(150,165,190,.35)'); ctx.restore();
+  }
+  // hole spokes: thin glass
+  ctx.setLineDash([stick * 0.6, stick * 1.2]);
+  for (const v of g.adj[h]) stickLine(P[h], P[v], Math.max(1.2, stick * 0.35), won ? rgba(E[g.free()].neon, 0.8) : 'rgba(170,195,235,.4)');
+  ctx.setLineDash([]);
+  // the rim ring
+  const pulse = RM ? 0.5 : 0.5 + 0.5 * Math.sin(t / 420);
+  ctx.save(); ctx.shadowColor = won ? E[g.free()].neon : 'rgba(140,190,255,.9)'; ctx.shadowBlur = 10 + 6 * pulse;
+  for (let i = 0; i < g.rim.length; i++) if (g.adj[g.rim[i]].includes(g.rim[(i + 1) % g.rim.length])) stickLine(P[g.rim[i]], P[g.rim[(i + 1) % g.rim.length]], stick * 1.25, won ? rgba(E[g.free()].neon, 0.95) : `rgba(165,205,255,${0.55 + 0.25 * pulse})`);
+  ctx.restore();
+  // pending sphere: its sticks to the other elements, softly
+  if (pend != null && !sel) for (const v of g.adj[pend]) if (v !== h) stickLine(P[pend], P[v], stick * 0.9, 'rgba(255,255,255,.22)');
+  // selected chain or hint: glowing sticks (two-tone), with a slow shimmer
+  const lit = sel ? sel.K : hint ? hint.K : null;
+  if (lit) {
+    const [ca, cb] = lit.pair, al = sel ? 1 : 0.45 + 0.4 * Math.sin((t - hint.t0) / 150) ** 2;
+    ctx.save(); ctx.globalAlpha = lit.web ? 0.45 : al; ctx.shadowBlur = 14 + 6 * pulse;
+    for (const [a, b] of g.edges) {
+      if (!lit.set.has(a) || !lit.set.has(b)) continue;
+      const gr = ctx.createLinearGradient(P[a][0], P[a][1], P[b][0], P[b][1]);
+      gr.addColorStop(0, E[g.col[a]].neon); gr.addColorStop(1, E[g.col[b]].neon);
+      ctx.shadowColor = E[g.col[a] === ca ? cb : ca].neon;
+      const tr = sel && sel.traced.has(a) && sel.traced.has(b);
+      stickLine(P[a], P[b], stick * (tr ? 1.6 : 1.2), gr);
+      stickLine(P[a], P[b], stick * 0.4, 'rgba(255,255,255,.75)');
+    }
+    ctx.restore();
+  }
+  // swap ripple: light pulses running out along the chain's sticks
+  if (anim && STEP) {
+    ctx.save(); ctx.shadowColor = '#fff'; ctx.shadowBlur = 16;
+    for (const [a0, b0] of g.edges) {
+      if (!anim.K.set.has(a0) || !anim.K.set.has(b0)) continue;
+      let a = a0, b = b0; if (anim.depth[a] > anim.depth[b]) { a = b0; b = a0; }
+      if (anim.depth[a] === anim.depth[b]) continue;
+      const k = (t - anim.t0 - anim.depth[a] * STEP) / STEP; if (k < 0 || k > 1.4) continue;
+      const kk = Math.min(1, k), x = P[a][0] + (P[b][0] - P[a][0]) * kk, y = P[a][1] + (P[b][1] - P[a][1]) * kk;
+      ctx.globalAlpha = k > 1 ? (1.4 - k) / 0.4 : 1;
+      stickLine(P[a], [x, y], stick * 1.3, 'rgba(255,255,255,.55)');
+      ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(x, y, stick * 0.9, 0, 7); ctx.fill();
+    }
+    ctx.restore();
+  }
+  // spheres, back to front
+  const order = [...Array(g.n).keys()].sort((a, b) => P[a][1] - P[b][1]);
+  for (const u of order) {
+    const [x, y] = P[u];
+    if (u === h) { glass(x, y, R * 1.08, t); continue; }
+    let r = R;
+    if (anim && anim.depth[u] !== undefined) { const k = (t - anim.t0 - anim.depth[u] * STEP) / (STEP * 2.2 || 1); if (k > 0 && k < 1) r *= 1 + 0.22 * Math.sin(k * Math.PI); }
+    if (lit && lit.set.has(u)) r *= 1.06;
+    ball(x, y, r, dispCol(u, t));
+    if (won && rimSet.has(u)) { ctx.strokeStyle = rgba(E[g.free()].neon, 0.6); ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(x, y, r + 3, 0, 7); ctx.stroke(); }
+    if (sel && sel.K.set.has(u)) {
+      ctx.strokeStyle = sel.traced.has(u) ? '#fff' : 'rgba(255,255,255,.4)'; ctx.lineWidth = sel.traced.has(u) ? 2.2 : 1.4;
+      ctx.beginPath(); ctx.arc(x, y, r + 3.5, 0, 7); ctx.stroke();
+    }
+  }
+  // pending halo
+  if (pend != null && !sel) {
+    ctx.save(); ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.setLineDash([5, 4]); ctx.lineDashOffset = RM ? 0 : -t / 40;
+    ctx.beginPath(); ctx.arc(P[pend][0], P[pend][1], R + 5, 0, 7); ctx.stroke(); ctx.restore();
+  }
+  // win burst
+  if (won && !RM) {
+    const k = (t - winT) / 1100;
+    if (k < 1) { ctx.save(); ctx.strokeStyle = rgba(E[g.free()].neon, 1 - k); ctx.lineWidth = 3 * (1 - k) + 1;
+      for (let i = 0; i < 3; i++) { const kk = k - i * 0.12; if (kk > 0) { ctx.beginPath(); ctx.arc(P[h][0], P[h][1], R * (1.1 + kk * 5), 0, 7); ctx.stroke(); } }
+      ctx.restore(); }
+  }
+  requestAnimationFrame(frame);
+}
+addEventListener('resize', fit);
+fit(); cue(); requestAnimationFrame(frame);
+window.SPHERES = { g, screen: () => S, radius: () => R };   // for debugging / smoke tests
+})();
+</script>
+</body>
+</html>

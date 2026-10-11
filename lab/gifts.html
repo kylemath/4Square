@@ -1,0 +1,700 @@
+<!doctype html>
+<!--
+  GIFT BOXES (lab front end, round 3: a sibling of the Petting Zoo, same "pens" representation, a packing world)
+
+  What the player sees: a cosy packing table with four open gift boxes, each lined with its own wrapping paper
+  (Dotty: red with polka dots, Stripy: blue with stripes, Starry: yellow with stars, Hearty: green with hearts; the
+  paper motif is also the box's label icon, so the four are told apart by shape as well as colour). Every map region
+  except the hole is a named, drawn gift item (candle, chocolate, balloon, sweater, cactus, rubber duck, ...); the box
+  it sits in is its element. Items in the same box share an element, and the map itself is never drawn. The hidden
+  relation: two items that are neighbours on the map clash (the candle would melt the chocolate, the cactus would pop
+  the balloon...) so they are never packed together (the legal colouring). It only shows when it matters: while you
+  hold an item, every item it clashes with wobbles and voices its worry ("I'll melt!", "eek, pop!"), and the ones that
+  would get bumped by the move get a dashed ring in the colour of the box they would land in.
+
+  The special present (the hole) is Goldie the goldfish in her bowl, waiting on the gift tag at the top. Five items
+  clash with her (g.rim; they wear a little fish sticker) and their portraits sit on her tag, each on a swatch of the
+  wrapping paper of the box they are in now. Each box has a small Goldie label with a tick if none of her five are in
+  it, a cross otherwise. Goal: make one box tick. g.won() is exactly "some box holds none of the five", g.free() is
+  that box: Goldie's bowl hops in, the lid drops on, the ribbon ties and a big bow pops up. Tap to wrap again.
+
+  The move (one gesture = exactly one g.swap(K), or nothing): drag/swipe/flick item u from its box A towards box B
+  (or tap u, then tap box B). K = g.chainAt(u, B), the {A, B} chain through u. u is packed into B, every item in B that
+  clashes with it pops out into A ("boing!"), every item in A that clashes with those pops back into B, and so on: the
+  members of K hop between A and B one BFS layer at a time, starting from u. A lone item with no clashes in B just
+  moves (a single-region chain), so every chain on the map is reachable by moving any one of its members. If K.web is
+  true (the whole of boxes A and B would just trade contents, which changes nothing) g.swap is NOT called: everything
+  in the two boxes shuffles toward the other box and back, with a shrug. Undo (g.undo) and restart (g.reset) are the
+  two small buttons.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>Gift Boxes</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #e9d2b0; touch-action: none;
+    -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
+  svg { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
+    font-family: Fredoka, 'Baloo 2', 'Arial Rounded MT Bold', 'Trebuchet MS', system-ui, sans-serif; }
+  #ui { position: fixed; right: 6px; top: 6px; display: flex; flex-direction: column; gap: 6px; z-index: 2; }
+  #ui button { width: 30px; height: 30px; border-radius: 50%; border: 2px solid #b5534a; background: #fff3e4; color: #8e3a33;
+    font: 700 16px/1 system-ui, sans-serif; padding: 0; cursor: pointer; box-shadow: 0 2px 0 #b5534a; }
+  #ui button:active { transform: translateY(2px); box-shadow: none; }
+  .it { cursor: grab; }
+  .it .ring, .it .halo, .it .worry { display: none; }
+  .it.lit .ring { display: inline; animation: pulse .6s ease-in-out infinite alternate; }
+  .it.held .halo, .it.sel .halo { display: inline; }
+  .talk .it.grump .worry { display: inline; }
+  .bob { transform-box: fill-box; transform-origin: 50% 85%; animation: settle 3s ease-in-out infinite; }
+  .it.lit .bob, .it.grump .bob { animation: wobble .2s ease-in-out infinite alternate; }
+  .it.party .bob, #goldie.party .bob { animation: jump .45s ease-in-out infinite alternate; }
+  #goldie.hope .bob { animation: jump .35s ease-in-out infinite alternate; }
+  #goldie.grump .bob { animation: wobble .2s ease-in-out infinite alternate; }
+  .box .hi { opacity: 0; transition: opacity .15s; }
+  .box.hover .hi { opacity: 1; }
+  @keyframes settle { 0%, 100% { transform: rotate(0); } 50% { transform: rotate(1.5deg); } }
+  @keyframes wobble { from { transform: rotate(-9deg); } to { transform: rotate(9deg); } }
+  @keyframes jump { from { transform: translateY(0); } to { transform: translateY(-.3px); } }
+  @keyframes pulse { from { opacity: .45; } to { opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) {
+    .bob, .it.lit .bob, .it.grump .bob, .it.party .bob, #goldie .bob { animation: none !important; }
+    .it.lit .ring { animation: none; }
+  }
+</style>
+</head>
+<body>
+<svg id="s" xmlns="http://www.w3.org/2000/svg" aria-label="Gift boxes"></svg>
+<div id="ui"><button id="undo" title="Undo" aria-label="Undo">&#8630;</button><button id="again" title="Start over" aria-label="Start over">&#8634;</button></div>
+<script src="../levels.js"></script>
+<script src="../layout.js"></script>
+<script src="core.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  // ---------------------------------------------------------------- pure helpers (also used by the node smoke test)
+  const BOX = [
+    { name: 'Dotty', col: '#dc5248', light: '#f7c9c2', tissue: '#fff6f2', dark: '#8e2a24', rib: '#fff4d6' },
+    { name: 'Stripy', col: '#3f83cf', light: '#c4dcf5', tissue: '#f4f9ff', dark: '#1f4c84', rib: '#ffd34d' },
+    { name: 'Starry', col: '#e6ac1f', light: '#f8e3a4', tissue: '#fffbee', dark: '#7a5604', rib: '#d8484a' },
+    { name: 'Hearty', col: '#4e9d4a', light: '#cde8c3', tissue: '#f6fcf2', dark: '#245b22', rib: '#ff8fb4' },
+  ];
+
+  // Boxes laid out as a 2x2 table (or 1x4 when very wide), below the gift-tag strip.
+  function layoutTable(W, H, NC, counts) {
+    const wide = W > H * 1.25;
+    const gh = Math.round(Math.max(66, Math.min(118, (wide ? H * 0.2 : H * 0.17))));
+    const pad = Math.max(6, Math.min(14, W * 0.025)), gap = Math.max(10, Math.min(22, W * 0.04));
+    const top = gh + 8, ah = H - top - pad, aw = W - 2 * pad;
+    const cols = (wide && aw / ah > 2.3) ? NC : 2, rows = Math.ceil(NC / cols);
+    const boxes = [];
+    for (let k = 0; k < NC; k++) {
+      const r = Math.floor(k / cols), inRow = Math.min(cols, NC - r * cols), c = k - r * cols;
+      const pw = (aw - (inRow - 1) * gap) / inRow, ph = (ah - (rows - 1) * gap) / rows;
+      const x = pad + c * (pw + gap), y = top + r * (ph + gap);
+      const sign = Math.max(18, Math.min(30, Math.min(pw, ph) * 0.16));
+      const bw = Math.max(6, Math.min(14, Math.min(pw, ph) * 0.06));
+      const inner = { x: x + bw + 3, y: y + Math.max(bw, sign * 0.7) + 5, w: pw - 2 * bw - 6, h: ph - Math.max(bw, sign * 0.7) - bw - 8 };
+      boxes.push({ k, x, y, w: pw, h: ph, cx: x + pw / 2, cy: y + ph / 2, sign, bw, inner });
+    }
+    const fit = (p, m) => { // best grid for m items in box p: [cols, cell size]
+      let best = [1, 0];
+      for (let c = 1; c <= m; c++) { const s = Math.min(p.inner.w / c, p.inner.h / Math.ceil(m / c)); if (s > best[1]) best = [c, s]; }
+      return best;
+    };
+    let r = 44;
+    boxes.forEach((p, k) => { r = Math.min(r, fit(p, Math.max(4, counts[k] || 0))[1] * 0.4); });
+    r = Math.max(8, r);
+    boxes.forEach((p, k) => { p.cols = fit(p, Math.max(1, counts[k] || 0))[0]; });
+    return { W, H, gh, boxes, r };
+  }
+
+  // slot centres for m items in box p (row-major, a touch of fixed jitter so it looks hand-packed)
+  function slots(p, m) {
+    const out = []; if (!m) return out;
+    const c = Math.max(1, Math.min(p.cols || 1, m)), rows = Math.ceil(m / c);
+    const sx = p.inner.w / c, sy = p.inner.h / rows;
+    for (let i = 0; i < m; i++) {
+      const row = Math.floor(i / c), inRow = Math.min(c, m - row * c), col = i - row * c;
+      const off = (c - inRow) * sx / 2 + ((row % 2) && inRow === c && c > 1 ? sx * 0.1 : 0);
+      const j = Math.sin(i * 12.9898 + p.k * 78.233) * 0.07;
+      out.push([p.inner.x + off + (col + 0.5) * sx + j * sx * 0.5, p.inner.y + (row + 0.5) * sy + j * sy]);
+    }
+    return out;
+  }
+
+  // the cascade: the members of chain K in BFS layers from the item that was moved
+  function cascade(g, K, u) {
+    const seen = new Set([u]), layers = [[u]];
+    let front = [u];
+    while (front.length) {
+      const nx = [];
+      for (const v of front) for (const w of g.adj[v]) if (K.set.has(w) && !seen.has(w)) { seen.add(w); nx.push(w); }
+      if (nx.length) layers.push(nx);
+      front = nx;
+    }
+    return layers;
+  }
+
+  // gesture -> chain: packing item u into box B means chain g.chainAt(u, B); nothing when B is its own box
+  function moveFor(g, u, B) {
+    if (u === g.hole || B == null || B < 0 || B >= g.NC || B === g.col[u]) return null;
+    const K = g.chainAt(u, B);
+    if (!K) return null;
+    return { K, web: K.web, from: g.col[u], to: B, layers: cascade(g, K, u) };
+  }
+
+  // which box does a release at (x, y) mean? Inside or nearest box; a swipe that stays in its own box but clearly
+  // points at another one counts for that one (forgiving flicks on a small phone tile).
+  function boxFor(L, x, y, from, dx, dy) {
+    if (y < L.gh - 6) return null;
+    let best = null, bd = Infinity;
+    L.boxes.forEach(p => {
+      const ex = Math.max(p.x - x, 0, x - p.x - p.w), ey = Math.max(p.y - y, 0, y - p.y - p.h), d = Math.hypot(ex, ey);
+      if (d < bd) { bd = d; best = p.k; }
+    });
+    const len = Math.hypot(dx || 0, dy || 0);
+    if (best === from && from != null && len > Math.max(28, L.r * 1.2)) {
+      const P = L.boxes[from]; let bc = 0.5, alt = null;
+      L.boxes.forEach(q => {
+        if (q.k === from) return;
+        const vx = q.cx - P.cx, vy = q.cy - P.cy, c = (vx * dx + vy * dy) / (Math.hypot(vx, vy) * len);
+        if (c > bc) { bc = c; alt = q.k; }
+      });
+      if (alt != null) return alt;
+    }
+    return best;
+  }
+
+  window.GIFT = { BOX, layoutTable, slots, cascade, moveFor, boxFor };
+  if (window.GIFT_TEST) return;
+
+  // ---------------------------------------------------------------- the packing table
+  const g = LAB.game();
+  const NC = g.NC, hole = g.hole, rimSet = new Set(g.rim);
+  const RM = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const NS = 'http://www.w3.org/2000/svg';
+  const svg = document.getElementById('s');
+  const el = (tag, attrs, parent, html) => {
+    const e = document.createElementNS(NS, tag);
+    for (const a in attrs) e.setAttribute(a, (a === 'width' || a === 'height') && attrs[a] < 0 ? 0 : attrs[a]);
+    if (html != null) e.innerHTML = html;
+    if (parent) parent.appendChild(e);
+    return e;
+  };
+  const INK = '#5b3a29';
+
+  // the paper motif of each box, unit size (about -1..1): dot, stripes, star, heart
+  function motif(k, fill, stroke) {
+    const f = `fill="${fill}" stroke="${stroke}" stroke-width=".12" stroke-linejoin="round"`;
+    if (k === 0) return `<circle ${f} r=".72"/>`;
+    if (k === 1) return `<path ${f} d="M-.8-.8H.8V.8H-.8Z"/><path d="M-.8-.2L-.2-.8M-.8 .5L.5-.8M-.3 .8L.8-.3M.4 .8L.8 .4" stroke="${stroke}" stroke-width=".2" stroke-linecap="round"/>`;
+    if (k === 2) { let d = ''; for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + i * Math.PI / 5, r = i % 2 ? .38 : .9; d += (i ? 'L' : 'M') + (r * Math.cos(a)).toFixed(2) + ' ' + (r * Math.sin(a) + .06).toFixed(2); } return `<path ${f} d="${d}Z"/>`; }
+    return `<path ${f} d="M0 .78C-.95 .12-.8-.75-.1-.55L0-.42L.1-.55C.8-.75 .95 .12 0 .78Z"/>`;
+  }
+
+  // ---- the gifts: one item per region (the hole is Goldie)
+  const S = `stroke="${INK}" stroke-width=".07" stroke-linejoin="round"`;
+  const POT = `<path d="M-.48 .15H.48L.38 .9H-.38Z" fill="#d9784a" ${S}/><rect x="-.56" y=".05" width="1.12" height=".22" rx=".05" fill="#e88b5c" ${S}/>`;
+  const ART = {
+    candle: c => `<rect x="-.32" y="-.35" width=".64" height="1.15" rx=".08" fill="${c}" ${S}/><path d="M-.32-.18Q-.16-.02 0-.18T.32-.18" fill="none" stroke="#fff" stroke-width=".08" opacity=".7"/><path d="M0-.35V-.5" stroke="${INK}" stroke-width=".06"/><path d="M0-1.08Q.27-.78 .15-.6Q0-.44-.15-.6Q-.27-.78 0-1.08Z" fill="#ffb530" stroke="#e26a1b" stroke-width=".05"/><ellipse cy="-.66" rx=".05" ry=".1" fill="#fff3b0"/>`,
+    chocolate: c => `<rect x="-.48" y="-.85" width=".96" height="1.65" rx=".07" fill="#6b3e22" ${S}/><path d="M-.48-.45H.48M-.48-.05H.48M0-.85V0" stroke="#4a2814" stroke-width=".06"/><path d="M-.48 .05L-.36-.05L-.24 .05L-.12-.05L0 .05L.12-.05L.24 .05L.36-.05L.48 .05V.8H-.48Z" fill="${c}" ${S}/><path d="M-.3 .45Q-.15 .3 0 .45T.3 .45" fill="none" stroke="#fff" stroke-width=".07"/>`,
+    balloon: c => `<path d="M0 .45Q.12 .7-.06 .9Q.1 1.05 0 1.15" fill="none" stroke="${INK}" stroke-width=".04"/><ellipse cy="-.25" rx=".62" ry=".72" fill="${c}" ${S}/><path d="M-.09 .52L0 .44L.09 .52Z" fill="${c}" ${S}/><ellipse cx="-.25" cy="-.55" rx=".1" ry=".2" fill="#fff" opacity=".6" transform="rotate(25 -.25 -.55)"/>`,
+    sweater: c => `<path d="M-.35-.75Q0-.62 .35-.75L.95-.38L.74 .02L.5-.13V.8H-.5V-.13L-.74 .02L-.95-.38Z" fill="${c}" ${S}/><path d="M-.35-.75Q0-.42 .35-.75M-.5 .62H.5" fill="none" stroke="${INK}" stroke-width=".06"/><path d="M-.5 .15H.5" stroke="#fff" stroke-width=".14" opacity=".8"/><path d="M-.5 .32H.5" stroke="#fff" stroke-width=".06" stroke-dasharray=".1 .08" opacity=".8"/>`,
+    book: c => `<path d="M-.62 .72H.62V.88H-.55Z" fill="#fff6dd" ${S}/><rect x="-.62" y="-.8" width="1.24" height="1.52" rx=".08" fill="${c}" ${S}/><path d="M-.44-.8V.72" stroke="${INK}" stroke-width=".06"/><rect x="-.24" y="-.48" width=".66" height=".3" rx=".04" fill="#fff6dd"/><path d="M-.15-.33H.32" stroke="${INK}" stroke-width=".05"/>`,
+    mug: c => `<path d="M.45-.3Q.92-.3 .9 .1Q.87 .45 .45 .4" fill="none" stroke="${INK}" stroke-width=".22"/><path d="M.45-.3Q.92-.3 .9 .1Q.87 .45 .45 .4" fill="none" stroke="${c}" stroke-width=".1"/><path d="M-.62-.5H.5V.55Q.5 .82 .25 .82H-.37Q-.62 .82-.62 .55Z" fill="${c}" ${S}/><ellipse cx="-.06" cy="-.5" rx=".56" ry=".1" fill="#7a4a2a" ${S}/><path d="M-.2-.7Q-.36-.86-.2-1.02M.1-.7Q-.06-.86 .1-1.02" fill="none" stroke="#b8a89a" stroke-width=".06" stroke-linecap="round"/><path d="M-.06 .4C-.42 .14-.24-.14-.06 .02C.12-.14 .3 .14-.06 .4Z" fill="#fff" opacity=".85"/>`,
+    plant: c => `<g fill="${c}" ${S}><ellipse cx="-.3" cy="-.35" rx=".19" ry=".46" transform="rotate(-38 -.3 -.35)"/><ellipse cx=".3" cy="-.35" rx=".19" ry=".46" transform="rotate(38 .3 -.35)"/><ellipse cy="-.5" rx=".19" ry=".52"/></g><path d="M0-.1V-.85M-.3-.35L-.05-.1M.3-.35L.05-.1" stroke="${INK}" stroke-width=".04" opacity=".5"/>` + POT,
+    cactus: c => `<g fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M-.2-.2H-.48V-.55M.2-.35H.48V-.7" stroke="${INK}" stroke-width=".32"/><path d="M-.2-.2H-.48V-.55M.2-.35H.48V-.7" stroke="${c}" stroke-width=".18"/></g><path d="M-.24 .1V-.68Q-.24-.94 0-.94Q.24-.94 .24-.68V.1Z" fill="${c}" ${S}/><g fill="#fff"><circle cx="-.1" cy="-.6" r=".035"/><circle cx=".1" cy="-.4" r=".035"/><circle cx="-.1" cy="-.2" r=".035"/><circle cx=".1" cy="-.05" r=".035"/></g><circle cy="-.98" r=".13" fill="#ff7fb0" ${S}/>` + POT,
+    teddy: c => `<g fill="${c}" ${S}><ellipse cy=".45" rx=".55" ry=".45"/><circle cx="-.4" cy="-.72" r=".2"/><circle cx=".4" cy="-.72" r=".2"/><circle cy="-.3" r=".5"/></g><ellipse cy="-.14" rx=".22" ry=".16" fill="#f3dfc4"/><ellipse cy="-.2" rx=".08" ry=".06" fill="${INK}"/><g fill="${INK}"><circle cx="-.18" cy="-.38" r=".06"/><circle cx=".18" cy="-.38" r=".06"/></g><path d="M-.12 .1L0 .22L.12 .1L0-.02Z M0 .1" fill="#e8384f"/><ellipse cy=".55" rx=".28" ry=".22" fill="#f3dfc4" opacity=".8"/>`,
+    cheese: c => `<path d="M-.82 .5H.82V-.12L-.82 .26Z" fill="${c}" ${S}/><path d="M-.82 .26L.82-.12L.5-.48Z" fill="#fff0a8" ${S}/><g fill="#d9a21e"><circle cx="-.4" cy=".38" r=".1"/><circle cx=".2" cy=".2" r=".13"/><circle cx=".55" cy=".36" r=".07"/><ellipse cx=".3" cy="-.18" rx=".09" ry=".04"/></g><path d="M-.7-.45Q-.6-.6-.7-.75M-.45-.55Q-.35-.7-.45-.85" fill="none" stroke="#a7b46a" stroke-width=".05" stroke-linecap="round"/>`,
+    perfume: c => `<rect x="-.12" y="-.62" width=".24" height=".3" fill="#e9d7b0" ${S}/><rect x="-.2" y="-.82" width=".4" height=".24" rx=".06" fill="#d8a93c" ${S}/><rect x="-.52" y="-.36" width="1.04" height="1.12" rx=".26" fill="${c}" ${S}/><rect x="-.3" y="-.1" width=".6" height=".4" rx=".05" fill="#fff" opacity=".75"/><path d="M-.38-.18V.55" stroke="#fff" stroke-width=".07" opacity=".6" stroke-linecap="round"/><g fill="#b6a6ff" opacity=".8"><circle cx=".5" cy="-.8" r=".06"/><circle cx=".66" cy="-.66" r=".05"/><circle cx=".72" cy="-.9" r=".04"/></g>`,
+    duck: c => `<path d="M-.78 .12Q-.82 .74 0 .74Q.76 .74 .82 .14Q.84-.06 .58 0Q.32 .06 .1 0Q-.4-.1-.78 .12Z" fill="${c}" ${S}/><circle cx="-.25" cy="-.35" r=".38" fill="${c}" ${S}/><path d="M-.6-.3Q-.95-.32-.92-.18Q-.78-.12-.58-.2Z" fill="#f39a2b" stroke="#b5641a" stroke-width=".05"/><circle cx="-.3" cy="-.44" r=".06" fill="${INK}"/><path d="M0 .3Q.25 .45 .45 .25" fill="none" stroke="#d1a81f" stroke-width=".06" stroke-linecap="round"/>`,
+    socks: c => `<g ${S}><path d="M-.05-.85H.35V.2L.62 .45Q.75 .62 .58 .76H.05Q-.05 .76-.05 .55Z" fill="${c}"/><path d="M-.05-.85H.35V-.65H-.05Z" fill="#fff"/></g><g ${S} transform="translate(-.42 .08) rotate(-8)"><path d="M-.05-.85H.35V.2L.62 .45Q.75 .62 .58 .76H.05Q-.05 .76-.05 .55Z" fill="${c}"/><path d="M-.05-.85H.35V-.65H-.05Z" fill="#fff"/><path d="M-.05-.3H.35M-.05-.1H.35" stroke="#fff" stroke-width=".08"/></g>`,
+    clock: c => `<path d="M-.42.62L-.58.88M.42.62L.58.88" stroke="${INK}" stroke-width=".1" stroke-linecap="round"/><g fill="${c}" ${S}><circle cx="-.48" cy="-.62" r=".24"/><circle cx=".48" cy="-.62" r=".24"/><circle cy=".05" r=".66"/></g><circle cy=".05" r=".5" fill="#fffaf0" ${S}/><path d="M0 .05V-.3M0 .05L.24 .18" stroke="${INK}" stroke-width=".07" stroke-linecap="round"/><circle cy=".05" r=".05" fill="${INK}"/>`,
+    yarn: c => `<path d="M.45 .5Q.9 .6 .7 .85Q.5 1 .9 1.05" fill="none" stroke="${c}" stroke-width=".06"/><circle r=".66" fill="${c}" ${S}/><path d="M-.6-.25Q0-.1 .45-.5M-.65 .1Q0 .25 .62-.25M-.45 .45Q.1 .45 .6 .1M-.2-.62Q-.05 0 .25 .62" fill="none" stroke="${INK}" stroke-width=".045" opacity=".45"/><path d="M-.8-.75L.35.35M-.55-.85L.55.15" stroke="#c9a46b" stroke-width=".09" stroke-linecap="round"/><g fill="#d8484a"><circle cx="-.8" cy="-.75" r=".08"/><circle cx="-.55" cy="-.85" r=".08"/></g>`,
+    jam: c => `<rect x="-.5" y="-.42" width="1" height="1.22" rx=".18" fill="${c}" ${S}/><rect x="-.3" y="0" width=".6" height=".4" rx=".05" fill="#fff6dd"/><path d="M-.62-.42Q-.66-.75-.5-.82H.5Q.66-.75.62-.42Q0-.3-.62-.42Z" fill="#fff" ${S}/><g fill="#e05a4f"><circle cx="-.35" cy="-.62" r=".06"/><circle cx="-.1" cy="-.7" r=".06"/><circle cx=".15" cy="-.62" r=".06"/><circle cx=".4" cy="-.7" r=".06"/><circle cx="-.22" cy="-.5" r=".06"/><circle cx=".28" cy="-.5" r=".06"/></g><path d="M-.55-.45H.55" stroke="#c99b53" stroke-width=".07"/><path d="M-.32-.3V.6" stroke="#fff" stroke-width=".07" opacity=".45" stroke-linecap="round"/>`,
+    drum: c => `<path d="M-.4-.95L.1-.35M.45-.98L-.05-.38" stroke="#c9a46b" stroke-width=".09" stroke-linecap="round"/><path d="M-.7-.2V.55Q0 .9 .7 .55V-.2Z" fill="${c}" ${S}/><path d="M-.7-.05L-.35.6L0-.05L.35.62L.7-.05" fill="none" stroke="#fff4d6" stroke-width=".07"/><ellipse cy="-.2" rx=".7" ry=".24" fill="#fff4e0" ${S}/>`,
+    soap: c => `<rect x="-.72" y="-.28" width="1.44" height=".86" rx=".3" fill="${c}" ${S}/><path d="M-.5-.05Q0-.18 .5-.05" fill="none" stroke="#fff" stroke-width=".08" opacity=".7" stroke-linecap="round"/><g fill="#fff" fill-opacity=".55" stroke="#8bbccc" stroke-width=".04"><circle cx="-.35" cy="-.6" r=".18"/><circle cx=".15" cy="-.72" r=".12"/><circle cx=".45" cy="-.5" r=".2"/></g>`,
+    cupcake: c => `<path d="M-.55 .1H.55L.38 .85H-.38Z" fill="#f4d06f" ${S}/><path d="M-.3 .1L-.22 .85M0 .1V.85M.3 .1L.22 .85" stroke="#c99b2a" stroke-width=".05"/><path d="M-.62 .12Q-.8-.15-.5-.28Q-.55-.6-.15-.58Q0-.85 .2-.6Q.6-.6 .52-.28Q.82-.15 .62 .12Z" fill="${c}" ${S}/><circle cy="-.75" r=".15" fill="#e8384f" ${S}/><g stroke-width=".06" stroke-linecap="round"><path d="M-.3-.2l.08-.04M.1-.32l.08.04M.32-.08l.06-.06" stroke="#5aa9e6"/><path d="M-.05-.12l.08.02M-.42-.02l.06.05" stroke="#ffd34d"/></g>`,
+    paints: c => `<path d="M-.85 .1Q-.9-.65 0-.7Q.85-.72 .85-.05Q.85 .55 .25 .5Q-.05 .48 0 .7Q.02 .9-.3 .85Q-.82 .75-.85 .1Z" fill="${c}" ${S}/><circle cx="-.15" cy=".42" r=".11" fill="#e9d2b0" ${S}/><g ${S}><circle cx="-.5" cy="-.1" r=".13" fill="#e05a4f"/><circle cx="-.2" cy="-.42" r=".13" fill="#3f83cf"/><circle cx=".22" cy="-.42" r=".13" fill="#e6ac1f"/><circle cx=".52" cy="-.12" r=".13" fill="#4e9d4a"/></g><path d="M.9-.95L.3.05" stroke="#c9a46b" stroke-width=".08" stroke-linecap="round"/><path d="M.34-.02L.24.18" stroke="#e05a4f" stroke-width=".12" stroke-linecap="round"/>`,
+    teapot: c => `<path d="M.55-.05Q.95-.2 .95-.55" fill="none" stroke="${INK}" stroke-width=".2" stroke-linecap="round"/><path d="M.55-.05Q.95-.2 .95-.55" fill="none" stroke="${c}" stroke-width=".1" stroke-linecap="round"/><path d="M-.6-.2Q-.98-.2-.92 .15Q-.88 .45-.6 .4" fill="none" stroke="${INK}" stroke-width=".16"/><ellipse cy=".18" rx=".66" ry=".56" fill="${c}" ${S}/><ellipse cy="-.36" rx=".36" ry=".1" fill="${c}" ${S}/><circle cy="-.52" r=".09" fill="${c}" ${S}/><path d="M-.5 .18Q0 .34 .5 .18" fill="none" stroke="#fff" stroke-width=".08" stroke-dasharray=".12 .1"/>`,
+  };
+  // [name, worry (said when the item you're holding clashes with it), art, colour, alt colour for repeats]
+  const ITEMS = [
+    ['Candle', 'too drafty!', 'candle', '#f6e3c3', '#cfe6f7'], ['Chocolate', 'I\'ll melt!', 'chocolate', '#8e44ad', '#2f8f6b'],
+    ['Balloon', 'eek, pop!', 'balloon', '#e8384f', '#5aa9e6'], ['Sweater', 'snags!', 'sweater', '#6fa8dc', '#c96a8a'],
+    ['Book', 'no spills!', 'book', '#3f7f6b', '#b0503a'], ['Mug', 'I\'ll chip!', 'mug', '#f2a65a', '#9bb7d4'],
+    ['Fern', 'no sun!', 'plant', '#5aa94e', '#8bc34a'], ['Cactus', 'ouch!', 'cactus', '#6fb35a', '#4f9a7a'],
+    ['Teddy', 'so scary!', 'teddy', '#b07a4f', '#e3b66c'], ['Cheese', 'who, me?', 'cheese', '#f4c542', '#f0a83a'],
+    ['Perfume', 'phew!', 'perfume', '#e88bb8', '#a99be8'], ['Ducky', 'squeak!', 'duck', '#ffd43b', '#ff9fc4'],
+    ['Socks', 'ew!', 'socks', '#e86a5a', '#7a8fd0'], ['Clock', 'tick tock!', 'clock', '#4aa3c9', '#e57a5a'],
+    ['Yarn', 'tangles!', 'yarn', '#b46ad1', '#e06a8b'], ['Jam', 'sticky!', 'jam', '#c8304a', '#e78a2a'],
+    ['Drum', 'too loud!', 'drum', '#e0573b', '#3f83cf'], ['Soap', 'slippy!', 'soap', '#9fd9e8', '#f6b6c1'],
+    ['Cupcake', 'squish!', 'cupcake', '#f7a8c8', '#c8e6a0'], ['Paints', 'messy!', 'paints', '#f2e1c0', '#d9c4a0'],
+    ['Teapot', 'careful!', 'teapot', '#6fc0a8', '#e8a0a8'],
+  ];
+  const FISH = `<path d="M-.55 0Q-.1-.45 .35-.1L.68-.36V.36L.35 .1Q-.1 .45-.55 0Z" fill="#f58a2c" stroke="#b5501a" stroke-width=".07" stroke-linejoin="round"/><circle cx="-.3" cy="-.06" r=".06" fill="${INK}"/>`;
+  const STICKER = `<g transform="translate(.66 .62) scale(.34)"><circle r="1" fill="#fff" stroke="#f58a2c" stroke-width=".16"/><g transform="scale(1.1)">${FISH}</g></g>`;
+  function goldieMarkup() { // the special present: a goldfish in a bowl with a ribbon round the neck
+    return `<ellipse cy=".86" rx=".55" ry=".12" fill="#5b3a29" opacity=".15"/><circle r=".82" fill="#d9f1fb" fill-opacity=".9" stroke="#7fb6cc" stroke-width=".07"/>` +
+      `<path d="M-.8-.1Q-.4-.2 0-.1T.8-.1A.82 .82 0 0 1-.8-.1Z" fill="#9ed6ee" opacity=".8"/><path d="M-.5 .62Q-.2 .5 0 .64T.5 .6" fill="none" stroke="#7ab06a" stroke-width=".07"/>` +
+      `<g transform="translate(.05 .22) scale(.72)">${FISH}</g><g fill="none" stroke="#fff" stroke-width=".05"><circle cx="-.35" cy=".05" r=".06"/><circle cx="-.42" cy="-.22" r=".04"/></g>` +
+      `<ellipse cy="-.68" rx=".48" ry=".12" fill="#eaf8fd" stroke="#7fb6cc" stroke-width=".06"/>` +
+      `<path d="M-.42-.56Q0-.46 .42-.56" fill="none" stroke="#e8384f" stroke-width=".1"/><g transform="translate(.38 -.56)"><path d="M0 0L-.2-.14V.14ZM0 0L.2-.14V.14Z" fill="#e8384f" stroke="#9c1c2e" stroke-width=".04" stroke-linejoin="round"/></g>` +
+      `<path d="M-.5-.2Q-.6 .1-.45 .35" fill="none" stroke="#fff" stroke-width=".07" opacity=".7" stroke-linecap="round"/>`;
+  }
+  function itemMarkup(v) { const a = A[v]; return ART[a.art](a.c); }
+
+  // ---- DOM layers
+  const defs = el('defs', {}, svg, `<radialGradient id="tb" cx="50%" cy="35%" r="75%"><stop offset="0" stop-color="#f1dcbc"/><stop offset="1" stop-color="#d9b88d"/></radialGradient>` +
+    `<filter id="sh" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="1.5" stdDeviation="1.3" flood-color="#5b3a29" flood-opacity=".3"/></filter>` +
+    `<filter id="sh2" x="-10%" y="-10%" width="120%" height="125%"><feDropShadow dx="0" dy="3" stdDeviation="2.5" flood-color="#5b3a29" flood-opacity=".3"/></filter>` +
+    BOX.map((B, k) => {
+      const m = k === 1 ? `<rect width="16" height="16" fill="${B.col}"/><path d="M-4 4L4-4M-4 20L20-4M12 20L20 12" stroke="${B.light}" stroke-width="4"/>`
+        : `<rect width="18" height="18" fill="${B.col}"/><g transform="translate(5 5) scale(3.2)">${motif(k, B.light, B.light)}</g><g transform="translate(14 14) scale(2.4)">${motif(k, B.light, B.light)}</g>`;
+      return `<pattern id="pp${k}" patternUnits="userSpaceOnUse" width="${k === 1 ? 16 : 18}" height="${k === 1 ? 16 : 18}">${m}</pattern>`;
+    }).join(''));
+  const gBg = el('g', {}, svg), gBoxes = el('g', {}, svg), gSigns = el('g', {}, svg), gTag = el('g', {}, svg);
+  const gIt = el('g', {}, svg), gLid = el('g', { 'pointer-events': 'none' }, svg), gTop = el('g', {}, svg), gFx = el('g', { 'pointer-events': 'none' }, svg);
+
+  const A = []; // items: { v, g, ring, nm, name, art, c, x, y, tw, slot }
+  let k = 0;
+  for (let v = 0; v < g.n; v++) {
+    if (v === hole) continue;
+    const it = ITEMS[k % ITEMS.length], rep = Math.floor(k / ITEMS.length);
+    const name = it[0] + (rep ? ' ' + (rep + 1) : ''), c = rep % 2 ? it[4] : it[3];
+    const G = el('g', { class: 'it' }, gIt);
+    A[v] = { v, g: G, name, worry: it[1], art: it[2], c, x: 0, y: 0, tw: null };
+    const wl = it[1].length * .3 + .45;
+    G.innerHTML = `<circle class="halo" r="1.1" fill="#fffbe8" fill-opacity=".6" stroke="#ffc928" stroke-width=".14"/><ellipse cy=".9" rx=".7" ry=".16" fill="${INK}" opacity=".16"/>` +
+      `<circle class="ring" r="1.12" fill="none" stroke-width=".16" stroke-dasharray=".35 .2"/>` +
+      `<g class="bob">${ART[it[2]](c)}${rimSet.has(v) ? STICKER : ''}</g>` +
+      `<text class="nm" y="1.34" text-anchor="middle" font-size=".42" font-weight="700" fill="${INK}" stroke="#fffaf3" stroke-width=".14" paint-order="stroke">${name}</text>` +
+      `<g class="worry" transform="translate(0 -1.35)"><rect x="${-wl / 2}" y="-.38" width="${wl}" height=".56" rx=".28" fill="#fff" stroke="#b5534a" stroke-width=".06"/><text y=".04" text-anchor="middle" font-size=".34" font-weight="700" fill="#a33b33">${it[1]}</text></g>`;
+    A[v].wl = wl;
+    A[v].ring = G.querySelector('.ring'); A[v].nm = G.querySelector('.nm');
+    k++;
+  }
+  const disp = g.col.slice(); // the box each item is SHOWN in (lags g.col while a cascade plays)
+
+  let L = null;
+  function counts() { const c = new Array(NC).fill(0); for (let v = 0; v < g.n; v++) if (v !== hole) c[disp[v]]++; return c; }
+
+  function drawStatic() {
+    const W = innerWidth, H = innerHeight;
+    svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+    L = layoutTable(W, H, NC, counts());
+    gBg.innerHTML = ''; gBoxes.innerHTML = '';
+    el('rect', { width: W, height: H, fill: 'url(#tb)' }, gBg);
+    // wood grain on the table
+    let grain = '';
+    for (let y = L.gh + 18; y < H; y += 26) grain += `M0 ${y}Q${W * .3} ${y + 5} ${W * .6} ${y - 2}T${W} ${y + 3}`;
+    el('path', { d: grain, fill: 'none', stroke: '#c79d6c', 'stroke-width': 1.2, opacity: .5 }, gBg);
+    // a strip of kraft paper with a ribbon edge for the tag area
+    el('rect', { width: W, height: L.gh, fill: '#f7ead6' }, gBg);
+    el('path', { d: `M0 ${L.gh}H${W}`, stroke: '#e8384f', 'stroke-width': 5 }, gBg);
+    el('path', { d: `M0 ${L.gh + 3.5}H${W}`, stroke: '#9c1c2e', 'stroke-width': 1.2, opacity: .5 }, gBg);
+    L.boxes.forEach(p => {
+      const B = BOX[p.k], G = el('g', { class: 'box' }, gBoxes), bw = p.bw, I = { x: p.x + bw, y: p.y + bw, w: p.w - 2 * bw, h: p.h - 2 * bw };
+      el('rect', { x: p.x, y: p.y, width: p.w, height: p.h, rx: 8, fill: `url(#pp${p.k})`, stroke: B.dark, 'stroke-width': 2, filter: 'url(#sh2)' }, G);
+      // open flaps hint: darker inside wall, then tissue paper
+      el('rect', { x: I.x, y: I.y, width: I.w, height: I.h, rx: 4, fill: B.dark, opacity: .35 }, G);
+      el('rect', { x: I.x + 2, y: I.y + 4, width: I.w - 4, height: I.h - 6, rx: 4, fill: B.tissue }, G);
+      // tissue crinkles, deterministic per box
+      let tex = '', seed = p.k * 97 + 13; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+      const nT = Math.round(I.w * I.h / 1400);
+      for (let i = 0; i < nT; i++) {
+        const x = I.x + 8 + rnd() * (I.w - 16), y = I.y + 10 + rnd() * (I.h - 18), a = rnd() * 6.28, s = 5 + rnd() * 6;
+        tex += `M${x.toFixed(1)} ${y.toFixed(1)}l${(Math.cos(a) * s).toFixed(1)} ${(Math.sin(a) * s).toFixed(1)}l${(Math.cos(a + 2) * s * .5).toFixed(1)} ${(Math.sin(a + 2) * s * .5).toFixed(1)}`;
+      }
+      el('path', { d: tex, fill: 'none', stroke: B.light, 'stroke-width': 1.3, 'stroke-linecap': 'round', 'stroke-linejoin': 'round', opacity: .9 }, G);
+      el('rect', { class: 'hi', x: I.x + 2, y: I.y + 4, width: I.w - 4, height: I.h - 6, rx: 4, fill: B.col, 'fill-opacity': .14, stroke: B.col, 'stroke-width': 4 }, G);
+      // ribbon tabs hanging over the two side walls
+      const rw = Math.max(6, bw * .9);
+      el('path', { d: `M${p.x + p.w / 2 - rw / 2} ${p.y + p.h}v${-bw}h${rw}v${bw}M${p.x} ${p.y + p.h / 2 - rw / 2}h${bw}v${rw}h${-bw}M${p.x + p.w} ${p.y + p.h / 2 - rw / 2}h${-bw}v${rw}h${bw}`, fill: B.rib, stroke: B.dark, 'stroke-width': 1 }, G);
+      p.el = G;
+    });
+    drawTag(); drawSigns(); place(true);
+    if (won && goldieSlot && !goldieTw) { setGoldie(goldieSlot[0], goldieSlot[1], L.r * 1.1); drawLid(1); }
+    else gLid.innerHTML = '';
+  }
+
+  // ---- the gift tag: Goldie + the five she can't share a box with
+  let gGoldie = null, goldiePos = null, portraits = [];
+  function drawTag() {
+    gTag.innerHTML = ''; gTop.innerHTML = ''; if (gGoldie) gGoldie.remove();
+    const gh = L.gh, W = L.W, lr = gh * 0.32, ax = gh * 0.48;
+    goldiePos = { x: ax, y: gh * 0.54, r: lr };
+    const bx = ax + lr * 1.6, bw = W - bx - 44, by = 7, bh = gh - 14;
+    // the tag: a luggage-tag shape with a punched hole and a string to Goldie's bow
+    const hx = bx + 11, hy = by + bh / 2;
+    el('path', { d: `M${ax + lr * .45} ${goldiePos.y - lr * .5}Q${(ax + hx) / 2} ${hy + bh * .4} ${hx} ${hy}`, fill: 'none', stroke: '#e8384f', 'stroke-width': 2 }, gTag);
+    el('path', { d: `M${bx + 14} ${by}H${bx + bw - 8}Q${bx + bw} ${by} ${bx + bw} ${by + 8}V${by + bh - 8}Q${bx + bw} ${by + bh} ${bx + bw - 8} ${by + bh}H${bx + 14}L${bx} ${by + bh - 14}V${by + 14}Z`,
+      fill: '#f3dfb8', stroke: '#b98b4e', 'stroke-width': 2, filter: 'url(#sh)' }, gTag);
+    el('circle', { cx: hx, cy: hy, r: 4, fill: '#f7ead6', stroke: '#b98b4e', 'stroke-width': 1.5 }, gTag);
+    const tx = bx + 22, tw = bw - 28;
+    const fs = Math.max(9, Math.min(15, bh * 0.17, tw / (goalText().length * .5)));
+    const msg = el('text', { x: tx + tw / 2, y: by + fs + 3, 'text-anchor': 'middle', 'font-size': fs, 'font-weight': 700, fill: INK }, gTag);
+    gTag.msg = msg; gTag.bw = tw; setMsg(won ? winText : goalText());
+    const n = g.rim.length, avail = bh - fs - 10, pr = Math.max(7, Math.min(avail * 0.36, tw / n * 0.36));
+    portraits = g.rim.map((v, i) => {
+      const cx = tx + tw * (i + 0.5) / n, cy = by + fs + 6 + avail / 2;
+      const G = el('g', { transform: `translate(${cx} ${cy})` }, gTag);
+      const disc = el('circle', { r: pr * 1.2, 'stroke-width': 2 }, G);
+      el('circle', { r: pr * .95, fill: '#fffaf3', opacity: .85 }, G);
+      el('g', { transform: `scale(${pr * 0.78})` }, G, itemMarkup(v));
+      const ico = el('g', { transform: `translate(${pr * 0.98} ${pr * 0.85}) scale(${pr * 0.4})` }, G);
+      return { v, disc, ico };
+    });
+    gGoldie = el('g', { id: 'goldie' }, won && goldieBox >= 0 && !goldieTw ? gIt : gTop, `<g class="bob">${goldieMarkup()}</g>`);
+    setGoldie(goldiePos.x, goldiePos.y, goldiePos.r);
+    if (won) gGoldie.classList.add('party');
+  }
+  let winText = '';
+  function goalText() { return L.W > 430 ? 'Goldie needs a box with none of these:' : L.W > 330 ? 'Goldie can\'t share a box with:' : 'Goldie won\'t go with:'; }
+  function setMsg(t) {
+    const m = gTag.msg; m.textContent = t; m.removeAttribute('textLength');
+    try { if (m.getComputedTextLength() > gTag.bw - 8) { m.setAttribute('textLength', gTag.bw - 8); m.setAttribute('lengthAdjust', 'spacingAndGlyphs'); } } catch (_) {}
+  }
+  function setGoldie(x, y, r) { gGoldie.setAttribute('transform', `translate(${x.toFixed(1)} ${y.toFixed(1)}) scale(${r.toFixed(2)})`); }
+
+  // ---- labels: the box's paper (top-left) and "room for Goldie?" (top-right); the tag swatches follow the five
+  function clashersIn(box) { return g.rim.filter(v => disp[v] === box).length; }
+  function drawSigns() {
+    gSigns.innerHTML = '';
+    L.boxes.forEach(p => {
+      const s = p.sign, B = BOX[p.k];
+      const showName = p.w > s * 5.4 + 22;
+      const w1 = showName ? s * 3.25 : s * 1.3;
+      const G = el('g', { transform: `translate(${p.x + 8} ${p.y - s * .4})`, filter: 'url(#sh)' }, gSigns);
+      el('path', { d: `M${s * .3} 0H${w1}V${s}H${s * .3}L0 ${s * .5}Z`, fill: '#fffaf3', stroke: B.dark, 'stroke-width': 1.6, 'stroke-linejoin': 'round' }, G);
+      el('g', { transform: `translate(${s * .72} ${s / 2}) scale(${s * .32})` }, G, motif(p.k, B.col, B.dark));
+      if (showName) { const t = el('text', { x: s * 1.2, y: s * .68, 'font-size': s * .5, 'font-weight': 700, fill: B.dark }, G); t.textContent = B.name; }
+      const ok = clashersIn(p.k) === 0;
+      const H = el('g', { transform: `translate(${p.x + p.w - 8 - s * 1.75} ${p.y - s * .4})`, filter: 'url(#sh)' }, gSigns);
+      el('rect', { width: s * 1.75, height: s, rx: s * .5, fill: ok ? '#e0f5cf' : '#fffaf3', stroke: ok ? '#3f8a35' : B.dark, 'stroke-width': 1.6 }, H);
+      el('g', { transform: `translate(${s * .48} ${s * .5}) scale(${s * .34})` }, H, goldieMarkup());
+      el('circle', { cx: s * 1.22, cy: s / 2, r: s * .32, fill: ok ? '#3f9a3a' : '#d8424f' }, H);
+      el('path', { d: ok ? `M${s * 1.06} ${s * .5}l${s * .12} ${s * .13}l${s * .2} ${-s * .26}` : `M${s * 1.1} ${s * .38}l${s * .24} ${s * .24}M${s * 1.34} ${s * .38}l${-s * .24} ${s * .24}`,
+        stroke: '#fff', 'stroke-width': Math.max(1.8, s * .1), fill: 'none', 'stroke-linecap': 'round' }, H);
+    });
+    portraits.forEach(P => {
+      const b = disp[P.v];
+      P.disc.setAttribute('fill', `url(#pp${b})`); P.disc.setAttribute('stroke', BOX[b].dark);
+      P.ico.innerHTML = `<circle r="1" fill="#fffaf3" stroke="${BOX[b].dark}" stroke-width=".14"/><g transform="scale(.62)">${motif(b, BOX[b].col, BOX[b].dark)}</g>`;
+    });
+  }
+
+  // ---- motion
+  const now = () => performance.now();
+  function tweenTo(a, x, y, dur, hop, delay) {
+    if (RM) { dur = Math.min(dur, 120); hop = 0; }
+    a.tw = { fx: a.x, fy: a.y, tx: x, ty: y, t0: now() + (delay || 0), dur, hop: hop || 0 };
+  }
+  function place(snap, hoppers) {
+    const c = counts().map((m, i) => m + (i === goldieBox ? 1 : 0));
+    L.r = layoutTable(L.W, L.H, NC, L.boxes.map((p, i) => Math.max(c[i], Math.ceil((g.n - 1) / NC) + 1))).r;
+    const fresh = layoutTable(L.W, L.H, NC, c);
+    L.boxes.forEach((p, i) => { p.cols = fresh.boxes[i].cols; });
+    for (let b = 0; b < NC; b++) {
+      const members = [];
+      for (let v = 0; v < g.n; v++) if (v !== hole && disp[v] === b) members.push(v);
+      const SL = slots(L.boxes[b], members.length + (b === goldieBox ? 1 : 0));
+      if (b === goldieBox) goldieSlot = SL[members.length];
+      members.forEach((v, i) => {
+        const a = A[v]; a.slot = SL[i];
+        if (v === held) return;
+        if (snap) { a.x = SL[i][0]; a.y = SL[i][1]; a.tw = null; }
+        else if (Math.hypot(a.x - SL[i][0], a.y - SL[i][1]) > .5) tweenTo(a, SL[i][0], SL[i][1], hoppers && hoppers.has(v) ? 420 : 300, hoppers && hoppers.has(v) ? L.r * 1.7 : 0);
+      });
+    }
+    A.forEach(a => { if (a) a.nm.style.display = L.r >= 15 ? '' : 'none'; });
+    svg.classList.toggle('talk', L.r >= 13);
+  }
+  function frame() {
+    const t = now();
+    A.forEach(a => {
+      if (!a) return;
+      let x = a.x, y = a.y, lift = 0, spin = 0;
+      if (a.tw && t >= a.tw.t0) {
+        const p = Math.min(1, (t - a.tw.t0) / a.tw.dur), e = p < .5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2;
+        x = a.x = a.tw.fx + (a.tw.tx - a.tw.fx) * e; y = a.y = a.tw.fy + (a.tw.ty - a.tw.fy) * e;
+        lift = a.tw.hop * Math.sin(Math.PI * p); spin = a.tw.hop ? Math.sin(Math.PI * 2 * p) * 14 * Math.sign(a.tw.tx - a.tw.fx || 1) : 0;
+        if (p >= 1) { a.tw = null; if (a.snap) { a.snap = 0; } }
+      }
+      const sc = L.r * (a.v === held ? 1.2 : 1);
+      a.g.setAttribute('transform', `translate(${x.toFixed(1)} ${(y - lift).toFixed(1)}) rotate(${spin.toFixed(1)}) scale(${sc.toFixed(2)})`);
+    });
+    if (goldieTw) {
+      const p = Math.min(1, (t - goldieTw.t0) / goldieTw.dur);
+      if (p >= 0) {
+        const hops = 3, hp = (p * hops) % 1;
+        setGoldie(goldieTw.fx + (goldieTw.tx - goldieTw.fx) * p, goldieTw.fy + (goldieTw.ty - goldieTw.fy) * p - (RM ? 0 : Math.abs(Math.sin(Math.PI * hp)) * goldieTw.h), goldieTw.fr + (goldieTw.tr - goldieTw.fr) * p);
+        if (p >= 1) { goldieTw = null; if (onGoldieDone) { const f = onGoldieDone; onGoldieDone = null; f(); } }
+      }
+    }
+    if (lidTw) {
+      const p = Math.min(1, (t - lidTw.t0) / lidTw.dur);
+      if (p >= 0) { drawLid(p); if (p >= 1) { const f = lidTw.done; lidTw = null; if (f) f(); } }
+    }
+    fx();
+    requestAnimationFrame(frame);
+  }
+
+  // the lid: drops onto the winning box, ribbon ties across, a bow pops up (p in 0..1)
+  function drawLid(p) {
+    gLid.innerHTML = '';
+    if (goldieBox < 0) return;
+    const P = L.boxes[goldieBox], B = BOX[goldieBox];
+    const drop = Math.min(1, p / .45), e = 1 - Math.pow(1 - drop, 3), bounce = drop >= 1 ? Math.sin(Math.min(1, (p - .45) / .2) * Math.PI) * 4 : 0;
+    const oy = -(1 - e) * (P.y + P.h + 20) - bounce, m = 4;
+    const G = el('g', { transform: `translate(0 ${oy.toFixed(1)})` }, gLid);
+    el('rect', { x: P.x - m, y: P.y - m, width: P.w + 2 * m, height: P.h + 2 * m, rx: 9, fill: `url(#pp${goldieBox})`, stroke: B.dark, 'stroke-width': 2.5, filter: 'url(#sh2)' }, G);
+    const tie = Math.max(0, Math.min(1, (p - .5) / .25)), rw = Math.max(10, Math.min(P.w, P.h) * .1);
+    if (tie > 0) {
+      el('rect', { x: P.cx - rw / 2, y: P.y - m, width: rw, height: (P.h + 2 * m) * tie, fill: B.rib, stroke: B.dark, 'stroke-width': 1 }, G);
+      el('rect', { x: P.x - m, y: P.cy - rw / 2, width: (P.w + 2 * m) * tie, height: rw, fill: B.rib, stroke: B.dark, 'stroke-width': 1 }, G);
+    }
+    const pop = Math.max(0, Math.min(1, (p - .72) / .28));
+    if (pop > 0) {
+      const s = rw * 1.9 * (pop < .7 ? pop / .7 * 1.2 : 1.2 - (pop - .7) / .3 * .2);
+      el('g', { transform: `translate(${P.cx} ${P.cy}) scale(${s.toFixed(2)})` }, G,
+        `<g fill="${B.rib}" stroke="${B.dark}" stroke-width=".07" stroke-linejoin="round"><path d="M0 0L-.6.95L-.35.95L-.2 1.15ZM0 0L.6.95L.35.95L.2 1.15Z"/>` +
+        `<path d="M0 0C-.4-.6-1.15-.55-1.05 0C-1.15.55-.4.6 0 0Z"/><path d="M0 0C.4-.6 1.15-.55 1.05 0C1.15.55 .4.6 0 0Z"/></g>` +
+        `<path d="M-.15-.05C-.4-.3-.75-.3-.8 0M.15-.05C.4-.3 .75-.3 .8 0" fill="none" stroke="${B.dark}" stroke-width=".05" opacity=".5"/>` +
+        `<circle r=".22" fill="${B.rib}" stroke="${B.dark}" stroke-width=".07"/>`);
+      const tg = el('g', { transform: `translate(${P.cx + rw * 1.6} ${P.cy + rw * 1.2}) rotate(14) scale(${(rw * .9 * Math.min(1, pop * 1.5)).toFixed(2)})` }, G);
+      tg.innerHTML = `<path d="M-.9-.45H.9V.45H-.9L-1.2 0Z" fill="#f3dfb8" stroke="#b98b4e" stroke-width=".07"/><g transform="translate(0 0) scale(.42)">${FISH}</g>`;
+    }
+  }
+
+  // speech puffs ("boing!", "meh") riding on an item
+  function puff(v, text, ms) {
+    const a = A[v]; const G = el('g', { class: 'puff', transform: 'translate(0 -1.3)' }, a.g);
+    const w = .36 * text.length + .5;
+    el('rect', { x: -w / 2, y: -.42, width: w, height: .62, rx: .3, fill: '#fff', stroke: '#b5534a', 'stroke-width': .06 }, G);
+    const t = el('text', { y: .05, 'text-anchor': 'middle', 'font-size': .44, 'font-weight': 700, fill: '#8e3a33' }, G); t.textContent = text;
+    setTimeout(() => G.remove(), RM ? ms * .6 : ms);
+  }
+
+  // confetti + ribbon curls
+  const parts = [];
+  function burst(x, y, n, cols) {
+    if (RM) n = Math.min(n, 10);
+    for (let i = 0; i < n; i++) {
+      const a = Math.random() * Math.PI * 2, sp = 1.5 + Math.random() * 3.5, c = cols[i % cols.length];
+      const d = i % 3 === 0 ? 'M0 2C-4-2-3-5 0-3C3-5 4-2 0 2Z' : i % 3 === 1 ? 'M-2.5-2.5h5v5h-5z' : 'M-4 0q2-3 4 0t4 0';
+      const e = el('path', { d, fill: i % 3 === 2 ? 'none' : c, stroke: i % 3 === 2 ? c : 'none', 'stroke-width': 2 }, gFx);
+      parts.push({ e, x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 3, r: Math.random() * 360, life: 1 });
+    }
+  }
+  function fx() {
+    for (let i = parts.length - 1; i >= 0; i--) {
+      const p = parts[i]; p.x += p.vx; p.y += p.vy; p.vy += .15; p.r += 6; p.life -= .012;
+      if (p.life <= 0) { p.e.remove(); parts.splice(i, 1); continue; }
+      p.e.setAttribute('transform', `translate(${p.x.toFixed(1)} ${p.y.toFixed(1)}) rotate(${p.r.toFixed(0)}) scale(${(1.4 * p.life + .4).toFixed(2)})`);
+      p.e.setAttribute('opacity', Math.min(1, p.life * 2).toFixed(2));
+    }
+  }
+
+  // ---- sound (only after the first gesture): paper rustles, cardboard thunks, a ribbon zip
+  let ac = null;
+  function tone(f, d, type, vol, slide, at) {
+    if (!ac) return;
+    const t = ac.currentTime + (at || 0), o = ac.createOscillator(), v = ac.createGain();
+    o.type = type || 'sine'; o.frequency.setValueAtTime(f, t); if (slide) o.frequency.exponentialRampToValueAtTime(slide, t + d);
+    v.gain.setValueAtTime(0, t); v.gain.linearRampToValueAtTime(vol || .12, t + .01); v.gain.exponentialRampToValueAtTime(.001, t + d);
+    o.connect(v).connect(ac.destination); o.start(t); o.stop(t + d + .02);
+  }
+  function rustle(d, vol, at, hp) {
+    if (!ac) return;
+    const t = ac.currentTime + (at || 0), len = Math.floor(ac.sampleRate * d), buf = ac.createBuffer(1, len, ac.sampleRate), ch = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) ch[i] = (Math.random() * 2 - 1) * (Math.random() < .3 ? 1 : .25) * (1 - i / len);
+    const s = ac.createBufferSource(), f = ac.createBiquadFilter(), v = ac.createGain();
+    s.buffer = buf; f.type = 'highpass'; f.frequency.value = hp || 2500; v.gain.value = vol || .08;
+    s.connect(f).connect(v).connect(ac.destination); s.start(t);
+  }
+  const sfx = {
+    pick: () => { rustle(.09, .07); tone(700, .06, 'sine', .06, 900); },
+    pack: () => { tone(180, .1, 'sine', .16, 110); rustle(.06, .05, 0, 1500); },
+    boing: () => tone(240, .22, 'triangle', .12, 520),
+    meh: () => { tone(330, .18, 'triangle', .1, 300); tone(300, .22, 'triangle', .1, 250, .2); },
+    drop: () => tone(300, .08, 'sine', .08, 240),
+    lid: () => { tone(140, .14, 'sine', .2, 90); rustle(.12, .08, 0, 1200); },
+    zip: () => tone(500, .3, 'sawtooth', .04, 1600),
+    win: () => [523, 659, 784, 1047, 1319].forEach((f, i) => tone(f, .25, 'triangle', .12, 0, i * .11)),
+  };
+
+  // ---- holding: clashing items wobble and fret, the would-be cascade lights up
+  let goldieBox = -1, goldieSlot = null, lidTw = null;
+  let held = null, sel = null, busy = false, won = false, goldieTw = null, onGoldieDone = null, hoverBox = null;
+  function clashes(v) { return g.adj[v].filter(w => w !== hole); }
+  function clearMarks() {
+    A.forEach(a => { if (a) a.g.classList.remove('grump', 'lit', 'held', 'sel'); });
+    L.boxes.forEach(p => p.el.classList.remove('hover'));
+    if (gGoldie) gGoldie.classList.remove('grump', 'hope');
+  }
+  function mark(u, B) {
+    clearMarks();
+    if (u == null) return;
+    A[u].g.classList.add(u === held ? 'held' : 'sel');
+    // clashing items wobble and fret; their worry bubbles are nudged to stay on screen and stagger when crowded
+    clashes(u).forEach((w, i) => {
+      const a = A[w], half = a.wl * L.r / 2, x = a.slot ? a.slot[0] : a.x;
+      const dx = Math.max(0, 4 + half - x) - Math.max(0, x + half - (L.W - 4));
+      a.g.classList.add('grump');
+      a.g.querySelector('.worry').setAttribute('transform', `translate(${(dx / L.r).toFixed(2)} ${i % 2 ? -1.3 : -1.95})`);
+    });
+    if (rimSet.has(u)) gGoldie.classList.add('grump');
+    const m = moveFor(g, u, B);
+    if (m) {
+      L.boxes[B].el.classList.add('hover');
+      m.K.vs.forEach(w => { if (w === u) return; A[w].g.classList.add('lit'); A[w].ring.setAttribute('stroke', BOX[g.col[w] === m.from ? m.to : m.from].col); });
+      if (!m.web && g.preview(m.K).won) { gGoldie.classList.remove('grump'); gGoldie.classList.add('hope'); }
+    }
+  }
+
+  // ---- the move: one gesture -> one g.swap(K)
+  function doMove(u, B) {
+    const m = moveFor(g, u, B);
+    clearMarks(); held = null; sel = null;
+    if (!m) { place(false); sfx.drop(); return; }
+    busy = true;
+    if (m.web) { // the two whole boxes would just trade contents: everything shuffles over and back, with a shrug
+      const P = L.boxes[m.from], Q = L.boxes[m.to];
+      place(false);
+      m.K.vs.forEach((w, i) => {
+        const a = A[w], other = g.col[w] === m.from ? Q : P;
+        const tx = a.slot[0] + (other.cx - a.slot[0]) * .22, ty = a.slot[1] + (other.cy - a.slot[1]) * .22;
+        setTimeout(() => { tweenTo(a, tx, ty, 380, L.r * .4); }, 260 + i * 15);
+        setTimeout(() => { tweenTo(a, a.slot[0], a.slot[1], 420, 0); }, 900 + i * 15);
+        if (i % 2 === 0 || m.K.vs.length < 6) setTimeout(() => puff(w, i % 3 ? 'meh' : 'same...?', 1000), 700);
+      });
+      setTimeout(sfx.meh, 650);
+      setTimeout(() => { busy = false; }, 1400);
+      return;
+    }
+    g.swap(m.K);
+    const STEP = RM ? 60 : 300;
+    m.layers.forEach((layer, i) => setTimeout(() => {
+      layer.forEach(w => { disp[w] = g.col[w]; });
+      place(false, new Set(layer));
+      drawSigns();
+      setTimeout(sfx.pack, RM ? 60 : 380);
+      if (i > 0) { sfx.boing(); layer.forEach(w => puff(w, 'boing!', 800)); }
+      else sfx.pick();
+    }, i * STEP));
+    setTimeout(() => { busy = false; if (g.won()) win(); }, m.layers.length * STEP + 420);
+  }
+
+  function win() {
+    won = true; busy = true;
+    const F = g.free(), p = L.boxes[F];
+    winText = 'Goldie fits in ' + BOX[F].name + '!';
+    setMsg(winText);
+    gGoldie.classList.add('party');
+    goldieBox = F; place(false);
+    goldieTw = { fx: goldiePos.x, fy: goldiePos.y, fr: goldiePos.r, tx: goldieSlot[0], ty: goldieSlot[1], tr: L.r * 1.1, t0: now(), dur: RM ? 200 : 1300, h: Math.max(16, L.gh * .3) };
+    onGoldieDone = () => {
+      gIt.appendChild(gGoldie); // packed: from now on the lid goes over her
+      sfx.lid(); setTimeout(sfx.zip, RM ? 0 : 500);
+      lidTw = { t0: now() + 150, dur: RM ? 250 : 1400, done: () => {
+        sfx.win();
+        burst(p.cx, p.cy, 50, [BOX[F].col, BOX[F].rib, '#ffffff', '#ff7fa8', '#ffd84a']);
+        A.forEach(a => { if (a && disp[a.v] !== F) a.g.classList.add('party'); });
+        setTimeout(() => { winText = 'Wrapped! Tap to pack again'; setMsg(winText); busy = false; }, 700);
+      } };
+    };
+  }
+
+  function restart() {
+    won = false; goldieTw = null; onGoldieDone = null; lidTw = null; busy = false; goldieBox = -1; gLid.innerHTML = '';
+    A.forEach(a => { if (a) a.g.classList.remove('party'); });
+    setMsg(goalText());
+    gGoldie.classList.remove('party'); gTop.appendChild(gGoldie);
+    setGoldie(goldiePos.x, goldiePos.y, goldiePos.r);
+    g.reset();
+  }
+
+  // undo / reset (and any other outside change): everything goes back to the box it is really in
+  g.on((_, info) => {
+    if (info.type === 'swap') return;
+    const moved = new Set();
+    for (let v = 0; v < g.n; v++) if (v !== hole && disp[v] !== g.col[v]) { disp[v] = g.col[v]; moved.add(v); }
+    clearMarks(); held = sel = null;
+    place(false, moved); drawSigns();
+    if (moved.size) sfx.pack();
+  });
+
+  // ---- input (pointer events: drag, swipe or flick; or tap an item then tap a box)
+  let down = null;
+  function pt(e) { const b = svg.getBoundingClientRect(); return [e.clientX - b.left, e.clientY - b.top]; }
+  function itemAt(x, y) {
+    let best = null, bd = Math.max(L.r * 1.3, 24);
+    A.forEach(a => { if (!a) return; const d = Math.hypot(a.x - x, a.y - y); if (d < bd) { bd = d; best = a.v; } });
+    return best;
+  }
+  svg.addEventListener('pointerdown', e => {
+    if (!ac) { try { ac = new (window.AudioContext || window.webkitAudioContext)(); } catch (_) { ac = null; } }
+    else if (ac.state === 'suspended') ac.resume();
+    if (won && !busy) { restart(); return; }
+    if (busy) return;
+    const [x, y] = pt(e), u = itemAt(x, y);
+    if (u == null) {
+      if (sel != null) { const B = boxFor(L, x, y, null, 0, 0); if (B != null && B !== disp[sel]) { doMove(sel, B); return; } }
+      sel = null; clearMarks(); return;
+    }
+    try { svg.setPointerCapture(e.pointerId); } catch (_) {}
+    down = { u, x0: x, y0: y, moved: false, hist: [[x, y, now()]], wasSel: sel === u };
+    held = u; sel = null; A[u].tw = null; sfx.pick(); gIt.appendChild(A[u].g);
+    mark(u, null);
+  });
+  svg.addEventListener('pointermove', e => {
+    if (!down) return;
+    const [x, y] = pt(e), a = A[down.u];
+    if (!down.moved && Math.hypot(x - down.x0, y - down.y0) > 8) down.moved = true;
+    if (!down.moved) return;
+    a.x = x; a.y = y - L.r * .35;
+    down.hist.push([x, y, now()]); if (down.hist.length > 6) down.hist.shift();
+    const B = boxFor(L, x, y, disp[down.u], x - down.x0, y - down.y0);
+    if (B !== hoverBox) { hoverBox = B; mark(down.u, B); }
+  });
+  function release(e, cancel) {
+    if (!down) return;
+    const d = down; down = null; hoverBox = null;
+    const [x, y] = pt(e);
+    if (cancel) { held = null; clearMarks(); place(false); return; }
+    if (!d.moved) { // a tap: select (show what it clashes with), then tap a box to pack it there
+      held = null;
+      if (d.wasSel) { sel = null; clearMarks(); } else { sel = d.u; mark(d.u, null); }
+      return;
+    }
+    // released over another box: that box. Released in its own box: a flick (projected a little along its speed)
+    // or a clear swipe direction can still name a neighbouring box.
+    const from = disp[d.u];
+    let B = boxFor(L, x, y, from, x - d.x0, y - d.y0);
+    if (B === from) {
+      const h = d.hist, h0 = h[0], dt = Math.max(30, h[h.length - 1][2] - h0[2]);
+      let px = (x - h0[0]) / dt * 140, py = (y - h0[1]) / dt * 140; const pl = Math.hypot(px, py), cap = Math.max(60, L.r * 3);
+      if (pl > cap) { px *= cap / pl; py *= cap / pl; }
+      B = boxFor(L, x + px, y + py, from, x - d.x0 + px, y - d.y0 + py);
+    }
+    doMove(d.u, B);
+  }
+  svg.addEventListener('pointerup', e => release(e, false));
+  svg.addEventListener('pointercancel', e => release(e, true));
+
+  document.getElementById('undo').onclick = () => { if (!busy && !won) g.undo(); };
+  document.getElementById('again').onclick = () => { if (!busy || won) restart(); };
+
+  let rt = 0;
+  addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(drawStatic, 60); });
+  drawStatic();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

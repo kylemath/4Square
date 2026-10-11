@@ -1,0 +1,2322 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>Fill the Hole</title>
+<meta name="description" content="A Kempe-chain puzzle game: trace two-colour chains of tiles to capture them, flip captured chains, and work outward-in until the rim of a degree-five hole uses only three colours. Twelve levels, from the icosahedron to the deepest colouring at the order-34 census record hole.">
+<meta name="theme-color" content="#0d1117">
+<style>
+  :root {
+    --bg: #0d1117; --bg2: #161b22; --bg3: #21262d; --line: #30363d;
+    --text: #e6edf3; --dim: #b1bac4; --faint: #7d8590;
+    --accent: #58a6ff; --purple: #bc8cff; --gold: #e3b341; --good: #3fb950; --bad: #f85149;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: radial-gradient(120% 80% at 50% 0%, #1b2130 0%, var(--bg) 60%); background-color: var(--bg);
+    color: var(--text); font-family: ui-rounded, "SF Pro Rounded", system-ui, -apple-system, "Segoe UI", sans-serif;
+    overflow: hidden; overscroll-behavior: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
+  }
+  button { font: inherit; color: inherit; touch-action: manipulation; cursor: pointer; }
+  .screen { position: fixed; inset: 0; display: none; flex-direction: column; }
+  .screen.on { display: flex; }
+
+  /* ---------- shared cartoon tiles (title, map, how-to) ---------- */
+  .tl .tb { fill: var(--c); } .tl .ts { fill: var(--d); } .tl .tp { fill: #07090d; } .tl .tr { fill: none; stroke: var(--n); }
+  .tl .ti, .tl .tq { display: none; }
+  .tl.e0 { --c: #ef5a3c; --d: #8e1c17; --n: #ff7a52; } .tl.e1 { --c: #3d8fe8; --d: #1b4f91; --n: #5ab4ff; }
+  .tl.e2 { --c: #e8c547; --d: #8a6510; --n: #ffe066; } .tl.e3 { --c: #4caf50; --d: #1a6b2a; --n: #5cff8a; }
+  .tl.eq { --c: #aab4bf; --d: #5a636e; --n: #e6edf3; } .tl.eg { --c: #8a929c; --d: #4b525b; --n: #b9c0c8; }
+  .tl.e0 .ti0, .tl.e1 .ti1, .tl.e3 .ti3 { display: inline; fill: var(--n); }
+  .tl.e2 .ti2 { display: inline; fill: none; stroke: var(--n); stroke-width: 2.4; stroke-linecap: round; }
+  .tl.eq .tq { display: inline; }
+  .tl .tin { transform-box: fill-box; transform-origin: center; }
+  .tl.lit .tr { stroke: #fff; } .tl.lit .tin { filter: drop-shadow(0 0 6px #fff) drop-shadow(0 0 3px var(--n)); }
+  .tl.warn .tr { stroke: #ff2d55; } .tl.warn .tin { filter: drop-shadow(0 0 7px #ff2d55); }
+  .tl.bob .tin { animation: tbob 1.8s ease-in-out infinite alternate; }
+  @keyframes tbob { to { transform: translateY(-5px); } }
+  .tl.glow .tin { filter: drop-shadow(0 0 10px var(--n)) drop-shadow(0 0 4px #fff); }
+  .chunky { font-weight: 900; paint-order: stroke fill; stroke: #1c1640; stroke-linejoin: round; }
+
+  /* chunky 3D buttons */
+  .btn3d { border: 0; border-radius: 22px; font-weight: 900; color: #fff; letter-spacing: .03em; box-shadow: 0 6px 0 var(--sh), 0 12px 22px rgba(0,0,0,.25); transition: transform .08s, box-shadow .08s; }
+  .btn3d:active { transform: translateY(5px); box-shadow: 0 1px 0 var(--sh), 0 4px 10px rgba(0,0,0,.2); }
+  .btn3d.green { --sh: #1d7a2c; background: linear-gradient(180deg, #8af574, #2fbf4a); text-shadow: 0 3px 0 rgba(0,0,0,.22); }
+  .btn3d.yellow { --sh: #b06a00; background: linear-gradient(180deg, #ffe066, #ffab1a); color: #4a2a00; }
+  .btn3d.white { --sh: #8fa6c4; background: #fff; color: #1c1640; }
+  .btn3d:focus-visible, .mnode:focus-visible, .htdots button:focus-visible { outline: 3px solid #fff; outline-offset: 3px; }
+  .badge { display: inline-flex; align-items: center; gap: 10px; background: rgba(18,22,70,.55); border: 3px solid #fff; border-radius: 999px; padding: 5px 14px; font-weight: 900; color: #fff; font-size: 1.05rem; box-shadow: 0 4px 0 rgba(0,0,0,.2); white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .badge .s { color: #ffd84a; } .badge .p { color: #aef0ff; }
+
+  /* ---------- title screen ---------- */
+  #title { align-items: center; overflow: hidden; background: linear-gradient(180deg, #5fd0ff 0%, #3aa6f0 48%, #2a7fdc 100%); padding: max(12px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom)); }
+  #title .sky { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+  .cloud { position: absolute; left: 0; width: 86px; height: 26px; background: #fff; border-radius: 999px; opacity: .85; animation: drift 38s linear infinite; }
+  .cloud::before, .cloud::after { content: ""; position: absolute; background: #fff; border-radius: 50%; }
+  .cloud::before { width: 38px; height: 38px; left: 12px; top: -18px; } .cloud::after { width: 28px; height: 28px; left: 42px; top: -12px; }
+  @keyframes drift { from { transform: translateX(-120px); } to { transform: translateX(calc(100vw + 40px)); } }
+  #title .waves { position: absolute; left: 0; right: 0; bottom: 0; height: 26%; pointer-events: none; }
+  #title .waves svg { width: 100%; height: 100%; display: block; }
+  .tcol { position: relative; z-index: 1; width: 100%; max-width: 440px; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: space-between; gap: 6px; }
+  .ttop { width: 100%; display: flex; justify-content: flex-end; }
+  .logo { margin: 0; text-align: center; line-height: .86; font-weight: 900; color: #fff; }
+  .logo .l1, .logo .l2 { display: block; white-space: nowrap; }
+  .logo .l1 { font-size: clamp(2.2rem, 12vw, 3.3rem); }
+  .logo .l2 { font-size: clamp(4.6rem, 27vw, 7rem); letter-spacing: .01em; }
+  .logo .ch { display: inline-block; text-shadow: 4px 0 #1c1640, -4px 0 #1c1640, 0 4px #1c1640, 0 -4px #1c1640, 3px 3px #1c1640, -3px 3px #1c1640, 3px -3px #1c1640, -3px -3px #1c1640, 0 9px 0 #1c1640, 0 14px 20px rgba(0,0,0,.3); animation: hop 2.6s ease-in-out infinite; }
+  .logo .l1 .ch { text-shadow: 3px 0 #1c1640, -3px 0 #1c1640, 0 3px #1c1640, 0 -3px #1c1640, 2px 2px #1c1640, -2px 2px #1c1640, 2px -2px #1c1640, -2px -2px #1c1640, 0 6px 0 #1c1640; }
+  @keyframes hop { 0%, 55%, 100% { transform: translateY(0) rotate(var(--r, 0deg)); } 25% { transform: translateY(-12px) rotate(calc(var(--r, 0deg) * -1)) scale(1.06); } }
+  #tDemo { width: min(86vw, 360px); flex: 1 1 auto; min-height: 150px; max-height: 300px; overflow: visible; }
+  .tbtns { display: flex; flex-direction: column; align-items: center; gap: 14px; width: 100%; padding-bottom: 6px; }
+  #btnPlay { font-size: 2.1rem; width: min(78vw, 300px); padding: 12px 0; animation: breathe2 1.8s ease-in-out infinite; }
+  @keyframes breathe2 { 50% { transform: scale(1.05); } }
+  #btnHowTitle { font-size: 1.1rem; padding: 11px 24px; }
+  .tfoot { font-size: .72rem; color: rgba(255,255,255,.8); } .tfoot a { color: #fff; }
+
+  /* ---------- level map (saga) ---------- */
+  #menu { overflow-y: auto; overflow-x: hidden; background: #2a9fd8; padding: 0; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+  .mbar { position: fixed; left: 0; right: 0; top: 0; z-index: 3; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: max(10px, env(safe-area-inset-top)) 12px 14px; background: linear-gradient(180deg, rgba(14,52,110,.85) 0%, rgba(14,52,110,.55) 70%, rgba(14,52,110,0) 100%); pointer-events: none; }
+  .mbar > * { pointer-events: auto; }
+  .rbtn { width: 48px; height: 48px; border-radius: 16px; font-size: 1.35rem; display: grid; place-items: center; padding: 0; }
+  #saga { position: relative; width: 100%; max-width: 560px; margin: 0 auto; flex: none; }
+  #saga > svg { display: block; width: 100%; height: auto; }
+  .mnode { position: absolute; width: 70px; height: 70px; transform: translate(-50%, -50%); background: none; border: 0; padding: 0; border-radius: 50%; }
+  .mnode > svg { width: 100%; height: 100%; overflow: visible; display: block; transition: transform .1s; }
+  .mnode:active > svg { transform: scale(.9); }
+  .mnode .mst { position: absolute; left: 50%; top: 88%; transform: translateX(-50%); background: #1c1640; color: #ffd84a; border: 2px solid #fff; border-radius: 999px; padding: 0 7px 1px; font-size: .82rem; letter-spacing: 1px; white-space: nowrap; line-height: 1.35; }
+  .mnode .mst i { color: #5f6390; font-style: normal; }
+  .mnode .mtag { position: absolute; left: 50%; top: 90%; transform: translateX(-50%); background: #4b525b; color: #e6edf3; border: 2px solid #c9d1d9; border-radius: 999px; padding: 0 8px; font-size: .78rem; font-weight: 900; white-space: nowrap; }
+  .mnode.st-locked > svg { opacity: .92; }
+  .mnode .pulse { position: absolute; inset: -9px; border-radius: 50%; border: 4px solid #fff; animation: mpulse 1.4s ease-out infinite; pointer-events: none; }
+  .mnode .pulse.p2 { animation-delay: .7s; }
+  @keyframes mpulse { from { transform: scale(.75); opacity: 1; } to { transform: scale(1.4); opacity: 0; } }
+  .mnode .me { position: absolute; left: 50%; bottom: 74%; width: 46px; height: 56px; margin-left: -23px; animation: mbob .8s ease-in-out infinite alternate; pointer-events: none; }
+  .mnode .me svg { width: 100%; height: 100%; overflow: visible; }
+  @keyframes mbob { to { transform: translateY(-9px); } }
+  .mnode.boss > svg { filter: drop-shadow(0 0 10px #ff7a2a); }
+
+  /* ---------- how to play ---------- */
+  .howto { position: fixed; inset: 0; z-index: 20; display: none; flex-direction: column; color: #fff; background: radial-gradient(120% 80% at 50% 0%, #8a6cff 0%, #4a35c4 50%, #251a7a 100%); padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); }
+  .howto.on { display: flex; animation: cardin .3s ease-out; }
+  .hthead { display: flex; justify-content: space-between; align-items: center; padding: 12px 14px 0; }
+  .htk { font-weight: 900; letter-spacing: .1em; text-transform: uppercase; font-size: .8rem; opacity: .85; }
+  .htskip { border: 0; background: rgba(255,255,255,.2); color: #fff; border-radius: 999px; padding: 9px 16px; font-weight: 900; font-size: .95rem; }
+  .htview { flex: 1; min-height: 0; overflow: hidden; display: flex; }
+  .httrack { flex: 1; min-width: 0; display: flex; touch-action: pan-y; transition: transform .38s cubic-bezier(.3, 1.2, .5, 1); }
+  .htpage { flex: 0 0 100%; min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 6px 18px; text-align: center; }
+  .htnum { width: 42px; height: 42px; border-radius: 50%; background: #ffd84a; color: #4a2a00; font-weight: 900; display: grid; place-items: center; font-size: 1.25rem; box-shadow: 0 4px 0 #b06a00; flex: none; }
+  .htpage h2 { margin: 0; font-size: clamp(1.9rem, 9vw, 2.5rem); font-weight: 900; line-height: 1; text-shadow: 3px 0 #1c1640, -3px 0 #1c1640, 0 3px #1c1640, 0 -3px #1c1640, 2px 2px #1c1640, -2px 2px #1c1640, 2px -2px #1c1640, -2px -2px #1c1640, 0 6px 0 #1c1640; }
+  .htdemo { width: min(100%, 420px); aspect-ratio: 300 / 260; max-height: 48vh; flex: 0 1 auto; border-radius: 28px; border: 4px solid #fff; overflow: hidden; background: radial-gradient(circle at 50% 42%, #3bb4ec, #1a6ea8); box-shadow: 0 8px 0 rgba(0,0,0,.2); }
+  .htdemo svg { width: 100%; height: 100%; display: block; }
+  .htpage p { margin: 4px 0 0; font-size: clamp(1.15rem, 5.4vw, 1.4rem); font-weight: 800; line-height: 1.3; max-width: 21em; }
+  .htfoot { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 16px 18px; }
+  .htdots { display: flex; gap: 8px; align-items: center; }
+  .htdots button { width: 14px; height: 14px; border-radius: 7px; border: 0; padding: 0; background: rgba(255,255,255,.35); transition: width .2s, background .2s; }
+  .htdots button.on { background: #ffd84a; width: 30px; }
+  #htBack[disabled] { opacity: .35; }
+  #htNext { font-size: 1.2rem; padding: 12px 20px; min-width: 120px; }
+  .hand { transition: transform .45s cubic-bezier(.45, 0, .3, 1), opacity .3s; }
+  .hand .hin { transform-box: fill-box; transform-origin: 50% 0; transition: transform .12s; }
+  .hand.press .hin { transform: scale(.82); }
+  .trail { fill: none; stroke: #fff; stroke-width: 6; stroke-linecap: round; stroke-linejoin: round; opacity: .85; filter: drop-shadow(0 0 4px #fff); }
+
+  /* level brief: friendlier */
+  #briefBadge { display: block; width: 86px; height: 86px; margin: -4px auto 2px; overflow: visible; }
+  #brief .card { text-align: center; }
+  #brief .card .meta { justify-content: center; }
+  #brief details { text-align: left; margin: 0 0 .9rem; color: var(--dim); font-size: .88rem; }
+  #brief details summary { cursor: pointer; font-weight: 800; color: var(--text); padding: 4px 0; }
+  #briefGo { --sh: #1d7a2c; background: linear-gradient(180deg, #8af574, #2fbf4a); box-shadow: 0 5px 0 #1d7a2c; font-size: 1.35rem; font-weight: 900; height: 58px; }
+  #briefGo:active { box-shadow: 0 1px 0 #1d7a2c; }
+  @media (prefers-reduced-motion: reduce) { .logo .ch, #btnPlay, .cloud, .tl.bob .tin, .mnode .pulse, .mnode .me, .howto.on, .hand, .hand .hin, .httrack { animation: none !important; transition: none !important; } }
+
+  /* ---------- game ---------- */
+  #game { padding-top: env(safe-area-inset-top); }
+  .hud { display: flex; align-items: center; gap: 8px; padding: 8px 12px 4px; }
+  .iconbtn { width: 40px; height: 40px; border-radius: 12px; border: 1px solid var(--line); background: var(--bg2); font-size: 1.05rem; display: grid; place-items: center; flex: none; }
+  .hud .title { flex: 1; min-width: 0; }
+  .hud .title .k { font-size: .7rem; text-transform: uppercase; letter-spacing: .12em; color: var(--faint); }
+  .hud .title .t { font-weight: 800; font-size: 1.05rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pill { border-radius: 999px; background: var(--bg2); border: 1px solid var(--line); padding: 4px 10px; font-size: .85rem; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .pill b { font-size: 1rem; }
+  .pill.score { background: linear-gradient(180deg, #ffd84a, #ffab1a); border: 0; color: #4a2a00; box-shadow: 0 3px 0 #b86e00, 0 0 18px rgba(255,190,40,.35); font-weight: 900; padding: 5px 14px; }
+  .pill.score b { color: #3a1d00; font-size: 1.1rem; }
+  .pill.score.bump { animation: bump .45s cubic-bezier(.3, 1.8, .5, 1); }
+  @keyframes bump { 40% { transform: scale(1.25) rotate(-3deg); } }
+  .stats { display: flex; gap: 6px; padding: 2px 12px; flex-wrap: wrap; align-items: center; }
+  .chip { border-radius: 999px; padding: 3px 9px; font-size: .78rem; background: var(--bg2); border: 1px solid var(--line); color: var(--dim); white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .chip b { color: var(--text); }
+  .chip { border-radius: 999px; font-weight: 800; }
+  .chip.prog { display: inline-flex; align-items: center; gap: 6px; background: #1b2233; border-color: #3b4a6b; color: #cfe0ff; }
+  .chip .track { width: 52px; height: 9px; border-radius: 9px; background: #0c1220; overflow: hidden; box-shadow: inset 0 1px 2px rgba(0,0,0,.6); }
+  .chip .fill { display: block; height: 100%; width: 0; border-radius: 9px; background: linear-gradient(90deg, #ff5a36, #ffd640, #46ff7c, #38a0ff); transition: width .4s cubic-bezier(.3, 1.4, .5, 1); }
+  .chip.pips { display: inline-flex; align-items: center; gap: 4px; background: #1b2233; border-color: #3b4a6b; color: #cfe0ff; }
+  .pip { width: 10px; height: 10px; border-radius: 50%; background: #0c1220; box-shadow: inset 0 0 0 2px #46ff7c; }
+  .pip.on { background: #46ff7c; box-shadow: 0 0 8px #46ff7c; }
+  .pip.over { background: #ff8a3d; box-shadow: 0 0 8px #ff8a3d; }
+  .chip.charge { background: linear-gradient(180deg, #4dff8a, #22c55e); color: #05300f; border: 0; box-shadow: 0 2px 0 #138a3d, 0 0 14px rgba(70,255,124,.45); animation: breathe 1.8s ease-in-out infinite; }
+  .chip.charge.done { animation: none; }
+  .chip.nocharge { background: linear-gradient(180deg, #ffb34a, #ff8a1a); color: #3d1a00; border: 0; box-shadow: 0 2px 0 #b8560b; }
+  .goal { display: inline-flex; gap: 6px; align-items: center; }
+  .gi { display: inline-flex; align-items: center; gap: 1px; padding: 0 3px; border-radius: 8px; }
+  .gi svg { width: 15px; height: 15px; }
+  .gi.one { box-shadow: 0 0 0 1.5px #ffd666 inset; animation: breathe 1.6s ease-in-out infinite; }
+  .gi.clear { background: rgba(63,185,80,.25); box-shadow: 0 0 0 1.5px #3fb950 inset; }
+  .rimstrip { display: inline-flex; gap: 3px; vertical-align: -2px; }
+  .rimstrip span { width: 11px; height: 11px; border-radius: 50%; box-shadow: inset -2px -2px 3px rgba(0,0,0,.35); }
+  .msg { position: absolute; left: 10px; right: 10px; bottom: 96px; z-index: 4; pointer-events: none; padding: 7px 12px; border-radius: 14px; background: rgba(8,12,22,.78); border: 1px solid rgba(120,160,255,.25); font-size: .86rem; line-height: 1.35; color: #d6e2ff; box-shadow: 0 6px 18px rgba(0,0,0,.35); }
+  .msg:empty { display: none; }
+  .msg b { color: #fff; }
+  #tray { position: absolute; left: 0; right: 0; bottom: 6px; z-index: 4; display: flex; gap: 8px; overflow-x: auto; padding: 4px 10px 6px; scrollbar-width: none; }
+  #tray::-webkit-scrollbar { display: none; }
+  .ccard { flex: none; width: 64px; height: 78px; border-radius: 16px; border: 0; background: linear-gradient(180deg, #1d2740, #121a2c); box-shadow: 0 3px 0 #0a0f1c, inset 0 0 0 2px #2c3a5e; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; color: #cfe0ff; font-weight: 900; font-size: .72rem; position: relative; padding: 0; }
+  .ccard svg.ring { width: 40px; height: 40px; }
+  .ccard .fx { font-size: .62rem; opacity: .9; display: flex; align-items: center; gap: 1px; }
+  .ccard .fx svg { width: 11px; height: 11px; }
+  .ccard .bd { position: absolute; top: -5px; right: -4px; font-size: .8rem; filter: drop-shadow(0 1px 1px #000); }
+  .ccard.done { box-shadow: 0 3px 0 #0a0f1c, inset 0 0 0 2px #46ff7c, 0 0 14px rgba(70,255,124,.35); }
+  .ccard.ready { box-shadow: 0 3px 0 #0a0f1c, inset 0 0 0 3px #46ff7c, 0 0 20px rgba(70,255,124,.6); animation: breathe 1.4s ease-in-out infinite; }
+  .ccard.sel { transform: translateY(-4px); box-shadow: 0 7px 0 #0a0f1c, inset 0 0 0 3px #fff, 0 0 20px rgba(255,255,255,.4); }
+  .ccard.lock { opacity: .75; }
+  .msg b { color: var(--text); }
+  .board { position: relative; flex: 1; min-height: 0; touch-action: none; overflow: hidden; }
+  .board canvas#cv, .board canvas#ov { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+  .board canvas#ov { pointer-events: none; }
+  .bar { display: flex; justify-content: center; gap: 6px; padding: 6px 10px calc(10px + env(safe-area-inset-bottom)); }
+  .tool { --c1: #3b4a6b; --c2: #26314a; --c3: #141b2b; min-width: 52px; height: 56px; border-radius: 18px; border: 0; background: linear-gradient(180deg, var(--c1), var(--c2)); box-shadow: 0 5px 0 var(--c3), 0 8px 16px rgba(0,0,0,.35); display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 1.3rem; line-height: 1; padding: 0 8px; color: #fff; text-shadow: 0 1px 0 rgba(0,0,0,.35); }
+  .tool small { font-size: .56rem; font-weight: 900; margin-top: 4px; letter-spacing: .06em; color: rgba(255,255,255,.92); }
+  .tool:active { transform: translateY(4px); box-shadow: 0 1px 0 var(--c3); }
+  .tool:disabled { filter: grayscale(1) brightness(.55); box-shadow: 0 3px 0 #0a0d12; }
+  #btnUndo { --c1: #ffb84d; --c2: #f08a1c; --c3: #a3560a; }
+  #btnMap { --c1: #2fd6c4; --c2: #12a594; --c3: #08665c; }
+  #btnView { --c1: #b98bff; --c2: #8c5cf0; --c3: #5530a8; position: absolute; left: 10px; top: 8px; z-index: 5; min-width: 48px; height: 48px; font-size: 1.05rem; }
+  #btnHint { --c1: #fff176; --c2: #ffd400; --c3: #b39200; color: #4a3b00; text-shadow: none; }
+  #btnHint small { color: #4a3b00; }
+  #btnHint:not(:disabled) { box-shadow: 0 5px 0 var(--c3), 0 0 22px rgba(255,220,0,.45); }
+  #btnRestart { --c1: #5ab2ff; --c2: #2d86e8; --c3: #17509a; }
+  .tool.go { min-width: 96px; height: 62px; font-size: 1.4rem; flex: 1 1 auto; max-width: 132px; }
+  .tool.go small { font-size: .7rem; }
+  .tool.go.trace { --c1: #6fb8ff; --c2: #2f7fe8; --c3: #164f9e; }
+  .tool.go.swap { --c1: #6dff9c; --c2: #22c55e; --c3: #11823b; color: #053016; text-shadow: none; animation: breathe 1.3s ease-in-out infinite; }
+  .tool.go.swap small { color: #053016; }
+  .tool.go.catch { --c1: #ffc061; --c2: #ff8a1a; --c3: #a8520a; }
+  .tool.go.next { --c1: #c49bff; --c2: #8c5cf0; --c3: #5530a8; animation: breathe 1.3s ease-in-out infinite; }
+  #btnHint.muted { --c1: #4a5266; --c2: #333a4a; --c3: #1c212c; color: #cbd2e0; box-shadow: 0 5px 0 var(--c3); }
+  #btnHint.muted small { color: #cbd2e0; }
+  .stars3 { letter-spacing: 1px; font-size: .95rem; } .stars3 i { font-style: normal; color: #3a4560; } .stars3 b { color: #ffd640; text-shadow: 0 0 6px rgba(255,214,64,.6); }
+
+  /* tiles */
+  .ball { transform-box: fill-box; transform-origin: center; }
+  .breathe { animation: breathe 3.2s ease-in-out infinite; }
+  @keyframes breathe { 50% { transform: scale(1.05); } }
+  .pop { animation: pop .34s cubic-bezier(.3, 1.7, .5, 1); }
+  @keyframes pop { 40% { transform: scale(1.6); } }
+  .wob { animation: wob .3s ease-in-out; }
+  @keyframes wob { 25% { transform: translateX(-8%); } 75% { transform: translateX(8%); } }
+  .hintpulse { animation: hint .9s ease-in-out 4; }
+  @keyframes hint { 50% { transform: scale(1.8); } }
+  .train { animation: train 1.1s linear infinite; }
+  @keyframes train { to { stroke-dashoffset: -1; } }
+  .float { position: absolute; pointer-events: none; font-weight: 800; color: #fff; text-shadow: 0 2px 6px #000; animation: rise 1.1s ease-out forwards; font-size: 1.05rem; white-space: nowrap; text-align: center; }
+  .float small { display: block; font-size: .7rem; font-weight: 700; color: var(--gold); }
+  @keyframes rise { from { transform: translate(-50%, -50%) scale(.7); opacity: 1; } to { transform: translate(-50%, -170%) scale(1.2); opacity: 0; } }
+
+  /* Sims-style chain wheel (screen space, finger sized) */
+  #wheel { position: absolute; left: 0; top: 0; width: 0; height: 0; display: none; z-index: 5; }
+  #wheel.on { display: block; }
+  #wheel .disc { display: none; }
+  #wheel { pointer-events: none; }
+  #wheel .opt { pointer-events: auto; }
+  @keyframes wheelin { from { transform: scale(.4); opacity: 0; } }
+  #wheel .opt { position: absolute; width: 46px; height: 46px; margin: -23px 0 0 -23px; border-radius: 50%; border: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; font-weight: 800; font-size: .95rem; color: #0d1117; box-shadow: 0 4px 0 rgba(0,0,0,.45); animation: wheelin .22s cubic-bezier(.3,1.5,.5,1); }
+  #wheel .opt .wi { display: flex; align-items: center; gap: 1px; font-size: .8rem; }
+  #wheel .opt .wi svg { width: 13px; height: 13px; }
+  #wheel .opt small { font-size: .56rem; font-weight: 800; opacity: .85; }
+  #wheel .opt.unk { background: rgba(33,38,45,.95) !important; color: var(--dim); border: 3px dashed var(--c); box-shadow: none; }
+  #wheel .opt.sel { outline: 3px solid #fff; outline-offset: 2px; }
+  #wheel .opt .badge { position: absolute; top: -6px; right: -6px; background: #bc8cff; color: #0d1117; border-radius: 999px; font-size: .7rem; padding: 1px 6px; font-family: "Times New Roman", serif; font-style: italic; }
+  #wheel .opt .lockb { position: absolute; bottom: -6px; right: -4px; font-size: .8rem; }
+
+  /* minimap + world map */
+  #mini { position: absolute; right: 10px; top: 8px; width: 112px; height: 112px; border-radius: 16px; border: 2px solid rgba(188,140,255,.6); box-shadow: 0 6px 20px rgba(0,0,0,.5); background: #05070a; z-index: 4; padding: 0; overflow: hidden; display: none; }
+  #mini.on { display: none; }
+  #mini canvas { width: 100%; height: 100%; display: block; }
+  #mini .lbl { position: absolute; left: 0; right: 0; bottom: 0; font-size: .62rem; font-weight: 800; letter-spacing: .06em; background: linear-gradient(transparent, rgba(0,0,0,.8)); padding: 8px 0 3px; color: var(--dim); text-align: center; }
+  #map { z-index: 9; background: #05070a; padding: 0; align-items: stretch; justify-content: stretch; flex-direction: column; }
+  #map.on { display: flex; }
+  #map .top { display: flex; align-items: center; gap: 8px; padding: max(10px, env(safe-area-inset-top)) 12px 6px; }
+  #map .top h2 { margin: 0; font-size: 1.1rem; flex: 1; }
+  #map .top h2 small { display: block; font-size: .7rem; color: var(--faint); font-weight: 600; letter-spacing: .04em; }
+  #map .mstats { display: flex; gap: 6px; flex-wrap: wrap; padding: 0 12px 6px; }
+  #mapWrap { position: relative; flex: 1; min-height: 0; touch-action: none; }
+  #mapCanvas { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; }
+  #mapInfo { margin: 0 12px calc(10px + env(safe-area-inset-bottom)); background: var(--bg2); border: 1px solid var(--line); border-radius: 16px; padding: 10px 12px; font-size: .86rem; color: var(--dim); line-height: 1.45; min-height: 64px; }
+  #mapInfo b { color: var(--text); }
+  .legend { display: flex; gap: 4px 10px; flex-wrap: wrap; padding: 0 12px 6px; font-size: .7rem; color: var(--dim); }
+  .legend i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: -2px; margin-right: 4px; }
+  #ktree { position: absolute; right: 6px; top: 6px; width: min(42%, 170px); aspect-ratio: 1 / 1; pointer-events: none; z-index: 3; border-radius: 50%; background: radial-gradient(closest-side, rgba(10,22,40,.14), rgba(10,22,40,0)); }
+  #mtree { position: absolute; right: 6px; top: 6px; width: min(48%, 230px); aspect-ratio: 1 / 1; pointer-events: none; z-index: 2; border-radius: 14px; background: rgba(4,10,20,.32); }
+  #toast { position: absolute; left: 50%; top: 10px; transform: translateX(-50%); z-index: 6; pointer-events: none; display: flex; flex-direction: column; gap: 6px; align-items: center; }
+  .toast { background: linear-gradient(180deg, #3b2a6b, #241a44); border: 1px solid #8957e5; color: #fff; border-radius: 14px; padding: 7px 14px; font-weight: 800; font-size: .88rem; box-shadow: 0 8px 24px rgba(0,0,0,.5); animation: toast 2.6s ease forwards; white-space: nowrap; }
+  .toast small { display: block; font-weight: 600; font-size: .7rem; color: #d2c2ff; }
+  @keyframes toast { 0% { transform: translateY(-20px) scale(.8); opacity: 0; } 10%, 85% { transform: none; opacity: 1; } 100% { transform: translateY(-10px); opacity: 0; } }
+
+  /* overlays */
+  .overlay { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(5, 8, 12, .62); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); padding: 16px; z-index: 10; }
+  .overlay.on { display: flex; }
+  .card { width: 100%; max-width: 420px; max-height: 100%; overflow-y: auto; background: linear-gradient(170deg, #232b38, #161b22); border: 1px solid var(--line); border-radius: 24px; padding: 20px; box-shadow: 0 20px 60px rgba(0,0,0,.5); animation: cardin .35s cubic-bezier(.3, 1.4, .5, 1); }
+  @keyframes cardin { from { transform: scale(.85); opacity: 0; } }
+  .card .k { font-size: .72rem; text-transform: uppercase; letter-spacing: .12em; color: var(--faint); }
+  .card h2 { margin: .2rem 0 .6rem; font-size: 1.5rem; }
+  .card p { color: var(--dim); line-height: 1.5; margin: 0 0 .8rem; font-size: .96rem; }
+  .card .meta { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 1rem; }
+  .card .row { display: flex; gap: 10px; }
+  .card table { width: 100%; font-size: .88rem; color: var(--dim); border-collapse: collapse; margin-bottom: .8rem; }
+  .card td { padding: 3px 0; vertical-align: top; } .card td:first-child { color: var(--text); font-weight: 700; padding-right: 10px; white-space: nowrap; }
+  .big { flex: 1; height: 52px; border-radius: 16px; border: 0; font-weight: 800; font-size: 1.05rem; background: linear-gradient(180deg, #7c4dff, #5b2fd6); box-shadow: 0 4px 0 #3b1d94; color: #fff; }
+  .big.alt { background: var(--bg3); box-shadow: 0 4px 0 #0a0d12; color: var(--text); border: 1px solid var(--line); }
+  .big:active { transform: translateY(3px); box-shadow: 0 1px 0 #3b1d94; }
+  .stars { font-size: 2.6rem; text-align: center; letter-spacing: 6px; margin: .2rem 0 .4rem; }
+  .stars span { display: inline-block; color: #3a4250; }
+  .stars span.got { color: var(--gold); animation: starin .5s cubic-bezier(.3, 1.8, .5, 1) both; text-shadow: 0 0 18px rgba(227,179,65,.6); }
+  .stars span:nth-child(2) { animation-delay: .18s; } .stars span:nth-child(3) { animation-delay: .36s; }
+  @keyframes starin { from { transform: scale(0) rotate(-90deg); } }
+  .scoreline { text-align: center; color: var(--dim); margin-bottom: 1rem; }
+  .scoreline b { color: var(--text); font-size: 1.4rem; }
+  #confetti { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 11; }
+  @media (prefers-reduced-motion: reduce) { .breathe, .pop, .wob, .hintpulse, .train, .card, .stars span.got, .float, #wheel .disc, #wheel .opt { animation: none !important; } }
+</style>
+</head>
+<body>
+
+<section id="title" class="screen on" aria-label="Fill the Hole: title screen">
+  <div class="sky" aria-hidden="true">
+    <div class="cloud" style="top:9%;animation-duration:42s;animation-delay:-8s"></div>
+    <div class="cloud" style="top:20%;transform:scale(.7);animation-duration:55s;animation-delay:-30s"></div>
+    <div class="cloud" style="top:52%;animation-duration:48s;animation-delay:-20s;opacity:.6"></div>
+  </div>
+  <div class="waves" aria-hidden="true"><svg viewBox="0 0 400 120" preserveAspectRatio="none">
+    <path d="M0 30 Q25 18 50 30 T100 30 T150 30 T200 30 T250 30 T300 30 T350 30 T400 30 T450 30 V120 H0Z" fill="#1f6fc9" opacity=".55"><animateTransform attributeName="transform" type="translate" values="0 0;-50 0;0 0" dur="7s" repeatCount="indefinite"/></path>
+    <path d="M0 55 Q25 43 50 55 T100 55 T150 55 T200 55 T250 55 T300 55 T350 55 T400 55 T450 55 V120 H0Z" fill="#1857b0"><animateTransform attributeName="transform" type="translate" values="-50 0;0 0;-50 0" dur="5s" repeatCount="indefinite"/></path>
+  </svg></div>
+  <div class="tcol">
+    <div class="ttop"><div class="badge" id="titleBadge" aria-label="Your stars and points"><span class="s">★ <b id="tStars">0</b></span><span class="p">✦ <b id="tScore">0</b></span></div></div>
+    <h1 class="logo" aria-label="Fill the Hole">
+      <span class="l1" aria-hidden="true"><span class="ch" style="--r:-4deg">F</span><span class="ch" style="animation-delay:.08s">i</span><span class="ch" style="animation-delay:.16s">l</span><span class="ch" style="animation-delay:.24s">l</span>&nbsp;<span class="ch" style="animation-delay:.32s">t</span><span class="ch" style="animation-delay:.4s">h</span><span class="ch" style="animation-delay:.48s;--r:4deg">e</span></span>
+      <span class="l2" aria-hidden="true"><span class="ch" style="color:#ff6a45;--r:-6deg;animation-delay:.6s">H</span><span class="ch" style="color:#4aa8ff;animation-delay:.72s">O</span><span class="ch" style="color:#ffd84a;--r:5deg;animation-delay:.84s">L</span><span class="ch" style="color:#62d96a;--r:-4deg;animation-delay:.96s">E</span></span>
+    </h1>
+    <svg id="tDemo" viewBox="0 0 300 250" role="img" aria-label="Five element tiles round a grey question-mark tile; one swaps and the middle lights up"></svg>
+    <div class="tbtns">
+      <button class="btn3d green" id="btnPlay" aria-label="Play">PLAY ▶</button>
+      <button class="btn3d yellow" id="btnHowTitle" aria-label="How to play">❓ How to play</button>
+      <div class="tfoot">Part of the <a href="../index.html">Graph Colour Deductive Solver</a></div>
+    </div>
+  </div>
+</section>
+
+<section id="menu" class="screen" aria-label="Level map">
+  <div class="mbar">
+    <button class="btn3d white rbtn" id="btnTitle" aria-label="Back to title screen">🏠</button>
+    <div class="badge" aria-label="Your stars and points"><span class="s">★ <b id="totalStars">0</b></span><span class="p">✦ <b id="totalScore">0</b></span></div>
+    <button class="btn3d yellow rbtn" id="btnHowMap" aria-label="How to play">?</button>
+  </div>
+  <div id="saga"></div>
+</section>
+
+<section id="game" class="screen" aria-label="Game">
+  <div class="hud">
+    <button class="iconbtn" id="btnMenu" aria-label="Back to levels">☰</button>
+    <div class="title"><div class="k" id="lvKicker"></div><div class="t" id="lvTitle"></div></div>
+    <div class="pill score" title="Points">✦ <b id="score">0</b></div>
+    <button class="iconbtn" id="btnHelp" aria-label="Level briefing">?</button>
+  </div>
+  <div class="stats">
+    <span class="chip goal" id="goal" title="Elements on the crater rim: clear one to win"></span>
+    <span class="chip prog" id="chipChains" title="Chains captured here, out of all chains"><span class="pl">⛓ <b id="found">0</b>/<span id="nchains">0</span></span><span class="track"><span class="fill" id="chainFill"></span></span></span>
+    <span class="chip pips" id="chipFlips" title="Flips used, against par"><span class="pl">⇄</span><span id="flipPips"></span><b id="flips" hidden>0</b><span id="par" hidden>0</span></span>
+    <span class="chip" id="chipCharge"></span>
+  </div>
+  <div class="board" id="board">
+    <button class="tool" id="btnView" aria-label="Reset the view" style="display:none">🎥<small>VIEW</small></button>
+    <div class="msg" id="msg" aria-live="polite"></div>
+    <div id="tray" aria-label="Chains at the rim"></div>
+    <canvas id="cv" role="img" aria-label="Game board: an island of element tiles joined by bridges round a crater"></canvas>
+    <canvas id="ov" aria-hidden="true"></canvas>
+    <div id="wheel"><div class="disc"></div></div>
+    <button id="mini" aria-label="Open the map of colouring space"><canvas id="miniCanvas" width="224" height="224"></canvas><span class="lbl">MAP</span></button>
+    <div id="toast"></div>
+  </div>
+  <div class="bar">
+    <button class="tool" id="btnUndo" aria-label="Flip back the last flip">↶<small>BACK</small></button>
+    <button class="tool" id="btnMap" aria-label="Open the map of colouring space">🗺️<small>MAP</small></button>
+    <button class="tool go" id="btnGo" aria-label="Next action"><span id="goIcon">👆</span><small id="goText">TRACE</small></button>
+    <button class="tool" id="btnHint" aria-label="Hint">💡<small>HINT</small></button>
+    <button class="tool" id="btnRestart" aria-label="Restart level">⟲<small>RESTART</small></button>
+  </div>
+</section>
+
+<div class="overlay" id="brief" role="dialog" aria-label="Level briefing"><div class="card">
+  <svg id="briefBadge" viewBox="-40 -40 80 80" aria-hidden="true"></svg>
+  <div class="k" id="briefKicker"></div><h2 id="briefTitle"></h2>
+  <p id="briefText"></p>
+  <div class="meta" id="briefMeta"></div>
+  <details><summary>Controls &amp; scoring</summary>
+  <table>
+    <tr><td>Trace</td><td>drag along alternating colours; cover the whole chain to capture it</td></tr>
+    <tr><td>Tap</td><td>a tile: chain wheel. Pick a captured chain, then tap it to flip</td></tr>
+    <tr><td>Drag the sea</td><td>turn and tilt the island; double-tap the sea to reset</td></tr>
+    <tr><td>Score</td><td>length × free ends × ring (rim ×3, next ring ×2)</td></tr>
+  </table></details>
+  <div class="row"><button class="big" id="briefGo" aria-label="Play this level">Play ▶</button></div>
+</div></div>
+
+<div class="overlay" id="win"><div class="card">
+  <div class="k">Hole filled</div>
+  <div class="stars" id="winStars"><span>★</span><span>★</span><span>★</span></div>
+  <div class="scoreline" id="winScore"></div>
+  <p id="winText"></p>
+  <div class="row"><button class="big alt" id="winRetry">Retry</button><button class="big" id="winNext">Next</button></div>
+</div></div>
+<div class="overlay" id="map" role="dialog" aria-label="Map of colouring space">
+  <div class="top"><h2>Colouring space <small id="mapSub"></small></h2><button class="iconbtn" id="mapClose" aria-label="Close map">✕</button></div>
+  <div class="mstats" id="mapStats"></div>
+  <div class="legend" id="mapLegend"></div>
+  <div id="mapWrap"><canvas id="mapCanvas"></canvas></div>
+  <div id="mapInfo">Land = legal colourings, sea = illegal ones (a 2D projection of the whole colouring space; nearby means alike, not few flips apart). Tap a hex. Top right: the tree of Kempe swaps from this level's start.</div>
+</div>
+<div class="howto" id="howto" role="dialog" aria-modal="true" aria-label="How to play">
+  <div class="hthead"><span class="htk">How to play</span><button class="htskip" id="htSkip" aria-label="Skip how to play">Skip ✕</button></div>
+  <div class="htview"><div class="httrack" id="htTrack"></div></div>
+  <div class="htfoot"><button class="btn3d white rbtn" id="htBack" aria-label="Previous step">◀</button><div class="htdots" id="htDots"></div><button class="btn3d green" id="htNext" aria-label="Next step">Next ▶</button></div>
+</div>
+<canvas id="confetti"></canvas>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="levels.js"></script>
+<script src="layout.js"></script>
+<script>
+(function () {
+  'use strict';
+  const HEX = ['#ef5a3c', '#3d8fe8', '#e8c547', '#4caf50'];
+  const LITE = ['#ffb3ad', '#c5e1ff', '#fff0b8', '#b9f5c4'];
+  const DARK = ['#8e1c17', '#1b4f91', '#8a6510', '#1a6b2a'];
+  const NAMES = ['fire', 'water', 'air', 'earth'];
+  const IPATH = ['M12 2c.8 3.6 5.5 5.8 5.5 11.2A5.5 5.5 0 0 1 6.5 13.2c0-2.6 1.6-4 2-6.4 1.2 1 2.2 2.4 2.3 4.4 1-1.9 1.4-5.4 1.2-9.2z', 'M12 2.5C9.2 7 5.5 10.6 5.5 15a6.5 6.5 0 0 0 13 0c0-4.4-3.7-8-6.5-12.5z', 'M3 8.5h10.5a3 3 0 1 0-3-3M3 12.5h14.5a3 3 0 1 1-3 3M3 16.5h7', 'M5 19.5C5 10 11 4.5 20 4.5c0 9.5-5.5 15-15 15z'];
+  const iconSvg = (e, c) => '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="' + IPATH[e] + '" ' + (e === 2 ? 'fill="none" stroke="' + c + '" stroke-width="2.4" stroke-linecap="round"' : 'fill="' + c + '"') + '/></svg>';
+  const NS = 'http://www.w3.org/2000/svg';
+  const $ = id => document.getElementById(id);
+  const G = window.GAME;
+  G.levels = G.levels.filter(l => !G.graphs[l.g].onboard);   // the Level -1 onboarding maps (no walls, 2-3 elements) are 2D-only
+  const reduced = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const mk = (tag, attrs, parent) => { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); if (parent) parent.appendChild(e); return e; };
+  const clear = g => { while (g.firstChild) g.removeChild(g.firstChild); };
+
+  // ---------------- storage (per-viewer progress; safe if unavailable) ----------------
+  // lab mode (lab/index.html): ?lab=<level number> opens that one level straight away, no title, menus or consent, with
+  // its own progress store so several frames of the lab never share memory; &walls=1 keeps the old wall layout
+  const LABQ = new URLSearchParams(location.search), LABN = LABQ.get('lab'), LABW = LABQ.get('walls') === '1';
+  const KEY = LABN ? 'fth-lab-3d-' + (LABW ? 'walls' : 'free') + '-' + LABN : 'fill-the-hole-3d-v2';   // own progress: the 2D page's level indices shifted when Level -1 was added
+  let save = { best: {} };
+  try { save = JSON.parse(localStorage.getItem(KEY)) || save; } catch (e) {}
+  const persist = () => { try { localStorage.setItem(KEY, JSON.stringify(save)); } catch (e) {} };
+  const unlockAll = /[?&]all=1/.test(location.search);
+
+  // ---------------- sound ----------------
+  let AC = null;
+  function blip(freq, dur, type, vol) {
+    try {
+      AC = AC || new (window.AudioContext || window.webkitAudioContext)();
+      const o = AC.createOscillator(), g = AC.createGain(), t = AC.currentTime;
+      o.type = type || 'sine'; o.frequency.setValueAtTime(freq, t); o.frequency.exponentialRampToValueAtTime(freq * 1.4, t + dur);
+      g.gain.setValueAtTime(vol || 0.06, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      o.connect(g); g.connect(AC.destination); o.start(t); o.stop(t + dur + 0.02);
+    } catch (e) {}
+  }
+  const SCALE = [0, 2, 4, 7, 9];              // major pentatonic
+  // Shepard tones: octave-stacked sines under a fixed bell curve in log-pitch, so each link sounds one step higher
+  // forever without the chain ever climbing into squeaky territory
+  function shepard(pc, dur, vol) {
+    try {
+      AC = AC || new (window.AudioContext || window.webkitAudioContext)();
+      const t = AC.currentTime, out = AC.createGain(); out.gain.setValueAtTime(0, t);
+      out.gain.linearRampToValueAtTime(vol, t + .015); out.gain.exponentialRampToValueAtTime(.0001, t + dur); out.connect(AC.destination);
+      const centre = Math.log2(330), sigma = 1.1;
+      for (let k = 0; k < 8; k++) {
+        const f = 27.5 * Math.pow(2, k + pc / 12), w = Math.exp(-Math.pow(Math.log2(f) - centre, 2) / (2 * sigma * sigma));
+        if (w < .02 || f > 8000) continue;
+        const o = AC.createOscillator(), g = AC.createGain(); o.type = 'sine'; o.frequency.value = f; g.gain.value = w;
+        o.connect(g); g.connect(out); o.start(t); o.stop(t + dur + .05);
+      }
+    } catch (e) {}
+  }
+  function note(i) { shepard((SCALE[i % 5] + 12 * Math.floor(i / 5)) % 12, .34, .07); }   // the i-th link of a chain
+  const arp = (base, k, step) => { for (let i = 0; i < k; i++) setTimeout(() => blip(base * Math.pow(1.122, i), .12, 'triangle', .05), i * (step || 60)); };
+
+  // ---------------- level state ----------------
+  let L, Gr, n, hole, link, adj, P, rad, ring, col;
+  let chains, chainAt;          // current state's chains; chainAt[u][b] = chain through u on pair {col[u], b}
+  let found, traced, visited, needFind, lastFlip, active, score, flips, hintsUsed, won, bestLen, history;
+  let levelIdx = 0, busy = false;
+
+  // ---------------- engine ----------------
+  const pairKey = (a, b) => Math.min(a, b) + '' + Math.max(a, b);
+  function computeChains() {
+    chains = []; chainAt = Array.from({ length: n }, () => [null, null, null, null]);
+    for (let a = 0; a < 4; a++) for (let b = a + 1; b < 4; b++) {
+      const seen = new Set();
+      for (let s = 0; s < n; s++) {
+        if (s === hole || seen.has(s) || (col[s] !== a && col[s] !== b)) continue;
+        const set = new Set([s]), order = [[s]]; let front = [s]; seen.add(s);
+        while (front.length) {
+          const nx = [];
+          for (const u of front) for (const w of adj[u]) if (w !== hole && !set.has(w) && (col[w] === a || col[w] === b)) { set.add(w); seen.add(w); nx.push(w); }
+          if (nx.length) order.push(nx); front = nx;
+        }
+        const vs = [...set].sort((x, y) => x - y);
+        const edges = []; let leaves = 0;
+        vs.forEach(u => { let d = 0; adj[u].forEach(w => { if (set.has(w)) { d++; if (u < w) edges.push([u, w]); } }); if (d === 1) leaves++; });
+        const rimHits = link.filter(x => set.has(x)).length;
+        const K = { key: pairKey(a, b) + ':' + vs.join('.'), pair: [a, b], set, vs, order, edges, size: vs.length, leaves,
+          loops: edges.length - vs.length + 1, ring: Math.min(...vs.map(u => ring[u])), rimHits, lock: rimHits >= 2 };
+        chains.push(K);
+        vs.forEach(u => { chainAt[u][col[u] === a ? b : a] = K; });
+      }
+      const mine = chains.filter(K => K.pair[0] === a && K.pair[1] === b);
+      mine.forEach(K => { K.web = mine.length === 1; });   // the whole {a,b} web: flipping it only renames colours
+    }
+    chains.forEach(K => { if (K.size === 1) found.add(K.key); });   // single tiles need no tracing
+  }
+  const rimCols = c => link.map(x => c[x]);
+  const filled = c => new Set(rimCols(c)).size <= 3;
+  function canon(c) { const mp = {}; let s = '', k = 0; for (let u = 0; u < n; u++) { if (u === hole) continue; if (!(c[u] in mp)) mp[c[u]] = k++; s += mp[c[u]]; } return s; }
+  function dist(c) { if (filled(c)) return 0; const d = Gr.dist[canon(c)]; return d === undefined ? null : d; }
+  const flipped = (c, K) => { const d = c.slice(); K.set.forEach(u => { d[u] = d[u] === K.pair[0] ? K.pair[1] : K.pair[0]; }); return d; };
+  function piChain() {           // at a doubly locked rim: the {alpha, A}-chain of x_{j+2}, if it misses x_j
+    const r = rimCols(col); let j = -1;
+    for (let t = 0; t < 5; t++) if (r[t] === r[(t + 2) % 5]) j = t;
+    if (j < 0) return null;
+    const x = t => link[(j + t) % 5], A = col[x(3)], B = col[x(4)], mu = col[x(1)];
+    const L1 = chainAt[x(1)][A].set.has(x(3)), L2 = chainAt[x(1)][B].set.has(x(4));
+    if (!(L1 && L2)) return null;
+    const K = chainAt[x(2)][A];
+    return K.set.has(x(0)) ? null : K;
+  }
+  function chainPoints(K) {
+    const ringMult = K.ring === 1 ? 3 : K.ring === 2 ? 2 : 1;
+    const endMult = 1 + 0.25 * K.leaves;
+    return { pts: Math.round(10 * K.size * endMult * ringMult), ringMult, endMult };
+  }
+
+  // ---------------- board: a three.js island (fixed camera) ----------------
+  // Island tiles are regular v-gons (v = degree) at evenly spaced positions, turned to face their neighbours, with
+  // wooden bridges across the gaps. The three far-side vertices are the island's walls; the hole is a lava crater.
+  // Hovering (or touching) a tile bobs it like a dock and the bob ripples out to its neighbours, weaker each step.
+  const svg = $('cv'), ov = $('ov'), octx = ov.getContext('2d');
+  const TOPC = [0xf2643f, 0x4596ee, 0xf1cf4e, 0x55b85a], SIDEC = [0xa13a24, 0x255b9e, 0xa8892a, 0x2f7a34];
+  const SC = 5, BEV = .05, WALL_H = .55, WALL_T = .42;
+  const NEON = [0xff5a36, 0x38a0ff, 0xffd640, 0x46ff7c], ICONC = [0xd9573a, 0x4a8fd6, 0xd4b13c, 0x4fae57];
+  let SZ = 1;
+  let R3 = null, BW = 0, BH = 0, DPR = 1, holeFill = -1, fingerPt = null, looping = false;
+  let T = [], bridgesM = [], waves = [], hoverU = -1;
+  const shakes = new Map();
+  function shake(u) { if (T[u] && T[u].kind === 'tile') shakes.set(u, performance.now()); else if (T[u]) blip(120, .1, 'square', .02); kick(); }
+  const anim = new Map(), iconTex = [];
+  const V3 = (x, y, z) => new THREE.Vector3(x, y, z);
+  function makeIconTex(e) {
+    if (iconTex[e]) return iconTex[e];
+    const c = document.createElement('canvas'); c.width = c.height = 128; const x = c.getContext('2d');
+    x.scale(128 / 24, 128 / 24); const p = new Path2D(IPATH[e]);
+    if (e === 2) { x.strokeStyle = '#fff'; x.lineWidth = 2.4; x.lineCap = 'round'; x.stroke(p); } else { x.fillStyle = '#fff'; x.fill(p); }
+    const t = new THREE.CanvasTexture(c); return (iconTex[e] = t);
+  }
+  function textTex(txt) { const c = document.createElement('canvas'); c.width = c.height = 128; const x = c.getContext('2d'); x.fillStyle = '#fff'; x.font = '800 96px ui-rounded, system-ui'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(txt, 64, 70); return new THREE.CanvasTexture(c); }
+  function plankTex() {
+    const c = document.createElement('canvas'); c.width = 128; c.height = 32; const x = c.getContext('2d');
+    x.fillStyle = '#d9a66b'; x.fillRect(0, 0, 128, 32); x.fillStyle = '#9c6b3a';
+    for (let i = 0; i < 128; i += 16) x.fillRect(i, 0, 2, 32);
+    x.fillStyle = 'rgba(0,0,0,.12)'; x.fillRect(0, 0, 128, 3); x.fillRect(0, 29, 128, 3);
+    const t = new THREE.CanvasTexture(c); t.wrapS = THREE.RepeatWrapping; return t;
+  }
+  function initThree() {
+    if (R3) return;
+    const renderer = new THREE.WebGLRenderer({ canvas: svg, antialias: true });
+    renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    const scene = new THREE.Scene(); scene.background = new THREE.Color(0x0e2a44);
+    const camera = new THREE.PerspectiveCamera(30, 1, .1, 200);
+    scene.add(new THREE.HemisphereLight(0xdfeeff, 0x2a1d10, .7));
+    const sun = new THREE.DirectionalLight(0xffffff, .8); sun.position.set(-6, 14, 8); sun.castShadow = true;
+    sun.shadow.mapSize.set(1024, 1024); Object.assign(sun.shadow.camera, { left: -8, right: 8, top: 8, bottom: -8, near: 1, far: 40 });
+    scene.add(sun);
+    const sea = new THREE.Mesh(new THREE.PlaneGeometry(80, 80), new THREE.MeshStandardMaterial({ color: 0x14466f, roughness: .55, metalness: .1 }));
+    sea.rotation.x = -Math.PI / 2; sea.position.y = -.35; sea.receiveShadow = true; scene.add(sea);
+    const floor = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, .5, 6), new THREE.MeshStandardMaterial({ color: 0x4a3826, roughness: 1 }));
+    floor.position.y = -.25; floor.receiveShadow = true; scene.add(floor);
+    const lava = new THREE.PointLight(0xff6a2a, 1.6, 6); scene.add(lava);
+    const water = new THREE.Mesh(new THREE.CircleGeometry(1, 6, Math.PI / 2), new THREE.MeshStandardMaterial({ color: 0x2f86d6, roughness: .25, metalness: .1, transparent: true, opacity: .78 }));
+    water.rotation.x = -Math.PI / 2; water.position.y = WATER_Y; water.receiveShadow = true; scene.add(water);
+    const level = new THREE.Group(); scene.add(level);
+    R3 = { renderer, scene, camera, level, lava, floor, water, hingeGeo: new THREE.SphereGeometry(.075, 12, 10), hingeMat: new THREE.MeshStandardMaterial({ color: 0x3b3f46, metalness: .6, roughness: .35 }), ray: new THREE.Raycaster(), plank: plankTex() };
+  }
+  function regularShape(v, Rr, phi) {
+    const s = new THREE.Shape();
+    for (let i = 0; i < v; i++) { const a = phi + 2 * Math.PI * (i + .5) / v, x = Rr * Math.cos(a), y = -Rr * Math.sin(a); i ? s.lineTo(x, y) : s.moveTo(x, y); }
+    s.closePath(); return s;
+  }
+  function mats(e) {
+    return [new THREE.MeshStandardMaterial({ color: TOPC[e], roughness: .7, flatShading: true }), new THREE.MeshStandardMaterial({ color: SIDEC[e], roughness: .9, flatShading: true })];
+  }
+  // the arena is a pointy-topped hexagon (x half-width SC, stretched by SZ front to back); each wall owns two sides
+  const COS30 = Math.cos(Math.PI / 6), HN = [0, 1, 2, 3, 4, 5].map(k => [Math.cos(k * Math.PI / 3), Math.sin(k * Math.PI / 3)]);  // side normals
+  const HV = [0, 1, 2, 3, 4, 5].map(k => { const a = -Math.PI / 2 + k * Math.PI / 3; return [Math.cos(a) / COS30, Math.sin(a) / COS30]; });   // unit-apothem corners
+  const hexPt = h => { h = ((h % 6) + 6) % 6; const k = Math.floor(h), f = h - k, A = HV[k], B = HV[(k + 1) % 6]; return [(A[0] + (B[0] - A[0]) * f) * SC, (A[1] + (B[1] - A[1]) * f) * SC * SZ]; };
+  function hexArcPts(h1, h2) { if (h2 < h1) h2 += 6; const br = [h1]; for (let k = Math.floor(h1) + 1; k < h2; k++) br.push(k); br.push(h2); const out = []; for (let i = 0; i < br.length - 1; i++) for (let j = 0; j < 8; j++) out.push(hexPt(br[i] + (br[i + 1] - br[i]) * j / 8)); out.push(hexPt(h2)); return out; }
+  function hexInside(p, margin) {           // push a point (world x, z) back inside the hexagon, `margin` in from the walls
+    let x = p[0] / SC, z = p[1] / (SC * SZ); const a = 1 - margin / SC;
+    for (let pass = 0; pass < 2; pass++) HN.forEach(([nx, nz]) => { const d = x * nx + z * nz; if (d > a) { x -= (d - a) * nx; z -= (d - a) * nz; } });
+    return [x * SC, z * SC * SZ];
+  }
+  function squareToHex(p) {                  // radial remap of a point in the unit square onto the unit-apothem hexagon
+    const th = Math.atan2(p[1], p[0]), rSq = 1 / Math.max(Math.abs(Math.cos(th)), Math.abs(Math.sin(th)));
+    let d = ((th % (Math.PI / 3)) + Math.PI / 3) % (Math.PI / 3); d = Math.min(d, Math.PI / 3 - d);
+    const rHex = 1 / Math.cos(d), k = rHex / rSq; return [p[0] * k, p[1] * k];
+  }
+  function hexWalls(border, arcs) {         // each wall gets two sides, in the walls' order round the square, rotated to match
+    const mid = w => { let [t1, t2] = arcs[w]; if (t2 < t1) t2 += 4; const t = ((t1 + t2) / 2) % 4, f = t - Math.floor(t), q = Math.floor(t); const pp = [[-1 + 2 * f, -1], [1, -1 + 2 * f], [1 - 2 * f, 1], [-1, 1 - 2 * f]][q]; return Math.atan2(pp[1], pp[0]); };
+    const order = border.slice().sort((a, b) => ((arcs[a][0] % 4) - (arcs[b][0] % 4)));
+    let best = 0, bc = Infinity;
+    for (let o = 0; o < 6; o++) { let c = 0; order.forEach((w, i) => { const hp = hexPt(2 * i + 1 + o), d = Math.atan2(hp[1] / (SC * SZ), hp[0] / SC) - mid(w); c += 1 - Math.cos(d); }); if (c < bc) { bc = c; best = o; } }
+    const out = {}; order.forEach((w, i) => { out[w] = [2 * i + best, 2 * i + 2 + best]; }); return { arcs: out, order };
+  }
+  function arcPts(t1, t2, k) { if (t2 < t1) t2 += 4; const out = []; for (let i = 0; i <= k; i++) { const t = (t1 + (t2 - t1) * i / k) % 4, f = t - Math.floor(t), q = Math.floor(t); const pp = [[-1 + 2 * f, -1], [1, -1 + 2 * f], [1 - 2 * f, 1], [-1, 1 - 2 * f]][q]; out.push([pp[0] * SC, pp[1] * SC * SZ]); } return out; }
+  // ---------- floating-platform layout ----------
+  // Tiles sit on a regular triangular lattice, all the same size. Snapping to a lattice can make bridges cross or pass
+  // over tiles, so tiles float on levels: the level choice keeps a bridge clear of any tile it passes over or under,
+  // and keeps crossing bridges apart, while keeping as many tiles as possible on the ground.
+  const SLAB = .3, LEVEL_DY = .72, GROUND_TOP = .85, RIM_LEVEL = 4.4, WATER_Y = .1;   // every platform stands above the walls
+  const yTopOf = l => GROUND_TOP + l * LEVEL_DY;
+  function segDist(p, a, b) { const dx = b[0] - a[0], dz = b[1] - a[1], L2 = dx * dx + dz * dz || 1; let t = ((p[0] - a[0]) * dx + (p[1] - a[1]) * dz) / L2; t = Math.max(0, Math.min(1, t)); return [Math.hypot(a[0] + dx * t - p[0], a[1] + dz * t - p[1]), t]; }
+  function segX(a, b, c, d) {      // proper intersection of segments ab, cd: returns [t on ab, s on cd] or null
+    const r = [b[0] - a[0], b[1] - a[1]], q = [d[0] - c[0], d[1] - c[1]], den = r[0] * q[1] - r[1] * q[0]; if (Math.abs(den) < 1e-9) return null;
+    const t = ((c[0] - a[0]) * q[1] - (c[1] - a[1]) * q[0]) / den, s = ((c[0] - a[0]) * r[1] - (c[1] - a[1]) * r[0]) / den;
+    return t > .02 && t < .98 && s > .02 && s < .98 ? [t, s] : null;
+  }
+  function latticeLayout(X0, inner, border, rot, Wx, Wz, margin) {
+    let s = Math.sqrt((3.464 * Wx * Wz) / (1.12 * inner.length) / (Math.sqrt(3) / 2)), rh, pts;
+    for (;;) {                                   // shrink until the lattice has room for every tile (plus a little)
+      rh = s * Math.sqrt(3) / 2; pts = [];
+      for (let j = -Math.ceil(Wz / COS30 / rh); j * rh <= Wz / COS30; j++) for (let i = -Math.ceil(Wx / s) - 1; i * s <= Wx + s; i++) {
+        const x = i * s + (Math.abs(j) % 2 ? s / 2 : 0), z = j * rh, q = hexInside([x, z], margin); if (Math.hypot(q[0] - x, q[1] - z) < 1e-9) pts.push([x, z]);
+      }
+      if (pts.length >= inner.length * 1.08 + 1) break; s *= .96;
+    }
+    const pos = new Map(), used = new Set();
+    const near = (p, skip) => { let b = -1, bd = Infinity; pts.forEach((q, i) => { if (used.has(i)) return; const d = Math.hypot(q[0] - p[0], q[1] - p[1]); if (d < bd) { bd = d; b = i; } }); return b; };
+    const order = inner.slice().sort((a, b) => (a === hole ? -1 : b === hole ? 1 : Math.hypot(...X0[a]) - Math.hypot(...X0[b])));
+    order.forEach(u => { const i = near(u === hole ? [0, 0] : X0[u]); used.add(i); pos.set(u, i); });
+    const E = []; inner.forEach(u => rot[u].forEach(v => { if (v > u && !border.has(v) && u !== hole && v !== hole) E.push([u, v]); }));
+    const P = u => pts[pos.get(u)];
+    const cost = () => {
+      let c = 0;
+      E.forEach(([u, v]) => { const d = Math.hypot(P(u)[0] - P(v)[0], P(u)[1] - P(v)[1]) / s; c += (d - 1) * (d - 1); });
+      inner.forEach(u => { const p = P(u); c += .15 * (Math.hypot(p[0] - X0[u][0], p[1] - X0[u][1]) / s) ** 2; });
+      for (let i = 0; i < E.length; i++) for (let j = i + 1; j < E.length; j++) { const [a, b] = E[i], [c2, d] = E[j]; if (a === c2 || a === d || b === c2 || b === d) continue; if (segX(P(a), P(b), P(c2), P(d))) c += 1.5; }
+      return c;
+    };
+    let cur = cost(), seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    const movers = inner.filter(u => u !== hole);
+    for (let it = 0; it < 2500; it++) {
+      const u = movers[Math.floor(rnd() * movers.length)], old = pos.get(u);
+      if (rnd() < .5) {                         // swap with another tile
+        const w = movers[Math.floor(rnd() * movers.length)]; if (w === u) continue;
+        const ow = pos.get(w); pos.set(u, ow); pos.set(w, old); const c = cost(); if (c <= cur) cur = c; else { pos.set(u, old); pos.set(w, ow); }
+      } else {                                  // move to a free lattice point nearby
+        const p = pts[old], cand = []; pts.forEach((q, i) => { if (!used.has(i) && Math.hypot(q[0] - p[0], q[1] - p[1]) < s * 2.1) cand.push(i); });
+        if (!cand.length) continue; const i = cand[Math.floor(rnd() * cand.length)];
+        used.delete(old); used.add(i); pos.set(u, i); const c = cost(); if (c <= cur) cur = c; else { used.delete(i); used.add(old); pos.set(u, old); }
+      }
+    }
+    const C = []; inner.forEach(u => { C[u] = P(u).slice(); }); return { C, s };
+  }
+  // where the ray from a tile's centre in direction (ux, uz) leaves its regular polygon, plus a small gap
+  function edgePoint(c, Rr, v, phi, ux, uz, gap) {
+    let best = Rr;
+    for (let i = 0; i < v; i++) {
+      const a0 = phi + 2 * Math.PI * (i + .5) / v, a1 = phi + 2 * Math.PI * (i + 1.5) / v;
+      const p = [Rr * Math.cos(a0), Rr * Math.sin(a0)], q = [Rr * Math.cos(a1), Rr * Math.sin(a1)], e = [q[0] - p[0], q[1] - p[1]];
+      const den = ux * e[1] - uz * e[0]; if (Math.abs(den) < 1e-9) continue;
+      const t = (p[0] * e[1] - p[1] * e[0]) / den, w = (p[0] * uz - p[1] * ux) / den;
+      if (t > 0 && w >= -1e-6 && w <= 1 + 1e-6) best = Math.min(best, t);
+    }
+    return [c[0] + ux * (best + gap), c[1] + uz * (best + gap)];
+  }
+  // bridges as damped springs: pull linked tiles to one bridge length, push all tiles apart at close range, and
+  // pull tiles next to a wall towards it, so the island spreads into the whole arena
+  function relaxSprings(C, inner, border, rot, s, Wx, Wz, nearWall) {
+    const free = inner.filter(u => u !== hole), vel = new Map(free.map(u => [u, [0, 0]])), L0 = s * 1.05;
+    for (let it = 0; it < 400; it++) {
+      const F = new Map(free.map(u => [u, [0, 0]]));
+      const add = (u, fx, fz) => { const f = F.get(u); if (f) { f[0] += fx; f[1] += fz; } };
+      inner.forEach(u => rot[u].forEach(v => {
+        if (v < u && !border.has(v)) return;
+        const t = border.has(v) ? nearWall(v, C[u]) : C[v], dx = t[0] - C[u][0], dz = t[1] - C[u][1], d = Math.hypot(dx, dz) || 1e-6;
+        const rest = border.has(v) ? L0 * .95 : v === hole || u === hole ? L0 * 1.3 : L0, k = (v === hole || u === hole ? .12 : .08) * (d - rest) / d;
+        if (border.has(v)) { if (d > rest) add(u, dx * k, dz * k); return; }
+        add(u, dx * k, dz * k); add(v, -dx * k, -dz * k);
+      }));
+      for (let i = 0; i < inner.length; i++) for (let j = i + 1; j < inner.length; j++) {
+        const u = inner[i], v = inner[j], dx = C[v][0] - C[u][0], dz = C[v][1] - C[u][1], d = Math.hypot(dx, dz) || 1e-6;
+        const near = (u === hole || v === hole) ? L0 * 1.4 : L0 * 1.45;   // keep room round the goal platform
+        if (d < near) { const k = .06 * (near - d) / d; add(u, -dx * k, -dz * k); add(v, dx * k, dz * k); }
+      }
+      free.forEach(u => {
+        const v = vel.get(u), f = F.get(u); v[0] = (v[0] + f[0]) * .8; v[1] = (v[1] + f[1]) * .8;
+        const q = hexInside([C[u][0] + v[0], C[u][1] + v[1]], 1.2); C[u][0] = q[0]; C[u][1] = q[1];   // clear of the walls
+      });
+    }
+  }
+  function chooseLevels(inner, Cc, R, bridgesPlan, wallTop) {
+    const lvl = new Map(inner.map(u => [u, ring[u] === 1 ? RIM_LEVEL : 0])), tiles = inner.filter(u => u !== hole);
+    const top = u => u === -1 ? wallTop : yTopOf(lvl.get(u));
+    const cost = () => {
+      let c = 0;
+      bridgesPlan.forEach(B => {
+        const ya = top(B.u), yb = B.wall ? wallTop : top(B.v);
+        const slope = Math.abs(yb - ya) / Math.max(.2, B.len); if (slope > .9) c += 4 * (slope - .9);
+        tiles.forEach(w => {
+          if (w === B.u || w === B.v) return;
+          const [d, t] = segDist(Cc[w], B.a, B.b); if (d > R[w] + .12) return;
+          const hb = ya + (yb - ya) * t, yt = top(w);
+          if (!(hb >= yt + .3 || hb <= yt - SLAB - .3)) c += 100;
+        });
+      });
+      for (let i = 0; i < bridgesPlan.length; i++) for (let j = i + 1; j < bridgesPlan.length; j++) {
+        const A = bridgesPlan[i], B = bridgesPlan[j]; if (A.u === B.u || A.u === B.v || A.v === B.u || A.v === B.v) continue;
+        const x = segX(A.a, A.b, B.a, B.b); if (!x) continue;
+        const ha = top(A.u) + ((A.wall ? wallTop : top(A.v)) - top(A.u)) * x[0], hb = top(B.u) + ((B.wall ? wallTop : top(B.v)) - top(B.u)) * x[1];
+        if (Math.abs(ha - hb) < .45) c += 100;
+      }
+      tiles.forEach(u => { if (ring[u] !== 1) c += lvl.get(u) * 1.2; });
+      return c;
+    };
+    let cur = cost(), seed = 11; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    const movers = tiles.filter(u => ring[u] !== 1);   // the rim stays on top
+    const NL = tiles.length > 25 ? 4 : 3, IT = tiles.length > 25 ? 12000 : 4000;   // big maps get a fourth float level and a longer search
+    for (let it = 0; it < IT; it++) {
+      const u = movers[Math.floor(rnd() * movers.length)], old = lvl.get(u), nl = Math.floor(rnd() * NL); if (nl === old) continue;
+      lvl.set(u, nl); const c = cost(), T0 = 3 * (1 - it / IT) + .01;
+      if (c <= cur || rnd() < Math.exp((cur - c) / T0)) cur = c; else lvl.set(u, old);
+    }
+    return { lvl, violations: Math.floor(cur / 100) };
+  }
+  function buildBoard() {
+    initThree();
+    const br = $('board').getBoundingClientRect(); BW = br.width; BH = br.height; DPR = Math.min(2, window.devicePixelRatio || 1);
+    R3.renderer.setPixelRatio(DPR); R3.renderer.setSize(BW, BH, false); ov.width = Math.round(BW * DPR); ov.height = Math.round(BH * DPR);
+    const lv = R3.level; while (lv.children.length) lv.remove(lv.children[0]);
+    const Lay = window.LAYOUT[L.g], Pp = Lay.reg || Lay.centre, border = new Set(Lay.border), rot = Gr.rot;
+    SZ = 1;                                      // a perfect hexagon; the camera frames it
+    const X0 = Pp.map(p => [p[0] * SC, p[1] * SC * SZ]);
+    const inner = [...Array(n).keys()].filter(u => !border.has(u));
+    const X1 = Lay.centre.map(p => { const q = squareToHex(p); return [q[0] * SC, q[1] * SC * SZ]; });
+    const { C, s } = latticeLayout(X1, inner, border, rot, SC - 1.2, SC * SZ - 1.2, 1.25);
+    const WGAP = .45 / (2 * SC);                 // walls stop short of each other: the three walls are all linked, by short bridges
+    const HW = hexWalls(Lay.border, Lay.arcs), HG = .45 / (SC / COS30);
+    const wallPts = {}; Lay.border.forEach(w => { const [h1, h2] = HW.arcs[w]; wallPts[w] = hexArcPts(h1 + HG, h2 - HG); });
+    const nearWall = (w, c) => { let b = null, bd = Infinity; wallPts[w].forEach(p => { const d = Math.hypot(p[0] - c[0], p[1] - c[1]); if (d < bd) { bd = d; b = p; } }); return b; };
+    relaxSprings(C, inner, border, rot, s, SC - .75, SC * SZ - .75, nearWall);
+    const target = (u, v) => border.has(v) ? nearWall(v, C[u]) : C[v];
+    const ap = s * .38, R = [], phiOf = [];
+    inner.forEach(u => {
+      const v = rot[u].length; R[u] = ap / Math.cos(Math.PI / v);
+      const th = rot[u].map(w => { const t = target(u, w); return Math.atan2(t[1] - C[u][1], t[0] - C[u][0]); }).sort((a, b) => a - b);
+      let sx = 0, sy = 0; th.forEach((a, i) => { const d = (a - 2 * Math.PI * i / v) * v; sx += Math.cos(d); sy += Math.sin(d); });
+      phiOf[u] = Math.atan2(sy, sx) / v - Math.PI / v;
+    });
+    // bridges in plan, then levels
+    const plan = [], seen = new Set();
+    inner.forEach(u => {
+      if (u === hole) return;
+      rot[u].forEach(v => {
+        if (v === hole) return; const key = Math.min(u, v) + ':' + Math.max(u, v); if (seen.has(key)) return; seen.add(key);
+        const t = target(u, v), dx = t[0] - C[u][0], dz = t[1] - C[u][1], l = Math.hypot(dx, dz), ux = dx / l, uz = dz / l;
+        const a = edgePoint(C[u], R[u], rot[u].length, phiOf[u], ux, uz, .05);
+        const wall = border.has(v), b = wall ? [t[0] - ux * WALL_T * .5, t[1] - uz * WALL_T * .5] : edgePoint(C[v], R[v], rot[v].length, phiOf[v], -ux, -uz, .05);
+        plan.push({ u, v, a, b, wall, len: Math.hypot(b[0] - a[0], b[1] - a[1]) });
+      });
+    });
+    const { lvl, violations } = chooseLevels(inner, C, R, plan, WALL_H);
+    if (violations) console.warn('floating layout: ' + violations + ' unresolved clearance conflicts');
+    T = [];
+    Lay.border.forEach(u => {                     // the walls
+      const g = new THREE.Group(), pts = wallPts[u], m = mats(col[u]);
+      const wallPlate = new THREE.MeshStandardMaterial({ color: 0x07090d, roughness: .35, metalness: .2 }), neonM = new THREE.MeshBasicMaterial({ color: NEON[col[u]] });
+      for (let i = 1; i < pts.length; i++) {
+        const [a, b] = [pts[i - 1], pts[i]], L2 = Math.hypot(b[0] - a[0], b[1] - a[1]); if (L2 < 1e-6) continue;
+        const seg = new THREE.Mesh(new THREE.BoxGeometry(L2 + WALL_T * .5, WALL_H, WALL_T), [m[1], m[1], m[0], m[1], m[1], m[1]]);   // coloured rim on top
+        seg.position.set((a[0] + b[0]) / 2, WALL_H / 2, (a[1] + b[1]) / 2); seg.rotation.y = -Math.atan2(b[1] - a[1], b[0] - a[0]);
+        seg.castShadow = seg.receiveShadow = true; seg.userData.u = u; g.add(seg);
+        // like the tiles: a dark inset plate along the top, with neon strips glowing up from the gaps either side
+        const plate = new THREE.Mesh(new THREE.BoxGeometry(L2 + WALL_T * .5, .02, WALL_T * .5), wallPlate); plate.position.set(0, WALL_H / 2 + .012, 0); plate.userData.u = u; seg.add(plate);
+        [-1, 1].forEach(sd => { const ns = new THREE.Mesh(new THREE.BoxGeometry(L2 + WALL_T * .5, .016, .045), neonM); ns.position.set(0, WALL_H / 2 + .01, sd * WALL_T * .31); seg.add(ns); });
+      }
+      const mid = pts[pts.length >> 1], ic = new THREE.Mesh(new THREE.PlaneGeometry(.55, .55), new THREE.MeshBasicMaterial({ map: makeIconTex(col[u]), transparent: true, depthWrite: false }));
+      ic.rotation.x = -Math.PI / 2; ic.position.set(mid[0], WALL_H + .01, mid[1]); g.add(ic);
+      ic.position.y = WALL_H + .03; ic.material.color.setHex(ICONC[col[u]]);
+      lv.add(g); T[u] = { kind: 'wall', g, mats: m, icon: ic, h: WALL_H, c: mid, pts, light: 1, wallNeon: neonM };
+    });
+    inner.forEach(u => {                         // the platforms
+      if (u === hole) return;
+      const v = rot[u].length, isHole = false, l = lvl.get(u), yTop = yTopOf(l);
+      const depth = l === 0 ? yTop - BEV * 2 : SLAB;
+      const geo = new THREE.ExtrudeGeometry(regularShape(v, R[u] - BEV, phiOf[u]), { depth, bevelEnabled: true, bevelSize: BEV, bevelThickness: BEV, bevelSegments: 2 });
+      geo.rotateX(-Math.PI / 2); geo.translate(0, yTop - depth - BEV, 0);
+      const m = isHole ? [new THREE.MeshStandardMaterial({ color: 0xc8380e, emissive: 0xff3a0a, emissiveIntensity: .8, roughness: .6 }), new THREE.MeshStandardMaterial({ color: 0x2a0d06 })] : mats(col[u]);
+      const mesh = new THREE.Mesh(geo, m); mesh.castShadow = mesh.receiveShadow = true; mesh.userData.u = u;
+      const g = new THREE.Group(); g.position.set(C[u][0], 0, C[u][1]); g.add(mesh);
+      let neon = null, glow = null;
+      if (!isHole) {                             // black face plate, with a neon ring glowing up from the gap round it
+        const flat = sh => { const geo2 = new THREE.ShapeGeometry(sh); geo2.rotateX(-Math.PI / 2); return geo2; };
+        const ring = (r0, r1) => { const sh = regularShape(v, R[u] * r1, phiOf[u]); sh.holes.push(new THREE.Path(regularShape(v, R[u] * r0, phiOf[u]).getPoints().reverse())); return flat(sh); };
+        const plate = new THREE.Mesh(flat(regularShape(v, R[u] * .68, phiOf[u])), new THREE.MeshStandardMaterial({ color: 0x07090d, roughness: .35, metalness: .2 }));
+        plate.position.y = yTop + .008; plate.userData.u = u; g.add(plate);
+        neon = new THREE.Mesh(ring(.69, .77), new THREE.MeshBasicMaterial({ color: NEON[col[u]] }));
+        neon.position.y = yTop + .006; g.add(neon);
+        glow = new THREE.Mesh(ring(.6, .9), new THREE.MeshBasicMaterial({ color: NEON[col[u]], transparent: true, opacity: .35, blending: THREE.AdditiveBlending, depthWrite: false }));
+        glow.position.y = yTop + .01; g.add(glow);
+      }
+      const ic = new THREE.Mesh(new THREE.PlaneGeometry(ap * (isHole ? 1.05 : .9), ap * (isHole ? 1.05 : .9)), new THREE.MeshBasicMaterial({ map: isHole ? textTex('?') : makeIconTex(col[u]), color: isHole ? 0xffffff : ICONC[col[u]], transparent: true, depthWrite: false }));
+      ic.rotation.x = -Math.PI / 2; ic.position.y = yTop + .016; g.add(ic);
+      lv.add(g);
+      const corners = []; for (let i = 0; i < v; i++) { const a = phiOf[u] + 2 * Math.PI * (i + .5) / v; corners.push([R[u] * Math.cos(a), R[u] * Math.sin(a)]); }
+      T[u] = { kind: isHole ? 'hole' : 'tile', g, mesh, mats: m, icon: ic, neon, glow, light: 1, h: yTop, c: C[u], ap, corners, level: l };
+    });
+    buildGoalPlatform(C, R, phiOf);
+    HW.order.forEach((w1, i) => { const w2 = HW.order[(i + 1) % 3];   // wall-to-wall bridges across the gaps where walls meet
+      if (!Gr.rot[w1].includes(w2)) return;
+      const a = wallPts[w1][wallPts[w1].length - 1], b = wallPts[w2][0];
+      plan.push({ u: w1, v: w2, a: [a[0], a[1]], b: [b[0], b[1]], wall: false, wallWall: true, len: Math.hypot(b[0] - a[0], b[1] - a[1]) });
+    });
+    bridgesM = plan.map(B => {
+      const tex = R3.plank.clone(); tex.needsUpdate = true;
+      const ya = (T[B.u] ? T[B.u].h : WALL_H), yb = B.wall ? WALL_H : (T[B.v] ? T[B.v].h : WALL_H);
+      const L0 = Math.hypot(B.b[0] - B.a[0], yb - ya, B.b[1] - B.a[1]) / 2;
+      const half = () => { const m = new THREE.Mesh(ladderGeometry(L0), new THREE.MeshStandardMaterial({ map: tex, roughness: .8 })); m.userData.L0 = L0; m.castShadow = true; lv.add(m); return m; };
+      const ball = () => { const m = new THREE.Mesh(R3.hingeGeo, R3.hingeMat); m.castShadow = true; lv.add(m); return m; };
+      return { ...B, h1: half(), h2: half(), k1: ball(), k2: ball(), tex };
+    });
+    R3.floor.scale.set(SC / COS30 + .55, 1, SC * SZ / COS30 + .55); R3.water.scale.set(SC / COS30 + .05, SC * SZ / COS30 + .05, 1);
+    fitCamera(); placeBridges(); kick();
+  }
+  // ---------- the goal: a larger, still-uncoloured platform floating just below the rim ----------
+  function buildGoalPlatform(C, Rr, phiOf) {
+    const lv = R3.level, c0 = C[hole], rimTop = yTopOf(RIM_LEVEL), y = rimTop - .32;
+    const reach = Math.min(...link.map(x => Math.hypot(C[x][0] - c0[0], C[x][1] - c0[1]) - Rr[x]));
+    const Rg = Math.max(.35, Math.min(reach - .3, .8 * Math.min(...link.map(x => Rr[x]))));   // smaller than a tile
+    const th = link.map(x => Math.atan2(C[x][1] - c0[1], C[x][0] - c0[0])).sort((a, b) => a - b);
+    let sx = 0, sy = 0; th.forEach((a, i) => { const d = (a - 2 * Math.PI * i / 5) * 5; sx += Math.cos(d); sy += Math.sin(d); });
+    const phi = Math.atan2(sy, sx) / 5 - Math.PI / 5;
+    const g = new THREE.Group(); g.position.set(c0[0], 0, c0[1]); lv.add(g);
+    const slabGeo = new THREE.ExtrudeGeometry(regularShape(5, Rg - .08, phi), { depth: .32, bevelEnabled: true, bevelSize: .08, bevelThickness: .08, bevelSegments: 3 });
+    slabGeo.rotateX(-Math.PI / 2); slabGeo.translate(0, y - .4, 0);
+    const mats2 = [new THREE.MeshStandardMaterial({ color: 0xb9bec7, metalness: .55, roughness: .3 }), new THREE.MeshStandardMaterial({ color: 0x7d838d, metalness: .5, roughness: .4 })];
+    const slab = new THREE.Mesh(slabGeo, mats2); slab.castShadow = slab.receiveShadow = true; g.add(slab);
+    const flat = sh => { const geo2 = new THREE.ShapeGeometry(sh); geo2.rotateX(-Math.PI / 2); return geo2; };
+    const ring = (r0, r1) => { const sh = regularShape(5, Rg * r1, phi); sh.holes.push(new THREE.Path(regularShape(5, Rg * r0, phi).getPoints().reverse())); return flat(sh); };
+    const plate = new THREE.Mesh(flat(regularShape(5, Rg * .66, phi)), new THREE.MeshStandardMaterial({ color: 0x07090d, roughness: .3, metalness: .3 }));
+    plate.position.y = y + .01; g.add(plate);
+    const neon = new THREE.Mesh(ring(.67, .74), new THREE.MeshBasicMaterial({ color: 0xe8ecf2 })); neon.position.y = y + .008; g.add(neon);
+    const trim = new THREE.Mesh(ring(.86, .93), new THREE.MeshBasicMaterial({ color: 0xd9c27a })); trim.position.y = y + .008; g.add(trim);   // a gilt band
+    const glow = new THREE.Mesh(ring(.58, .84), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: .22, blending: THREE.AdditiveBlending, depthWrite: false })); glow.position.y = y + .012; g.add(glow);
+    const ic = new THREE.Mesh(new THREE.PlaneGeometry(Rg * .8, Rg * .8), new THREE.MeshBasicMaterial({ map: textTex('?'), transparent: true, depthWrite: false }));
+    ic.rotation.x = -Math.PI / 2; ic.position.y = y + .02; g.add(ic);
+    // grey skeleton bridges down from each rim tile: two rails and a few rungs
+    const ghost = new THREE.MeshStandardMaterial({ color: 0x9aa0a8, metalness: .4, roughness: .5, transparent: true, opacity: .75 });
+    const skel = [];
+    link.forEach(x => {
+      const dx = c0[0] - C[x][0], dz = c0[1] - C[x][1], l = Math.hypot(dx, dz), ux = dx / l, uz = dz / l;
+      const a = edgePoint(C[x], Rr[x], Gr.rot[x].length, phiOf[x], ux, uz, .05), b = edgePoint(c0, Rg, 5, phi, -ux, -uz, .05);
+      const A = V3(a[0], rimTop - .03, a[1]), Bp = V3(b[0], y - .03, b[1]), d = Bp.clone().sub(A), len = d.length();
+      const xA = d.clone().normalize(), zA = xA.clone().cross(V3(0, 1, 0)).normalize(), yA = zA.clone().cross(xA).normalize();
+      const q = new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(xA, yA, zA)), sg = new THREE.Group();
+      sg.position.copy(A).add(Bp).multiplyScalar(.5); sg.quaternion.copy(q); lv.add(sg);
+      [-.11, .11].forEach(zo => { const r = new THREE.Mesh(new THREE.BoxGeometry(len, .035, .035), ghost); r.position.z = zo; sg.add(r); });
+      const k = Math.max(2, Math.round(len / .3)); for (let i = 0; i <= k; i++) { const r = new THREE.Mesh(new THREE.BoxGeometry(.03, .025, .24), ghost); r.position.x = -len / 2 + len * i / k; sg.add(r); }
+      const plank = new THREE.Mesh(new THREE.BoxGeometry(len, .07, .26), new THREE.MeshStandardMaterial({ map: R3.plank, color: 0xffffff, roughness: .8 })); plank.visible = false; sg.add(plank);
+      skel.push({ sg, plank, x });
+    });
+    R3.lava.intensity = 0;
+    T[hole] = { kind: 'hole', g, c: c0, h: y, slabMats: mats2, neon, glow, icon: ic, skel, light: 1 };
+  }
+  let _lavaTex = null;
+  function lavaTex() {                     // dark crust plates over glowing cracks
+    if (_lavaTex) return _lavaTex;
+    const c = document.createElement('canvas'); c.width = c.height = 256; const x = c.getContext('2d');
+    x.fillStyle = '#ff7a18'; x.fillRect(0, 0, 256, 256);
+    let s = 3; const r = () => (s = (s * 16807) % 2147483647) / 2147483647;
+    for (let i = 0; i < 70; i++) { x.fillStyle = r() < .5 ? '#3a0f05' : '#5a1806'; x.beginPath(); const cx = r() * 256, cy = r() * 256, k = 5 + Math.floor(r() * 4), rad = 10 + r() * 22; for (let j = 0; j < k; j++) { const a = j / k * 6.283, rr = rad * (.7 + .5 * r()); x[j ? 'lineTo' : 'moveTo'](cx + rr * Math.cos(a), cy + rr * Math.sin(a)); } x.fill(); }
+    _lavaTex = new THREE.CanvasTexture(c); _lavaTex.wrapS = _lavaTex.wrapT = THREE.RepeatWrapping; _lavaTex.repeat.set(.6, .6); return _lavaTex;
+  }
+  function stepGoal(now) {                 // the empty platform breathes a soft white light
+    const t = T[hole]; if (!t || !t.glow || holeFill >= 0) return;
+    t.glow.material.opacity = .14 + .12 * (.5 + .5 * Math.sin(now / 700));
+  }
+  function stepLava(now) {
+    const t = T[hole]; if (!t || !t.lavaMat || holeFill >= 0) return;
+    const k = .5 + .5 * Math.sin(now / 520); t.lavaMat.emissiveIntensity = .45 + .25 * k; R3.lava.intensity = .6 + .35 * k; if (t.lavaMat.map) t.lavaMat.map.offset.set(now / 60000, now / 90000);
+    t.bubbles.forEach((b, i) => {
+      let age = (now - b.userData.t0) % 2600;
+      if (age < 30 || !b.userData.x) { const a = Math.random() * 6.283, d = Math.sqrt(Math.random()) * b.userData.r; b.userData.x = t.c[0] + d * Math.cos(a); b.userData.z = t.c[1] + d * Math.sin(a); b.userData.s = .06 + Math.random() * .08; }
+      const f = age / 2600, s = b.userData.s * Math.sin(Math.min(1, f * 1.15) * Math.PI);   // swell, then pop
+      b.visible = f < .87; b.scale.setScalar(Math.max(.001, s)); b.position.set(b.userData.x, t.h + s * .35, b.userData.z);
+    });
+  }
+  function stepWater(now) {
+    if (R3.water.geometry.attributes.position.count < 50) { R3.water.material.opacity = .74 + .04 * Math.sin(now / 900); return; }
+    const p = R3.water.geometry.attributes.position, tt = now / 900;
+    for (let i = 0; i < p.count; i++) { const x = p.getX(i), y = p.getY(i); p.setZ(i, .012 * Math.sin(x * 14 + tt) + .01 * Math.sin(y * 17 - tt * 1.3)); }
+    p.needsUpdate = true;
+  }
+  // a ladder: two side rails and rungs, `len` long along x, centred at the origin
+  function ladderGeometry(len) {
+    const parts = [], box = (w, h, d, x, y, z) => { const g = new THREE.BoxGeometry(w, h, d).toNonIndexed(); g.translate(x, y, z); parts.push(g); };
+    [-.13, .13].forEach(z => box(len, .045, .05, 0, .025, z));
+    const k = Math.max(2, Math.round(len / .16));
+    for (let i = 0; i < k; i++) box(.055, .03, .28, -len / 2 + (i + .5) * len / k, 0, 0);
+    const out = new THREE.BufferGeometry();
+    ['position', 'normal', 'uv'].forEach(a => {
+      const n = parts.reduce((s, g) => s + g.attributes[a].array.length, 0), arr = new Float32Array(n); let o = 0;
+      parts.forEach(g => { arr.set(g.attributes[a].array, o); o += g.attributes[a].array.length; });
+      out.setAttribute(a, new THREE.BufferAttribute(arr, a === 'uv' ? 2 : 3));
+    });
+    parts.forEach(g => g.dispose()); return out;
+  }
+  function placeBridges() {
+    bridgesM.forEach(B => {
+      const ya = T[B.u].h + T[B.u].g.position.y - .03, yb = (B.wall ? WALL_H : T[B.v].h) + T[B.v].g.position.y - .03;
+      const A = V3(B.a[0], ya, B.a[1]), Bp = V3(B.b[0], yb, B.b[1]), M = A.clone().add(Bp).multiplyScalar(.5), d = Bp.clone().sub(A), len = d.length();
+      const xA = d.clone().normalize(), zA = xA.clone().cross(V3(0, 1, 0)).normalize(), yA = zA.clone().cross(xA).normalize();   // right-handed; deck stays face-up
+      const q = new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(xA, yA, zA));
+      [[B.h1, A, M], [B.h2, M, Bp]].forEach(([m, p0, p1]) => { m.position.copy(p0).add(p1).multiplyScalar(.5); m.quaternion.copy(q); m.scale.set((len / 2 + .01) / m.userData.L0, 1, 1); });
+      B.k1.position.copy(A); B.k2.position.copy(Bp);
+      B.tex.repeat.set(Math.max(1, len / 1), 1);
+    });
+  }
+  let CAM = { az: 0, el: 1.0, D: 20 };
+  function applyCam() {
+    const cam = R3.camera, { az, el, D } = CAM;
+    cam.position.set(D * Math.cos(el) * Math.sin(az), D * Math.sin(el), D * Math.cos(el) * Math.cos(az)); cam.lookAt(0, 0, .35); cam.updateMatrixWorld();
+    $('btnView').style.display = Math.abs(Math.sin(az / 2)) > .01 || Math.abs(el - (CAM.base || 1)) > .02 ? '' : 'none';
+  }
+  function fitCamera() {
+    const cam = R3.camera; cam.aspect = BW / BH; cam.updateProjectionMatrix();
+    const tall = BH / BW > 1.3, el = tall ? 1.22 : 1.0, pts = [], top = Math.max(...T.filter(Boolean).map(t => t.h || 0), 1);
+    HV.forEach(([x, z]) => [0, top].forEach(y => pts.push(V3(x * (SC + .5), y, z * (SC * SZ + .5)))));
+    const bottomRoom = Math.min(.55, 92 / BH * 2);            // keep the chain tray clear
+    for (let D = 8; D < 90; D += .2) {
+      cam.position.set(0, D * Math.sin(el), D * Math.cos(el)); cam.lookAt(0, 0, .35); cam.updateMatrixWorld();
+      if (pts.every(p => { const q = p.clone().project(cam); return Math.abs(q.x) < .98 && q.y < .97 && q.y > -1 + bottomRoom; })) { CAM.D = D; break; }
+    }
+    CAM.base = el; CAM.az = 0; CAM.el = el; applyCam();
+  }
+  // ---------- dock ripples ----------
+  function graphDist(src, maxD) {
+    const d = new Map([[src, 0]]), q = [src];
+    while (q.length) { const x = q.shift(); if (d.get(x) >= maxD) continue; adj[x].forEach(w => { if (w !== hole && !d.has(w)) { d.set(w, d.get(x) + 1); q.push(w); } }); }
+    return d;
+  }
+  function ripple(u, amp, maxD) { if (reduced || u < 0 || u === hole) return; waves.push({ src: u, t0: performance.now(), amp, dist: graphDist(u, maxD === undefined ? 4 : maxD) }); kick(); }
+  function stepWaves(now) {
+    const off = new Array(n).fill(0), tx = new Array(n).fill(0), tz = new Array(n).fill(0);
+    waves = waves.filter(W => now - W.t0 < 2600);
+    waves.forEach(W => W.dist.forEach((d, w) => {
+      const t = (now - W.t0) / 1000 - d * .11; if (t <= 0) return;
+      const a = W.amp * Math.pow(.5, d), env = Math.exp(-t / .42), s = Math.sin(t * 2 * Math.PI / .5);
+      off[w] += a * s * env;
+      const c0 = T[W.src].c, c1 = T[w].c, dx = c1[0] - c0[0], dz = c1[1] - c0[1], l = Math.hypot(dx, dz) || 1;
+      tx[w] += a * .35 * Math.cos(t * 2 * Math.PI / .5) * env * dz / l; tz[w] -= a * .35 * Math.cos(t * 2 * Math.PI / .5) * env * dx / l;
+    }));
+    shakes.forEach((t0, u) => { if (now - t0 > 450) shakes.delete(u); });
+    for (let u = 0; u < n; u++) {
+      const t = T[u], g = t && t.g; if (!g || t.kind !== 'tile') continue;          // the walls stay put
+      g.position.y = off[u]; g.rotation.x = tx[u]; g.rotation.z = tz[u];
+      const sk = shakes.get(u); g.position.x = t.c[0] + (sk ? Math.sin((now - sk) / 22) * .09 * (1 - (now - sk) / 450) : 0);
+    }
+    return waves.length > 0;
+  }
+  // ---------- tile lights ----------
+  const _c = new THREE.Color();
+  function partialChain() { return !trace && lastPartial && !found.has(lastPartial.key) ? chains.find(c => c.key === lastPartial.key) : null; }
+  function targetLight(u) {
+    if (trace && trace.pair) {
+      if (!trace.comp.set.has(u)) return .22;
+      if (traced.get(trace.comp.key).has(u)) return 1.5;
+      const end = trace.path[trace.path.length - 1];
+      return adj[end].includes(u) ? 1.35 + .35 * Math.sin(performance.now() / 160) : .9;   // the next steps pulse
+    }
+    if (trace) return u === trace.path[0] || adj[trace.path[0]].includes(u) ? 1 : .3;
+    const A = active && chains.find(k => k.key === active);
+    if (A) return A.set.has(u) ? 1.75 : .15;                  // a captured chain stands out most
+    const P = partialChain();
+    if (P) { if (!P.set.has(u)) return .25; const done = traced.get(P.key); if (done.has(u)) return 1.5; return [...done].some(x => adj[x].includes(u)) ? 1.3 + .3 * Math.sin(performance.now() / 160) : .9; }
+    return 1;
+  }
+  // bridges: which are lit, and in which pair
+  function bridgeState() {
+    const lit = new Map();                 // key -> {pair, level: 1 traced, 2 active}
+    chains.forEach(K => { const t = traced.get(K.key); if (!t || found.has(K.key)) return; K.edges.forEach(([a, b]) => { if (t.has(a) && t.has(b)) lit.set(Math.min(a, b) + ':' + Math.max(a, b), 1); }); });
+    const A = active && chains.find(k => k.key === active);
+    if (A && !trace) A.edges.forEach(([a, b]) => lit.set(Math.min(a, b) + ':' + Math.max(a, b), 2));
+    return lit;
+  }
+  const PLANK = 0xffffff;
+  function stepBridges(now) {
+    const lit = bridgeState(), dimAll = !!(trace && trace.pair) || !!active || !!partialChain();
+    bridgesM.forEach(B => {
+      const st = lit.get(Math.min(B.u, B.v) + ':' + Math.max(B.u, B.v));
+      [[B.h1, B.u], [B.h2, B.v]].forEach(([m, w]) => {
+        const mat = m.material;
+        if (st) {
+          const pulse = st === 2 ? 1.1 + .5 * Math.sin(now / 160 - (w === B.u ? 0 : 1.2)) : .85;
+          mat.color.setHex(NEON[col[w]]); mat.emissive.setHex(NEON[col[w]]); mat.emissiveIntensity = pulse; mat.map = null;
+        } else {
+          mat.color.setHex(PLANK).multiplyScalar(dimAll ? .22 : 1); mat.emissive.setHex(0); mat.map = B.tex;
+        }
+        mat.needsUpdate = mat.needsUpdate || (!!st !== !!m.userData.lit); m.userData.lit = !!st;
+      });
+    });
+  }
+  function stepLights() {
+    for (let u = 0; u < n; u++) {
+      const t = T[u]; if (!t || t.kind === 'hole') continue;
+      const goal = targetLight(u); t.light += (goal - t.light) * .35;
+      const k = Math.min(1, t.light), hi = Math.max(0, t.light - 1) * 4;
+      t.mats[0].color.setHex(TOPC[col[u]]).multiplyScalar(.18 + .82 * k);
+      t.mats[1].color.setHex(t.kind === 'wall' ? TOPC[col[u]] : SIDEC[col[u]]).multiplyScalar(.18 + .82 * k);
+      if (k < 1) {                         // grey out: towards a dull grey of the same brightness
+        const g = (t.mats[0].color.r + t.mats[0].color.g + t.mats[0].color.b) / 3; t.mats[0].color.lerp(_c.setRGB(g, g, g), Math.min(1, (1 - k) * 1.2));
+        const g2 = (t.mats[1].color.r + t.mats[1].color.g + t.mats[1].color.b) / 3; t.mats[1].color.lerp(_c.setRGB(g2, g2, g2), Math.min(1, (1 - k) * 1.2));
+      } else if (t.light > 1) {                  // chain tiles glow brighter than normal
+        t.mats[0].color.multiplyScalar(1 + .45 * (t.light - 1)); t.mats[1].color.multiplyScalar(1 + .3 * (t.light - 1));
+      }
+      if (t.wallNeon) t.wallNeon.color.setHex(NEON[col[u]]).multiplyScalar(.06 + .94 * k * k).lerp(_c.setHex(0xffffff), Math.min(.6, hi));
+      if (t.neon) {
+        t.neon.material.color.setHex(NEON[col[u]]).multiplyScalar(.06 + .94 * k * k).lerp(_c.setHex(0xffffff), Math.min(.6, hi));
+        t.glow.material.opacity = .3 * k * k + .45 * hi;
+        t.icon.material.opacity = .15 + .85 * k;
+      }
+    }
+  }
+  // ---------- projection helpers ----------
+  function proj(v) { const p = v.clone().project(R3.camera); return [(p.x + 1) / 2 * BW, (1 - p.y) / 2 * BH]; }
+  function topWorld(u) { const t = T[u]; if (t.kind === 'tile') { t.g.updateMatrixWorld(); return t.g.localToWorld(V3(0, t.h, 0)); } return V3(t.c[0], t.h + t.g.position.y, t.c[1]); }   // follows the rocking
+  function toScreen(u) { return proj(topWorld(u)); }
+  function toWorld(cx, cy) { const b = svg.getBoundingClientRect(); return [cx - b.left, cy - b.top]; }
+  function pick(cx, cy) {
+    const b = svg.getBoundingClientRect(), x = cx - b.left, y = cy - b.top;
+    R3.scene.updateMatrixWorld();
+    R3.ray.setFromCamera(new THREE.Vector2(x / BW * 2 - 1, -(y / BH) * 2 + 1), R3.camera);
+    const hit = R3.ray.intersectObjects(R3.level.children, true).find(h => h.object.userData.u !== undefined && h.object.userData.u !== hole);
+    return hit ? hit.object.userData.u : -1;
+  }
+  function pickAll(cx, cy) {               // every tile under the finger, nearest first
+    const b = svg.getBoundingClientRect(), x = cx - b.left, y = cy - b.top;
+    R3.scene.updateMatrixWorld();
+    R3.ray.setFromCamera(new THREE.Vector2(x / BW * 2 - 1, -(y / BH) * 2 + 1), R3.camera);
+    const out = []; R3.ray.intersectObjects(R3.level.children, true).forEach(h => { const u = h.object.userData.u; if (u !== undefined && u !== hole && !out.includes(u)) out.push(u); });
+    return out;
+  }
+  function stepTarget(cx, cy) {            // while tracing: look through anything in front for a valid next link
+    const hits = pickAll(cx, cy); if (!hits.length || !trace) return hits[0] === undefined ? -1 : hits[0];
+    const t = trace, end = t.path[t.path.length - 1];
+    const okNext = x => x === end || (adj[end].includes(x) && (t.pair ? t.pair.includes(col[x]) : true));
+    const done = t.comp ? traced.get(t.comp.key) : null, [fx, fy] = toWorld(cx, cy);
+    const valid = hits.filter(x => okNext(x) && x !== end); if (!valid.length) return hits.find(okNext) ?? hits[0];
+    const cost = x => { const [px, py] = toScreen(x); return Math.hypot(px - fx, py - fy) + (done && done.has(x) ? 25 : 0); };   // nearest centre, untraced first
+    return valid.reduce((a, b) => cost(a) <= cost(b) ? a : b);
+  }
+  function ballAt(cx, cy, slack) {
+    const u = pick(cx, cy); if (u >= 0) return u;
+    const [x, y] = toWorld(cx, cy); let best = -1, bd = slack || 22;
+    for (let w = 0; w < n; w++) { if (w === hole || !T[w]) continue; const [px, py] = toScreen(w), d = Math.hypot(px - x, py - y); if (d < bd) { bd = d; best = w; } }
+    return best;
+  }
+  function outlinePts(u) {
+    const t = T[u], y = t.h + t.g.position.y + .01;
+    if (t.kind === 'wall') return t.pts.filter((p, i) => i % 6 === 0 || i === t.pts.length - 1).map(p => proj(V3(p[0], y, p[1])));
+    return t.corners.map(([dx, dz]) => proj(V3(t.c[0] + dx, y, t.c[1] + dz)));
+  }
+  function outline(u, color, w, dash) {
+    const p = outlinePts(u), c = octx; c.beginPath(); p.forEach((q, i) => c[i ? 'lineTo' : 'moveTo'](...q)); if (T[u].kind !== 'wall') c.closePath();
+    c.strokeStyle = color; c.lineWidth = w; c.lineJoin = 'round'; if (dash) c.setLineDash([5, 4]); c.stroke(); c.setLineDash([]);
+  }
+  function strand(u, v, pair, w, train) {
+    const a = toScreen(u), b = toScreen(v), dx = b[0] - a[0], dy = b[1] - a[1], L2 = Math.hypot(dx, dy) || 1, nx = -dy / L2 * w * .32, ny = dx / L2 * w * .32;
+    const [p, q] = col[u] === pair[0] ? [a, b] : [b, a], c = octx; c.lineCap = 'round';
+    c.strokeStyle = 'rgba(0,0,0,.55)'; c.lineWidth = w * 2.1; c.beginPath(); c.moveTo(...a); c.lineTo(...b); c.stroke();
+    c.lineWidth = w * .75;
+    c.strokeStyle = HEX[pair[0]]; c.beginPath(); c.moveTo(p[0] + nx, p[1] + ny); c.lineTo(q[0] + nx, q[1] + ny); c.stroke();
+    c.strokeStyle = HEX[pair[1]]; c.beginPath(); c.moveTo(p[0] - nx, p[1] - ny); c.lineTo(q[0] - nx, q[1] - ny); c.stroke();
+    if (train) { const t = (performance.now() / 900) % 1; for (let k = 0; k < 2; k++) { const f = (t + k / 2) % 1; c.fillStyle = '#fff'; c.beginPath(); c.arc(a[0] + dx * f, a[1] + dy * f, w * .55, 0, 7); c.fill(); } }
+  }
+  function lockIcons() {
+    const r = rimCols(col); let j = -1; for (let t = 0; t < 5; t++) if (r[t] === r[(t + 2) % 5]) j = t;
+    if (j < 0 || holeFill >= 0) return;
+    const x = t => link[(j + t) % 5], A = col[x(3)], B = col[x(4)];
+    [[chainAt[x(1)][A], x(3)], [chainAt[x(1)][B], x(4)]].forEach(([K, y]) => { if (!K.set.has(y)) return; const [px, py] = toScreen(y); octx.font = '18px system-ui'; octx.textAlign = 'center'; octx.textBaseline = 'middle'; octx.fillText('🔒', px + 12, py - 16); });
+  }
+  function kick() { if (!looping) { looping = true; requestAnimationFrame(frame); } }
+  function frame() {
+    if (!BW || !R3 || !$('game').classList.contains('on')) { looping = false; return; }
+    const now = performance.now();
+    stepWaves(now); placeBridges(); stepLights(); stepBridges(now);
+    stepGoal(now); stepWater(now);
+    R3.renderer.render(R3.scene, R3.camera);
+    const c = octx; c.setTransform(DPR, 0, 0, DPR, 0, 0); c.clearRect(0, 0, BW, BH);
+    anim.forEach((a, u) => { if (now - a.t0 > 3000) { anim.delete(u); return; } outline(u, '#ffd666', 3.5); });
+    lockIcons();
+    requestAnimationFrame(frame);                    // the lava glows, so keep drawing while the board is open
+  }
+  function paintBalls() {
+    for (let u = 0; u < n; u++) {
+      const t = T[u]; if (!t || t.kind === 'hole') continue;
+      t.mats[0].color.setHex(TOPC[col[u]]); t.mats[1].color.setHex(t.kind === 'wall' ? TOPC[col[u]] : SIDEC[col[u]]);
+      t.icon.material.map = makeIconTex(col[u]); t.icon.material.color.setHex(ICONC[col[u]]); t.icon.material.needsUpdate = true;
+      if (t.neon) { t.neon.material.color.setHex(NEON[col[u]]); t.glow.material.color.setHex(NEON[col[u]]); }
+    }
+    kick();
+  }
+  function popBall(u, cls) {
+    if (u === hole) return;
+    if (cls === 'hintpulse') { anim.set(u, { t0: performance.now() }); ripple(u, .12, 1); return; }
+    ripple(u, cls === 'wob' ? .06 : .14, 0);
+  }
+  function drawTraced() { kick(); }
+  function drawActive() { const K = active && chains.find(c => c.key === active); if (!K) active = null; kick(); }
+  function drawTrace(fx, fy) { fingerPt = fx === undefined ? null : toWorld(fx, fy); kick(); }
+  function drawHoleFill() {
+    const used = new Set(rimCols(col)); let free = 0; while (used.has(free)) free++;
+    holeFill = free; const t = T[hole];          // the platform takes the missing element
+    t.slabMats[0].color.setHex(TOPC[free]); t.slabMats[0].metalness = .1; t.slabMats[1].color.setHex(SIDEC[free]);
+    t.neon.material.color.setHex(NEON[free]); t.glow.material.color.setHex(NEON[free]); t.glow.material.opacity = .4;
+    t.icon.material.map = makeIconTex(free); t.icon.material.color.setHex(ICONC[free]); t.icon.material.needsUpdate = true;
+    t.skel.forEach(k => { k.sg.children.forEach(c => { c.visible = c === k.plank; }); k.plank.material.map = null; k.plank.material.color.setHex(NEON[free]); k.plank.material.emissive = new THREE.Color(NEON[free]); k.plank.material.emissiveIntensity = .5; k.plank.material.needsUpdate = true; });
+    ripple(link[0], .25, 4); return free;
+  }
+  function applyView() {}
+  function fit() {}
+  // hover: bob the tile under the mouse and ripple outwards
+  svg.addEventListener('pointermove', e => {
+    if (e.pointerType !== 'mouse' || e.buttons) return;
+    const u = pick(e.clientX, e.clientY);
+    if (u !== hoverU) { hoverU = u; if (u >= 0) ripple(u, .16, 4); }
+  });
+  svg.addEventListener('pointerleave', () => { hoverU = -1; });
+
+  // ---------------- HUD ----------------
+  function msg(html) { $('msg').innerHTML = html; }
+  function updateHud() {
+    if ($('score').textContent !== String(score)) { const sp = $('score').parentElement; sp.classList.remove('bump'); void sp.offsetWidth; sp.classList.add('bump'); }
+    $('score').textContent = score; $('flips').textContent = flips; $('par').textContent = L.par;
+    const st = flips <= L.par ? 3 : flips <= L.par + 2 ? 2 : 1, cap = hintsUsed ? Math.min(st, 2) : st;
+    $('flipPips').innerHTML = '<span class="stars3">' + '<b>★</b>'.repeat(cap) + '<i>★</i>'.repeat(3 - cap) + '</span> <small>' + flips + '/' + L.par + '</small>';
+    const cnt = [0, 0, 0, 0]; rimCols(col).forEach(x => cnt[x]++);
+    $('goal').innerHTML = 'Rim ' + cnt.map((k, e) => '<span class="gi' + (k === 0 ? ' clear' : k === 1 ? ' one' : '') + '">' + iconSvg(e, HEX[e]) + '<b>' + k + '</b></span>').join('');
+    const fc = chains.filter(K => found.has(K.key)).length; $('found').textContent = fc; $('nchains').textContent = chains.length;
+    $('chainFill').style.width = (100 * fc / Math.max(1, chains.length)) + '%';
+    const ch = $('chipCharge');
+    const caught = chains.filter(K => found.has(K.key) && K.size > 1 && !K.web);
+    let mode2;
+    if (won) { ch.className = 'chip charge done'; ch.textContent = '🏆 Filled!'; mode2 = 'next'; }
+    else if (needFind) { ch.className = 'chip nocharge'; ch.textContent = '🔍 Catch a new chain'; mode2 = 'catch'; }
+    else if (!caught.length) { ch.className = 'chip prog'; ch.textContent = '👆 Trace a chain'; mode2 = 'trace'; }
+    else { ch.className = 'chip charge'; ch.textContent = '⚡ Swap ready'; mode2 = 'swap'; }
+    const go = $('btnGo'); go.className = 'tool go ' + mode2;
+    $('goIcon').textContent = { trace: '👆', swap: '⇄', catch: '🔍', next: '➜' }[mode2];
+    $('goText').textContent = { trace: 'TRACE A CHAIN', swap: 'SWAP!', catch: 'CATCH A NEW ONE', next: 'NEXT' }[mode2];
+    go.dataset.mode = mode2;
+    renderTray();
+    const stuck = flips >= L.par + 2 || wrongSteps >= 4 || (performance.now() - lastProgress) > 45000;
+    $('btnHint').classList.toggle('muted', !stuck);
+    $('btnUndo').disabled = !history.length || won || busy;
+    $('btnHint').disabled = won || dist(col) === null;
+  }
+  // ---------- the chain tray: a checklist of chains at the rim ----------
+  let wrongSteps = 0, lastProgress = performance.now();
+  function ringSvg(K, frac) {
+    const [a, b] = K.pair, R0 = 15, C0 = 2 * Math.PI * R0, f = Math.max(0, Math.min(1, frac));
+    return '<svg class="ring" viewBox="0 0 40 40"><circle cx="20" cy="20" r="' + R0 + '" fill="none" stroke="' + HEX[a] + '" stroke-width="5" stroke-dasharray="' + C0 / 2 + ' ' + C0 + '" transform="rotate(-90 20 20)" opacity=".85"/>' +
+      '<circle cx="20" cy="20" r="' + R0 + '" fill="none" stroke="' + HEX[b] + '" stroke-width="5" stroke-dasharray="' + C0 / 2 + ' ' + C0 + '" transform="rotate(90 20 20)" opacity=".85"/>' +
+      '<circle cx="20" cy="20" r="10" fill="#0b1120"/><circle cx="20" cy="20" r="' + (R0 + 4) + '" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-dasharray="' + (f * 2 * Math.PI * (R0 + 4)) + ' 999" transform="rotate(-90 20 20)"/>' +
+      '<text x="20" y="24" text-anchor="middle" font-size="11" font-weight="900" fill="#fff">' + K.size + '</text></svg>';
+  }
+  function renderTray() {
+    const tray = $('tray'); if (!tray || !chains) return;
+    const rim = new Set(link), P = typeof partialChain === 'function' ? partialChain() : null;
+    let list = chains.filter(K => K.size > 1 && !K.web && K.vs.some(u => rim.has(u)));
+    if (trace && trace.comp && !list.includes(trace.comp)) list.unshift(trace.comp);
+    if (P && !list.includes(P)) list.unshift(P);
+    const prog = K => found.has(K.key) ? 2 : (traced.get(K.key) || { size: 0 }).size / K.size;
+    list.sort((A, B) => prog(B) - prog(A));
+    tray.innerHTML = '';
+    list.forEach(K => {
+      const done = found.has(K.key), t = traced.get(K.key), k = done ? K.size : t ? t.size : 0;
+      const ready = done && canFlip(K), win = done && filled(flipped(col, K));
+      const c = document.createElement('button');
+      c.className = 'ccard' + (done ? ' done' : '') + (ready && win ? ' ready' : '') + (K.key === active ? ' sel' : '') + (K.lock ? ' lock' : '');
+      c.innerHTML = ringSvg(K, k / K.size) + '<span class="fx">' + iconSvg(K.pair[0], HEX[K.pair[0]]) + '⇄' + iconSvg(K.pair[1], HEX[K.pair[1]]) + '</span>' +
+        '<span>' + (done ? '✓' : k + '/' + K.size) + '</span>' + (K.lock ? '<span class="bd">🔒</span>' : win ? '<span class="bd">🏆</span>' : ready ? '<span class="bd">⚡</span>' : '');
+      c.setAttribute('aria-label', NAMES[K.pair[0]] + '–' + NAMES[K.pair[1]] + ' chain, ' + K.size + ' tiles, ' + (done ? 'caught' : k + ' traced') + (K.lock ? ', lock' : ''));
+      c.onclick = () => {
+        if (done) { if (active === K.key && canFlip(K)) doFlip(K, false); else { active = K.key; drawActive(); updateHud(); msg('Selected. Tap it again (or the chain itself) to <b>swap</b>.'); } return; }
+        const set = t || new Set(), next = K.vs.find(u => !set.has(u) && (!set.size || [...set].some(x => adj[x].includes(u)))) ?? K.vs[0];
+        popBall(next, 'hintpulse'); msg('Trace this ' + NAMES[K.pair[0]] + '–' + NAMES[K.pair[1]] + ' chain: start at the glowing tile.');
+      };
+      tray.appendChild(c);
+    });
+  }
+  setInterval(() => { if ($('game').classList.contains('on') && L) { const stuck = flips >= L.par + 2 || wrongSteps >= 4 || (performance.now() - lastProgress) > 45000; $('btnHint').classList.toggle('muted', !stuck); } }, 2000);
+  function floatAt(sx, sy, text, sub) {
+    const d = document.createElement('div'); d.className = 'float'; d.innerHTML = text + (sub ? '<small>' + sub + '</small>' : '');
+    d.style.left = sx + 'px'; d.style.top = sy + 'px'; $('board').appendChild(d); setTimeout(() => d.remove(), 1150);
+  }
+  const floatBall = (u, t, s) => { const [x, y] = toScreen(u); floatAt(x, y, t, s); };
+
+  // ---------------- capture ----------------
+  function capture(K, atBall) {
+    found.add(K.key); lastProgress = performance.now(); wrongSteps = 0;
+    const { pts, ringMult, endMult } = chainPoints(K);
+    let bonus = 0, notes = [];
+    if (ringMult > 1) notes.push('ring ×' + ringMult);
+    if (K.leaves) notes.push(K.leaves + ' free end' + (K.leaves > 1 ? 's' : ''));
+    if (K.lock) notes.push('🔒 lock');
+    if (K.size > bestLen) { if (bestLen > 1) { bonus = 5 * K.size; notes.push('longest yet!'); } bestLen = K.size; }
+    score += pts + bonus;
+    if (needFind) { needFind = false; notes.push('⚡ flip charged'); }
+    floatBall(atBall, '+' + (pts + bonus), notes.join(' · '));
+    award('capture'); if (K.lock) award('lock'); if (K.size >= 15) award('long');
+    if (L.tools.includes('pi')) { const pk = piChain(); if (pk && pk.key === K.key) award('pi'); }
+    [0, 2, 4].forEach((d, i) => setTimeout(() => note(K.size + d), i * 70));   // a chord at the top of the climb
+    K.order.forEach((layer, i) => setTimeout(() => layer.forEach(u => popBall(u)), reduced ? 0 : i * 45));
+    active = K.key;
+    const piK = L.tools.includes('pi') ? piChain() : null;
+    msg((K.web ? '<b>Captured the whole ' + NAMES[K.pair[0]] + '–' + NAMES[K.pair[1]] + ' web</b> (points, but flipping it only renames colours). ' : '') + (K.lock && !K.web ? '<b>Lock captured.</b> It joins two rim tiles, so flipping it just moves the problem round. ' : '<b>Captured ' + K.size + '-tile chain.</b> ')
+      + (piK && piK.key === K.key ? 'This is <b>π</b>, the canonical chain. ' : '') + 'Tap it to flip' + (needFind ? ' (capture a new one first).' : '.'));
+    drawTraced(); drawActive(); updateHud();
+  }
+
+  // ---------------- flipping ----------------
+  function canFlip(K) { return found.has(K.key) && (!needFind || K.key === lastFlip); }
+  function doFlip(K, isBack) {
+    if (busy || won) return;
+    if (!found.has(K.key)) { msg('Trace that chain first.'); return; }
+    if (K.web) { msg('<b>That is the whole ' + NAMES[K.pair[0]] + '–' + NAMES[K.pair[1]] + ' web.</b> Flipping it would only rename two colours everywhere, so nothing changes. Find a chain whose pair splits into several pieces.'); popBall(K.vs[0], 'wob'); blip(160, .15, 'square', .03); return; }
+    if (!canFlip(K)) { msg('<b>New state:</b> capture at least one new chain here before flipping anything else. You can still flip back.'); popBall(K.vs[0], 'wob'); blip(160, .15, 'square', .03); return; }
+    busy = true; closeWheel();
+    const after = flipped(col, K);
+    if (!isBack) history.push(K.key);
+    let i = 0;
+    const tick = () => {
+      K.order[i].forEach(u => { col[u] = after[u]; popBall(u); });
+      paintBalls(); blip(300 * Math.pow(1.1, Math.min(i, 14)), .08, 'triangle', .045);
+      if (++i < K.order.length) setTimeout(tick, reduced ? 0 : 50);
+      else finishFlip(K);
+    };
+    tick();
+  }
+  function finishFlip(K) {
+    flips++; busy = false;
+    const cs = canon(col);
+    const isNew = !visited.has(cs);
+    computeChains();
+    lastFlip = K.key; active = K.key;
+    // keep tracing progress only for chains that survived unchanged
+    const alive = new Set(chains.map(c => c.key));
+    [...traced.keys()].forEach(k => { if (!alive.has(k)) traced.delete(k); });
+    if (isNew) { visited.add(cs); needFind = true; score += 25; floatBall(K.vs[0], '+25', 'new state'); award('newstate'); }
+    else needFind = false;
+    worldEnter(K);
+    if (filled(col)) { drawTraced(); drawActive(); updateHud(); return win(); }
+    const known = chains.filter(c => found.has(c.key)).length;
+    msg(isNew ? '<b>New state.</b> ' + (chains.length - known) + ' chains here are new or changed. Capture one to charge the next flip.'
+              : 'Back in a state you have seen; flips are free here.');
+    drawTraced(); drawActive(); updateHud();
+  }
+
+  // ---------------- wheel ----------------
+  const wheel = $('wheel'); let wheelBall = -1;
+  function closeWheel() { wheel.classList.remove('on'); [...wheel.querySelectorAll('.opt')].forEach(e => e.remove()); wheelBall = -1; }
+  function openWheel(u) {
+    closeWheel(); wheelBall = u;
+    const b = $('board').getBoundingClientRect();
+    let [x, y] = toScreen(u);
+    const side = x > b.width - 110 ? -1 : 1;     // arc to the right of the tile (left near the right edge)
+    y = Math.max(70, Math.min(b.height - 70, y));
+    wheel.style.left = x + 'px'; wheel.style.top = y + 'px';
+    const others = [0, 1, 2, 3].filter(c => c !== col[u]);
+    const piK = L.tools.includes('pi') ? piChain() : null;
+    others.forEach((c, i) => {
+      const K = chainAt[u][c], ang = -Math.PI / 2 + (i - 1) * .95, R = 78;   // fanned above the tile, clear of its neighbours
+      const o = document.createElement('button'); o.className = 'opt';
+      o.style.left = (R * Math.cos(ang)) + 'px'; o.style.top = (R * Math.sin(ang)) + 'px';
+      o.style.setProperty('--c', HEX[c]);
+      const isFound = found.has(K.key);
+      if (isFound) {
+        o.style.background = 'conic-from-hack';
+        o.style.background = 'linear-gradient(135deg, ' + HEX[col[u]] + ' 0 50%, ' + HEX[c] + ' 50% 100%)';
+        o.innerHTML = '<span class="wi">' + iconSvg(col[u], '#fff') + '⇄' + iconSvg(c, '#fff') + '</span><small>' + (K.web ? 'whole web' : K.size + ' tiles') + '</small>';
+        if (K.web) o.style.opacity = .6;
+        if (K.key === active) o.classList.add('sel');
+      } else {
+        const t = traced.get(K.key);
+        o.classList.add('unk');
+        o.innerHTML = '<span class="wi">' + iconSvg(col[u], '#8b949e') + '?' + iconSvg(c, HEX[c]) + '</span><small>' + (t ? t.size : 0) + '/' + K.size + '</small>';
+      }
+      if (piK && piK.key === K.key) o.insertAdjacentHTML('beforeend', '<span class="badge">π</span>');
+      if (K.lock && isFound) o.insertAdjacentHTML('beforeend', '<span class="lockb">🔒</span>');
+      o.setAttribute('aria-label', NAMES[col[u]] + '–' + NAMES[c] + ' chain, ' + (isFound ? K.size + ' tiles, captured' : 'not captured yet'));
+      o.addEventListener('pointerdown', e => e.stopPropagation());
+      o.addEventListener('click', e => {
+        e.stopPropagation();
+        if (!isFound) { msg('Not captured yet: trace the <b>' + NAMES[col[u]] + '–' + NAMES[c] + '</b> chain from this tile (' + K.size + ' tiles).'); o.animate && o.animate([{ transform: 'translateX(-5px)' }, { transform: 'translateX(5px)' }, { transform: 'none' }], { duration: 180 }); blip(160, .12, 'square', .03); return; }
+        active = K.key; drawActive(); closeWheel();
+        msg((K.lock ? '<b>Lock chain.</b> ' : '') + 'Selected the ' + NAMES[K.pair[0]] + '–' + NAMES[K.pair[1]] + ' chain (' + K.size + '). Tap it to flip' + (canFlip(K) ? '.' : ' once you capture a new chain.'));
+        blip(700, .07);
+      });
+      wheel.appendChild(o);
+    });
+    wheel.classList.add('on'); blip(560, .05, 'sine', .04);
+  }
+
+  // ---------------- input: trace / tap / pan / pinch ----------------
+  const ptrs = new Map(); let mode = null, press = null, trace = null, pinch0 = null, pan0 = null;
+  let lastPartial = null;                  // {key, pair}: the chain the previous drag left half-traced
+  function startTrace(u) {
+    trace = { pair: null, path: [u], comp: null, lastErr: -1 };
+    if (lastPartial && !found.has(lastPartial.key)) {
+      const K = chains.find(c => c.key === lastPartial.key);
+      if (K && K.set.has(u)) { trace.pair = K.pair.slice(); trace.comp = K; traced.get(K.key).add(u); }
+    }
+  }
+  function refuse(w) {                     // a step that would leave the chain: shake the tile and buzz
+    if (!trace || trace.lastErr === w) return; trace.lastErr = w; wrongSteps++;
+    shake(w); blip(150, .14, 'square', .035);
+  }
+  function stepTrace(w) {
+    const t = trace, u = t.path[t.path.length - 1];
+    if (w === u) return;
+    const ok = x => adj[u].includes(x) && (t.pair ? t.pair.includes(col[x]) : true);
+    let via = null;
+    if (!ok(w)) {                 // fast drag skipped a tile: bridge through one common neighbour, else refuse
+      if (!t.pair) { refuse(w); return; }
+      via = adj[u].find(x => x !== hole && t.pair.includes(col[x]) && adj[x].includes(w) && t.pair.includes(col[w]));
+      if (via === undefined) { refuse(w); return; }
+    }
+    t.lastErr = -1;
+    if (!t.pair) { t.pair = [col[u], col[w]]; t.comp = chainAt[u][col[w]]; if (!traced.has(t.comp.key)) traced.set(t.comp.key, new Set()); traced.get(t.comp.key).add(u); }
+    const set = traced.get(t.comp.key);
+    [via, w].forEach(x => { if (x === null || x === undefined) return; t.path.push(x); if (!set.has(x)) { set.add(x); popBall(x); note(set.size - 1); } });
+    drawTrace();
+  }
+  function endTrace() {
+    const t = trace; trace = null; fingerPt = null; kick();
+    lastPartial = t && t.pair ? { key: t.comp.key, pair: t.pair } : lastPartial;
+    if (!t || !t.pair) return;
+    const K = t.comp, set = traced.get(K.key);
+    if (found.has(K.key)) { drawTraced(); msg('Already captured (' + K.size + ' tiles).'); active = K.key; drawActive(); return; }
+    if (set.size >= K.size) capture(K, t.path[t.path.length - 1]);
+    else {
+      drawTraced();
+      const [x, y] = toScreen(t.path[t.path.length - 1]); floatAt(x, y, set.size + '/' + K.size, 'keep tracing');
+      msg('<b>' + set.size + ' of ' + K.size + '</b> tiles of this ' + NAMES[K.pair[0]] + '–' + NAMES[K.pair[1]] + ' chain traced. It branches: go back and trace the rest.');
+    }
+  }
+  function extendByTap(u) {                // tap a neighbour of the chain being built to add it
+    if (!lastPartial || found.has(lastPartial.key)) return false;
+    const K = chains.find(c => c.key === lastPartial.key); if (!K) return false;
+    const set = traced.get(K.key); if (!set || set.has(u)) return false;
+    if (!K.set.has(u) || ![...set].some(x => adj[x].includes(u))) { if (adj[u].some(x => set.has(x))) { shake(u); blip(150, .14, 'square', .035); return true; } return false; }
+    set.add(u); popBall(u); note(set.size - 1); ripple(u, .1, 1);
+    if (set.size >= K.size) capture(K, u); else msg('<b>' + set.size + ' of ' + K.size + '</b> tiles of this ' + NAMES[K.pair[0]] + '–' + NAMES[K.pair[1]] + ' chain. Keep going: tap or drag to its next tile.');
+    updateHud(); return true;
+  }
+  function startByTaps(a, u) {             // tap a tile, then a neighbour of another colour: start that chain
+    if (a < 0 || a === u || !adj[a].includes(u) || u === hole) return false;
+    const K = chainAt[a][col[u]]; if (found.has(K.key)) { active = K.key; drawActive(); return true; }
+    if (!traced.has(K.key)) traced.set(K.key, new Set());
+    const set = traced.get(K.key); [a, u].forEach(x => { if (!set.has(x)) { set.add(x); popBall(x); note(set.size - 1); } });
+    lastPartial = { key: K.key, pair: K.pair.slice() };
+    if (set.size >= K.size) capture(K, u); else msg('<b>' + set.size + ' of ' + K.size + '</b> tiles of this ' + NAMES[K.pair[0]] + '–' + NAMES[K.pair[1]] + ' chain. Tap or drag on to its next tile.');
+    return true;
+  }
+  function tap(u) {
+    if (extendByTap(u)) { closeWheel(); return; }
+    if (wheelBall >= 0 && startByTaps(wheelBall, u)) { closeWheel(); return; }
+    const A = active && chains.find(c => c.key === active);
+    if (A && A.set.has(u) && wheelBall < 0) { doFlip(A, A.key === lastFlip && history.length && history[history.length - 1] === A.key); return; }
+    if (wheelBall === u) { closeWheel(); return; }
+    openWheel(u);
+  }
+  svg.addEventListener('pointerdown', e => {
+    if (busy || won) return;
+    e.preventDefault(); try { svg.setPointerCapture(e.pointerId); } catch (_) {}
+    ptrs.set(e.pointerId, [e.clientX, e.clientY]);
+    if (ptrs.size === 2) {        // pinch
+      if (trace) { trace = null; fingerPt = null; kick(); }
+      mode = 'pinch'; const [a, b] = [...ptrs.values()];
+      return;
+    }
+    const u = ballAt(e.clientX, e.clientY);
+    if (u >= 0) { mode = 'press'; press = { u, x: e.clientX, y: e.clientY }; ripple(u, .14, 3); }
+    else { mode = 'pan'; pan0 = { x: e.clientX, y: e.clientY, az: CAM.az, el: CAM.el, moved: false }; }
+  });
+  svg.addEventListener('pointermove', e => {
+    if (!ptrs.has(e.pointerId)) return;
+    ptrs.set(e.pointerId, [e.clientX, e.clientY]);
+    if (mode === 'pinch') return;
+    if (mode === 'pan') {               // drag the sea or floor: turn the board and peer over it
+      const dx = e.clientX - pan0.x, dy = e.clientY - pan0.y; if (Math.hypot(dx, dy) > 6) pan0.moved = true;
+      if (pan0.moved) { CAM.az = pan0.az - dx * .006; CAM.el = Math.max(.42, Math.min(1.45, pan0.el + dy * .005)); applyCam(); closeWheel(); }
+      return;
+    }
+    if (mode === 'press') {
+      const w = pick(e.clientX, e.clientY);          // steps need a real hit on a tile
+      if (w >= 0 && w !== press.u) { closeWheel(); mode = 'trace'; startTrace(press.u); const w2 = stepTarget(e.clientX, e.clientY); stepTrace(w2 >= 0 ? w2 : w); }
+      else if (Math.hypot(e.clientX - press.x, e.clientY - press.y) > 12) { closeWheel(); mode = 'trace'; startTrace(press.u); drawTrace(e.clientX, e.clientY); }
+      return;
+    }
+    if (mode === 'trace') {
+      const w = stepTarget(e.clientX, e.clientY);
+      if (w >= 0) stepTrace(w);
+      drawTrace(e.clientX, e.clientY);
+    }
+  });
+  function up(e) {
+    if (!ptrs.has(e.pointerId)) return;
+    ptrs.delete(e.pointerId);
+    if (mode === 'pinch') { if (ptrs.size === 0) mode = null; return; }
+    if (mode === 'press') tap(press.u);
+    else if (mode === 'trace') endTrace();
+    else if (mode === 'pan' && !pan0.moved) { closeWheel(); lastPartial = null; if (active) { active = null; drawActive(); msg(''); } }
+    mode = null;
+  }
+  svg.addEventListener('pointerup', up);
+  svg.addEventListener('pointercancel', e => { ptrs.delete(e.pointerId); if (mode === 'trace') endTrace(); mode = null; });
+  document.addEventListener('pointerdown', e => { if (wheelBall >= 0 && !wheel.contains(e.target) && e.target !== svg && !svg.contains(e.target)) closeWheel(); });
+
+  // ---------------- buttons ----------------
+  $('btnUndo').onclick = () => {
+    if (busy || won || !history.length) return;
+    const k = history.pop(), K = chains.find(c => c.key === k);
+    if (K) doFlip(K, true);
+  };
+  $('btnMap').onclick = () => openMap();
+  $('btnGo').onclick = () => {
+    const m = $('btnGo').dataset.mode;
+    if (m === 'next') { $('winNext').click(); return; }
+    if (m === 'swap') {
+      const A = (active && chains.find(c => c.key === active)) || chains.filter(K => found.has(K.key) && K.size > 1 && !K.web && canFlip(K)).sort((a, b) => filled(flipped(col, b)) - filled(flipped(col, a)))[0];
+      if (A) { if (active !== A.key) { active = A.key; drawActive(); updateHud(); msg('This chain is selected. Press <b>SWAP!</b> again to swap it.'); } else doFlip(A, false); }
+      return;
+    }
+    const rim = new Set(link), cand = chains.filter(K => K.size > 1 && !K.web && !found.has(K.key) && K.vs.some(u => rim.has(u)));
+    const K = cand[0] || chains.find(K => K.size > 1 && !K.web && !found.has(K.key)); if (!K) return;
+    const u = K.vs.find(x => rim.has(x)) ?? K.vs[0]; popBall(u, 'hintpulse');
+    msg('Start at the glowing tile and drag along its <b>' + NAMES[K.pair[0]] + '–' + NAMES[K.pair[1]] + '</b> bridges.');
+  };
+  $('btnView').onclick = () => { CAM.az = 0; CAM.el = CAM.base || 1; applyCam(); };
+  svg.addEventListener('dblclick', e => { if (ballAt(e.clientX, e.clientY) < 0) { CAM.az = 0; CAM.el = CAM.base || 1; applyCam(); } });
+  $('btnRestart').onclick = () => startLevel(levelIdx, false);
+  $('btnHint').onclick = () => {
+    if (busy || won) return;
+    const d = dist(col); if (!d) return;
+    const good = chains.filter(K => K.size > 0 && dist(flipped(col, K)) === d - 1);
+    if (!good.length) return;
+    hintsUsed++; score = Math.max(0, score - 100);
+    const K = good.find(k => found.has(k.key)) || good.sort((a, b) => a.size - b.size)[0];
+    if (found.has(K.key)) {
+      active = K.key; drawActive();
+      msg('Hint (−100): flip the highlighted chain. ' + d + ' flip' + (d > 1 ? 's' : '') + ' to go.');
+    } else {
+      const u = K.vs.slice().sort((a, b) => ring[a] - ring[b])[0];
+      popBall(u, 'hintpulse');
+      msg('Hint (−100): capture the <b>' + NAMES[K.pair[0]] + '–' + NAMES[K.pair[1]] + '</b> chain through the pulsing tile (' + K.size + ' tiles), then flip it. ' + d + ' flip' + (d > 1 ? 's' : '') + ' to go.');
+    }
+    updateHud();
+  };
+  $('btnMenu').onclick = () => showMenu();
+  $('btnHelp').onclick = () => showBrief();
+  $('briefGo').onclick = () => { $('brief').classList.remove('on'); blip(520, .1, 'triangle', .05); };
+
+  // ---------------- achievements ----------------
+  const ACH = {
+    capture: ['First catch', 'captured a Kempe chain'], lock: ['Lock-picker', 'captured a lock chain'], long: ['Long haul', 'captured a chain of 15+'],
+    newstate: ['Explorer', 'flipped into a new colouring'], hexes10: ['Cartographer', 'charted 10 hex tiles'], hexes50: ['Surveyor', 'charted 50 hex tiles'],
+    landho: ['Land ho!', 'one flip from an island'], pi: ['Canon', 'captured the π chain'], island: ['Landfall', 'filled the hole on the record map'],
+    jump: ['Long jump', 'a flip that crossed a third of the map'],
+  };
+  save.ach = save.ach || {};
+  function award(k) {
+    if (save.ach[k]) return; save.ach[k] = 1; persist();
+    toast('🏆 ' + ACH[k][0], ACH[k][1]); score += 100; arp(660, 4, 70);
+  }
+  function toast(t, sub) { const d = document.createElement('div'); d.className = 'toast'; d.innerHTML = t + (sub ? '<small>' + sub + '</small>' : ''); $('toast').appendChild(d); setTimeout(() => d.remove(), 2700); }
+
+  // ---------------- world map + Kempe tree HUD (every graph) ----------------
+  // W = Gr.world (built by build_levels.py): a joint t-SNE of all legal colourings (land) and sampled illegal ones (sea)
+  // around this hole. Fog is lifted per graph as states are visited (lit) or glimpsed (one flip away, dimmer).
+  // The HUD tree is the BFS tree of whole-component Kempe swaps from the level's start, built client-side.
+  let W = null, Wst = null, wIdx = null, trail = [], here = -1, wKey = null, wVer = 0, KT = null;
+  const SQ3 = Math.sqrt(3);
+  const DF_GREEN = '#3fe06a', DF_GREY = '#8b949e', DF_RAMP = [[255, 225, 77], [255, 154, 60], [255, 59, 78]];
+  function dfRGB(d) {
+    if (d < 0) return [139, 148, 158]; if (d === 0) return [63, 224, 106];
+    const t = W.maxdF > 1 ? (d - 1) / (W.maxdF - 1) : 0, u = t * 2, i = Math.min(1, Math.floor(u)), f = u - i, a = DF_RAMP[i], b = DF_RAMP[i + 1];
+    return [0, 1, 2].map(j => Math.round(a[j] + (b[j] - a[j]) * f));
+  }
+  const dfCol = (d, al) => { const c = dfRGB(d); return 'rgba(' + c[0] + ',' + c[1] + ',' + c[2] + ',' + (al === undefined ? 1 : al) + ')'; };
+  const SEA = ['#2f86a8', '#2a77a0', '#246594', '#1d5486', '#174475', '#123662', '#0e2a50', '#0a1f3e', '#08182f'], SEA_X = '#050c18', LAND_UNK = '#6e6248';
+  function hexPath(ctx, cx, cy, r) { ctx.moveTo(cx + r, cy); for (let i = 1; i < 6; i++) { const a = Math.PI / 3 * i; ctx.lineTo(cx + r * Math.cos(a), cy + r * Math.sin(a)); } ctx.closePath(); }
+  function axialRound(x, y) {
+    const q = (2 / 3 * x) / W.size, r = (-x / 3 + SQ3 / 3 * y) / W.size, s = -q - r;
+    let rq = Math.round(q), rr = Math.round(r), rs = Math.round(s);
+    const dq = Math.abs(rq - q), dr = Math.abs(rr - r), ds = Math.abs(rs - s);
+    if (dq > dr && dq > ds) rq = -rr - rs; else if (dr > ds) rr = -rq - rs;
+    return [rq, rr];
+  }
+  function worldPrep() {
+    if (W._idx) return;
+    const m = n - 1; W._idx = new Map();
+    for (let k = 0; k < W.S; k++) W._idx.set(W.canon.substr(k * m, m), k);
+    W._hx = W.hexes.map(h => [W.size * 1.5 * h.q, W.size * SQ3 * (h.r + h.q / 2)]);
+    W._hq = new Map(); W.hexes.forEach((h, i) => W._hq.set(h.q + ',' + h.r, i));
+    const sd = W.sea, cells = [];
+    for (let c = 0; c < sd.cols; c++) for (let j = 0; j < sd.rows; j++) {
+      const ch = sd.d[c * sd.rows + j]; if (ch === '0') continue;
+      const q = sd.q0 + c, r = sd.r0 + j - (c >> 1);
+      cells.push([W.size * 1.5 * q, W.size * SQ3 * (r + q / 2), ch === 'x' ? 9 : +ch - 1]);
+    }
+    W._sea = cells; W._seaQ = new Map(); cells.forEach((c, i) => { const [q, r] = axialRound(c[0], c[1]); W._seaQ.set(q + ',' + r, i); });
+    W._xr = [Math.min(...cells.map(c => c[0])), Math.max(...cells.map(c => c[0]))]; W._yr = [Math.min(...cells.map(c => c[1])), Math.max(...cells.map(c => c[1]))];
+  }
+  // Kempe graph of the whole space (CSR), computed once per graph from the canonical strings
+  function kempeGraph() {
+    if (W._kg) return W._kg;
+    const t0 = performance.now(), m = n - 1, vs = [], vi = new Int32Array(n).fill(-1);
+    for (let u = 0; u < n; u++) if (u !== hole) { vi[u] = vs.length; vs.push(u); }
+    const nb = vs.map(() => []);
+    Gr.edges.forEach(([a, b]) => { if (a !== hole && b !== hole) { nb[vi[a]].push(vi[b]); nb[vi[b]].push(vi[a]); } });
+    const c = new Int8Array(m), comp = new Int32Array(m), st = new Int32Array(m), mp = new Int8Array(4), buf = new Array(m);
+    const off = new Int32Array(W.S + 1), tg = [];
+    for (let k = 0; k < W.S; k++) {
+      off[k] = tg.length; const s0 = k * m, seen = new Set();
+      for (let i = 0; i < m; i++) c[i] = W.canon.charCodeAt(s0 + i) - 48;
+      for (let a = 0; a < 4; a++) for (let b = a + 1; b < 4; b++) {
+        comp.fill(-1); let nc = 0;
+        for (let s = 0; s < m; s++) {
+          if (comp[s] >= 0 || (c[s] !== a && c[s] !== b)) continue;
+          let sp = 0; st[sp++] = s; comp[s] = nc;
+          while (sp) { const u = st[--sp]; for (const w of nb[u]) if (comp[w] < 0 && (c[w] === a || c[w] === b)) { comp[w] = nc; st[sp++] = w; } }
+          nc++;
+        }
+        if (nc < 2) continue;                      // one web: flipping it only renames
+        for (let ci = 0; ci < nc; ci++) {
+          mp.fill(-1); let z = 0;
+          for (let i = 0; i < m; i++) { let x = c[i]; if (comp[i] === ci) x = x === a ? b : a; if (mp[x] < 0) mp[x] = z++; buf[i] = 48 + mp[x]; }
+          const j = W._idx.get(String.fromCharCode.apply(null, buf));
+          if (j !== undefined && j !== k && !seen.has(j)) { seen.add(j); tg.push(j); }
+        }
+      }
+    }
+    off[W.S] = tg.length;
+    W._kg = { off, tg: Int32Array.from(tg), ms: performance.now() - t0 };
+    return W._kg;
+  }
+  // BFS tree from root, laid out as a spiralling radial "tree of life": ring radius from cumulative sqrt(ring size),
+  // angular span by subtree size, a twist that grows with radius
+  function kempeTree(root) {
+    W._trees = W._trees || new Map();
+    if (W._trees.has(root)) return W._trees.get(root);
+    const t0 = performance.now(), { off, tg } = kempeGraph(), S = W.S;
+    const par = new Int32Array(S).fill(-2), dep = new Int32Array(S), ord = [root]; par[root] = -1;
+    for (let h = 0; h < ord.length; h++) { const u = ord[h]; for (let e = off[u]; e < off[u + 1]; e++) { const v = tg[e]; if (par[v] === -2) { par[v] = u; dep[v] = dep[u] + 1; ord.push(v); } } }
+    const kids = new Map(); ord.forEach(v => { if (par[v] >= 0) { const p = par[v]; if (!kids.has(p)) kids.set(p, []); kids.get(p).push(v); } });
+    kids.forEach(a => a.sort((x, y) => W.dF[x] - W.dF[y]));
+    const sz = new Float64Array(S); for (let i = ord.length - 1; i >= 0; i--) { const v = ord[i]; sz[v] += 1; if (par[v] >= 0) sz[par[v]] += sz[v]; }
+    const D = dep[ord[ord.length - 1]], ringN = new Array(D + 1).fill(0); ord.forEach(v => ringN[dep[v]]++);
+    let sq = 0; for (let d = 1; d <= D; d++) sq += Math.sqrt(ringN[d]);
+    const cum = [0]; for (let d = 1; d <= D; d++) cum.push(cum[d - 1] + .55 * Math.sqrt(ringN[d]) / sq + .45 / D);   // crowded rings get more room, every ring some
+    const R = d => D ? cum[d] : 0, ang = new Float64Array(S), X = new Float32Array(S), Y = new Float32Array(S);
+    const lo = new Float64Array(S), hi = new Float64Array(S); lo[root] = 0; hi[root] = 2 * Math.PI;
+    ord.forEach(v => {
+      const ks = kids.get(v); if (!ks) return; let a = lo[v]; const tot = sz[v] - 1;
+      ks.forEach(k => { const w = (hi[v] - lo[v]) * sz[k] / tot; lo[k] = a; hi[k] = a + w; a += w; });
+    });
+    ord.forEach(v => { const r = R(dep[v]); ang[v] = (lo[v] + hi[v]) / 2 + 1.6 * r * r; X[v] = r * Math.cos(ang[v]); Y[v] = r * Math.sin(ang[v]); });
+    const T = { root, par, dep, ord, X, Y, D, n: ord.length, ms: performance.now() - t0, base: null };
+    W._trees.set(root, T); return T;
+  }
+  function worldStart() {
+    W = Gr.world || null; $('btnMap').style.display = W ? '' : 'none';
+    if (!W) { KT = null; hudShow(false); return; }
+    worldPrep(); wIdx = W._idx; wKey = L.g;
+    save.worlds = save.worlds || {};
+    if (save.world) { if (!save.worlds.r178) save.worlds.r178 = save.world; delete save.world; }   // old single-map save
+    const sv = save.worlds[wKey] || { v: [], g: [] };
+    Wst = { v: new Set(sv.v), g: new Set(sv.g) };
+    W._hv = new Uint8Array(W.hexes.length); W._hd = new Int16Array(W.hexes.length).fill(99);
+    Wst.g.forEach(k => hexMark(k, 1)); Wst.v.forEach(k => hexMark(k, 2));
+    trail = []; here = -1; MV = null;
+    const r0 = wIdx.get(canon(col)); KT = null;
+    if (r0 !== undefined) { try { KT = kempeTree(r0); } catch (e) { KT = null; } }
+    hudShow(!!KT);
+    worldEnter(null);
+  }
+  function hexMark(k, lvl) { const h = W.hex[k]; if (W._hv[h] < lvl) W._hv[h] = lvl; const d = W.dF[k]; if (d >= 0 && d < W._hd[h]) W._hd[h] = d; }
+  function worldPersist() { save.worlds[wKey] = { v: [...Wst.v], g: [...Wst.g] }; persist(); }
+  function chartedCount() { let c = 0; for (let i = 0; i < W._hv.length; i++) if (W._hv[i]) c++; return c; }
+  function worldEnter(K) {
+    if (!W) return;
+    const k = wIdx.get(canon(col)); if (k === undefined) return;
+    const before = chartedCount();
+    if (here >= 0 && K && Math.hypot(W.x[k] - W.x[here], W.y[k] - W.y[here]) > 33) award('jump');
+    here = k; trail.push(k); Wst.v.add(k); hexMark(k, 2);
+    let land = false;
+    chains.forEach(C => { const j = wIdx.get(canon(flipped(col, C))); if (j !== undefined) { Wst.g.add(j); hexMark(j, 1); if (W.dF[j] === 0) land = true; } });
+    const after = chartedCount(), gained = after - before;
+    if (gained > 0 && K) { score += 10 * gained; floatAt(56, 128, '+' + 10 * gained, gained + ' new hex' + (gained > 1 ? 'es' : '')); }
+    if (after >= 10) award('hexes10'); if (after >= 50) award('hexes50');
+    if (land && !won) { award('landho'); if (K) toast('🏝️ Island in sight', 'some flip from here fills the hole'); }
+    wVer++; worldPersist(); hudDirty = true;
+    if ($('map').classList.contains('on')) { mapStats(); }
+  }
+  // the player icon, shared by the map and the tree: a gold diamond with a pulsing ring
+  function playerIcon(ctx, x, y, sc) {
+    const t = reduced ? .3 : (performance.now() / 900) % 1, r = 4.5 * sc;
+    ctx.save(); ctx.globalCompositeOperation = 'lighter';
+    ctx.strokeStyle = 'rgba(255,214,102,' + (.9 * (1 - t)) + ')'; ctx.lineWidth = 1.5 * sc; ctx.beginPath(); ctx.arc(x, y, r + 9 * sc * t, 0, 7); ctx.stroke();
+    ctx.restore();
+    ctx.fillStyle = '#ffd666'; ctx.strokeStyle = '#1a1200'; ctx.lineWidth = 1.2 * sc; ctx.shadowColor = '#ffd666'; ctx.shadowBlur = 8 * sc;
+    ctx.beginPath(); ctx.moveTo(x, y - r); ctx.lineTo(x + r * .75, y); ctx.lineTo(x, y + r); ctx.lineTo(x - r * .75, y); ctx.closePath(); ctx.fill(); ctx.shadowBlur = 0; ctx.stroke();
+  }
+  function sign(ctx, x, y, glyph, label) {
+    ctx.fillStyle = '#2d1f4a'; ctx.strokeStyle = '#bc8cff'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.arc(x, y, 8, 0, 7); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#e6edf3'; ctx.font = 'bold 10px system-ui'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(glyph, x, y + .5);
+    if (label) { ctx.font = 'bold 11px system-ui'; ctx.lineWidth = 3; ctx.strokeStyle = '#05070a'; ctx.strokeText(label, x, y - 15); ctx.fillStyle = '#d2c2ff'; ctx.fillText(label, x, y - 15); }
+  }
+  // static map layer: sea, land, fog, charted dots, signposts, the player's path (everything but the pulsing icon)
+  function renderWorld(ctx, w, h, view) {
+    const T = (x, y) => [w / 2 + (x - view.cx) * view.s, h / 2 + (y - view.cy) * view.s], r = W.size * view.s, vis = (x, y) => x > -r && y > -r && x < w + r && y < h + r;
+    ctx.fillStyle = SEA_X; ctx.fillRect(0, 0, w, h);
+    const sp = SEA.map(() => new Path2D()), spx = new Path2D();
+    W._sea.forEach(([sx, sy, d]) => { const [x, y] = T(sx, sy); if (vis(x, y)) hexPath(d === 9 ? spx : sp[d], x, y, r * 1.01); });
+    sp.forEach((p, i) => { ctx.fillStyle = SEA[i]; ctx.fill(p); });
+    ctx.fillStyle = '#0a1426'; ctx.fill(spx);
+    // land: coloured by the best known outcome in the hex (min swap distance of its charted states), else unsurveyed
+    const lp = new Map(), unk = new Path2D(), shore = new Path2D();
+    W.hexes.forEach((hx, i) => {
+      const [x, y] = T(...W._hx[i]); if (!vis(x, y)) return;
+      hexPath(shore, x, y, r * 1.08);
+      if (!W._hv[i]) { hexPath(unk, x, y, r * .96); return; }
+      const key = W._hd[i] === 99 ? -1 : W._hd[i];
+      if (!lp.has(key)) lp.set(key, new Path2D()); hexPath(lp.get(key), x, y, r * .96);
+    });
+    ctx.fillStyle = 'rgba(190,220,200,.25)'; ctx.fill(shore);
+    ctx.fillStyle = LAND_UNK; ctx.fill(unk);
+    lp.forEach((p, d) => { ctx.fillStyle = dfCol(d); ctx.fill(p); });
+    // fog: dark everywhere, cut open around charted hexes (visited fully, glimpsed partly)
+    const f = fogCtx(w, h);
+    f.globalCompositeOperation = 'source-over'; f.clearRect(0, 0, w, h); f.fillStyle = 'rgba(3,5,8,.95)'; f.fillRect(0, 0, w, h);
+    f.globalCompositeOperation = 'destination-out';
+    for (let i = 0; i < W._hv.length; i++) {
+      if (!W._hv[i]) continue; const [x, y] = T(...W._hx[i]), R = r * (W._hv[i] === 2 ? 4 : 2.6), a = W._hv[i] === 2 ? 1 : .65;
+      if (x < -R || y < -R || x > w + R || y > h + R) continue;
+      const g = f.createRadialGradient(x, y, r * .5, x, y, R); g.addColorStop(0, 'rgba(0,0,0,' + a + ')'); g.addColorStop(1, 'rgba(0,0,0,0)');
+      f.fillStyle = g; f.fillRect(x - R, y - R, 2 * R, 2 * R);
+    }
+    ctx.drawImage(fogC, 0, 0, fogC.width, fogC.height, 0, 0, w, h);
+    // charted states as dots when zoomed in
+    if (r > 8) {
+      const dr = Math.max(1.6, r * .13);
+      Wst.g.forEach(k => { if (Wst.v.has(k)) return; const [x, y] = T(W.x[k], W.y[k]); if (!vis(x, y)) return; ctx.fillStyle = dfCol(W.dF[k], .85); ctx.beginPath(); ctx.arc(x, y, dr, 0, 7); ctx.fill(); });
+      ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.2;
+      Wst.v.forEach(k => { const [x, y] = T(W.x[k], W.y[k]); if (!vis(x, y)) return; ctx.fillStyle = dfCol(W.dF[k]); ctx.beginPath(); ctx.arc(x, y, dr * 1.4, 0, 7); ctx.fill(); ctx.stroke(); });
+    }
+    // signposts known from the census/paper (visible through the fog)
+    if (W.trail) {
+      ctx.strokeStyle = 'rgba(188,140,255,.85)'; ctx.setLineDash([4, 4]); ctx.lineWidth = 1.5; ctx.beginPath();
+      W.trail.states.forEach((k, i) => { const [x, y] = T(W.x[k], W.y[k]); ctx[i ? 'lineTo' : 'moveTo'](x, y); });
+      if (W.trail.closed) ctx.closePath(); ctx.stroke(); ctx.setLineDash([]);
+      const [x, y] = T(W.x[W.trail.states[0]], W.y[W.trail.states[0]]); sign(ctx, x, y, 'π', W.trail.name);
+    }
+    W.signs.forEach(sg => { const [x, y] = T(W.x[sg.k], W.y[sg.k]); sign(ctx, x, y, '⚑', sg.name); });
+    // your path: each flip is a jump, drawn as an arc
+    ctx.strokeStyle = 'rgba(255,240,200,.8)'; ctx.lineWidth = 2;
+    for (let i = 1; i < trail.length; i++) {
+      const [x0, y0] = T(W.x[trail[i - 1]], W.y[trail[i - 1]]), [x1, y1] = T(W.x[trail[i]], W.y[trail[i]]);
+      const mx = (x0 + x1) / 2 - (y1 - y0) * .25, my = (y0 + y1) / 2 + (x1 - x0) * .25;
+      ctx.beginPath(); ctx.moveTo(x0, y0); ctx.quadraticCurveTo(mx, my, x1, y1); ctx.stroke();
+    }
+  }
+  let fogC = null;
+  function fogCtx(w, h) { fogC = fogC || document.createElement('canvas'); const W2 = Math.ceil(w), H2 = Math.ceil(h); if (fogC.width !== W2 || fogC.height !== H2) { fogC.width = W2; fogC.height = H2; } return fogC.getContext('2d'); }
+
+  // ---- Kempe tree HUD: neon, mostly transparent, top-right of the board and of the map
+  let hudDirty = true;
+  const hudC = document.createElement('canvas'); hudC.id = 'ktree'; hudC.setAttribute('aria-hidden', 'true'); $('board').appendChild(hudC);
+  const mapTreeC = document.createElement('canvas'); mapTreeC.id = 'mtree'; mapTreeC.setAttribute('aria-hidden', 'true'); $('mapWrap').appendChild(mapTreeC);
+  function hudShow(on) { hudC.style.display = on ? '' : 'none'; mapTreeC.style.display = on ? '' : 'none'; }
+  function treeBase(Tr, px) {                      // all tree edges as faint hairlines, cached per tree and size
+    if (Tr.base && Tr.base.width === px) return Tr.base;
+    const c = Tr.base = document.createElement('canvas'); c.width = c.height = px; const ctx = c.getContext('2d'), R = px / 2 - 6, cx = px / 2;
+    ctx.strokeStyle = 'rgba(110,210,255,' + Math.min(.3, 9 / Math.sqrt(Tr.n)) + ')'; ctx.lineWidth = Math.max(.5, px / 400); ctx.beginPath();
+    Tr.ord.forEach(v => { const p = Tr.par[v]; if (p < 0) return; ctx.moveTo(cx + R * Tr.X[p], cx + R * Tr.Y[p]); ctx.lineTo(cx + R * Tr.X[v], cx + R * Tr.Y[v]); });
+    ctx.stroke();
+    if (Tr.n <= 600) { ctx.fillStyle = 'rgba(150,210,255,.22)'; const nr = Math.max(.8, Math.min(3, 40 / Math.sqrt(Tr.n)) * px / 170); Tr.ord.forEach(v => { ctx.beginPath(); ctx.arc(cx + R * Tr.X[v], cx + R * Tr.Y[v], nr, 0, 7); ctx.fill(); }); }
+    return c;
+  }
+  function treeLit(Tr, px) {                       // explored part, cached per knowledge version
+    const key = px + ':' + wVer + ':' + trail.length;
+    if (Tr.lit && Tr.litKey === key) return Tr.lit;
+    const c = Tr.lit = Tr.lit && Tr.lit.width === px ? Tr.lit : document.createElement('canvas'); c.width = c.height = px; Tr.litKey = key;
+    const ctx = c.getContext('2d'), R = px / 2 - 6, cx = px / 2, P = v => [cx + R * Tr.X[v], cx + R * Tr.Y[v]];
+    const nr = Math.max(1.3 * px / 170, Math.min(4, 40 / Math.sqrt(Tr.n)) * px / 170);
+    ctx.drawImage(treeBase(Tr, px), 0, 0);
+    ctx.globalCompositeOperation = 'lighter';
+    const known = v => Tr.par[v] !== -2 && (Wst.v.has(v) || Wst.g.has(v));
+    // explored branches: the edge into every charted node, in its outcome colour (wide glow, then thin core)
+    [[3 * nr, .12], [Math.max(.8, nr * .45), .55]].forEach(([lw, al]) => {
+      ctx.lineWidth = lw;
+      const add = v => { const p = Tr.par[v]; if (p < 0) return; const [x0, y0] = P(p), [x1, y1] = P(v); ctx.strokeStyle = dfCol(W.dF[v], Wst.v.has(v) ? al : al * .5); ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke(); };
+      Wst.g.forEach(v => { if (known(v) && !Wst.v.has(v)) add(v); }); Wst.v.forEach(v => { if (known(v)) add(v); });
+    });
+    Wst.g.forEach(v => { if (!known(v) || Wst.v.has(v)) return; const [x, y] = P(v); ctx.fillStyle = dfCol(W.dF[v], .7); ctx.beginPath(); ctx.arc(x, y, nr * .85, 0, 7); ctx.fill(); });
+    Wst.v.forEach(v => { if (!known(v)) return; const [x, y] = P(v); ctx.fillStyle = dfCol(W.dF[v], .35); ctx.beginPath(); ctx.arc(x, y, nr * 2.2, 0, 7); ctx.fill(); ctx.fillStyle = dfCol(W.dF[v], 1); ctx.beginPath(); ctx.arc(x, y, nr, 0, 7); ctx.fill(); });
+    // this run's path (flips need not follow tree edges)
+    ctx.strokeStyle = 'rgba(255,214,102,.75)'; ctx.lineWidth = Math.max(1, px / 140); ctx.beginPath();
+    let st = false; trail.forEach(v => { if (Tr.par[v] === -2) return; const [x, y] = P(v); ctx[st ? 'lineTo' : 'moveTo'](x, y); st = true; }); ctx.stroke();
+    // root marker
+    const [rx, ry] = P(Tr.root); ctx.strokeStyle = 'rgba(188,140,255,.9)'; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.arc(rx, ry, nr * 2.5 + 2, 0, 7); ctx.stroke();
+    ctx.globalCompositeOperation = 'source-over';
+    return c;
+  }
+  function drawTreeTo(cv, labels) {
+    if (!KT || !W || cv.style.display === 'none') return;
+    const r = cv.getBoundingClientRect(); if (!r.width) return;
+    const dpr = Math.min(2, window.devicePixelRatio || 1), px = Math.round(r.width * dpr);
+    if (cv.width !== px || cv.height !== px) { cv.width = cv.height = px; }
+    const ctx = cv.getContext('2d'); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, px, px);
+    ctx.drawImage(treeLit(KT, px), 0, 0);
+    if (here >= 0 && KT.par[here] !== -2) { const R = px / 2 - 6; playerIcon(ctx, px / 2 + R * KT.X[here], px / 2 + R * KT.Y[here], dpr * (labels ? 1 : .8)); }
+    ctx.shadowBlur = 0;
+    if (labels) {
+      let lit = 0; Wst.v.forEach(v => { if (KT.par[v] !== -2) lit++; });
+      ctx.font = 'bold ' + 10 * dpr + 'px system-ui'; ctx.textAlign = 'right'; ctx.textBaseline = 'top'; ctx.fillStyle = 'rgba(160,220,255,.85)';
+      ctx.fillText('KEMPE TREE · ' + lit + '/' + KT.n + ' · depth ' + KT.D, px - 4 * dpr, 2 * dpr);
+    }
+  }
+  function drawHud() { drawTreeTo(hudC, false); }
+
+  // full map overlay: pan / pinch / tap a hex; the static layer is cached and only re-rendered when view or knowledge changes
+  let MV = null, mapKey = '', mapLayer = null;
+  function openMap() {
+    if (!W) return; $('map').classList.add('on');
+    const wrap = $('mapWrap').getBoundingClientRect();
+    if (!MV) MV = { s: Math.min(wrap.width, wrap.height) / (W.size * 26) };
+    MV.cx = W.x[here]; MV.cy = W.y[here];
+    $('mapSub').textContent = Gr.name + ' · ' + W.S.toLocaleString() + ' legal colourings, ' + W.M.toLocaleString() + ' sampled illegal';
+    const g = 'linear-gradient(90deg,' + [1, 2, 3, 4].map(i => dfCol(1 + (W.maxdF - 1) * (i - 1) / 3)).join(',') + ')';
+    $('mapLegend').innerHTML = '<span><i style="background:' + DF_GREEN + '"></i>fillable (0 swaps)</span>' +
+      '<span><i style="width:34px;background:' + g + '"></i>' + (W.maxdF > 1 ? '1 → ' + W.maxdF + ' swaps' : '1 swap') + ' to fillable</span>' +
+      '<span><i style="background:' + DF_GREY + '"></i>legal, no route</span><span><i style="background:' + LAND_UNK + '"></i>legal, unsurveyed</span>' +
+      '<span><i style="width:34px;background:linear-gradient(90deg,' + SEA[0] + ',' + SEA[8] + ')"></i>illegal: shallow (1 clash) → deep (~' + Math.round(W.sea.lev[8] || W.sea.lev[7] || W.E / 4) + ')</span>' +
+      '<span><i style="background:#05070a;border:1px solid #333"></i>fog</span>';
+    mapKey = ''; drawMap(); mapStats(); mapLoop();
+  }
+  function mapStats() {
+    let fs = 0, best = 99; Wst.g.forEach(k => { if (W.dF[k] === 0) fs++; }); Wst.v.forEach(k => { if (W.dF[k] >= 0) best = Math.min(best, W.dF[k]); });
+    $('mapStats').innerHTML = '<span class="chip">Charted <b>' + new Set([...Wst.v, ...Wst.g]).size + '</b>/' + W.S + '</span>' +
+      '<span class="chip">Hexes <b>' + chartedCount() + '</b>/' + W.hexes.length + '</span><span class="chip">Visited <b>' + Wst.v.size + '</b></span>' +
+      '<span class="chip">Fillable sighted <b>' + fs + '</b></span>' + (here >= 0 ? '<span class="chip">Here <b>' + (W.dF[here] < 0 ? '—' : W.dF[here]) + '</b> to go</span>' : '');
+  }
+  function drawMap() {
+    if (!W || !MV) return;
+    const cv = $('mapCanvas'), r = cv.getBoundingClientRect(), dpr = Math.min(2, window.devicePixelRatio || 1);
+    const pw = Math.round(r.width * dpr), ph = Math.round(r.height * dpr); if (!pw || !ph) return;
+    if (cv.width !== pw || cv.height !== ph) { cv.width = pw; cv.height = ph; }
+    const key = [pw, ph, MV.cx.toFixed(2), MV.cy.toFixed(2), MV.s.toFixed(3), wVer, trail.length, wKey].join();
+    if (key !== mapKey) {
+      mapLayer = mapLayer || document.createElement('canvas'); if (mapLayer.width !== pw || mapLayer.height !== ph) { mapLayer.width = pw; mapLayer.height = ph; }
+      const lc = mapLayer.getContext('2d'); lc.setTransform(dpr, 0, 0, dpr, 0, 0); renderWorld(lc, r.width, r.height, MV); mapKey = key;
+    }
+    const ctx = cv.getContext('2d'); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.drawImage(mapLayer, 0, 0);
+    if (here >= 0) { ctx.setTransform(dpr, 0, 0, dpr, 0, 0); playerIcon(ctx, r.width / 2 + (W.x[here] - MV.cx) * MV.s, r.height / 2 + (W.y[here] - MV.cy) * MV.s, 1.2); ctx.shadowBlur = 0; }
+    drawTreeTo(mapTreeC, true);
+  }
+  let mapRaf = 0;
+  function mapLoop() { if (mapRaf) return; const f = () => { mapRaf = 0; if (!$('map').classList.contains('on')) return; drawMap(); if (!reduced) mapRaf = requestAnimationFrame(f); }; mapRaf = requestAnimationFrame(f); }
+  // HUD tree: ~20 fps while the game screen is up (one blit + the pulsing icon); redraw only on change with reduced motion
+  let hudT = 0;
+  (function hudLoop(t) {
+    if (W && KT && $('game').classList.contains('on') && !$('map').classList.contains('on') && (hudDirty || (!reduced && t - hudT > 50))) { hudT = t; hudDirty = false; drawHud(); }
+    requestAnimationFrame(hudLoop);
+  })(0);
+  function mapTap(px, py) {
+    const r = $('mapCanvas').getBoundingClientRect(), x = MV.cx + (px - r.left - r.width / 2) / MV.s, y = MV.cy + (py - r.top - r.height / 2) / MV.s;
+    const [q, rr] = axialRound(x, y), hi = W._hq.get(q + ',' + rr), info = $('mapInfo');
+    let lit = 0; for (let i = 0; i < W._hv.length; i++) if (W._hv[i]) { const d = Math.hypot(W._hx[i][0] - x, W._hx[i][1] - y) / W.size; if (d < (W._hv[i] === 2 ? 3.5 : 2.2)) { lit = 1; break; } }
+    if (hi === undefined) {
+      const si = W._seaQ.get(q + ',' + rr), d = si === undefined ? 9 : W._sea[si][2];
+      info.innerHTML = !lit ? '<b>Fog.</b> Nothing charted here yet; visit colourings nearby to light it.'
+        : d === 9 && W.sea.d ? '<b>Open ocean.</b> No sampled colouring lands here: far from every legal colouring on this chart.'
+        : '<b>Sea: illegal colourings.</b> Sampled improper colourings that project here have about <b>' + (W.sea.lev[d] || '?') + '</b> same-colour neighbour pair' + (W.sea.lev[d] === 1 ? '' : 's') + ' (shade interpolated where unsampled). Kempe flips never leave the land.';
+      return;
+    }
+    const H = W.hexes[hi]; let v = 0, g = 0, mind = 99; W.hex.forEach((h, k) => { if (h !== hi) return; if (Wst.v.has(k)) v++; else if (Wst.g.has(k)) g++; else return; if (W.dF[k] >= 0) mind = Math.min(mind, W.dF[k]); });
+    const sg = W.signs.filter(s => W.hex[s.k] === hi).map(s => '<br>⚑ ' + s.text).join('') + (W.trail && W.trail.states.some(k => W.hex[k] === hi) ? '<br>π ' + W.trail.text : '');
+    info.innerHTML = W._hv[hi]
+      ? '<b>Land: ' + H.n + ' legal colouring' + (H.n > 1 ? 's' : '') + '.</b> You visited ' + v + ', glimpsed ' + g + '; ' + (mind === 99 ? 'none of them has a route to a fillable rim.' : mind === 0 ? 'one of them is <b>fillable</b>.' : 'best known: <b>' + mind + '</b> swap' + (mind > 1 ? 's' : '') + ' from fillable.') + sg
+      : lit ? '<b>Unsurveyed land.</b> ' + H.n + ' legal colouring' + (H.n > 1 ? 's' : '') + ' here, outcome unknown until you visit or glimpse one.' + sg
+      : '<b>Fog.</b> ' + (sg ? 'Known from the census:' + sg : 'Visit nearby colourings to lift the fog.');
+  }
+  (function () {
+    const cv = $('mapCanvas'), pts = new Map(); let p0 = null, moved = false;
+    cv.addEventListener('pointerdown', e => { if (!MV) return; cv.setPointerCapture(e.pointerId); pts.set(e.pointerId, [e.clientX, e.clientY]); moved = false;
+      if (pts.size === 2) { const [a, b] = [...pts.values()]; p0 = { d: Math.hypot(a[0] - b[0], a[1] - b[1]), s: MV.s }; } else p0 = { x: e.clientX, y: e.clientY, cx: MV.cx, cy: MV.cy }; });
+    cv.addEventListener('pointermove', e => { if (!pts.has(e.pointerId) || !p0) return; pts.set(e.pointerId, [e.clientX, e.clientY]);
+      if (pts.size === 2 && p0.d) { const [a, b] = [...pts.values()]; MV.s = Math.max(1, Math.min(80, p0.s * Math.hypot(a[0] - b[0], a[1] - b[1]) / p0.d)); moved = true; }
+      else if (pts.size === 1 && p0.x !== undefined) { const dx = e.clientX - p0.x, dy = e.clientY - p0.y; if (Math.hypot(dx, dy) > 5) moved = true; MV.cx = p0.cx - dx / MV.s; MV.cy = p0.cy - dy / MV.s; }
+      mapLoop(); });
+    const up = e => { pts.delete(e.pointerId); if (!moved && pts.size === 0 && e.type === 'pointerup') mapTap(e.clientX, e.clientY); if (pts.size === 0) p0 = null; };
+    cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up);
+    cv.addEventListener('wheel', e => { e.preventDefault(); if (!MV) return; MV.s = Math.max(1, Math.min(80, MV.s * Math.exp(-e.deltaY * .002))); mapLoop(); }, { passive: false });
+  })();
+  $('mini').onclick = openMap;
+  $('mapClose').onclick = () => { $('map').classList.remove('on'); hudDirty = true; };
+  let rsT = null;
+  // keep the renderer matched to the board's real size (the board can change size without a window resize)
+  if (window.ResizeObserver) new ResizeObserver(() => {
+    if (!R3 || !$('game').classList.contains('on')) return;
+    const br = $('board').getBoundingClientRect(); if (Math.abs(br.width - BW) < 1 && Math.abs(br.height - BH) < 1) return;
+    BW = br.width; BH = br.height; R3.renderer.setSize(BW, BH, false); ov.width = Math.round(BW * DPR); ov.height = Math.round(BH * DPR);
+    const keep = { ...CAM }; fitCamera(); CAM.az = keep.az; CAM.el = keep.el; applyCam(); kick();
+  }).observe($('board'));
+  window.addEventListener('resize', () => { clearTimeout(rsT); rsT = setTimeout(() => { if ($('game').classList.contains('on') && L) { buildBoard(); drawTraced(); drawActive(); } if ($('map').classList.contains('on')) drawMap(); }, 150); });
+
+  // ---------------- levels ----------------
+  function startLevel(i, brief) {
+    levelIdx = i; L = G.levels[i]; Gr = G.graphs[L.g];
+    const cf = $('confetti'); cf.width = cf.width; $('toast').innerHTML = ''; wrongSteps = 0; lastProgress = performance.now();
+    n = Gr.n; hole = Gr.hole; link = Gr.link;
+    adj = Array.from({ length: n }, () => []);
+    Gr.edges.forEach(([a, b]) => { adj[a].push(b); adj[b].push(a); });
+    ring = new Array(n).fill(99); ring[hole] = 0; const q = [hole];
+    while (q.length) { const u = q.shift(); adj[u].forEach(w => { if (ring[w] > ring[u] + 1) { ring[w] = ring[u] + 1; q.push(w); } }); }
+    col = L.start.slice();
+    found = new Set(); traced = new Map(); visited = new Set([canon(col)]); needFind = false; lastFlip = null; active = null;
+    score = 0; flips = 0; hintsUsed = 0; won = false; bestLen = 0; history = []; busy = false; trace = null;
+    $('lvKicker').textContent = 'Level ' + (L.num || i + 1) + ' · ' + L.kicker; $('lvTitle').textContent = L.title;
+    $('menu').classList.remove('on'); $('game').classList.add('on'); $('win').classList.remove('on');
+    holeFill = -1; anim.clear(); computeChains(); buildBoard(); closeWheel(); drawTraced(); drawActive(); worldStart();
+    msg('Drag across alternating colours to trace a chain.');
+    updateHud();
+    if (brief) showBrief();
+  }
+  function showBrief() {
+    $('briefKicker').textContent = 'Level ' + (L.num || levelIdx + 1) + ' · ' + L.kicker;
+    $('briefTitle').textContent = L.title; $('briefText').textContent = L.intro;
+    { const nm = L.num || String(levelIdx + 1); $('briefBadge').innerHTML = uiTile(0, 0, 31, [6, 5, 7, 6, 5, 6, 7, 5][levelIdx % 8], levelIdx % 4, { label: nm, fs: nm.length > 2 ? 16 : nm.length > 1 ? 21 : 26 }); }
+    const b = save.best[levelIdx];
+    $('briefMeta').innerHTML = '<span class="pill">Par <b>' + L.par + '</b> flip' + (L.par > 1 ? 's' : '') + '</span><span class="pill">' + (n - 1) + ' tiles</span>' +
+      '<span class="pill">' + Gr.name + '</span>' + (b ? '<span class="pill">Best ' + b.score + ' ' + '★'.repeat(b.stars) + '</span>' : '');
+    $('brief').classList.add('on');
+  }
+  function win() {
+    won = true; closeWheel(); active = null; drawActive(); if (L.g === 'r178') award('island');   // landfall on the record map only
+    const free = drawHoleFill();
+    let stars = flips <= L.par ? 3 : flips <= L.par + 2 ? 2 : 1; if (hintsUsed) stars = Math.min(stars, 2);
+    const bonus = 300 + 150 * stars;
+    score += bonus;
+    const prev = save.best[levelIdx];
+    save.best[levelIdx] = { score: Math.max(score, prev ? prev.score : 0), stars: Math.max(stars, prev ? prev.stars : 0) };
+    persist(); updateHud();
+    arp(523, 6, 80); confetti();
+    msg('<b>The rim uses three colours.</b> The hole takes ' + NAMES[free] + '!');
+    setTimeout(() => {
+      [...$('winStars').children].forEach((s, i) => { s.classList.remove('got'); void s.offsetWidth; if (i < stars) s.classList.add('got'); });
+      $('winScore').innerHTML = '<b>' + score + '</b> points<br>' + flips + ' flip' + (flips === 1 ? '' : 's') + ' (par ' + L.par + ') · ' + found.size + ' chains captured' + (hintsUsed ? ' · ' + hintsUsed + ' hint' + (hintsUsed > 1 ? 's' : '') : '');
+      $('winText').textContent = flips <= L.par ? 'Perfect route: no shorter sequence of flips exists from the start.' : 'The shortest route from the start is ' + L.par + ' flip' + (L.par > 1 ? 's' : '') + '. Retry for three stars, or hunt more chains for points.';
+      $('winNext').textContent = levelIdx + 1 < G.levels.length ? 'Next' : 'Levels';
+      $('win').classList.add('on');
+    }, reduced ? 0 : 900);
+  }
+  $('winRetry').onclick = () => startLevel(levelIdx, false);
+  $('winNext').onclick = () => { if (levelIdx + 1 < G.levels.length) startLevel(levelIdx + 1, true); else showMenu(); };
+
+  function confetti() {
+    if (reduced) return;
+    const cv = $('confetti'), ctx = cv.getContext('2d'), dpr = window.devicePixelRatio || 1;
+    cv.width = innerWidth * dpr; cv.height = innerHeight * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const parts = Array.from({ length: 140 }, () => ({ x: innerWidth / 2, y: innerHeight * .45, vx: (Math.random() - .5) * 14, vy: -Math.random() * 14 - 4, r: 3 + Math.random() * 4, c: HEX[Math.floor(Math.random() * 4)], a: Math.random() * 6, va: (Math.random() - .5) * .4 }));
+    let f = 0;
+    (function frame() {
+      ctx.clearRect(0, 0, innerWidth, innerHeight);
+      parts.forEach(p => { p.vy += .35; p.vx *= .99; p.x += p.vx; p.y += p.vy; p.a += p.va; ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.a); ctx.fillStyle = p.c; ctx.beginPath(); ctx.arc(0, 0, p.r, 0, 7); ctx.fill(); ctx.restore(); });
+      if (++f < 120) requestAnimationFrame(frame); else cv.width = cv.width;
+    })();
+  }
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeWheel(); active = null; if (chains) drawActive(); } });
+  window.__game = { get chains() { return chains; }, get col() { return col; }, toScreen: u => toScreen(u), get found() { return found; },
+    good: () => { const d = dist(col); return chains.filter(K => dist(flipped(col, K)) === d - 1); }, dist: () => dist(col), get won() { return won; }, get T() { return T; }, get trace() { return trace; }, pick: (x, y) => pick(x, y), pickAll: (x, y) => pickAll(x, y), stepTarget: (x, y) => stepTarget(x, y), get R3() { return R3; } };   // test hook
+  // =====================================================================================
+  // Title screen, level map ("saga map") and how-to-play pages. Menus only: nothing here
+  // touches the board. Shared cartoon tile = element body + black face plate + neon ring + icon.
+  // =====================================================================================
+  function q1(v) { return Math.round(v * 10) / 10; }
+  function hash01(a, b) { const s = Math.sin(a * 127.1 + b * 311.7) * 43758.5453; return s - Math.floor(s); }
+  function uiPoly(sides, r) { let s = ''; for (let k = 0; k < sides; k++) { const a = -Math.PI / 2 + 2 * Math.PI * k / sides; s += q1(r * Math.cos(a)) + ',' + q1(r * Math.sin(a)) + ' '; } return s; }
+  function uiTile(x, y, r, sides, e, o) {
+    o = o || {};
+    const sc = r * .9 / 24, off = q1(-12 * sc);
+    const face = o.label != null
+      ? '<text x="0" y="' + q1(r * .05) + '" text-anchor="middle" dominant-baseline="central" class="chunky" fill="#fff" stroke-width="' + q1(r * .1) + '" font-size="' + q1(o.fs || r * .62) + '">' + o.label + '</text>'
+      : IPATH.map((d, k) => '<path class="ti ti' + k + '" d="' + d + '" transform="translate(' + off + ' ' + off + ') scale(' + q1(sc * 100) / 100 + ')"/>').join('') +
+        '<text class="tq" x="0" y="' + q1(r * .06) + '" text-anchor="middle" dominant-baseline="central" fill="#fff" font-weight="900" font-size="' + q1(r * .78) + '">?</text>';
+    const P = uiPoly(sides, r), sw = q1(r * .09);
+    return '<g class="tl e' + e + (o.cls ? ' ' + o.cls : '') + '"' + (o.k != null ? ' data-k="' + o.k + '"' : '') + ' transform="translate(' + q1(x) + ' ' + q1(y) + ')">' +
+      '<g class="tin"' + (o.delay ? ' style="animation-delay:-' + o.delay + 's"' : '') + '>' +
+      '<polygon class="ts" points="' + P + '" transform="translate(0 ' + q1(r * .18) + ')" stroke="#1c1640" stroke-width="' + sw + '" stroke-linejoin="round"/>' +
+      '<polygon class="tb" points="' + P + '" stroke="#1c1640" stroke-width="' + sw + '" stroke-linejoin="round"/>' +
+      '<polygon class="tr" points="' + uiPoly(sides, r * .76) + '" stroke-width="' + q1(r * .1) + '"/>' +
+      '<polygon class="tp" points="' + uiPoly(sides, r * .66) + '"/>' + face + '</g></g>';
+  }
+  function uiLadder(x1, y1, x2, y2, t1, t2, w) {   // a little ladder-bridge, trimmed t1/t2 at the ends
+    const L = Math.hypot(x2 - x1, y2 - y1), ux = (x2 - x1) / L, uy = (y2 - y1) / L; w = w || 4;
+    const ax = x1 + ux * t1, ay = y1 + uy * t1, bx = x2 - ux * t2, by = y2 - uy * t2, px = -uy * w, py = ux * w;
+    const n = Math.max(1, Math.round((L - t1 - t2) / 7));
+    let s = '<g>';
+    for (let k = 0; k <= n; k++) { const t = k / n, x = ax + (bx - ax) * t, y = ay + (by - ay) * t; s += '<line x1="' + q1(x + px) + '" y1="' + q1(y + py) + '" x2="' + q1(x - px) + '" y2="' + q1(y - py) + '" stroke="#e8b070" stroke-width="2.4"/>'; }
+    [1, -1].forEach(sg => { s += '<line x1="' + q1(ax + sg * px) + '" y1="' + q1(ay + sg * py) + '" x2="' + q1(bx + sg * px) + '" y2="' + q1(by + sg * py) + '" stroke="#6b3f1c" stroke-width="2.6" stroke-linecap="round"/>'; });
+    return s + '</g>';
+  }
+  function uiSetE(g, e) { if (!g) return; g.classList.remove('e0', 'e1', 'e2', 'e3', 'eq', 'eg'); g.classList.add('e' + e); }
+  function uiPop(g, s) { if (reduced || !g) return; const t = g.querySelector('.tin'); if (t && t.animate) t.animate([{ transform: 'scale(1)' }, { transform: 'scale(' + (s || 1.3) + ')' }, { transform: 'scale(1)' }], { duration: 420, easing: 'cubic-bezier(.3,1.6,.5,1)' }); }
+  function uiBurst(svg, x, y, color, n) {
+    if (reduced || !svg) return; n = n || 10;
+    const g = mk('g', {}, svg);
+    for (let k = 0; k < n; k++) {
+      const a = 2 * Math.PI * k / n + Math.random() * .4, d = 26 + Math.random() * 22;
+      const s = mk('path', { d: 'M0 -5L1.4 -1.4 5 0 1.4 1.4 0 5-1.4 1.4-5 0-1.4-1.4Z', fill: k % 2 ? '#fff' : color }, g);
+      if (s.animate) s.animate([{ transform: 'translate(' + x + 'px,' + y + 'px) scale(.4)', opacity: 1 }, { transform: 'translate(' + (x + Math.cos(a) * d) + 'px,' + (y + Math.sin(a) * d) + 'px) scale(1.2) rotate(90deg)', opacity: 0 }], { duration: 750, easing: 'cubic-bezier(.2,.7,.3,1)', fill: 'forwards' });
+    }
+    setTimeout(() => g.remove(), 900);
+  }
+  function uiScript(steps, loop, end) {     // timed demo steps [[ms, fn]], looping; reduced motion = end frame only
+    let alive = true, timers = [];
+    const go = () => { timers = steps.map(([t, fn]) => setTimeout(() => { if (alive) fn(); }, t)); timers.push(setTimeout(() => { if (alive) go(); }, loop)); };
+    if (reduced) end(); else go();
+    return () => { alive = false; timers.forEach(clearTimeout); };
+  }
+  const noteHz = k => 440 * Math.pow(2, (SCALE[k % 5] + 12 * Math.floor(k / 5)) / 12);
+  const sfx = (f, d, t, v) => { if ($('howto').classList.contains('on')) blip(f, d, t, v); };
+  function uiTotals() {
+    let total = 0, ts = 0; G.levels.forEach((lv, i) => { const b = save.best[i]; if (b) { total += b.score; ts += b.stars; } });
+    $('totalScore').textContent = total; $('totalStars').textContent = ts; $('tScore').textContent = total; $('tStars').textContent = ts;
+  }
+
+  // ---------- rim of five tiles round the "?" ----------
+  const RIM0 = [0, 1, 2, 3, 1], RIMS = [6, 5, 6, 7, 5];
+  function rimPts(cx, cy, R) { return RIM0.map((_, k) => { const a = -Math.PI / 2 + 2 * Math.PI * k / 5; return [q1(cx + R * Math.cos(a)), q1(cy + R * Math.sin(a))]; }); }
+  function rimSvg(cx, cy, R, rr, hr, cls) {
+    const P = rimPts(cx, cy, R); let s = '';
+    P.forEach((p, k) => { s += uiLadder(cx, cy, p[0], p[1], hr * .85, rr * .85); const q = P[(k + 1) % 5]; s += uiLadder(p[0], p[1], q[0], q[1], rr * .85, rr * .85); });
+    s += uiTile(cx, cy, hr, 5, 'q', { cls: 'hole ' + (cls || ''), k: 'h', delay: .9 });
+    P.forEach((p, k) => { s += uiTile(p[0], p[1], rr, RIMS[k], RIM0[k], { cls: cls, k: k, delay: k * .37 }); });
+    return s;
+  }
+  const tk = (svg, k) => svg.querySelector('.tl[data-k="' + k + '"]');
+
+  // ---------- title screen ----------
+  let titleStopFn = null;
+  function titleBuild() {
+    const svg = $('tDemo');
+    svg.innerHTML = '<ellipse cx="150" cy="138" rx="146" ry="110" fill="#7fd6ff" opacity=".55"/>' +
+      '<ellipse cx="150" cy="134" rx="136" ry="102" fill="#f7d98a" stroke="#fff3c4" stroke-width="6"/>' +
+      '<ellipse cx="150" cy="130" rx="120" ry="88" fill="#8fd36b"/><ellipse cx="110" cy="96" rx="40" ry="16" fill="#a4df7f"/>' +
+      rimSvg(150, 128, 82, 30, 35, 'bob');
+  }
+  function titleStart() {
+    if (titleStopFn) titleStopFn();
+    const svg = $('tDemo'), t3 = tk(svg, 3), h = tk(svg, 'h');
+    const reset = () => { uiSetE(t3, 3); uiSetE(h, 'q'); h.classList.remove('glow'); t3.classList.remove('lit'); };
+    titleStopFn = uiScript([
+      [0, reset],
+      [900, () => { t3.classList.add('lit'); uiPop(t3, 1.15); }],
+      [1500, () => { uiSetE(t3, 0); t3.classList.remove('lit'); uiPop(t3); uiBurst(svg, 150 + 82 * Math.cos(-Math.PI / 2 + 6 * Math.PI / 5), 128 + 82 * Math.sin(-Math.PI / 2 + 6 * Math.PI / 5), HEX[0], 8); }],
+      [2200, () => { uiSetE(h, 3); h.classList.add('glow'); uiPop(h, 1.4); uiBurst(svg, 150, 128, HEX[3], 14); }],
+      [4600, reset],
+    ], 5600, () => { reset(); });
+  }
+  function titleStop() { if (titleStopFn) titleStopFn(); titleStopFn = null; }
+  function showTitle() {
+    $('win').classList.remove('on'); $('brief').classList.remove('on');
+    $('game').classList.remove('on'); $('menu').classList.remove('on'); $('title').classList.add('on');
+    uiTotals(); titleStart();
+  }
+
+  // ---------- how to play ----------
+  function htGoal(svg) {
+    const cx = 150, cy = 152;
+    let s = '';
+    [0, 1, 2, 3].forEach(e => { s += '<g class="lg" data-l="' + e + '">' + uiTile(90 + e * 40, 27, 14, 6, e) +
+      '<g class="lx" opacity="0" transform="translate(' + (90 + e * 40) + ' 27)"><path d="M-13 -13L13 13M13 -13L-13 13" stroke="#ff2d55" stroke-width="5" stroke-linecap="round"/></g></g>'; });
+    svg.innerHTML = s + rimSvg(cx, cy, 70, 25, 29, 'bob');
+    const t3 = tk(svg, 3), h = tk(svg, 'h'), lg = svg.querySelector('.lg[data-l="3"]'), lx = lg.querySelector('.lx');
+    const p3 = rimPts(cx, cy, 70)[3];
+    const reset = () => { uiSetE(t3, 3); t3.classList.remove('lit'); uiSetE(h, 'q'); h.classList.remove('glow'); lg.style.opacity = 1; lx.setAttribute('opacity', 0); };
+    const gone = () => { uiSetE(t3, 0); t3.classList.remove('lit'); lg.style.opacity = .45; lx.setAttribute('opacity', 1); };
+    const fill = () => { uiSetE(h, 3); h.classList.add('glow'); };
+    return { loop: 5200, end: () => { reset(); gone(); fill(); }, steps: [
+      [0, reset],
+      [700, () => { t3.classList.add('lit'); uiPop(t3, 1.15); sfx(523, .12, 'triangle', .04); }],
+      [1400, () => { gone(); uiPop(t3); uiPop(lg.querySelector('.tl'), 1.4); uiBurst(svg, p3[0], p3[1], HEX[0], 8); sfx(330, .18, 'square', .025); }],
+      [2200, () => { fill(); uiPop(h, 1.45); uiBurst(svg, cx, cy, HEX[3], 14); sfx(784, .3, 'triangle', .05); }],
+    ] };
+  }
+  const CH = [[46, 178], [98, 110], [150, 178], [202, 110], [254, 178]], CHE = [0, 1, 0, 1, 0], CHS = [6, 5, 7, 6, 5];
+  function chainSvg(extra) {
+    const D = [[150, 50, 3, 6], [254, 58, 2, 5]].concat(extra ? [[98, 226, 2, 6]] : []);
+    let s = '';
+    for (let k = 0; k < 4; k++) s += uiLadder(CH[k][0], CH[k][1], CH[k + 1][0], CH[k + 1][1], 20, 20);
+    s += uiLadder(98, 110, 150, 50, 20, 20) + uiLadder(202, 110, 150, 50, 20, 20) + uiLadder(202, 110, 254, 58, 20, 20);
+    if (extra) s += uiLadder(46, 178, 98, 226, 20, 20) + uiLadder(150, 178, 98, 226, 20, 20);
+    s += '<polyline class="trail" points="' + CH.map(p => p.join(',')).join(' ') + '"/>';
+    D.forEach((d, k) => { s += uiTile(d[0], d[1], 22, d[3], d[2], { k: 'd' + k }); });
+    CH.forEach((p, k) => { s += uiTile(p[0], p[1], 25, CHS[k], CHE[k], { k: k }); });
+    return s;
+  }
+  const handSvg = '<g class="hand"><g class="hin"><text x="5" y="-3" font-size="46" text-anchor="middle" dominant-baseline="hanging">👆</text></g></g>';
+  function handTo(hand, x, y, instant) {
+    if (instant) { hand.style.transition = 'none'; hand.style.transform = 'translate(' + x + 'px,' + y + 'px)'; hand.getBoundingClientRect(); hand.style.transition = ''; }
+    else hand.style.transform = 'translate(' + x + 'px,' + y + 'px)';
+  }
+  function htTrace(svg) {
+    svg.innerHTML = chainSvg(true) + '<text class="ok chunky" x="150" y="248" text-anchor="middle" font-size="24" fill="#5cff8a" stroke-width="5" opacity="0">✓ Chain!</text>' + handSvg;
+    const T = CH.map((_, k) => tk(svg, k)), hand = svg.querySelector('.hand'), trail = svg.querySelector('.trail'), ok = svg.querySelector('.ok');
+    const seg = [0]; for (let k = 1; k < 5; k++) seg.push(seg[k - 1] + Math.hypot(CH[k][0] - CH[k - 1][0], CH[k][1] - CH[k - 1][1]));
+    const total = seg[4]; trail.style.strokeDasharray = total + ' ' + total;
+    const setTrail = (len, instant) => { trail.style.transition = instant ? 'none' : 'stroke-dashoffset .45s cubic-bezier(.45,0,.3,1)'; trail.style.strokeDashoffset = total - len; };
+    const reset = () => { T.forEach(t => t.classList.remove('lit', 'glow')); setTrail(0, true); handTo(hand, CH[0][0], CH[0][1] + 4, true); hand.style.opacity = 1; ok.setAttribute('opacity', 0); };
+    const steps = [[0, reset], [350, () => { T[0].classList.add('lit'); uiPop(T[0]); sfx(noteHz(0), .14, 'triangle', .04); }]];
+    for (let k = 1; k < 5; k++) {
+      steps.push([350 + k * 620, () => { handTo(hand, CH[k][0], CH[k][1] + 4); setTrail(seg[k]); }]);
+      steps.push([350 + k * 620 + 430, () => { T[k].classList.add('lit'); uiPop(T[k]); sfx(noteHz(k), .14, 'triangle', .04); }]);
+    }
+    steps.push([3500, () => { T.forEach(t => { t.classList.add('glow'); uiPop(t, 1.15); }); ok.setAttribute('opacity', 1); uiPop(null); hand.style.opacity = 0; sfx(1047, .25, 'triangle', .04); }]);
+    return { loop: 5600, steps, end: () => { reset(); T.forEach(t => t.classList.add('lit')); setTrail(total, true); hand.style.opacity = 0; ok.setAttribute('opacity', 1); } };
+  }
+  function htSwap(svg) {
+    svg.innerHTML = chainSvg(false) + '<text class="sw chunky" x="150" y="238" text-anchor="middle" font-size="40" fill="#ffd84a" stroke-width="7" opacity="0">SWAP!</text>' + handSvg;
+    const T = CH.map((_, k) => tk(svg, k)), hand = svg.querySelector('.hand'), sw = svg.querySelector('.sw'), trail = svg.querySelector('.trail');
+    trail.style.opacity = .5;
+    let flipped = false;
+    const paint = f => T.forEach((t, k) => { uiSetE(t, f ? 1 - CHE[k] : CHE[k]); t.classList.add('lit'); });
+    const start = () => { paint(flipped); handTo(hand, 214, 236, true); hand.style.opacity = 1; sw.setAttribute('opacity', 0); hand.classList.remove('press'); };
+    const ORDER = [[2, 0], [1, 110], [3, 110], [0, 220], [4, 220]];
+    const steps = [[0, start], [250, () => handTo(hand, CH[2][0], CH[2][1] + 4)],
+      [900, () => hand.classList.add('press')],
+      [1050, () => {
+        hand.classList.remove('press'); flipped = !flipped;
+        ORDER.forEach(([k, d]) => setTimeout(() => { uiSetE(T[k], flipped ? 1 - CHE[k] : CHE[k]); uiPop(T[k], 1.35); uiBurst(svg, CH[k][0], CH[k][1], HEX[flipped ? 1 - CHE[k] : CHE[k]], 6); }, d));
+        sw.setAttribute('opacity', 1);
+        if (!reduced && sw.animate) sw.animate([{ transform: 'scale(.2)', opacity: 0 }, { transform: 'scale(1.2)', opacity: 1 }, { transform: 'scale(1)' }], { duration: 450, easing: 'cubic-bezier(.3,1.6,.5,1)' });
+        sfx(392, .1, 'square', .03); setTimeout(() => sfx(784, .2, 'triangle', .05), 120);
+      }],
+      [2300, () => handTo(hand, 230, 236)]];
+    sw.style.transformBox = 'fill-box'; sw.style.transformOrigin = 'center';
+    return { loop: 3800, steps, end: () => { flipped = true; start(); hand.style.opacity = 0; sw.setAttribute('opacity', 1); } };
+  }
+  function htLock(svg) {
+    const cx = 150, cy = 128, P = rimPts(cx, cy, 58), rim = [0, 1, 2, 3, 1];
+    const pol = (a, r) => [q1(cx + r * Math.cos(a * Math.PI / 180)), q1(cy + r * Math.sin(a * Math.PI / 180))];
+    const X = pol(-40, 104), Y = pol(4, 104), V = pol(-126, 100), W = pol(162, 100);
+    let s = '';
+    const lad = (a, b) => { s += uiLadder(a[0], a[1], b[0], b[1], 18, 18); };
+    P.forEach((p, k) => { lad([cx, cy], p); lad(p, P[(k + 1) % 5]); });
+    lad(P[0], X); lad(P[1], X); lad(X, Y); lad(P[1], Y); lad(Y, P[2]); lad(V, P[0]); lad(V, P[4]); lad(W, P[3]); lad(W, P[4]);
+    s += '<polyline class="trail" points="' + [P[0], X, Y, P[2]].map(p => p.join(',')).join(' ') + '" opacity="0"/>';
+    s += uiTile(cx, cy, 24, 5, 'q', { k: 'h' });
+    [[X, 2, 'x', 6], [Y, 0, 'y', 5], [V, 3, 'v', 6], [W, 2, 'w', 5]].forEach(([p, e, k, n]) => { s += uiTile(p[0], p[1], 20, n, e, { k: k }); });
+    P.forEach((p, k) => { s += uiTile(p[0], p[1], 21, RIMS[k], rim[k], { k: k }); });
+    s += '<g class="lock" opacity="0" transform="translate(277 96)"><g class="lin"><circle r="19" fill="#fff" stroke="#ff2d55" stroke-width="4"/><text x="0" y="2" text-anchor="middle" dominant-baseline="central" font-size="20">🔒</text></g></g>';
+    s += '<text class="nope chunky" x="150" y="252" text-anchor="middle" font-size="20" fill="#ff8aa0" stroke-width="5" opacity="0">Locked! Try another chain.</text>';
+    svg.innerHTML = s;
+    const C = [tk(svg, 0), tk(svg, 'x'), tk(svg, 'y'), tk(svg, 2)], lock = svg.querySelector('.lock'), lin = svg.querySelector('.lin'), nope = svg.querySelector('.nope'), trail = svg.querySelector('.trail');
+    lin.style.transformBox = 'fill-box'; lin.style.transformOrigin = 'center';
+    const reset = () => { C.forEach(t => t.classList.remove('lit', 'warn')); lock.setAttribute('opacity', 0); nope.setAttribute('opacity', 0); trail.setAttribute('opacity', 0); };
+    const locked = () => { C[0].classList.add('warn'); C[3].classList.add('warn'); lock.setAttribute('opacity', 1); nope.setAttribute('opacity', 1); };
+    const steps = [[0, reset]];
+    C.forEach((t, k) => steps.push([400 + k * 380, () => { t.classList.add('lit'); uiPop(t); if (k) trail.setAttribute('opacity', .8); sfx(noteHz(k), .14, 'triangle', .04); }]));
+    steps.push([2100, () => {
+      locked(); uiPop(C[0], 1.3); uiPop(C[3], 1.3);
+      if (!reduced && lin.animate) lin.animate([{ transform: 'scale(0)' }, { transform: 'scale(1.3) rotate(-14deg)' }, { transform: 'scale(1) rotate(12deg)' }, { transform: 'rotate(-8deg)' }, { transform: 'none' }], { duration: 700, easing: 'ease-out' });
+      sfx(150, .3, 'square', .03);
+    }]);
+    return { loop: 5400, steps, end: () => { reset(); C.forEach(t => t.classList.add('lit')); trail.setAttribute('opacity', .8); locked(); } };
+  }
+  const HT = [
+    { h: 'The goal', p: 'Get one element off the ring. Then the middle tile can take it!', b: htGoal },
+    { h: 'Trace a chain', p: 'Drag along tiles of two elements that take turns. Light them all up!', b: htTrace },
+    { h: 'Swap!', p: 'Tap the glowing chain to swap its two elements.', b: htSwap },
+    { h: 'Watch out for locks', p: 'A chain that joins two ring tiles just moves the problem. Try another!', b: htLock },
+  ];
+  let htPage = -1, htStopFn = null, htAfter = null;
+  function htBuild() {
+    const tr = $('htTrack'), dots = $('htDots');
+    if (tr.children.length) return;
+    HT.forEach((pg, k) => {
+      const sec = document.createElement('section'); sec.className = 'htpage'; sec.setAttribute('aria-label', 'Step ' + (k + 1) + ' of ' + HT.length + ': ' + pg.h);
+      sec.innerHTML = '<div class="htnum" aria-hidden="true">' + (k + 1) + '</div><h2>' + pg.h + '</h2><div class="htdemo"><svg id="htDemo' + k + '" viewBox="0 0 300 260" role="img" aria-label="Animated example: ' + pg.h + '"></svg></div><p>' + pg.p + '</p>';
+      tr.appendChild(sec);
+      const d = document.createElement('button'); d.setAttribute('aria-label', 'Go to step ' + (k + 1)); d.onclick = () => htGo(k); dots.appendChild(d);
+    });
+    let sx = null, sy = 0, dx = 0, pid = null;    // swipe: the pages follow the finger, then snap
+    tr.addEventListener('pointerdown', e => { sx = e.clientX; sy = e.clientY; dx = 0; pid = e.pointerId; });
+    tr.addEventListener('pointermove', e => {
+      if (sx === null || e.pointerId !== pid) return;
+      dx = e.clientX - sx; if (Math.abs(dx) < 8 || Math.abs(dx) < Math.abs(e.clientY - sy)) return;
+      const edge = (htPage === 0 && dx > 0) || (htPage === HT.length - 1 && dx < 0) ? .3 : 1;
+      tr.style.transition = 'none'; tr.style.transform = 'translateX(calc(' + (-100 * htPage) + '% + ' + (dx * edge) + 'px))';
+    });
+    const up = () => { if (sx === null) return; sx = null; tr.style.transition = ''; if (dx < -50 && htPage < HT.length - 1) htGo(htPage + 1); else if (dx > 50 && htPage > 0) htGo(htPage - 1); else htGo(htPage); };
+    tr.addEventListener('pointerup', up); tr.addEventListener('pointercancel', up); tr.addEventListener('pointerleave', up);
+  }
+  function htSet(p) {
+    p = Math.max(0, Math.min(HT.length - 1, p));
+    if (p === htPage) return;
+    if (htStopFn) htStopFn();
+    HT.forEach((pg, k) => { if (k !== p && (htPage === -1 || k === htPage)) { const d = pg.b($('htDemo' + k)); d.end(); } });   // still end frames elsewhere
+    htPage = p;
+    const d = HT[p].b($('htDemo' + p)); htStopFn = uiScript(d.steps, d.loop, d.end);
+    [...$('htDots').children].forEach((b, k) => { b.classList.toggle('on', k === p); b.setAttribute('aria-current', k === p ? 'step' : 'false'); });
+    $('htBack').disabled = p === 0;
+    $('htNext').textContent = p === HT.length - 1 ? "Let's play! ▶" : 'Next ▶';
+    $('htNext').setAttribute('aria-label', p === HT.length - 1 ? 'Done, start playing' : 'Next step');
+  }
+  function htGo(p) {
+    const tr = $('htTrack');
+    p = Math.max(0, Math.min(HT.length - 1, p));
+    tr.style.transform = 'translateX(' + (-100 * p) + '%)';
+    htSet(p);
+  }
+  function openHowTo(after) {
+    htBuild(); htAfter = after || null; titleStop();
+    $('howto').classList.add('on'); htPage = -1;
+    const tr = $('htTrack'); tr.style.transition = 'none'; tr.style.transform = 'none'; tr.getBoundingClientRect(); tr.style.transition = ''; htSet(0);
+    setTimeout(() => $('htNext').focus({ preventScroll: true }), 50);
+  }
+  function closeHowTo() {
+    if (htStopFn) htStopFn(); htStopFn = null; htPage = -1;
+    $('howto').classList.remove('on');
+    if (!save.seenHowTo) { save.seenHowTo = 1; persist(); }
+    const a = htAfter; htAfter = null;
+    if (a) a(); else if ($('title').classList.contains('on')) titleStart();
+  }
+  $('htSkip').onclick = closeHowTo;
+  $('htBack').onclick = () => htGo(htPage - 1);
+  $('htNext').onclick = () => { if (htPage >= HT.length - 1) closeHowTo(); else htGo(htPage + 1); };
+  document.addEventListener('keydown', e => {
+    if (!$('howto').classList.contains('on')) return;
+    if (e.key === 'Escape') closeHowTo(); else if (e.key === 'ArrowRight') htGo(htPage + 1); else if (e.key === 'ArrowLeft') htGo(htPage - 1);
+  });
+
+  // ---------- the level map: a cartoon archipelago, one island per group, levels as tiles on a ladder road ----------
+  const DIST = { 'Warm-up': ['Warm-up Beach', 'beach', '🏖️'], 'Tutorial': ['Tutorial Town', 'town', '🏘️'], 'Locks': ['Lock Harbour', 'harbour', '⚓'],
+    'Far chains': ['Far Chains Forest', 'forest', '🌲'], 'π': ['π Loop Lighthouse', 'cape', '💡'], 'Depths': ['The Depths', 'cave', '💎'], 'Boss': ['Volcano Boss', 'volcano', '🌋'] };
+  const THEME = {
+    beach: { land: '#f7d98a', edge: '#fff6d2', patch: '#f0c967', deco: ['palm', 'palm', 'umbrella', 'star', 'ball', 'shell'] },
+    town: { land: '#8fd36b', edge: '#f7e2a0', patch: '#a3e07f', deco: ['house', 'house', 'house', 'tree', 'tree', 'flowers'] },
+    harbour: { land: '#e0b47a', edge: '#f6e2b8', patch: '#d3a066', deco: ['crate', 'barrel', 'crate', 'bollard', 'house', 'anchor'] },
+    forest: { land: '#4fae58', edge: '#e8d79a', patch: '#62bf68', deco: ['pine', 'tree', 'pine', 'mushroom', 'pine', 'tree'] },
+    cape: { land: '#c7cdd5', edge: '#f2f4f6', patch: '#b4bcc6', deco: ['rock', 'rock', 'gull', 'flowers', 'rock', 'gull'] },
+    cave: { land: '#7a64a8', edge: '#b9a6e0', patch: '#6a5596', deco: ['crystal', 'crystal', 'stal', 'crystal', 'shroomglow', 'stal'] },
+    volcano: { land: '#a3583c', edge: '#e6a882', patch: '#8c4a32', deco: ['rock', 'lava', 'deadtree', 'lava', 'deadtree', 'rock'] },
+  };
+  const OUT = 'stroke="#1c1640" stroke-width="1.6" stroke-linejoin="round"';
+  const DECO = {
+    palm: (r) => '<path d="M0 0Q5 -14 -2 -30" stroke="#8a5a2b" stroke-width="5" fill="none" stroke-linecap="round"/><g transform="translate(-2 -30)">' + [-165, -120, -70, -20, 25].map(a => '<ellipse rx="14" ry="4.5" fill="#2f9e44" ' + OUT + ' transform="rotate(' + a + ') translate(11 0)"/>').join('') + '<circle r="3" fill="#7a4a22"/><circle cx="4" cy="2" r="3" fill="#7a4a22"/></g>',
+    umbrella: (r) => '<rect x="-12" y="2" width="24" height="9" rx="2" fill="' + ['#ff6fae', '#5ab4ff', '#ffd84a'][Math.floor(r * 3)] + '"/><line x1="0" y1="6" x2="0" y2="-14" stroke="#555" stroke-width="2"/><path d="M-16 -12A16 11 0 0 1 16 -12Z" fill="#ff5a5a" ' + OUT + '/><path d="M-5 -12A5 11 0 0 1 5 -12Z" fill="#fff"/>',
+    star: () => '<polygon points="0,-8 2.4,-2.5 8,-2.5 3.6,1.2 5.2,7 0,3.6 -5.2,7 -3.6,1.2 -8,-2.5 -2.4,-2.5" fill="#ff8a3d" ' + OUT + '/>',
+    ball: () => '<circle r="8" fill="#fff" ' + OUT + '/><path d="M-8 0A8 8 0 0 1 0 -8V0Z" fill="#ff5a5a"/><path d="M8 0A8 8 0 0 1 0 8V0Z" fill="#5ab4ff"/>',
+    shell: () => '<path d="M-8 3Q0 -12 8 3Z" fill="#ffc4d6" ' + OUT + '/><path d="M0 3V-6M-4 3L-2 -4M4 3L2 -4" stroke="#e48aa8" stroke-width="1.2"/>',
+    house: (r) => { const c = ['#ef5a3c', '#3d8fe8', '#e8a83c', '#9a5cff', '#2fa66a'][Math.floor(r * 5)]; return '<rect x="-13" y="-12" width="26" height="19" fill="#fff4e0" ' + OUT + '/><path d="M-16 -11L0 -26L16 -11Z" fill="' + c + '" ' + OUT + '/><rect x="-3" y="-2" width="6" height="9" fill="#8a5a2b"/><rect x="-10" y="-8" width="5" height="5" fill="#7fd3ff"/><rect x="5" y="-8" width="5" height="5" fill="#7fd3ff"/>'; },
+    tree: () => '<rect x="-2.5" y="-4" width="5" height="12" fill="#8a5a2b"/><circle cy="-13" r="12" fill="#3ea84a" ' + OUT + '/><circle cx="-4" cy="-17" r="4" fill="#fff" opacity=".28"/>',
+    pine: () => '<rect x="-2" y="2" width="4" height="7" fill="#7a4a22"/><path d="M0 -30L13 -6H-13Z M0 -20L16 4H-16Z" fill="#2c8a3e" ' + OUT + '/>',
+    mushroom: () => '<rect x="-3" y="-4" width="6" height="10" rx="2" fill="#fff4e0" ' + OUT + '/><path d="M-11 -3A11 10 0 0 1 11 -3Z" fill="#ef3c3c" ' + OUT + '/><circle cx="-4" cy="-8" r="2" fill="#fff"/><circle cx="4" cy="-7" r="1.6" fill="#fff"/>',
+    flowers: () => [[-8, 0, '#ff6fae'], [0, -6, '#ffd84a'], [8, 1, '#fff']].map(([x, y, c]) => '<circle cx="' + x + '" cy="' + y + '" r="3.5" fill="' + c + '"/><circle cx="' + x + '" cy="' + y + '" r="1.2" fill="#e8a83c"/>').join(''),
+    crate: () => '<rect x="-10" y="-10" width="20" height="20" fill="#c98a4b" ' + OUT + '/><path d="M-10 -10L10 10M10 -10L-10 10" stroke="#8a5a2b" stroke-width="2"/>',
+    barrel: () => '<rect x="-8" y="-11" width="16" height="21" rx="5" fill="#a8693a" ' + OUT + '/><path d="M-8 -4H8M-8 3H8" stroke="#5a3a1c" stroke-width="2"/>',
+    bollard: () => '<rect x="-5" y="-8" width="10" height="14" rx="3" fill="#3a3f55" ' + OUT + '/><path d="M-5 -3Q-12 2 -6 8" stroke="#e8d7a0" stroke-width="2.5" fill="none"/>',
+    anchor: () => '<g stroke="#3a3f55" stroke-width="3.5" fill="none" stroke-linecap="round"><circle cy="-12" r="3.5"/><path d="M0 -8V9M-7 -3H7M-10 2Q-8 10 0 10Q8 10 10 2"/></g>',
+    rock: (r) => '<ellipse cx="0" cy="0" rx="' + (9 + r * 6) + '" ry="7" fill="#8d96a3" ' + OUT + '/><ellipse cx="-3" cy="-3" rx="4" ry="2" fill="#fff" opacity=".3"/>',
+    gull: () => '<path d="M-10 0Q-5 -6 0 0Q5 -6 10 0" stroke="#fff" stroke-width="2.5" fill="none" stroke-linecap="round"/>',
+    crystal: (r) => { const c = ['#5ef2ff', '#ff7ae0', '#ffe066'][Math.floor(r * 3)]; return '<polygon points="0,-22 7,-8 3,6 -4,6 -7,-8" fill="' + c + '" ' + OUT + '/><polygon points="9,-12 14,-3 11,6 6,6 5,-3" fill="' + c + '" ' + OUT + ' opacity=".85"/><polygon points="0,-22 -2,-6 -4,6 -7,-8" fill="#fff" opacity=".35"/>'; },
+    stal: () => '<path d="M-9 8L-4 -14L0 8ZM-1 8L5 -20L10 8Z" fill="#4d3c74" ' + OUT + '/>',
+    shroomglow: () => '<rect x="-2" y="-3" width="4" height="9" fill="#d9f7ff"/><path d="M-9 -2A9 8 0 0 1 9 -2Z" fill="#5ef2ff" ' + OUT + '/><circle cy="-4" r="11" fill="#5ef2ff" opacity=".18"/>',
+    lava: () => '<ellipse rx="15" ry="7" fill="#ff7a2a" ' + OUT + '/><ellipse cx="-3" cy="-1" rx="7" ry="3" fill="#ffd84a"/>',
+    deadtree: () => '<path d="M0 8V-16M0 -6L-8 -14M0 -10L7 -18" stroke="#3a2418" stroke-width="3.5" fill="none" stroke-linecap="round"/>',
+  };
+  function islandPath(x0, y0, x1, y1, seed) {
+    const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2, a = (x1 - x0) / 2, b = (y1 - y0) / 2, pts = [];
+    for (let k = 0; k < 64; k++) {
+      const t = 2 * Math.PI * k / 64, c = Math.cos(t), s = Math.sin(t);
+      const w = 1 + .025 * Math.sin(7 * t + seed) + .018 * Math.sin(13 * t + seed * 2);
+      pts.push([cx + a * w * Math.sign(c) * Math.pow(Math.abs(c), .35), cy + b * w * Math.sign(s) * Math.pow(Math.abs(s), .35)]);
+    }
+    let d = 'M' + q1((pts[63][0] + pts[0][0]) / 2) + ' ' + q1((pts[63][1] + pts[0][1]) / 2);
+    pts.forEach((p, k) => { const n = pts[(k + 1) % 64]; d += 'Q' + q1(p[0]) + ' ' + q1(p[1]) + ' ' + q1((p[0] + n[0]) / 2) + ' ' + q1((p[1] + n[1]) / 2); });
+    return d + 'Z';
+  }
+  function sagaLayout() {
+    const groups = [];
+    G.levels.forEach((l, i) => { const g = groups[groups.length - 1]; if (g && g.kicker === l.kicker) g.idx.push(i); else groups.push({ kicker: l.kicker, idx: [i] }); });
+    const SP = 128, PB = 72, GAP = 66, TOP = 64, BOT = 120;
+    groups.forEach(g => { const boss = g.kicker === 'Boss'; g.pt = boss ? 150 : 104; g.pb = boss ? 175 : PB; g.h = (g.idx.length - 1) * SP + g.pb + g.pt; });
+    const H = TOP + BOT + groups.reduce((s, g) => s + g.h, 0) + GAP * (groups.length - 1);
+    let cur = H - BOT; const P = [];
+    groups.forEach(g => {
+      g.bot = cur; g.top = cur - g.h;
+      g.idx.forEach((i, j) => { P[i] = [g.kicker === 'Boss' ? 200 : q1(200 + 112 * Math.sin(i * 1.1 + .35)), g.bot - g.pb - j * SP]; });
+      cur = g.top - GAP;
+    });
+    return { groups, H, P };
+  }
+  function catmull(pts, steps) {     // smooth road through the stops
+    const out = [];
+    for (let i = 0; i < pts.length - 1; i++) {
+      const p0 = pts[Math.max(0, i - 1)], p1 = pts[i], p2 = pts[i + 1], p3 = pts[Math.min(pts.length - 1, i + 2)], seg = [];
+      for (let s = 0; s <= steps; s++) {
+        const t = s / steps, t2 = t * t, t3 = t2 * t;
+        seg.push([0, 1].map(c => .5 * (2 * p1[c] + (-p0[c] + p2[c]) * t + (2 * p0[c] - 5 * p1[c] + 4 * p2[c] - p3[c]) * t2 + (-p0[c] + 3 * p1[c] - 3 * p2[c] + p3[c]) * t3)));
+      }
+      out.push(seg);
+    }
+    return out;
+  }
+  const isOpen = i => unlockAll || i === 0 || !!save.best[i - 1];
+  function currentLevel() { for (let i = 0; i < G.levels.length; i++) if (isOpen(i) && !save.best[i]) return i; return G.levels.length - 1; }
+  function renderSaga() {
+    const { groups, H, P } = sagaLayout(), cur = currentLevel(), N = G.levels.length;
+    const S = [P[0][0] > 200 ? P[0][0] - 70 : P[0][0] + 70, H - 40];
+    const segs = catmull([S].concat(P), 18), flat = [].concat(...segs);
+    const roadNear = (x, y, d) => flat.some(p => Math.abs(p[0] - x) < d && Math.abs(p[1] - y) < d && Math.hypot(p[0] - x, p[1] - y) < d);
+    let sea = '', land = '', deco = '', signs = '';
+    // sea sparkle waves
+    for (let k = 0; k < Math.floor(H / 70); k++) {
+      const x = 20 + hash01(k, 3) * 360, y = 20 + k * 70 + hash01(k, 5) * 30;
+      sea += '<path d="M' + q1(x) + ' ' + q1(y) + 'q5 -5 10 0t10 0" stroke="#fff" stroke-width="2.2" fill="none" opacity=".45" stroke-linecap="round"/>';
+    }
+    groups.forEach((g, gi) => {
+      const [name, theme, emo] = DIST[g.kicker] || [g.kicker, 'town', '📍'], T = THEME[theme];
+      const x0 = 18, x1 = 382, y0 = g.top, y1 = g.bot;
+      const ip = islandPath(x0, y0, x1, y1, gi * 1.7 + 1);
+      land += '<path d="' + ip + '" fill="#7fd6ff" stroke="#7fd6ff" stroke-width="22" opacity=".55"/>';
+      land += '<path d="' + ip + '" fill="' + T.land + '" stroke="' + T.edge + '" stroke-width="9"/>';
+      for (let k = 0; k < 4; k++) land += '<ellipse cx="' + q1(60 + hash01(gi, k) * 280) + '" cy="' + q1(y0 + 30 + hash01(k, gi + 9) * (y1 - y0 - 60)) + '" rx="' + q1(28 + hash01(gi + 2, k) * 30) + '" ry="' + q1(10 + hash01(k, gi) * 10) + '" fill="' + T.patch + '" opacity=".8"/>';
+      if (theme === 'harbour') { for (let y = y0 + 26; y < y1 - 14; y += 13) land += '<line x1="40" y1="' + y + '" x2="360" y2="' + y + '" stroke="#c48e52" stroke-width="1.4" opacity=".55"/>'; }
+      // the sign
+      const sy = y0 + 20, label = emo + ' ' + name, w = Math.round(28 + [...label].length * 8.4);
+      const near = flat.filter(p => p[1] > sy - 10 && p[1] < sy + 50);
+      const rx = near.length ? near.reduce((s, p) => s + p[0], 0) / near.length : 200;
+      const sx = rx > 200 ? 30 : 370 - w;
+      signs += '<g transform="translate(' + sx + ' ' + sy + ')"><rect x="' + (w / 2 - 14) + '" y="24" width="6" height="18" fill="#6b3f1c"/><rect x="' + (w / 2 + 8) + '" y="24" width="6" height="18" fill="#6b3f1c"/>' +
+        '<rect width="' + w + '" height="32" rx="9" fill="#c98a4b" stroke="#1c1640" stroke-width="3"/><rect x="4" y="4" width="' + (w - 8) + '" height="6" rx="3" fill="#fff" opacity=".22"/>' +
+        '<text x="' + w / 2 + '" y="17" text-anchor="middle" dominant-baseline="central" class="chunky" font-size="15" fill="#fff" stroke-width="4">' + label + '</text></g>';
+      // decorations on free land
+      const signBox = [sx - 10, sy - 10, sx + w + 10, sy + 50];
+      for (let y = y0 + 34; y < y1 - 14; y += 40) for (let x = 44; x < 360; x += 44) {
+        const r = hash01(x * .37 + gi, y * .11), jx = x + (hash01(y, x) - .5) * 20, jy = y + (hash01(x, y) - .5) * 14;
+        if (r > (theme === 'forest' ? .75 : .5)) continue;
+        if (roadNear(jx, jy, 40) || P.some(p => Math.hypot(p[0] - jx, p[1] - jy) < 56)) continue;
+        if (jx > signBox[0] && jx < signBox[2] && jy > signBox[1] && jy < signBox[3]) continue;
+        if (theme === 'volcano') { const v = P[g.idx[0]]; if (jy > v[1] - 60 && Math.abs(jx - v[0]) < 70 + (jy - v[1]) * 1.3) continue; }
+        if (Math.pow((jx - 200) / 172, 4) + Math.pow((jy - (y0 + y1) / 2) / ((y1 - y0) / 2 - 10), 4) > .8) continue;   // stay on land
+        const kind = T.deco[Math.floor(hash01(jy, jx) * T.deco.length)];
+        deco += '<g transform="translate(' + q1(jx) + ' ' + q1(jy) + ')">' + DECO[kind](hash01(jx, jy * 3)) + '</g>';
+      }
+      if (theme === 'harbour') [[30, y0 + 56, 1], [370, y1 - 56, -1]].forEach(([x, y, s]) => {
+        deco += '<g transform="translate(' + x + ' ' + q1(y) + ') scale(' + s + ' 1)"><rect x="0" y="-6" width="34" height="12" fill="#a8693a" ' + OUT + '/>' +
+          '<g transform="translate(-6 22)"><path d="M-16 0H16L10 9H-10Z" fill="#fff" ' + OUT + '/><path d="M0 0V-24L14 -4Z" fill="#ef5a3c" ' + OUT + '/></g></g>';
+      });
+      if (theme === 'cape') {   // the lighthouse, on the free side of the top stop
+        const top = P[g.idx[g.idx.length - 1]], lx = top[0] > 200 ? 70 : 330, ly = top[1] + 30;
+        deco += '<g transform="translate(' + lx + ' ' + ly + ')">' +
+          (reduced ? '' : '<g><path d="M0 -58L-90 -80L-90 -36Z" fill="#fff6a0" opacity=".45"/><animateTransform attributeName="transform" type="rotate" values="0 0 -58;360 0 -58" dur="6s" repeatCount="indefinite"/></g>') +
+          '<path d="M-12 0L-8 -48H8L12 0Z" fill="#fff" ' + OUT + '/><path d="M-11 -12L-10 -24H10L11 -12ZM-9 -36L-8.5 -48H8.5L9 -36Z" fill="#ef3c3c"/>' +
+          '<rect x="-9" y="-62" width="18" height="14" rx="3" fill="#ffe066" ' + OUT + '/><path d="M-11 -62L0 -72L11 -62Z" fill="#ef3c3c" ' + OUT + '/></g>';
+        deco += '<text x="' + (lx > 200 ? 300 : 100) + '" y="' + q1(g.bot - 40) + '" text-anchor="middle" font-size="36" font-weight="900" fill="#fff" opacity=".55">π</text>';
+      }
+      if (theme === 'volcano') {   // a big cone with the boss level in its crater
+        const b = P[g.idx[0]], vy = b[1], vx = b[0];
+        deco = '<g><path d="M' + (vx - 178) + ' ' + (vy + 158) + 'Q' + (vx - 70) + ' ' + (vy + 100) + ' ' + (vx - 50) + ' ' + (vy - 6) + 'Q' + vx + ' ' + (vy - 26) + ' ' + (vx + 50) + ' ' + (vy - 6) + 'Q' + (vx + 70) + ' ' + (vy + 100) + ' ' + (vx + 178) + ' ' + (vy + 158) + 'Z" fill="#6b3324" stroke="#1c1640" stroke-width="3"/>' +
+          '<path d="M' + (vx - 30) + ' ' + (vy + 10) + 'Q' + (vx - 44) + ' ' + (vy + 90) + ' ' + (vx - 120) + ' ' + (vy + 150) + 'L' + (vx - 60) + ' ' + (vy + 150) + 'Q' + (vx - 22) + ' ' + (vy + 80) + ' ' + (vx - 10) + ' ' + (vy + 10) + 'Z" fill="#fff" opacity=".08"/>' +
+          '<path d="M' + (vx - 30) + ' ' + vy + 'Q' + (vx - 40) + ' ' + (vy + 40) + ' ' + (vx - 70) + ' ' + (vy + 90) + 'M' + (vx + 36) + ' ' + vy + 'Q' + (vx + 52) + ' ' + (vy + 34) + ' ' + (vx + 48) + ' ' + (vy + 76) + '" stroke="#ff7a2a" stroke-width="7" fill="none" stroke-linecap="round"/>' +
+          '<ellipse cx="' + vx + '" cy="' + vy + '" rx="58" ry="26" fill="#ff7a2a" opacity=".9"/><ellipse cx="' + vx + '" cy="' + vy + '" rx="40" ry="16" fill="#ffd84a" opacity=".8"/>' +
+          [0, 1, 2].map(k => '<circle cx="' + (vx - 20 + k * 22) + '" cy="' + (vy - 70 - k * 18) + '" r="' + (16 + k * 5) + '" fill="#d8d0d6" opacity=".75">' + (reduced ? '' : '<animate attributeName="cy" values="' + (vy - 50) + ';' + (vy - 150) + '" dur="' + (3 + k) + 's" begin="-' + k + 's" repeatCount="indefinite"/><animate attributeName="opacity" values=".8;0" dur="' + (3 + k) + 's" begin="-' + k + 's" repeatCount="indefinite"/>') + '</circle>').join('') + '</g>' + deco;
+      }
+    });
+    // start dock
+    deco += '<g transform="translate(' + q1(S[0]) + ' ' + q1(S[1]) + ')"><rect x="-26" y="-6" width="52" height="22" rx="6" fill="#a8693a" ' + OUT + '/><line x1="18" y1="-6" x2="18" y2="-46" stroke="#3a3f55" stroke-width="3"/><path d="M18 -46L44 -38L18 -30Z" fill="#ff4fa3" ' + OUT + '/>' +
+      '<text x="0" y="7" text-anchor="middle" dominant-baseline="central" class="chunky" font-size="12" fill="#fff" stroke-width="3">START</text></g>';
+    // the ladder road, gold where it's been walked
+    let done = '', todo = '';
+    segs.forEach((seg, k) => { const d = 'M' + seg.map(p => q1(p[0]) + ' ' + q1(p[1])).join('L'); if (k === 0 || (save.best[k - 1] && isOpen(k))) done += d; else todo += d; });
+    const road = (d, a, b, c) => d ? '<path d="' + d + '" stroke="' + a + '" stroke-width="20" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="' + d + '" stroke="' + b + '" stroke-width="13" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="' + d + '" stroke="' + c + '" stroke-width="13" fill="none" stroke-dasharray="3 6"/>' : '';
+    const svg = '<svg viewBox="0 0 400 ' + H + '" aria-hidden="true"><rect width="400" height="' + H + '" fill="#2a9fd8"/>' + sea + land + deco +
+      road(todo, '#4b5260', '#b9c0c8', '#7d858f') + road(done, '#6b3f1c', '#f2c27a', '#a8693a') + signs + '</svg>';
+    let nodes = '';
+    G.levels.forEach((lv, i) => {
+      const [x, y] = P[i], open = isOpen(i), b = save.best[i], num = lv.num || String(i + 1);
+      const st = !open ? 'locked' : i === cur ? 'current' : b ? 'beaten' : 'open';
+      const sides = [6, 5, 7, 6, 5, 6, 7, 5][i % 8], e = open ? i % 4 : 'g';
+      const tile = open ? uiTile(0, 0, 31, sides, e, { label: num, fs: num.length > 2 ? 16 : num.length > 1 ? 21 : 26 }) : uiTile(0, 0, 31, sides, 'g', { label: '🔒', fs: 20 });
+      const stars = b ? b.stars : 0;
+      nodes += '<button class="mnode st-' + st + (lv.kicker === 'Boss' ? ' boss' : '') + '" data-i="' + i + '" style="left:' + q1(x / 4) + '%;top:' + (y / H * 100).toFixed(3) + '%" aria-label="Level ' + num + ': ' + lv.title +
+        (open ? (b ? ', ' + stars + ' of 3 stars' : '') + (i === cur ? ', you are here' : '') : ', locked') + '">' +
+        (st === 'current' ? '<span class="pulse"></span><span class="pulse p2"></span>' : '') +
+        '<svg viewBox="-40 -40 80 80" aria-hidden="true">' + tile + '</svg>' +
+        (open ? '<span class="mst" aria-hidden="true">' + '★'.repeat(stars) + '<i>' + '★'.repeat(3 - stars) + '</i></span>' : '<span class="mtag" aria-hidden="true">' + num + '</span>') +
+        (i === cur ? '<span class="me" aria-hidden="true"><svg viewBox="-23 -30 46 58"><path d="M0 27C-6 17 -19 9 -19 -5A19 19 0 0 1 19 -5C19 9 6 17 0 27Z" fill="#ff4fa3" stroke="#1c1640" stroke-width="3"/><circle cy="-6" r="12.5" fill="#fff"/><circle cx="-4.5" cy="-8" r="2.6" fill="#1c1640"/><circle cx="4.5" cy="-8" r="2.6" fill="#1c1640"/><circle cx="-3.6" cy="-9" r=".9" fill="#fff"/><circle cx="5.4" cy="-9" r=".9" fill="#fff"/><path d="M-4.5 -2Q0 2.5 4.5 -2" stroke="#1c1640" stroke-width="2" fill="none" stroke-linecap="round"/><circle cx="-8.5" cy="-3" r="2" fill="#ff9ccc"/><circle cx="8.5" cy="-3" r="2" fill="#ff9ccc"/></svg></span>' : '') +
+        '</button>';
+    });
+    const box = $('saga'); box.innerHTML = svg + nodes;
+    box.querySelectorAll('.mnode').forEach(btn => {
+      const i = +btn.dataset.i;
+      btn.onclick = () => {
+        if (isOpen(i)) { blip(660, .12, 'triangle', .04); startLevel(i, true); }
+        else { blip(140, .15, 'square', .03); if (btn.animate) btn.animate([{ transform: 'translate(-50%,-50%) translateX(-5px)' }, { transform: 'translate(-50%,-50%) translateX(5px)' }, { transform: 'translate(-50%,-50%)' }], { duration: 200 }); }
+      };
+    });
+    uiTotals();
+    return { y: P[cur][1] / H };
+  }
+  function showMenu() {
+    $('win').classList.remove('on'); $('brief').classList.remove('on'); closeWheel(); titleStop();
+    $('game').classList.remove('on'); $('title').classList.remove('on'); $('menu').classList.add('on');
+    const r = renderSaga(), m = $('menu');
+    requestAnimationFrame(() => { m.scrollTop = Math.max(0, r.y * $('saga').clientHeight - m.clientHeight * .55); });
+  }
+  $('btnPlay').onclick = () => { blip(523, .12, 'triangle', .05); titleStop(); if (!save.seenHowTo) openHowTo(showMenu); else showMenu(); };
+  $('btnHowTitle').onclick = () => openHowTo(null);
+  $('btnHowMap').onclick = () => openHowTo(null);
+  $('btnTitle').onclick = showTitle;
+  titleBuild();
+  if (LABN) { const i = G.levels.findIndex(l => String(l.num) === LABN); startLevel(i >= 0 ? i : 0, false); }
+  else showTitle();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Fill the Hole Families</title>
+<style>
+  /* Dev page: every front end playing the same level, side by side, each in its own frame with its own state. */
+  :root { --bg: #0e1122; --card: #171b33; --line: #2b3157; --fg: #e8ecff; --dim: #8f97c4; --accent: #ffd84a; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--fg); font: 13px/1.35 system-ui, -apple-system, Segoe UI, sans-serif; }
+  body { padding: 10px 12px 24px; }
+  h1 { margin: 2px 0 2px; font-size: 1.05rem; letter-spacing: .02em; }
+  h1 small { color: var(--dim); font-weight: 500; font-size: .8rem; margin-left: 8px; }
+  h2 { margin: 16px 0 8px; font-size: .78rem; text-transform: uppercase; letter-spacing: .12em; color: var(--accent); }
+  .row { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 10px; }
+  .tile { position: relative; background: var(--card); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; display: flex; flex-direction: column; min-width: 0; }
+  .tile header { display: flex; align-items: baseline; gap: 6px; padding: 6px 8px 5px; border-bottom: 1px solid var(--line); min-width: 0; }
+  .tile header b { font-size: .82rem; white-space: nowrap; }
+  .tile header span { color: var(--dim); font-size: .7rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
+  .tile header button { background: none; border: 1px solid var(--line); color: var(--fg); border-radius: 7px; font: inherit; font-size: .72rem; padding: 1px 7px; cursor: pointer; }
+  .tile header button:hover { border-color: var(--accent); }
+  .tile iframe { display: block; width: 100%; height: 520px; border: 0; background: #000; }
+  .tile.min iframe { display: none; } .tile.min { align-self: start; } .tile.min header { border-bottom: 0; }
+  .tile.max { position: fixed; inset: 0; z-index: 10; border-radius: 0; }
+  .tile.max iframe { flex: 1; height: auto; }
+  .tile.max header button.mx::after { content: ' ✕'; }
+  body.has-max { overflow: hidden; }
+  .tile header .sk { display: flex; gap: 3px; font-style: normal; } .tile header .sk button.on { background: var(--accent); color: #1c1640; border-color: var(--accent); }
+  .row { grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); } .tile iframe { height: 600px; }
+  #lvls { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 2px; }
+  #lvls button { background: var(--card); color: var(--fg); border: 1px solid var(--line); border-radius: 10px; padding: 5px 10px; font: inherit; cursor: pointer; text-align: left; line-height: 1.2; }
+  #lvls button b { display: block; font-size: .82rem; } #lvls button span { color: var(--dim); font-size: .68rem; }
+  #lvls button.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; } #lvls button.on b { color: var(--accent); }
+  @media (max-width: 560px) { .tile iframe { height: 70vh; } }
+</style>
+</head>
+<body>
+<h1>Fill the Hole · Families <small>one puzzle (level 4), grouped by how each game shows it; every frame independent · <a href="Wrappers.html" style="color:var(--fg)">wrappers</a> · <a href="index.html" style="color:var(--fg)">all trials</a></small></h1>
+
+<nav id="lvls" aria-label="Choose the puzzle map"></nav>
+
+<h2>Basic graph: regions as linked pieces</h2>
+<div class="row" id="rowA"></div>
+<h2>Pairs goal: two of two kinds and one of another</h2>
+<div class="row" id="rowB"></div>
+<h2>Conflict games: move one in, whoever clashes moves out</h2>
+<div class="row" id="rowC"></div>
+<h2>Map colouring: regions with borders</h2>
+<div class="row" id="rowD"></div>
+<h2>In a league of its own</h2>
+<div class="row" id="rowE"></div>
+
+<script>
+  // the map every game plays: picked at the top, remembered in this browser; changing it rebuilds every tile
+  const LEVELS = [
+    ['0.2', 'Small', '12 regions · 1 swap'],
+    ['1', 'Icosahedron', '11 regions · symmetric · 1 swap'],
+    ['4', 'Current', '21 regions · 2 swaps'],
+    ['0.4', 'Big, easy', '33 regions · 1 swap'],
+    ['7', 'Big', '33 regions · 3 swaps'],
+    ['12', 'Deepest pit', '33 regions · 6 swaps'],
+  ];
+  let lvl = new URLSearchParams(location.search).get('lvl');
+  try { lvl = lvl || localStorage.getItem('fam-lvl'); } catch (_) {}
+  if (!LEVELS.some(l => l[0] === lvl)) lvl = '4';
+  function row(id, list) {
+    const el = document.getElementById(id);
+    list.forEach(([name, note, skins]) => {
+      const t = document.createElement('section'); t.className = 'tile';
+      t.innerHTML = '<header><b></b><span></span><i class="sk"></i><button class="mn" title="Minimize: unload this game to free memory">–</button><button class="rl" title="Reload this game">↺</button><button class="mx" title="Fill the window">⤢</button></header><iframe loading="lazy" allow="autoplay"></iframe>';
+      t.querySelector('b').textContent = name; t.querySelector('span').textContent = note;
+      const f = t.querySelector('iframe'); let cur = skins[0][1]; f.src = cur; f.title = name;
+      if (skins.length > 1) {                       // skin toggle: same puzzle, different look
+        const box = t.querySelector('.sk');
+        skins.forEach(([lab, src], k) => { const b = document.createElement('button'); b.textContent = lab; b.className = k ? '' : 'on';
+          b.onclick = () => { box.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); cur = src; f.src = src; }; box.appendChild(b); });
+      }
+      t.querySelector('.rl').onclick = () => { f.src = cur; };
+      // minimize: unload the frame (frees its memory and CPU), remembered per tile in this browser
+      const mkey = 'lab-min:' + location.pathname + ':' + name;
+      const setMin = on => { t.classList.toggle('min', on); f.src = on ? 'about:blank' : cur; t.querySelector('.mn').textContent = on ? '+' : '–'; try { localStorage.setItem(mkey, on ? '1' : ''); } catch (_) {} };
+      t.querySelector('.mn').onclick = () => setMin(!t.classList.contains('min'));
+      try { if (localStorage.getItem(mkey) === '1') setMin(true); } catch (_) {}
+      t.querySelector('.mx').onclick = () => { const on = t.classList.toggle('max'); document.body.classList.toggle('has-max', on); focusOnly(on ? t : null); };
+      t._reload = () => { if (!t.classList.contains('min')) f.src = cur; };
+      t._unload = () => { f.src = 'about:blank'; };
+      el.appendChild(t);
+    });
+  }
+  function render() {
+    document.querySelectorAll('.row').forEach(r => { r.innerHTML = ''; });
+    document.querySelectorAll('#lvls button').forEach(b => b.classList.toggle('on', b.dataset.l === lvl));
+  // each entry: [name, note, [[skin label, src], ...]]: more than one skin gives the tile a skin toggle
+    // each entry: [name, note, [[skin label, src], ...]]: more than one skin gives the tile a skin toggle
+    const A = [
+      ['Fill the Hole', 'the current game, walled', [['Game', '../index.html?lab=' + lvl + '&walls=1']]],
+      ['Dots', 'one-finger chaining', [['Dots', 'dots.html?lvl=' + lvl], ['Spheres', 'spheres.html?lvl=' + lvl]]],
+      ['Pills', 'flip a capsule, its pair-mates flip in a chain', [['Pills', 'pills.html?lvl=' + lvl]]],
+      ['Bonus Swipe', 'the bonus round on the real puzzle', [['Swipe', 'swipe.html?lvl=' + lvl]]],
+    ];
+  const B = [
+      ['Monster Ride 2', 'the car rides when the back bench matches', [['Ride 2', 'ride2.html?lvl=' + lvl]]],
+    ];
+    const C = [
+      ['Wedding Tables', 'seat Gran at a table free of her rivals', [['Tables', 'tables.html?lvl=' + lvl]]],
+      ['Ion Channels', 'free a compartment for the signal', [['Ions', 'ions.html?lvl=' + lvl]]],
+    ];
+    const D = [
+      ['Island map', 'drag across a border', [['Island', 'map.html?lvl=' + lvl]]],
+      ['Blocks', 'cosy cat blocks', [['Blocks', 'blocks.html?lvl=' + lvl]]],
+    ];
+    const E = [
+      ['Line Doodle', 'colour the blank map yourself; swaps unstick you', [['Blank map', 'blank.html?lvl=' + lvl], ['Lines', 'lines.html']]],
+      ['Doodle Map', 'the same sketchbook, on our puzzle: colour the blank piece', [['Doodle', 'doodle.html?lvl=' + lvl]]],
+    ];
+    row('rowA', A); row('rowB', B); row('rowC', C); row('rowD', D); row('rowE', E);
+  }
+  LEVELS.forEach(([l, name, note]) => {
+    const b = document.createElement('button'); b.dataset.l = l;
+    b.innerHTML = '<b>' + l + ' · ' + name + '</b><span>' + note + '</span>';
+    b.onclick = () => { if (l === lvl) return; lvl = l; try { localStorage.setItem('fam-lvl', l); } catch (_) {} render(); };
+    document.getElementById('lvls').appendChild(b);
+  });
+  render();
+  // every same-origin frame shares one thread, so a dozen running games slow each other down: while one tile is
+  // maximised the others are unloaded, and they come back when it is restored
+  function focusOnly(keep) {
+    document.querySelectorAll('.tile').forEach(t => { if (t === keep) return; if (keep) t._unload && t._unload(); else t._reload && t._reload(); });
+  }
+  addEventListener('keydown', e => { if (e.key === 'Escape' && document.querySelector('.tile.max')) { document.querySelectorAll('.tile.max').forEach(t => t.classList.remove('max')); document.body.classList.remove('has-max'); focusOnly(null); } });
+</script>
+</body>
+</html>

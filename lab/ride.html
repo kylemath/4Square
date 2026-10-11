@@ -1,0 +1,653 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Monster Ride</title>
+<!--
+  MONSTER RIDE: a theme-park queue of chunky googly-eyed monsters.
+
+  What the player sees: a candy-striped tent with a little ride car on top. The car has one seat per monster species
+  (round red Blorb, tall blue Stretch, triangle yellow Spike, square green Boxo: each species differs in body shape,
+  colour, eyes and seat shape). Below the velvet rope is the queue crowd. The monsters right at the rope (the front
+  row) each "call dibs" on their species' seat (dashed dibs-lines from each front-row monster to its seat). The VIP can
+  only ride when one seat shape is left unclaimed. Sign: "Leave a seat free for the VIP!"
+
+  Mapping onto the puzzle (lab/core.js):
+    monster u                  = region u (every region except the hole); species = g.col[u]
+    holding hands              = adjacency (shown when you pick a monster up, and along the dance wave). The rule
+                                  "two of the same kind never hold hands" is the legal colouring; never drawn as a map.
+    the ride's free VIP seat   = the hole. The front row at the rope = g.rim (5 monsters, in cyclic order L->R).
+    all 4 seats claimed        = rim uses 4 elements. One seat left unclaimed = g.won(); the VIP who boards is the
+                                  species g.free().
+    do-si-do                   = exactly one g.swap(K):
+       tap monster A, then tap one of its hand-holding neighbours B  ->  K = g.chainAt(A, col[B])
+       tap monster A, then one of the 3 costume bubbles (species b)  ->  K = g.chainAt(A, b)
+       (the costume bubbles reach every chain through A, including single-monster chains whose neighbours are all
+        other species). The spin spreads monster by monster along held hands (BFS from A inside K) as a dance wave.
+    K.web (the only couple-chain of that pair on the map) -> no swap; the whole crowd shrugs, "nothing changed".
+    undo / restart             = g.undo() / g.reset(). Win: gate opens, the VIP of g.free() boards, ride whooshes,
+                                  tap to ride again (g.reset()).
+  Idle hint: after a few quiet seconds a monster from a g.good() chain waves "psst", and its right costume pulses.
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #ffe6a8; touch-action: manipulation;
+    -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
+  svg { display: block; width: 100vw; height: 100vh; font-family: Fredoka, 'Trebuchet MS', 'Arial Rounded MT Bold', system-ui, sans-serif; }
+  .bob, .spin, .seat, .hopg { transform-box: fill-box; transform-origin: 50% 100%; }
+  .bob { animation: bob 1.5s ease-in-out infinite; }
+  @keyframes bob { 0%, 100% { transform: scale(1, 1); } 50% { transform: scale(1.05, .94); } }
+  .m { cursor: pointer; }
+  .m.sel .bob { animation: hop .46s ease-in-out infinite; }
+  @keyframes hop { 0%, 100% { transform: scale(1.1, .9); } 45% { transform: translateY(-16%) scale(.95, 1.07); } }
+  .m.nb .bob { animation: wig .5s ease-in-out infinite; }
+  @keyframes wig { 0%, 100% { transform: rotate(-6deg); } 50% { transform: rotate(6deg); } }
+  .m.hint .bob { animation: wig .35s ease-in-out infinite; }
+  .ring { opacity: 0; transition: opacity .12s; }
+  .m.sel .ring, .m.pv .ring { opacity: 1; }
+  .m.pv .ring { stroke-dasharray: 5 4; animation: march .5s linear infinite; }
+  .spin.go { animation: dosido .42s ease-in-out; }
+  @keyframes dosido { 0% { transform: none; } 30% { transform: translateY(-14%) scaleX(.45) rotate(-10deg); }
+    50% { transform: translateY(-20%) scaleX(0); } 72% { transform: translateY(-12%) scaleX(.5) rotate(10deg); } 100% { transform: none; } }
+  .spin.shrug { animation: shrug .55s ease-in-out; }
+  @keyframes shrug { 0%, 100% { transform: none; } 30% { transform: scale(1.08, .9) rotate(-5deg); } 60% { transform: scale(.95, 1.06) rotate(5deg); } }
+  .dibs { stroke-dasharray: 3 5; stroke-linecap: round; animation: march .7s linear infinite; }
+  @keyframes march { to { stroke-dashoffset: -16; } }
+  .cos { cursor: pointer; }
+  .cos .cb { animation: pop .18s ease-out; transform-box: fill-box; transform-origin: center; }
+  .cos.hint .cb { animation: pulse .6s ease-in-out infinite; }
+  @keyframes pop { from { transform: scale(.2); } to { transform: scale(1); } }
+  @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.22); } }
+  .fade { animation: fade .7s ease-out forwards; }
+  @keyframes fade { 0% { opacity: 1; } 70% { opacity: .9; } 100% { opacity: 0; } }
+  .cheer { animation: rise .8s ease-out forwards; transform-box: fill-box; transform-origin: center; }
+  @keyframes rise { 0% { transform: translateY(0) scale(.4); opacity: 0; } 20% { transform: translateY(-6px) scale(1.15); opacity: 1; }
+    100% { transform: translateY(-26px) scale(1); opacity: 0; } }
+  .say { animation: say 1.7s ease-out forwards; transform-box: fill-box; transform-origin: center; }
+  @keyframes say { 0% { transform: scale(.4); opacity: 0; } 12% { transform: scale(1.1); opacity: 1; } 20%, 80% { transform: scale(1); opacity: 1; } 100% { opacity: 0; } }
+  .seatglow { animation: glow .5s ease-in-out infinite alternate; }
+  @keyframes glow { from { opacity: .35; } to { opacity: 1; } }
+  .bar { transition: transform .45s cubic-bezier(.3, 1.6, .5, 1); transform-box: fill-box; transform-origin: 0% 50%; }
+  .open .bar { transform: scaleX(.1); }
+  .btn { cursor: pointer; }
+  .btn.off { opacity: .35; }
+  @media (prefers-reduced-motion: reduce) {
+    .bob, .m.sel .bob, .m.nb .bob, .m.hint .bob, .dibs, .m.pv .ring, .seatglow, .cos.hint .cb { animation: none; }
+    .spin.go, .spin.shrug { animation: none; }
+    .cheer, .say, .fade { animation: none; }
+  }
+</style>
+</head>
+<body>
+<svg id="S" xmlns="http://www.w3.org/2000/svg"></svg>
+<script src="../levels.js"></script>
+<script src="../layout.js"></script>
+<script src="core.js"></script>
+<script>
+(function () {
+  'use strict';
+  const g = LAB.game();
+  const NC = g.NC || 4;
+  const INK = '#2b1d3a';
+  const KIND = [
+    { name: 'Blorb', col: '#ff5d73', dark: '#b8243f', light: '#ffd3da' },
+    { name: 'Stretch', col: '#3d8bff', dark: '#1d4fb0', light: '#cfe1ff' },
+    { name: 'Spike', col: '#ffc21a', dark: '#a87400', light: '#fff0b8' },
+    { name: 'Boxo', col: '#2fbf71', dark: '#16764a', light: '#c8f3da' },
+  ];
+  // ---------- monster art (100-unit box centred on 0,0) ----------
+  const BODY = [
+    'M0,-40C24,-40 42,-22 42,4C42,28 24,42 0,42C-24,42 -42,28 -42,4C-42,-22 -24,-40 0,-40Z',
+    'M-26,-22A26,26 0 0 1 26,-22L26,38Q19.5,48 13,38Q6.5,28 0,38Q-6.5,48 -13,38Q-19.5,28 -26,38Z',
+    'M0,-46Q5,-46 8,-40L45,30Q49,40 38,40L-38,40Q-49,40 -45,30L-8,-40Q-5,-46 0,-46Z',
+    'M-36,-28Q-36,-36 -28,-36L28,-36Q36,-36 36,-28L36,32Q36,40 28,40L-28,40Q-36,40 -36,32Z',
+  ];
+  const TOP = [-40, -48, -46, -36];
+  const EYES = [[[0, -8, 15]], [[-11, -22, 9], [11, -22, 9]], [[-11, 10, 8.5], [11, 10, 8.5]], [[-18, -14, 7], [0, -20, 8.5], [18, -14, 7]]];
+  const PRE = [
+    `<path d="M0,-40Q-3,-50 5,-55" fill="none"/><circle cx="6" cy="-56" r="5" fill="#ffd23f"/>`,
+    `<path d="M-6,-47q-4,-9 -1,-12M0,-48q0,-9 4,-12M6,-47q5,-7 9,-7" fill="none"/>`,
+    `<path d="M-30,10l-14,-4l10,10M30,10l14,-4l-10,10" fill="#ffc21a"/>`,
+    `<path d="M-30,-36L-24,-52L-16,-36ZM30,-36L24,-52L16,-36Z" fill="#fff4dc"/>`,
+  ];
+  const MOUTH = [
+    `<path d="M-15,14Q0,32 15,14Z" fill="#5a1530" stroke="${INK}" stroke-width="3" stroke-linejoin="round"/><path d="M-6,15h6v5h-6z" fill="#fff"/>`,
+    `<ellipse cx="0" cy="4" rx="6.5" ry="8.5" fill="#14295e" stroke="${INK}" stroke-width="3"/>`,
+    `<path d="M-17,24Q0,36 17,24Z" fill="#5a3a00" stroke="${INK}" stroke-width="3" stroke-linejoin="round"/><path d="M-11,25l3,5l3,-4.5M11,25l-3,5l-3,-4.5" fill="#fff"/>`,
+    `<rect x="-17" y="10" width="34" height="12" rx="4" fill="#0d4a2c" stroke="${INK}" stroke-width="3"/><path d="M-13,11.5h6v5h-6zM-3,11.5h6v5h-6zM7,11.5h6v5h-6z" fill="#fff"/>`,
+  ];
+  const SHINE = [[-18, -20], [-13, -30], [-8, -18], [-22, -24]];
+  const CROWN = y => `<path d="M-18,${y}l4,-16l8,9l6,-14l6,14l8,-9l4,16z" fill="#ffd23f" stroke="${INK}" stroke-width="3.5" stroke-linejoin="round"/><circle cx="0" cy="${y - 6}" r="3" fill="#ff5d73"/>`;
+  function art(k, vip) {
+    const K = KIND[k];
+    let s = `<g stroke="${INK}" stroke-width="4.5" stroke-linejoin="round" stroke-linecap="round">${PRE[k]}` +
+      `<ellipse cx="-15" cy="43" rx="10" ry="6" fill="${K.dark}"/><ellipse cx="15" cy="43" rx="10" ry="6" fill="${K.dark}"/>` +
+      `<path d="${BODY[k]}" fill="${K.col}"/></g>` +
+      `<ellipse cx="${SHINE[k][0]}" cy="${SHINE[k][1]}" rx="8" ry="4.5" fill="#fff" opacity=".5" transform="rotate(-35 ${SHINE[k][0]} ${SHINE[k][1]})"/>`;
+    EYES[k].forEach(([x, y, r]) => {
+      s += `<circle cx="${x}" cy="${y}" r="${r}" fill="#fff" stroke="${INK}" stroke-width="3"/>` +
+        `<circle class="pu" data-r="${r}" cx="${x}" cy="${y}" r="${r * 0.5}" fill="${INK}"/>`;
+    });
+    s += MOUTH[k];
+    if (vip) s += CROWN(TOP[k] - 2);
+    return s;
+  }
+  const seatArt = (k, sc) => `<path d="${BODY[k]}" transform="scale(${sc})" fill="${KIND[k].light}" stroke="${INK}" stroke-width="${4 / sc}" stroke-linejoin="round"/>`;
+
+  // ---------- crowd layout (pure; testable in node) ----------
+  // Front row = the rim in cyclic order, left to right at the rope (the cut between ends is chosen to cut the fewest
+  // hand-holds). Deeper monsters go in rows by distance from the ride, ordered by the mean angle of their front-side
+  // partners, then relaxed so nobody overlaps and partners stay close.
+  function crowdLayout(g, W, H) {
+    const n = g.n, hole = g.hole, R = g.rim.length;
+    const layer = Array(n).fill(-1); layer[hole] = 0;
+    let fr = [hole];
+    for (let k = 1; fr.length; k++) { const nx = []; fr.forEach(u => g.adj[u].forEach(w => { if (layer[w] < 0) { layer[w] = k; nx.push(w); } })); fr = nx; }
+    const maxL = Math.max(...layer);
+    const TAU = Math.PI * 2;
+    function params(rot) {
+      const t = Array(n).fill(0);
+      for (let i = 0; i < R; i++) t[g.rim[(i + rot) % R]] = (i + 0.5) / R;
+      for (let k = 2; k <= maxL; k++) for (let u = 0; u < n; u++) if (layer[u] === k) {
+        let x = 0, y = 0;
+        g.adj[u].forEach(w => { if (layer[w] === k - 1) { x += Math.cos(TAU * t[w]); y += Math.sin(TAU * t[w]); } });
+        let a = Math.atan2(y, x) / TAU; if (a < 0) a += 1; t[u] = a;
+      }
+      let seam = 0;
+      g.edges.forEach(([u, v]) => { if (u !== hole && v !== hole && Math.abs(t[u] - t[v]) > 0.5) seam++; });
+      return { t, seam, rot };
+    }
+    let best = null;
+    for (let r = 0; r < R; r++) { const p = params(r); if (!best || p.seam < best.seam) best = p; }
+    const t = best.t, front = [];
+    for (let i = 0; i < R; i++) front.push(g.rim[(i + best.rot) % R]);
+    const pad = Math.max(6, Math.min(W, H) * 0.025);
+    const gateY = Math.max(96, Math.min(H * 0.31, 250, W * 0.62));
+    const bottom = H - pad, cnt = n - 1;
+    const D = Math.sqrt((W - 2 * pad) * (bottom - gateY) / cnt) * 0.92;
+    const Df = Math.min(D, (W - 2 * pad) / R, Math.min(W, H) * 0.2);
+    const fy = gateY + Df * 0.62;
+    const P = Array(n).fill(null), pinned = Array(n).fill(false);
+    front.forEach((u, i) => {
+      const off = i - (R - 1) / 2, x = W / 2 + off * Df * 1.02;
+      P[u] = [x, fy + Math.abs(off) * Math.abs(off) * Df * 0.06]; pinned[u] = true;
+    });
+    const y0 = fy + D * 1.0, y1 = bottom - D * 0.5;
+    for (let k = 2; k <= maxL; k++) {
+      const row = []; for (let u = 0; u < n; u++) if (layer[u] === k) row.push(u);
+      row.sort((a, b) => t[a] - t[b]);
+      const y = maxL === 2 ? (y0 + y1) / 2 : y0 + (y1 - y0) * (k - 2) / (maxL - 2);
+      row.forEach((u, i) => {
+        const tt = 0.5 * (i + 0.5) / row.length + 0.5 * t[u];
+        P[u] = [pad + D / 2 + tt * (W - 2 * pad - D), y + ((i % 2) - 0.5) * D * 0.25];
+      });
+    }
+    const springs = g.edges.filter(([u, v]) => u !== hole && v !== hole && Math.abs(t[u] - t[v]) <= 0.5);
+    const ids = []; for (let u = 0; u < n; u++) if (u !== hole) ids.push(u);
+    const xmin = pad + D * 0.45, xmax = W - pad - D * 0.45, ymin = fy + Df * 0.8, ymax = bottom - D * 0.42;
+    for (let it = 0; it < 260; it++) {
+      for (let a = 0; a < ids.length; a++) for (let b = a + 1; b < ids.length; b++) {
+        const u = ids[a], v = ids[b], p = P[u], q = P[v];
+        let dx = q[0] - p[0], dy = q[1] - p[1], d = Math.hypot(dx, dy) || 0.01;
+        if (d < D) {
+          const f = (D - d) * 0.5 / d;
+          const wu = pinned[u] ? 0 : pinned[v] ? 1 : 0.5, wv = pinned[v] ? 0 : pinned[u] ? 1 : 0.5;
+          p[0] -= dx * f * wu; p[1] -= dy * f * wu; q[0] += dx * f * wv; q[1] += dy * f * wv;
+        }
+      }
+      springs.forEach(([u, v]) => {
+        const p = P[u], q = P[v], dx = q[0] - p[0], dy = q[1] - p[1], d = Math.hypot(dx, dy);
+        if (d > D * 1.6) {
+          const f = (d - D * 1.6) * 0.02 / d;
+          if (!pinned[u]) { p[0] += dx * f; p[1] += dy * f; }
+          if (!pinned[v]) { q[0] -= dx * f; q[1] -= dy * f; }
+        }
+      });
+      ids.forEach(u => {
+        if (pinned[u]) return;
+        const p = P[u];
+        p[0] = Math.min(xmax, Math.max(xmin, p[0])); p[1] = Math.min(ymax, Math.max(ymin, p[1]));
+      });
+    }
+    let md = Infinity;
+    for (let a = 0; a < ids.length; a++) for (let b = a + 1; b < ids.length; b++) md = Math.min(md, Math.hypot(P[ids[a]][0] - P[ids[b]][0], P[ids[a]][1] - P[ids[b]][1]));
+    const size = Math.max(14, Math.min(D * 0.86, Df * 0.92, md * 1.05, Math.min(W, H) * 0.17));
+    return { P, front, layer, gateY, fy, D, Df, size, pad, seam: best.seam };
+  }
+  // gesture -> chain: tapping partner kind b while holding monster u
+  const chainFor = (g, u, b) => (u < 0 || u === g.hole || b === g.col[u] || b < 0 || b >= NC) ? null : g.chainAt(u, b);
+  // dance order: BFS through held hands inside the chain, starting at the monster you picked
+  function danceOrder(g, K, u0) {
+    const depth = new Map([[u0, 0]]), par = new Map(), order = [[u0]];
+    let fr = [u0];
+    while (fr.length) {
+      const nx = [];
+      fr.forEach(u => g.adj[u].forEach(w => { if (K.set.has(w) && !depth.has(w)) { depth.set(w, depth.get(u) + 1); par.set(w, u); nx.push(w); } }));
+      if (nx.length) order.push(nx); fr = nx;
+    }
+    return { order, par };
+  }
+  window.MonsterRide = { g, crowdLayout, chainFor, danceOrder };
+  if (typeof document === 'undefined' || !document.getElementById) return;
+
+  // ---------- DOM / game ----------
+  const S = document.getElementById('S');
+  const NS = 'http://www.w3.org/2000/svg';
+  const RM = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  function el(tag, attrs, parent, html) {
+    const e = document.createElementNS(NS, tag);
+    for (const k in attrs) e.setAttribute(k, (k === 'width' || k === 'height') && attrs[k] < 0 ? 0 : attrs[k]);   // a frame laid out before it has a size
+    if (html) e.innerHTML = html;
+    if (parent) parent.appendChild(e);
+    return e;
+  }
+  let W = 0, H = 0, LY = null, show = g.col.slice(), sel = -1, busy = false, winning = false, waitReset = false;
+  let M = [], L = {}, ride = {}, hintPick = null, idleT = 0, timers = [];
+  const later = (fn, ms) => { const id = setTimeout(fn, ms); timers.push(id); return id; };
+
+  // ---------- sound ----------
+  let AC = null;
+  function ac() {
+    if (!AC) { try { AC = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { AC = null; } }
+    if (AC && AC.state === 'suspended') AC.resume();
+  }
+  function tone(f, d, type, v, when, slide) {
+    if (!AC) return;
+    const t = AC.currentTime + (when || 0), o = AC.createOscillator(), gn = AC.createGain();
+    o.type = type || 'triangle'; o.frequency.setValueAtTime(f, t);
+    if (slide) o.frequency.exponentialRampToValueAtTime(f * slide, t + d);
+    gn.gain.setValueAtTime(0.0001, t); gn.gain.exponentialRampToValueAtTime(v || 0.1, t + 0.012);
+    gn.gain.exponentialRampToValueAtTime(0.0001, t + d);
+    o.connect(gn); gn.connect(AC.destination); o.start(t); o.stop(t + d + 0.03);
+  }
+  function noise(d, v, f0, f1) {
+    if (!AC) return;
+    const t = AC.currentTime, b = AC.createBuffer(1, Math.floor(AC.sampleRate * d), AC.sampleRate), ch = b.getChannelData(0);
+    for (let i = 0; i < ch.length; i++) ch[i] = Math.random() * 2 - 1;
+    const s = AC.createBufferSource(), fl = AC.createBiquadFilter(), gn = AC.createGain();
+    s.buffer = b; fl.type = 'bandpass'; fl.frequency.setValueAtTime(f0, t); fl.frequency.exponentialRampToValueAtTime(f1, t + d); fl.Q.value = 1.2;
+    gn.gain.setValueAtTime(v, t); gn.gain.exponentialRampToValueAtTime(0.0001, t + d);
+    s.connect(fl); fl.connect(gn); gn.connect(AC.destination); s.start(t);
+  }
+  const SCALE = [523, 587, 659, 784, 880, 1047, 1175, 1319, 1568];
+
+  // ---------- scene ----------
+  function build() {
+    timers.forEach(clearTimeout); timers = [];
+    W = Math.max(200, window.innerWidth); H = Math.max(300, window.innerHeight);
+    S.setAttribute('viewBox', `0 0 ${W} ${H}`);
+    S.innerHTML = '';
+    LY = crowdLayout(g, W, H);
+    const { gateY, pad, size } = LY;
+    const defs = el('defs', {}, S);
+    defs.innerHTML = `<linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#7fd0ff"/><stop offset="1" stop-color="#d4f3ff"/></linearGradient>
+      <pattern id="dots" width="22" height="22" patternUnits="userSpaceOnUse"><circle cx="5" cy="6" r="1.6" fill="#e8bf6a"/><circle cx="16" cy="17" r="1.2" fill="#f2cf85"/></pattern>
+      <radialGradient id="spot" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="#fff7c2" stop-opacity=".9"/><stop offset="1" stop-color="#fff7c2" stop-opacity="0"/></radialGradient>`;
+    // sky + ground
+    el('rect', { x: 0, y: 0, width: W, height: gateY + 4, fill: 'url(#sky)' }, S);
+    el('rect', { x: 0, y: gateY, width: W, height: H - gateY, fill: '#ffe6a8' }, S);
+    el('rect', { x: 0, y: gateY, width: W, height: H - gateY, fill: 'url(#dots)' }, S);
+    // tent canopy with candy stripes and scalloped edge
+    const tentH = gateY * 0.36, nS = Math.max(6, Math.round(W / 46)), sw = W / nS, apexY = -gateY * 0.9;
+    const tent = el('g', {}, S);
+    let clip = `M0,0H${W}V${tentH}`;
+    for (let i = nS - 1; i >= 0; i--) clip += `Q${(i + 0.5) * sw},${tentH + sw * 0.55} ${i * sw},${tentH}`;
+    clip += 'Z';
+    el('clipPath', { id: 'tc' }, defs, `<path d="${clip}"/>`);
+    const tg = el('g', { 'clip-path': 'url(#tc)' }, tent);
+    el('rect', { x: 0, y: 0, width: W, height: tentH + sw, fill: '#fff4e6' }, tg);
+    for (let i = 0; i < nS; i += 2) {
+      el('path', { d: `M${W / 2},${apexY}L${i * sw - sw * 0.25},${tentH + sw}L${(i + 1) * sw + sw * 0.25},${tentH + sw}Z`, fill: '#ff4d6d' }, tg);
+    }
+    el('path', { d: clip, fill: 'none', stroke: INK, 'stroke-width': 3 }, tent);
+    // bunting
+    let bunt = '';
+    const bn = Math.max(5, Math.round(W / 34)), by = tentH + sw * 0.55 + 6;
+    for (let i = 0; i < bn; i++) {
+      const x = (i + 0.5) * W / bn, c = ['#ffc21a', '#3d8bff', '#2fbf71', '#ff5d73'][i % 4];
+      bunt += `<path d="M${x - 7},${by}L${x + 7},${by}L${x},${by + 11}Z" fill="${c}" stroke="${INK}" stroke-width="1.5"/>`;
+    }
+    el('g', {}, S, `<path d="M0,${by}H${W}" stroke="${INK}" stroke-width="1.5"/>` + bunt);
+    // sign
+    const fs = Math.max(11, Math.min(W * 0.045, 22, gateY * 0.11));
+    ride.sign = el('text', { x: W / 2, y: Math.min(tentH * 0.55, fs * 1.6), 'text-anchor': 'middle', 'font-size': fs, 'font-weight': 700,
+      fill: '#fff', stroke: INK, 'stroke-width': fs * 0.22, 'paint-order': 'stroke', 'stroke-linejoin': 'round' }, S);
+    ride.sign.textContent = 'Leave a seat free for the VIP!';
+    // ride: oval track + car with one seat per species
+    const cx = W / 2, cy = gateY * 0.74;
+    const cw = Math.min(W * 0.62, 380, gateY * 1.9), ss = Math.min(cw / (NC + 1), gateY * 0.26);
+    const A = Math.min(W * 0.3, cw * 0.62), B = gateY * 0.16;
+    ride.cx = cx; ride.cy = cy; ride.cw = cw; ride.ss = ss; ride.A = A; ride.B = B;
+    el('ellipse', { cx, cy: cy - B + ss * 0.45, rx: A + cw * 0.12, ry: B, fill: 'none', stroke: '#a05cff', 'stroke-width': 4, 'stroke-dasharray': '2 7', 'stroke-linecap': 'round', opacity: 0.8 }, S);
+    ride.spot = el('ellipse', { cx, cy: cy + ss * 0.2, rx: cw * 0.7, ry: ss * 0.9, fill: 'url(#spot)', opacity: 0 }, S);
+    ride.car = el('g', { transform: `translate(${cx},${cy})` }, S);
+    const car = ride.car;
+    const seatX = k => (k - (NC - 1) / 2) * cw / (NC + 0.4);
+    ride.seatX = seatX;
+    ride.seats = [];
+    const sc = ss / 100;
+    for (let k = 0; k < NC; k++) {
+      const sg = el('g', { transform: `translate(${seatX(k)},${-ss * 0.08})` }, car);
+      const glow = el('ellipse', { cx: 0, cy: 0, rx: ss * 0.7, ry: ss * 0.7, fill: '#fff59a', opacity: 0 }, sg);
+      el('g', { class: 'seat' }, sg, seatArt(k, sc * 0.95));
+      const rider = el('g', {}, sg);
+      ride.seats.push({ g: sg, glow, rider });
+    }
+    el('rect', { x: -cw / 2, y: ss * 0.2, width: cw, height: ss * 0.62, rx: ss * 0.3, fill: '#8a4dff', stroke: INK, 'stroke-width': 3.5 }, car);
+    el('rect', { x: -cw / 2 + ss * 0.2, y: ss * 0.3, width: cw - ss * 0.4, height: ss * 0.13, rx: ss * 0.06, fill: '#ffd23f' }, car);
+    [-1, 1].forEach(s => el('circle', { cx: s * cw * 0.32, cy: ss * 0.86, r: ss * 0.17, fill: '#444', stroke: INK, 'stroke-width': 3 }, car));
+    // the rope + gate
+    const ropeY = gateY + 2;
+    const rope = el('g', {}, S);
+    const nP = Math.max(4, Math.round(W / 70)), gw = Math.max(ss * 0.8, 26);
+    let rp = '';
+    const posts = [];
+    for (let i = 0; i <= nP; i++) posts.push(pad + i * (W - 2 * pad) / nP);
+    for (let i = 0; i < nP; i++) {
+      const a = posts[i], b = posts[i + 1];
+      if (b > cx - gw && a < cx + gw) {
+        if (a < cx - gw) rp += `M${a},${ropeY}Q${(a + cx - gw) / 2},${ropeY + 12} ${cx - gw},${ropeY}`;
+        if (b > cx + gw) rp += `M${cx + gw},${ropeY}Q${(cx + gw + b) / 2},${ropeY + 12} ${b},${ropeY}`;
+      } else rp += `M${a},${ropeY}Q${(a + b) / 2},${ropeY + 12} ${b},${ropeY}`;
+    }
+    el('path', { d: rp, fill: 'none', stroke: INK, 'stroke-width': 7, 'stroke-linecap': 'round' }, rope);
+    el('path', { d: rp, fill: 'none', stroke: '#d6204e', 'stroke-width': 4, 'stroke-linecap': 'round' }, rope);
+    posts.forEach(x => { if (Math.abs(x - cx) > gw) el('g', {}, rope, `<rect x="${x - 3}" y="${ropeY - 12}" width="6" height="20" rx="3" fill="#ffd23f" stroke="${INK}" stroke-width="2"/><circle cx="${x}" cy="${ropeY - 13}" r="4.5" fill="#ffd23f" stroke="${INK}" stroke-width="2"/>`); });
+    ride.gate = el('g', {}, S);
+    el('g', {}, ride.gate, `<rect x="${cx - gw - 5}" y="${ropeY - 22}" width="10" height="30" rx="4" fill="#8a4dff" stroke="${INK}" stroke-width="2.5"/>` +
+      `<rect x="${cx + gw - 5}" y="${ropeY - 22}" width="10" height="30" rx="4" fill="#8a4dff" stroke="${INK}" stroke-width="2.5"/>`);
+    el('rect', { class: 'bar', x: cx - gw, y: ropeY - 12, width: gw * 2, height: 8, rx: 4, fill: '#fff', stroke: INK, 'stroke-width': 2.5 }, ride.gate);
+    ride.light = el('circle', { cx: cx - gw, cy: ropeY - 27, r: 6, fill: '#ff3b3b', stroke: INK, 'stroke-width': 2.5 }, ride.gate);
+    // layers
+    L.dibs = el('g', {}, S);
+    L.crowd = el('g', {}, S);
+    L.arms = el('g', { 'pointer-events': 'none' }, S);
+    L.ui = el('g', {}, S);
+    L.fx = el('g', { 'pointer-events': 'none' }, S);
+    L.hud = el('g', {}, S);
+    // monsters, drawn back to front
+    M = [];
+    const order = [];
+    for (let u = 0; u < g.n; u++) if (u !== g.hole) order.push(u);
+    order.sort((a, b) => LY.P[a][1] - LY.P[b][1]);
+    order.forEach((u, i) => {
+      const [x, y] = LY.P[u];
+      const gm = el('g', { class: 'm', transform: `translate(${x},${y})`, 'data-act': 'm', 'data-u': u }, L.crowd);
+      el('circle', { r: Math.max(size * 0.55, Math.min(LY.D * 0.5, size * 0.75)), fill: 'transparent' }, gm);
+      el('ellipse', { cx: 0, cy: size * 0.45, rx: size * 0.34, ry: size * 0.08, fill: '#000', opacity: 0.14 }, gm);
+      el('ellipse', { class: 'ring', cx: 0, cy: size * 0.45, rx: size * 0.5, ry: size * 0.15, fill: 'none', stroke: '#fff', 'stroke-width': 3 }, gm);
+      const bob = el('g', { class: 'bob' }, gm);
+      bob.style.animationDelay = (-(i * 0.37) % 1.5) + 's';
+      const spin = el('g', { class: 'spin' }, bob);
+      const a = el('g', { transform: `scale(${size / 100})` }, spin);
+      M[u] = { g: gm, spin, art: a, k: -1, x, y };
+    });
+    // undo / restart
+    const br = Math.max(15, Math.min(W, H) * 0.034);
+    ride.undo = hudBtn(pad + br, pad + br + 2, br, 'undo', 'M-6,-6A8,8 0 1 1 -8,3M-6,-6h-6M-6,-6v-6');
+    ride.restart = hudBtn(W - pad - br, pad + br + 2, br, 'reset', 'M7,-5A8,8 0 1 0 8,3M7,-5h6M7,-5v-6');
+    show = g.col.slice(); sel = -1; busy = false; winning = false; waitReset = false;
+    render();
+    if (g.won()) win(true);
+  }
+  function hudBtn(x, y, r, act, d) {
+    const b = el('g', { class: 'btn', transform: `translate(${x},${y})`, 'data-act': act }, L.hud);
+    el('circle', { r, fill: '#fff', stroke: INK, 'stroke-width': 3 }, b);
+    el('path', { d, transform: `scale(${r / 16})`, fill: 'none', stroke: INK, 'stroke-width': 3 * 16 / r, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }, b);
+    return b;
+  }
+  function setArt(u, k) {
+    const m = M[u]; if (!m) return;
+    m.k = k; m.art.innerHTML = art(k);
+    m.pupils = [...m.art.querySelectorAll('.pu')];
+  }
+  function lookAt(x, y) {
+    M.forEach((m, u) => {
+      if (!m || !m.pupils) return;
+      let dx = x - m.x, dy = y - m.y; const d = Math.hypot(dx, dy) || 1;
+      dx /= d; dy /= d; if (u === sel) { dx = 0; dy = -0.6; }
+      m.pupils.forEach(p => { const r = +p.dataset.r * 0.42; p.setAttribute('transform', `translate(${(dx * r).toFixed(1)},${(dy * r).toFixed(1)})`); });
+    });
+  }
+  // two monsters holding hands: stubby arms meeting in a clasp
+  function holdHands(a, b, parent, cls) {
+    const p = M[a], q = M[b]; if (!p || !q) return;
+    const s = LY.size, mx = (p.x + q.x) / 2, my = (p.y + q.y) / 2 - s * 0.05;
+    const dx = q.x - p.x, dy = q.y - p.y, d = Math.hypot(dx, dy) || 1, nx = -dy / d, ny = dx / d, bend = Math.min(d * 0.18, s * 0.6);
+    const gr = el('g', cls ? { class: cls } : {}, parent);
+    [[p, KIND[show[a]].col, 1], [q, KIND[show[b]].col, -1]].forEach(([m, c, sg]) => {
+      const sx = m.x + (mx - m.x) * Math.min(1, s * 0.36 / (d / 2)), sy = m.y + (my - m.y) * Math.min(1, s * 0.36 / (d / 2));
+      const path = `M${sx},${sy}Q${(sx + mx) / 2 + nx * bend * sg},${(sy + my) / 2 + ny * bend * sg} ${mx},${my}`;
+      el('path', { d: path, fill: 'none', stroke: INK, 'stroke-width': s * 0.13 + 3, 'stroke-linecap': 'round' }, gr);
+      el('path', { d: path, fill: 'none', stroke: c, 'stroke-width': s * 0.13, 'stroke-linecap': 'round' }, gr);
+    });
+    el('circle', { cx: mx, cy: my, r: s * 0.1 + 1.5, fill: '#fff', stroke: INK, 'stroke-width': 2.5 }, gr);
+    return gr;
+  }
+  function claims() { const c = Array(NC).fill(0); LY.front.forEach(u => { if (show[u] >= 0) c[show[u]]++; }); return c; }
+  function drawDibs() {
+    L.dibs.innerHTML = '';
+    if (winning) return;
+    LY.front.forEach(u => {
+      const m = M[u], k = show[u];
+      const sx = ride.cx + ride.seatX(k), sy = ride.cy + ride.ss * 0.12;
+      el('path', { class: 'dibs', d: `M${m.x},${m.y - LY.size * 0.42}Q${(m.x + sx) / 2},${(m.y + sy) / 2 + 10} ${sx},${sy}`, fill: 'none', stroke: INK, 'stroke-width': 5.5 }, L.dibs);
+      el('path', { class: 'dibs', d: `M${m.x},${m.y - LY.size * 0.42}Q${(m.x + sx) / 2},${(m.y + sy) / 2 + 10} ${sx},${sy}`, fill: 'none', stroke: KIND[k].col, 'stroke-width': 3 }, L.dibs);
+    });
+  }
+  function render() {
+    for (let u = 0; u < g.n; u++) {
+      if (u === g.hole || !M[u]) continue;
+      if (M[u].k !== show[u]) setArt(u, show[u]);
+      M[u].g.classList.toggle('sel', u === sel);
+      M[u].g.classList.toggle('nb', sel >= 0 && g.adj[sel].includes(u));
+      M[u].g.classList.toggle('hint', sel < 0 && !!hintPick && hintPick.u === u);
+      M[u].g.classList.remove('pv');
+    }
+    L.arms.innerHTML = ''; L.ui.innerHTML = '';
+    if (sel >= 0) {
+      g.adj[sel].forEach(v => { if (v !== g.hole) holdHands(sel, v, L.arms); });
+      costumes(sel);
+      lookAt(M[sel].x, M[sel].y);
+    } else lookAt(W / 2, LY.gateY - 30);
+    drawDibs();
+    ride.undo.classList.toggle('off', !g.history.length || winning);
+    ride.restart.classList.toggle('off', !g.history.length || winning);
+  }
+  // costume bubbles: the 3 other species around the picked monster
+  function costumes(u) {
+    const m = M[u], s = LY.size, br = Math.max(16, s * 0.3), R = s * 0.5 + br * 1.05;
+    const up = m.y - R - br > br + 2;
+    const ks = []; for (let b = 0; b < NC; b++) if (b !== show[u]) ks.push(b);
+    ks.forEach((b, i) => {
+      const ang = (up ? -1 : 1) * (Math.PI / 2 + (i - (ks.length - 1) / 2) * 0.95);
+      let x = m.x + Math.cos(ang) * R, y = m.y + Math.sin(ang) * R * (up ? 1 : 0.95);
+      x = Math.min(W - br - 2, Math.max(br + 2, x)); y = Math.min(H - br - 2, Math.max(br + 2, y));
+      const cg = el('g', { class: 'cos' + (hintPick && hintPick.u === u && hintPick.b === b ? ' hint' : ''), transform: `translate(${x},${y})`, 'data-act': 'cos', 'data-b': b }, L.ui);
+      const inner = el('g', { class: 'cb' }, cg);
+      el('circle', { r: br, fill: '#fff', stroke: KIND[b].col, 'stroke-width': 3.5 }, inner);
+      el('circle', { r: br + 2, fill: 'none', stroke: INK, 'stroke-width': 1.5 }, inner);
+      el('g', { transform: `scale(${br * 1.45 / 100})` }, inner, art(b));
+    });
+  }
+  function preview(K) {
+    M.forEach((m, u) => { if (m) m.g.classList.toggle('pv', !!K && K.set.has(u)); });
+  }
+  function bubbleText(x, y, txt, size, col, cls, life) {
+    const t = el('text', { class: cls || 'cheer', x, y, 'text-anchor': 'middle', 'font-size': size, 'font-weight': 700, fill: col || '#fff',
+      stroke: INK, 'stroke-width': size * 0.2, 'paint-order': 'stroke', 'stroke-linejoin': 'round' }, L.fx);
+    t.textContent = txt;
+    later(() => t.remove(), life || 900);
+  }
+  function select(u) {
+    sel = u; hintPick = hintPick && hintPick.u === u ? hintPick : null;
+    tone(660 + show[u] * 90, 0.09, 'square', 0.05, 0, 1.4);
+    render();
+  }
+  function spinMonster(u, k) {
+    const m = M[u]; if (!m) return;
+    m.spin.classList.remove('go'); m.spin.getBoundingClientRect();
+    if (!RM) m.spin.classList.add('go');
+    later(() => { show[u] = k; setArt(u, k); lookAt(W / 2, LY.gateY - 30); if (LY.front.includes(u)) drawDibs(); }, RM ? 0 : 200);
+  }
+  const CHEERS = ['Wheee!', 'Yay!', 'Hup!', 'Spin!', 'Ole!', 'Woo!'];
+  function dance(u0, b) {
+    const K = chainFor(g, u0, b);
+    sel = -1; hintPick = null; render();
+    if (!K) return;
+    if (K.web) { dud(K, u0); return; }
+    busy = true;
+    const { order, par } = danceOrder(g, K, u0);
+    g.swap(K);
+    const step = RM ? 60 : Math.max(70, Math.min(150, 1200 / order.length));
+    order.forEach((grp, d) => later(() => {
+      grp.forEach(u => {
+        if (par.has(u)) holdHands(par.get(u), u, L.arms, 'fade');
+        spinMonster(u, g.col[u]);
+      });
+      tone(SCALE[Math.min(d, SCALE.length - 1)], 0.14, 'triangle', 0.09);
+      if (d % 2 === 0 || grp.length > 2) { const u = grp[0]; bubbleText(M[u].x, M[u].y - LY.size * 0.6, CHEERS[(d + u) % CHEERS.length], Math.max(11, LY.size * 0.3)); }
+    }, d * step));
+    later(() => {
+      busy = false; show = g.col.slice(); L.arms.innerHTML = ''; render();
+      if (g.won()) win(false);
+      else { tone(1047, 0.08, 'sine', 0.05); tone(1319, 0.1, 'sine', 0.05, 0.07); }
+    }, (order.length - 1) * step + 460);
+  }
+  function dud(K, u0) {
+    busy = true;
+    K.vs.forEach(u => { const m = M[u]; if (!m) return; m.spin.classList.remove('shrug'); m.spin.getBoundingClientRect(); if (!RM) m.spin.classList.add('shrug'); });
+    const m = M[u0];
+    const fz = Math.max(12, Math.min(20, LY.size * 0.3)), bx = Math.min(W - fz * 6, Math.max(fz * 6, m.x));
+    bubbleText(bx, m.y - LY.size * 0.75, 'Everybody swapped...', fz, '#ffe066', 'say', 1700);
+    later(() => bubbleText(bx, m.y - LY.size * 0.75 + fz * 1.25, '...same seats. Meh!', fz, '#ffe066', 'say', 1300), 450);
+    tone(392, 0.22, 'sawtooth', 0.04, 0, 0.94); tone(370, 0.22, 'sawtooth', 0.04, 0.22, 0.94); tone(330, 0.4, 'sawtooth', 0.04, 0.44, 0.85);
+    later(() => { K.vs.forEach(u => M[u] && M[u].spin.classList.remove('shrug')); busy = false; }, 900);
+  }
+  // ---------- win: gate opens, riders hop in, VIP takes the free seat, whoosh ----------
+  function win(instant) {
+    winning = true; sel = -1; hintPick = null; render();
+    const f = g.free();
+    ride.gate.classList.add('open'); ride.light.setAttribute('fill', '#3bff7a');
+    ride.sign.textContent = KIND[f] ? `A ${KIND[f].name} seat is free!` : 'A seat is free!';
+    const seat = ride.seats[f];
+    if (seat) { seat.glow.setAttribute('opacity', 1); seat.glow.setAttribute('class', 'seatglow'); }
+    ride.spot.setAttribute('opacity', 1);
+    const rs = ride.ss * 0.9 / 100;
+    const board = (k, vip) => { const st = ride.seats[k]; if (st) st.rider.innerHTML = `<g transform="translate(0,${-ride.ss * 0.12}) scale(${rs})">${art(k, vip)}</g>`; };
+    if (instant) { for (let k = 0; k < NC; k++) board(k, k === f); finish(); return; }
+    tone(523, 0.12, 'square', 0.06); tone(659, 0.12, 'square', 0.06, 0.1); tone(784, 0.12, 'square', 0.06, 0.2); tone(1047, 0.3, 'square', 0.06, 0.3);
+    // each claimed seat gets one front-row monster; the VIP struts in from the side
+    let t0 = 250;
+    for (let k = 0; k < NC; k++) {
+      const vip = k === f;
+      const src = vip ? null : LY.front.find(u => show[u] === k);
+      const from = vip ? [W + LY.size, ride.cy] : (src != null ? [M[src].x, M[src].y] : [W / 2, H]);
+      const to = [ride.cx + ride.seatX(k), ride.cy - ride.ss * 0.2];
+      const delay = vip ? t0 + 3 * 220 : t0 + k * 160;
+      later(() => hopTo(k, vip, from, to, () => { board(k, vip); tone(vip ? 1568 : 880 + k * 110, 0.1, 'triangle', 0.08); if (vip) bubbleText(to[0], to[1] - ride.ss * 0.6, 'VIP!', Math.max(12, ride.ss * 0.35), '#ffd23f'); }), delay);
+    }
+    later(whoosh, t0 + 3 * 220 + 650);
+  }
+  function hopTo(k, vip, from, to, done) {
+    const sc = (LY.size * 0.8) / 100, sc2 = ride.ss * 0.9 / 100;
+    const sp = el('g', {}, L.fx, `<g class="sp">${art(k, vip)}</g>`);
+    const dur = RM ? 1 : 520, t0 = performance.now();
+    const step = now => {
+      const t = Math.min(1, (now - t0) / dur), e = t * t * (3 - 2 * t);
+      const x = from[0] + (to[0] - from[0]) * e, y = from[1] + (to[1] - from[1]) * e - Math.sin(Math.PI * t) * Math.max(40, LY.size * 1.2);
+      const s = sc + (sc2 - sc) * e;
+      sp.setAttribute('transform', `translate(${x},${y}) scale(${s}) rotate(${(1 - t) * (vip ? -20 : 20)})`);
+      if (t < 1) requestAnimationFrame(step); else { sp.remove(); done(); }
+    };
+    requestAnimationFrame(step);
+  }
+  function whoosh() {
+    noise(1.6, 0.18, 300, 2400);
+    tone(392, 1.2, 'sine', 0.05, 0, 2.2);
+    const dur = RM ? 1 : 2600, t0 = performance.now(), { cx, cy, A, B } = ride;
+    const step = now => {
+      const t = Math.min(1, (now - t0) / dur), e = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+      const ph = e * Math.PI * 4;
+      const x = cx + A * Math.sin(ph), y = cy - B * (1 - Math.cos(ph)), s = 1 - 0.32 * (1 - Math.cos(ph)) / 2;
+      ride.car.setAttribute('transform', `translate(${x},${y}) scale(${s}) rotate(${Math.cos(ph) * Math.sin(ph) * 8})`);
+      if (t < 1) requestAnimationFrame(step); else { ride.car.setAttribute('transform', `translate(${cx},${cy})`); finish(); }
+    };
+    requestAnimationFrame(step);
+    later(confetti, 600);
+  }
+  function finish() {
+    ride.sign.textContent = 'Wheee! Tap to ride again';
+    waitReset = true;
+    tone(784, 0.1, 'triangle', 0.07); tone(988, 0.1, 'triangle', 0.07, 0.09); tone(1175, 0.25, 'triangle', 0.07, 0.18);
+  }
+  function confetti() {
+    if (RM) return;
+    const bits = [], cols = ['#ff5d73', '#3d8bff', '#ffc21a', '#2fbf71', '#a05cff', '#fff'];
+    for (let i = 0; i < 46; i++) {
+      const r = el('rect', { width: 6 + (i % 3) * 2, height: 4 + (i % 2) * 3, fill: cols[i % cols.length], rx: 1 }, L.fx);
+      bits.push({ r, x: ride.cx, y: ride.cy, vx: (Math.random() - 0.5) * 9, vy: -4 - Math.random() * 7, a: Math.random() * 360, va: (Math.random() - 0.5) * 30 });
+    }
+    const t0 = performance.now();
+    const step = now => {
+      bits.forEach(b => { b.vy += 0.28; b.x += b.vx; b.y += b.vy; b.a += b.va; b.r.setAttribute('transform', `translate(${b.x},${b.y}) rotate(${b.a})`); });
+      if (now - t0 < 2200) requestAnimationFrame(step); else bits.forEach(b => b.r.remove());
+    };
+    requestAnimationFrame(step);
+  }
+  // ---------- idle hint ----------
+  function idle() {
+    clearTimeout(idleT);
+    if (hintPick && sel < 0) { hintPick = null; render(); }
+    idleT = setTimeout(() => {
+      if (busy || winning || sel >= 0) return idle();
+      const K = g.good()[0]; if (!K) return;
+      const u = K.vs.find(v => g.rim.includes(v)) ?? K.vs[0];
+      hintPick = { u, b: K.pair[0] === g.col[u] ? K.pair[1] : K.pair[0] };
+      render();
+      bubbleText(M[u].x, M[u].y - LY.size * 0.65, 'psst!', Math.max(11, LY.size * 0.26), '#fff');
+    }, 9000);
+  }
+  // ---------- input ----------
+  S.addEventListener('pointerdown', e => {
+    ac();
+    const keepHint = hintPick;
+    idle();
+    if (waitReset) { waitReset = false; g.reset(); return; }
+    if (winning || busy) return;
+    const t = e.target.closest && e.target.closest('[data-act]');
+    if (!t) { if (sel >= 0) { sel = -1; render(); } return; }
+    const act = t.getAttribute('data-act');
+    if (act === 'undo') { if (g.history.length) { g.undo(); tone(500, 0.12, 'sine', 0.07, 0, 0.6); } return; }
+    if (act === 'reset') { if (g.history.length) { g.reset(); tone(400, 0.2, 'sine', 0.07, 0, 0.5); } return; }
+    if (act === 'cos') { dance(sel, +t.getAttribute('data-b')); return; }
+    if (act === 'm') {
+      const u = +t.getAttribute('data-u');
+      if (sel < 0) { hintPick = keepHint && keepHint.u === u ? keepHint : null; select(u); }
+      else if (u === sel) { sel = -1; tone(440, 0.06, 'sine', 0.04); render(); }
+      else if (g.adj[sel].includes(u)) dance(sel, show[u]);
+      else select(u);
+    }
+  });
+  S.addEventListener('pointerover', e => {
+    if (busy || winning || sel < 0) return;
+    const t = e.target.closest && e.target.closest('[data-act]');
+    let K = null;
+    if (t && t.getAttribute('data-act') === 'cos') K = chainFor(g, sel, +t.getAttribute('data-b'));
+    else if (t && t.getAttribute('data-act') === 'm') { const u = +t.getAttribute('data-u'); if (u !== sel && g.adj[sel].includes(u)) K = chainFor(g, sel, show[u]); }
+    preview(K);
+  });
+  g.on((gg, info) => {
+    if (info.type === 'reset') { build(); idle(); }
+    else if (info.type === 'undo') { show = g.col.slice(); sel = -1; render(); }
+  });
+  let rz = 0;
+  window.addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(() => { if (!busy) build(); }, 120); });
+  build();
+  idle();
+})();
+</script>
+</body>
+</html>

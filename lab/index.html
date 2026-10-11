@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Fill the Hole Lab</title>
+<style>
+  /* Dev page: every front end playing the same level, side by side, each in its own frame with its own state. */
+  :root { --bg: #0e1122; --card: #171b33; --line: #2b3157; --fg: #e8ecff; --dim: #8f97c4; --accent: #ffd84a; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--fg); font: 13px/1.35 system-ui, -apple-system, Segoe UI, sans-serif; }
+  body { padding: 10px 12px 24px; }
+  h1 { margin: 2px 0 2px; font-size: 1.05rem; letter-spacing: .02em; }
+  h1 small { color: var(--dim); font-weight: 500; font-size: .8rem; margin-left: 8px; }
+  h2 { margin: 16px 0 8px; font-size: .78rem; text-transform: uppercase; letter-spacing: .12em; color: var(--accent); }
+  .row { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 10px; }
+  .tile { position: relative; background: var(--card); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; display: flex; flex-direction: column; min-width: 0; }
+  .tile header { display: flex; align-items: baseline; gap: 6px; padding: 6px 8px 5px; border-bottom: 1px solid var(--line); min-width: 0; }
+  .tile header b { font-size: .82rem; white-space: nowrap; }
+  .tile header span { color: var(--dim); font-size: .7rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
+  .tile header button { background: none; border: 1px solid var(--line); color: var(--fg); border-radius: 7px; font: inherit; font-size: .72rem; padding: 1px 7px; cursor: pointer; }
+  .tile header button:hover { border-color: var(--accent); }
+  .tile iframe { display: block; width: 100%; height: 520px; border: 0; background: #000; }
+  .tile.min iframe { display: none; } .tile.min { align-self: start; } .tile.min header { border-bottom: 0; }
+  .tile.max { position: fixed; inset: 0; z-index: 10; border-radius: 0; }
+  .tile.max iframe { flex: 1; height: auto; }
+  .tile.max header button.mx::after { content: ' ✕'; }
+  body.has-max { overflow: hidden; }
+  @media (max-width: 560px) { .tile iframe { height: 70vh; } }
+</style>
+</head>
+<body>
+<h1>Fill the Hole · Lab <small>every game mode playing level 4 (map p22: 22 regions, 2 swaps from a fill), each frame independent</small></h1>
+
+<h2>The modes we have built</h2>
+<div class="row" id="rowA"></div>
+
+<h2>New ideas: same puzzle, new game</h2>
+<div class="row" id="rowB"></div>
+
+<h2>Round 2: hiding the maths (no hole, no ring, no colours to explain)</h2>
+<div class="row" id="rowC"></div>
+
+<script>
+  const lvl = new URLSearchParams(location.search).get('lvl') || '4';
+  const A = [
+    ['Free islands', 'current game: tiles settle like bubbles, no walls', '../index.html?lab=' + lvl],
+    ['Walled', 'current game with the three far regions as walls', '../index.html?lab=' + lvl + '&walls=1'],
+    ['3D', 'the first three.js version (backup)', '../index-3d.html?lab=' + lvl],
+    ['Island map', 'regions as a coloured map, drag across borders', 'map-v1.html?lvl=' + lvl],
+    ['Spheres', 'the first graph demo: shaded spheres on a triangle mesh', 'spheres.html?lvl=' + lvl],
+  ];
+  const B = [
+    ['Blocks', 'cozy cat block puzzle (Meowdoku-style)', 'blocks-v1.html?lvl=' + lvl],
+    ['Pipes', 'plumbing flow puzzle', 'pipes.html?lvl=' + lvl],
+    ['Deck', 'card game: play a chain from your hand', 'deck.html?lvl=' + lvl],
+    ['Flood', 'paint-bucket territory conquest', 'flood.html?lvl=' + lvl],
+    ['Dots', 'connect-the-dots chaining (like the bonus round)', 'dots-v1.html?lvl=' + lvl],
+    ['Circuit', 'inverted: wire up a coloured board legally', 'circuit.html?lvl=' + lvl],
+  ];
+  function row(id, list) {
+    const el = document.getElementById(id);
+    list.forEach(([name, note, src]) => {
+      const t = document.createElement('section'); t.className = 'tile';
+      t.innerHTML = '<header><b></b><span></span><button class="mn" title="Minimize: unload this game to free memory">–</button><button class="rl" title="Reload this game">↺</button><button class="mx" title="Fill the window">⤢</button></header><iframe loading="lazy" allow="autoplay"></iframe>';
+      t.querySelector('b').textContent = name; t.querySelector('span').textContent = note;
+      const f = t.querySelector('iframe'); f.src = src; f.title = name;
+      t.querySelector('.rl').onclick = () => { f.src = src; };
+      // minimize: unload the frame (frees its memory and CPU), remembered per tile in this browser
+      const mkey = 'lab-min:' + location.pathname + ':' + name;
+      const setMin = on => { t.classList.toggle('min', on); f.src = on ? 'about:blank' : src; t.querySelector('.mn').textContent = on ? '+' : '–'; try { localStorage.setItem(mkey, on ? '1' : ''); } catch (_) {} };
+      t.querySelector('.mn').onclick = () => setMin(!t.classList.contains('min'));
+      try { if (localStorage.getItem(mkey) === '1') setMin(true); } catch (_) {}
+      t.querySelector('.mx').onclick = () => { const on = t.classList.toggle('max'); document.body.classList.toggle('has-max', on); focusOnly(on ? t : null); };
+      t._reload = () => { if (!t.classList.contains('min')) f.src = src; };
+      t._unload = () => { f.src = 'about:blank'; };
+      el.appendChild(t);
+    });
+  }
+  const C = [
+    ['Island map 2', 'simplified: in-world goal, idle hint', 'map.html?lvl=' + lvl],
+    ['Dots 2', 'simplified: in-world goal, idle hint', 'dots.html?lvl=' + lvl],
+    ['Blocks 2', 'simplified: in-world goal, idle hint', 'blocks.html?lvl=' + lvl],
+    ['Monster Ride', 'fast taps: monsters do-si-do to clear the queue', 'ride.html?lvl=' + lvl],
+    ['Petting Zoo', 'swipe animals between four pens', 'zoo.html?lvl=' + lvl],
+    ['Paint Trail', 'steer a trail through the noise to claim a zone', 'trail.html?lvl=' + lvl],
+  ];
+  row('rowA', A); row('rowB', B); row('rowC', C);
+  // every same-origin frame shares one thread, so a dozen running games slow each other down: while one tile is
+  // maximised the others are unloaded, and they come back when it is restored
+  function focusOnly(keep) {
+    document.querySelectorAll('.tile').forEach(t => { if (t === keep) return; if (keep) t._unload && t._unload(); else t._reload && t._reload(); });
+  }
+  addEventListener('keydown', e => { if (e.key === 'Escape' && document.querySelector('.tile.max')) { document.querySelectorAll('.tile.max').forEach(t => t.classList.remove('max')); document.body.classList.remove('has-max'); focusOnly(null); } });
+</script>
+</body>
+</html>
