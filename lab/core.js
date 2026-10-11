@@ -123,5 +123,7 @@
   if (EMBED) addEventListener('error', e => /ResizeObserver/.test(e.message) ? 0 : parent.postMessage({ fth: 1, type: 'error', lvl: new URLSearchParams(location.search).get('lvl'), message: String(e.message) }, '*'));
   let LAST = null;
   const done = () => { if (LAST && LAST.won()) LAST.post('done'); };
-  window.LAB = { game, ELEM, ICON, embedded: EMBED, done };
+  // a skin with its own goal (Blank Doodle: colour every piece) says it is finished; moves = its swap count
+  const finish = moves => { if (EMBED && LAST) parent.postMessage({ fth: 1, type: 'done', id: LAST.level.id, num: String(LAST.level.num), moves: moves || 0, won: true, own: true }, '*'); };
+  window.LAB = { game, ELEM, ICON, embedded: EMBED, done, finish };
 })();

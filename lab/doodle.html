@@ -152,6 +152,7 @@ const DM = (() => {
   function move(g, b, u) {
     if (u < 0) return { kind: 'none' };
     if (b < 0) return { kind: 'nopen' };
+    if (b >= g.NC) return { kind: 'none' };                // a pen outside this level's palette (the 2- and 3-element ponds)
     if (u === g.hole) {
       const hits = g.adj[g.hole].filter(v => g.col[v] === b);
       return hits.length ? { kind: 'blocked', hits } : { kind: 'fill', b };
@@ -273,6 +274,11 @@ const DM = (() => {
       return d(M.segs[i]) - d(M.segs[j]); });
     const gap = 1.0 / Math.max(1, order.length);
     ink = order.map((si, k) => { const s = M.segs[si], I = inkify(s.p, s.q, R, 0.006); I.t0 = 0.25 + k * gap; I.dur = 0.1 + I.len * 0.5; I.seg = si; return I; });
+    // pieces that do not fill the page (the onboarding ponds): their outer outline borders paper, not a
+    // neighbour, so it is inked too (edges on the page frame are left to the frame)
+    { const onF = (p, q) => [0, 1].some(c => [0, 1].some(v => Math.abs(p[c] - v) < 1e-4 && Math.abs(q[c] - v) < 1e-4));
+      const t1 = ink.length ? Math.max(...ink.map(I => I.t0)) : 0.25;
+      M.frame.filter(e => !onF(e.p, e.q)).forEach((e, k) => { const I = inkify(e.p, e.q, R, 0.004); I.t0 = t1 + 0.004 * k; I.dur = 0.1 + I.len * 0.5; ink.push(I); }); }
     frameInk = [[[0, 0], [1, 0]], [[1, 0], [1, 1]], [[1, 1], [0, 1]], [[0, 1], [0, 0]]].map(([a, b], k) => {
       const I = inkify(a, b, R, 0.02); I.t0 = k * 0.06; I.dur = 0.25; return I; });
     drawTotal = Math.max(...ink.map(I => I.t0 + I.dur), 0.5);
@@ -456,6 +462,7 @@ const DM = (() => {
       <g class="cap"><rect x="5" y="2" width="30" height="42" rx="9" fill="${P.d}" stroke="${INK}" stroke-width="2.5"/>
       <rect x="27" y="8" width="5" height="26" rx="2" fill="${P.c}" stroke="${INK}" stroke-width="1.5"/></g></svg>`;
     b.addEventListener('pointerdown', e => { e.preventDefault(); au(); touch(); pen = i; syncPens(); squeak(i); });
+    if (i >= g.NC) b.style.display = 'none';             // the ponds use only 2 or 3 elements: their extra pens stay in the box
     palEl.appendChild(b); return b;
   });
   function syncPens() { penBtns.forEach((b, k) => b.classList.toggle('sel', k === pen)); }

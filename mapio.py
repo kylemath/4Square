@@ -107,3 +107,37 @@ def _all_triangles(rot):
 
 def link_word(rot, h):
     return ''.join(str(len(rot[x])) if len(rot[x]) < 10 else '(%d)' % len(rot[x]) for x in rot[h])
+
+
+def pond_cells(pos, rot, fence=0.26, reach=0.40, arc=math.radians(50)):
+    """Region shapes for a small hand-drawn map that is not a triangulation (the onboarding ponds), honest to the graph:
+    each vertex gets a rounded blob, and two joined vertices share one straight border, a "fence" across the middle of
+    their edge (perpendicular, half-length `fence` x edge length). Unjoined vertices never touch: paper between them.
+    Shared fence ends are the same points in both shapes, so the renderer finds the border. Returns polygons, pos frame."""
+    n = len(pos); P = [tuple(p) for p in pos]
+    L = lambda u, w: math.dist(P[u], P[w])
+    ang = lambda u, w: math.atan2(P[w][1] - P[u][1], P[w][0] - P[u][0])
+    def fence_pt(u, w, side):                                # side +1: the end at (edge angle + 90 deg) seen from u
+        a = ang(u, w); m = ((P[u][0] + P[w][0]) / 2, (P[u][1] + P[w][1]) / 2); h = fence * L(u, w)
+        return (m[0] + side * h * math.cos(a + math.pi / 2), m[1] + side * h * math.sin(a + math.pi / 2))
+    cells = []
+    for u in range(n):
+        nb = sorted(rot[u], key=lambda w: ang(u, w))
+        if not nb: cells.append([(P[u][0] + .1 * math.cos(t), P[u][1] + .1 * math.sin(t)) for t in [k * math.pi / 4 for k in range(8)]]); continue
+        r = reach * min(L(u, w) for w in nb)
+        poly = []
+        for i, w in enumerate(nb):
+            x = nb[(i + 1) % len(nb)]
+            a0 = ang(u, w); a1 = ang(u, x) if len(nb) > 1 else a0 + 2 * math.pi
+            if a1 <= a0: a1 += 2 * math.pi
+            poly += [fence_pt(u, w, -1), fence_pt(u, w, +1)]   # the fence across edge u-w (both ends, in angular order)
+            # the open sector between the two edges: an arc of corner points at radius r, kept clear of both fences
+            pad = math.atan2(fence * L(u, w), L(u, w) / 2); pad2 = math.atan2(fence * L(u, x), L(u, x) / 2)
+            s0, s1 = a0 + pad, a1 - pad2
+            if s1 > s0:
+                k = max(1, int(math.ceil((s1 - s0) / arc)))
+                poly += [(P[u][0] + r * math.cos(s0 + (s1 - s0) * j / k), P[u][1] + r * math.sin(s0 + (s1 - s0) * j / k)) for j in range(k + 1)]
+        cells.append(poly)
+    m = max(max(abs(c) for p in poly for c in p) for poly in cells)
+    s = min(1.0, 0.97 / m)
+    return [[[round(x * s, 5), round(y * s, 5)] for x, y in poly] for poly in cells]

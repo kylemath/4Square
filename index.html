@@ -218,9 +218,9 @@
   #skinFrame { display: none; flex: 1; min-height: 0; width: 100%; border: 0; background: #fff; }
   #game.skinned .board, #game.skinned .bar { display: none; }
   #game.skinned #skinFrame { display: block; }
-  .skins { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin: 2px 0 4px; }
-  .skins .lbl { width: 100%; text-align: center; color: #fff; font-weight: 800; font-size: .8rem; letter-spacing: .08em; text-transform: uppercase; text-shadow: 0 2px 0 rgba(14,52,110,.5); }
-  .skins button { display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 84px; padding: 6px 10px 5px; border-radius: 14px; border: 3px solid rgba(255,255,255,.55);
+  .skins { display: grid; grid-template-columns: repeat(2, minmax(0, 150px)); gap: 7px 8px; justify-content: center; margin: 2px 0 4px; }
+  .skins .lbl { grid-column: 1 / -1; text-align: center; color: #fff; font-weight: 800; font-size: .8rem; letter-spacing: .08em; text-transform: uppercase; text-shadow: 0 2px 0 rgba(14,52,110,.5); }
+  .skins button { display: flex; flex-direction: row; align-items: center; justify-content: center; gap: 6px; min-width: 0; padding: 7px 8px; border-radius: 14px; border: 3px solid rgba(255,255,255,.55);
     background: rgba(255,255,255,.18); color: #fff; font: inherit; font-weight: 800; font-size: .82rem; cursor: pointer; box-shadow: 0 3px 0 rgba(14,52,110,.35); }
   .skins button .ic { font-size: 1.4rem; line-height: 1.1; }
   .skins button[aria-checked="true"] { background: #fff; color: #1c1640; border-color: #ffd84a; box-shadow: 0 3px 0 #c9a21a; }
@@ -2315,6 +2315,9 @@
     { id: 'islands', name: 'Islands', ic: '🏝️' },
     { id: 'dots', name: 'Dots', ic: '⚫', src: 'lab/dots.html' },
     { id: 'doodle', name: 'Line Doodle', ic: '🖍️', src: 'lab/doodle.html', waits: true, needs: ['cells'] },   // waits: the player still colours the blank piece; cells: region shapes
+    // Blank Doodle: the same map starts uncoloured and the goal is to colour every piece (hole included) with no
+    // clashes, using swaps when stuck; its own goal, so it reports with LAB.finish(swaps) instead of the rim
+    { id: 'blank', name: 'Blank Doodle', ic: '📝', src: 'lab/blank.html', waits: true, own: true, needs: ['cells'] },
   ];
   // SKIN is the player's choice; ACT is the style this level actually runs in (Islands when the choice cannot draw
   // the map: needs: ['cells'] means region shapes, which the hand-drawn Level -1 ponds do not have)
@@ -2345,10 +2348,11 @@
       return;
     }
     if (d.id !== L.id) return;
-    if (d.type === 'swap' || d.type === 'undo' || d.type === 'reset') {
+    if (!ACT.own && (d.type === 'swap' || d.type === 'undo' || d.type === 'reset')) {
       col = d.col.slice(); col[hole] = -1; flips = d.moves; computeChains(); updateHud();
       if (window.FTH_LOG) FTH_LOG.ev(d.type, { skin: ACT.id, state: canon(col), moves: d.moves });
     }
+    if (ACT.own && d.type === 'done' && d.own) { flips = Math.min(d.moves, L.par); hintsUsed = 0; }   // a full colouring: every star
     if (d.won && (d.type === 'done' || (d.type === 'swap' && !ACT.waits))) {
       clearTimeout(skinWinT);                              // done: now; a skin that never calls LAB.done(): after 6 s
       skinWinT = setTimeout(() => { if (!won) win(); }, d.type === 'done' ? 0 : 6000);
@@ -2402,7 +2406,7 @@
       $('winStars').innerHTML = [0, 1, 2].map(() => '<span class="ws">' + starSvg + '</span>').join('');
       const ws = [...$('winStars').children];
       let total = score - bonus; $('winScore').textContent = total;
-      $('winText').textContent = flips <= L.par ? 'Perfect route! No shorter way exists.' : 'Par is ' + L.par + ' swap' + (L.par > 1 ? 's' : '') + '. Can you get ★★★?';
+      $('winText').textContent = ACT.own ? 'Every piece coloured, and no two neighbours match!' : flips <= L.par ? 'Perfect route! No shorter way exists.' : 'Par is ' + L.par + ' swap' + (L.par > 1 ? 's' : '') + '. Can you get ★★★?';
       $('winNext').textContent = levelIdx + 1 < G.levels.length ? 'NEXT ▶' : 'LEVELS ▶';
       const t1 = 350 + 3 * 330 + 150;
       $('win').style.setProperty('--wd', (reduced ? 0 : (t1 + 2300) / 1000) + 's');

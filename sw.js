@@ -1,10 +1,10 @@
 // Service worker for the installable 4Square / Fill the Hole app: works offline after the first visit.
-// Pages: network first (so a new version shows up straight away), cache when offline.
-// Everything else (levels.js, skins, icons, fonts): served from the cache at once and refreshed in the background.
+// The game's own files: network first (a page, its levels and its skins always match), the cache when offline.
+// Google Fonts: cache first.
 // Bump VERSION to drop old caches.
-const VERSION = 'fth-v2';
+const VERSION = 'fth-v4';
 const CORE = ['./', 'index.html', 'levels.js', 'layout.js', 'telemetry.js', 'manifest.webmanifest',
-  'lab/core.js', 'lab/dots.html', 'lab/doodle.html',
+  'lab/core.js', 'lab/dots.html', 'lab/doodle.html', 'lab/blank.html',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png'];
 
 self.addEventListener('install', e => {
@@ -17,17 +17,18 @@ self.addEventListener('activate', e => {
 self.addEventListener('fetch', e => {
   const req = e.request;
   if (req.method !== 'GET') return;
-  const url = new URL(req.url);
-  const ok = url.origin === location.origin || /fonts\.(googleapis|gstatic)\.com$/.test(url.hostname);
-  if (!ok) return;
-  if (req.mode === 'navigate') {
-    e.respondWith(fetch(req).then(r => { const cp = r.clone(); caches.open(VERSION).then(c => c.put(req, cp)); return r; })
-      .catch(() => caches.match(req, { ignoreSearch: true }).then(r => r || caches.match('index.html'))));
+  const url = new URL(req.url), own = url.origin === location.origin;
+  if (!own && !/fonts\.(googleapis|gstatic)\.com$/.test(url.hostname)) return;
+  if (own) {                                   // the game's own files: always the fresh copy online (pages, levels and
+    e.respondWith(fetch(req, { cache: 'no-cache' }).then(r => {   // skins must match; revalidated with the server, so
+                                                                  // no stale HTTP-cache copy), the cached one only offline
+      if (r.ok) { const cp = r.clone(); caches.open(VERSION).then(c => c.put(req, cp)); }
+      return r;
+    }).catch(() => caches.match(req, { ignoreSearch: true }).then(r => r || (req.mode === 'navigate' ? caches.match('index.html') : Response.error()))));
     return;
   }
-  e.respondWith(caches.open(VERSION).then(async c => {
-    const hit = await c.match(req, { ignoreSearch: url.origin === location.origin });
-    const net = fetch(req).then(r => { if (r.ok || r.type === 'opaque') c.put(req, r.clone()); return r; }).catch(() => hit);
-    return hit || net;
+  e.respondWith(caches.open(VERSION).then(async c => {          // fonts: cache first
+    const hit = await c.match(req);
+    return hit || fetch(req).then(r => { c.put(req, r.clone()); return r; });
   }));
 });

@@ -259,10 +259,11 @@ def build(fresh=False):
         same = (og.get('rot') == b.rot and og.get('hole') == b.h)          # caches from before signatures existed
         # region shapes
         ol = old_lay.get(key)
-        if not fresh and ol and (ol.get('sig') == b.sig or (same and 'sig' not in ol)):
+        if b.onboard:                                            # ponds: hand-drawn centres, shapes made from the drawing
+            from mapio import pond_cells
+            lay[key] = {'border': [], 'arcs': {}, 'centre': b.pos, 'onboard': True, 'cells': pond_cells(b.pos, b.rot)}
+        elif not fresh and ol and (ol.get('sig') == b.sig or (same and 'sig' not in ol)):
             lay[key] = ol
-        elif b.onboard:
-            lay[key] = {'border': [], 'arcs': {}, 'centre': b.pos, 'onboard': True}
         else:
             print('laying out', key, '(a minute or two)')
             lay[key] = lay_out(b)
@@ -303,6 +304,9 @@ def build(fresh=False):
     if check_drawings(B, graphs):
         write_js(os.path.join(HERE, 'levels.js'), 'GAME', out, 'levels.json and maps/*.json')
     print('wrote levels.js (%d levels, %d maps) and layout.js' % (len(levels), len(graphs)))
+    import subprocess                                            # every map's shapes must match its graph exactly
+    r = subprocess.run([sys.executable, os.path.join(HERE, 'tools', 'cells_check.py')], capture_output=True, text=True)
+    assert r.returncode == 0, 'region shapes do not match the graph:\n' + r.stdout
 
 
 # ------------------------------------------------------------------------------------------------- authoring tools
