@@ -139,6 +139,173 @@
     '<circle r="' + f1(r * .74) + '" fill="none" stroke="' + HEM[e] + '" stroke-width="1" stroke-dasharray="' + f1(r / 4) + ' ' + f1(r / 5) + '" opacity=".7"/>' +
     emb(0, 0, f1(r * .52), e) + '</g></g>';
 
+  // ---------- the level map: the wedding estate at night, seen from above ----------
+  const LGROUND = {   // top, bottom, pattern id, lit edge
+    cove: ['#3f6277', '#2a4659', 'S', '#bfeaf2'], beach: ['#3d6650', '#2b4d3d', 'G', '#cfe9b8'], town: ['#456f4c', '#2f5238', 'G', '#f3e6b4'],
+    harbour: ['#7d5c47', '#5a4033', 'P', '#f1d3a2'], forest: ['#2f6040', '#1f4530', 'G', '#f6b6c1'], cape: ['#4f7355', '#35553f', 'G', '#ffe7a0'],
+    reef: ['#6f6082', '#4c4062', 'S', '#ffd9b0'], cave: ['#4a3550', '#2f2238', 'S', '#d9a0ff'], volcano: ['#8a5f46', '#5e3b33', 'C', '#ffe7a0'],
+  };
+  const lsh = (rx, ry) => '<ellipse cx="3" cy="5" rx="' + rx + '" ry="' + ry + '" fill="#0b0716" opacity=".4"/>';
+  const lglow = (r, o) => '<circle r="' + r + '" fill="url(#tablesGlow)" opacity="' + (o || .8) + '"/>';
+  const OL = 'stroke="#1c1630" stroke-width="1.6" stroke-linejoin="round"';
+  const LAND = {
+    cove(z) { // welcome fountain
+      return lsh(54, 32) + '<ellipse rx="52" ry="31" fill="#cfc6d8" ' + OL + '/><ellipse rx="44" ry="25" fill="#7fd0e4" stroke="#8a7fa0" stroke-width="2"/><ellipse cx="-8" cy="-5" rx="30" ry="14" fill="#a8e6f2" opacity=".6"/>' +
+        '<ellipse cy="-4" rx="9" ry="5" fill="#cfc6d8" ' + OL + '/><path d="M0-4V-26" stroke="#cfc6d8" stroke-width="7" stroke-linecap="round"/><ellipse cy="-26" rx="14" ry="6" fill="#e5dcee" ' + OL + '/>' +
+        '<path d="M0-30Q-18-44-26-14M0-30Q18-44 26-14M0-30Q-8-48-12-18M0-30Q8-48 12-18" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" opacity=".85"/>' +
+        '<circle cx="-30" cy="6" r="4" fill="#f6b6c1"/><circle cx="26" cy="10" r="3.4" fill="#ffe7a0"/>';
+    },
+    beach(z) { // lakeside jetty
+      return '<ellipse cx="3" cy="4" rx="60" ry="36" fill="#0b0716" opacity=".4"/><ellipse rx="58" ry="34" fill="#e8d6a0" ' + OL + '/><ellipse rx="52" ry="28" fill="#3f7ec4"/><ellipse cx="-10" cy="-8" rx="36" ry="12" fill="#6fb2ea" opacity=".6"/>' +
+        '<path d="M14 10h22M18 16h14" stroke="#ffe7a0" stroke-width="2.4" stroke-linecap="round" opacity=".7"/>' +
+        '<rect x="-60" y="-4" width="64" height="12" fill="#a9794f" ' + OL + '/><path d="M-48-4v12M-36-4v12M-24-4v12M-12-4v12M0-4v12" stroke="#6b4a30" stroke-width="1.4"/>' +
+        '<path d="M2 4V-14" stroke="#4a3322" stroke-width="3"/><circle cx="2" cy="-16" r="4.4" fill="#ffe7a0" stroke="#c9a34a"/><circle cx="2" cy="-16" r="11" fill="url(#tablesGlow)"/>' +
+        '<path d="M26-6l16 6l-6 8l-14-2z" fill="#f7f1e4" ' + OL + '/>';
+    },
+    town(z) { // chapel
+      return lsh(40, 20) + '<rect x="-34" y="-8" width="68" height="34" rx="2" fill="#f1e3c8" ' + OL + '/><path d="M-40-6L0-34L40-6Z" fill="#5a4a78" ' + OL + '/><path d="M-30-8L0-30" stroke="#8c7aa8" stroke-width="2"/>' +
+        '<rect x="-9" y="-48" width="18" height="22" fill="#f1e3c8" ' + OL + '/><path d="M-12-48L0-64L12-48Z" fill="#5a4a78" ' + OL + '/><path d="M0-64V-74M-4-70H4" stroke="#d9b05a" stroke-width="2.2"/>' +
+        '<path d="M-8 26V12a8 8 0 0 1 16 0V26Z" fill="#ffd36a" stroke="#6d4a1c" stroke-width="1.6"/><path d="M-26 6a5 7 0 0 1 10 0v8h-10zM16 6a5 7 0 0 1 10 0v8H16z" fill="#ffd36a" opacity=".9"/>' + '<circle cy="16" r="26" fill="url(#tablesGlow)" opacity=".35"/>';
+    },
+    harbour(z) { // boathouse and a moored rowing boat
+      return lsh(54, 22) + '<rect x="-50" y="-4" width="100" height="22" rx="3" fill="#2f5f8f" ' + OL + '/><path d="M-44 4q8-5 16 0t16 0t16 0t16 0t16 0" stroke="#9fd0f0" stroke-width="1.6" fill="none" opacity=".7"/>' +
+        '<path d="M-26 14Q0 28 26 14L20 6H-20Z" fill="#c98a4b" ' + OL + '/><path d="M-20 6H20" stroke="#f1d3a2" stroke-width="2.4"/><path d="M0 6V-8" stroke="#4a3322" stroke-width="2"/><circle cy="-9" r="3.6" fill="#ffe7a0"/><circle cy="-9" r="10" fill="url(#tablesGlow)"/>' +
+        '<rect x="-44" y="-36" width="52" height="34" fill="#a9794f" ' + OL + '/><path d="M-50-34L-18-56L14-34Z" fill="#6b3f35" ' + OL + '/><rect x="-26" y="-26" width="16" height="24" rx="1.6" fill="#ffd36a" stroke="#4a3322" stroke-width="1.6"/><path d="M-44-20h12M-44-12h12" stroke="#7a5236" stroke-width="1.4"/>';
+    },
+    forest(z) { // rose-garden maze
+      let m = '<rect x="-48" y="-40" width="96" height="80" rx="14" fill="#1f4a2c" ' + OL + '/><rect x="-38" y="-30" width="76" height="60" rx="10" fill="#2f6a3a" stroke="#143a20" stroke-width="1.4"/><rect x="-28" y="-20" width="56" height="40" rx="7" fill="#3f8648" stroke="#143a20" stroke-width="1.4"/><rect x="-18" y="-10" width="36" height="20" rx="4" fill="#d9c9a0" stroke="#143a20" stroke-width="1.4"/><path d="M-12-4H12M-12 4H12" stroke="#fff" stroke-width="0"/><path d="M-38-6H-26M26 6H38M-4-30V-20M4 20V30" stroke="#d9c9a0" stroke-width="7"/>';
+      for (let i = 0; i < 9; i++) m += '<circle cx="' + f1(-42 + z.rnd(i, 1) * 84) + '" cy="' + f1(-36 + z.rnd(1, i) * 72) + '" r="3" fill="' + (i % 2 ? '#e8587a' : '#f6b6c1') + '"/>';
+      return lsh(50, 42) + m + '<circle r="4.6" fill="#d8455e" ' + OL + '/><circle r="1.6" fill="#ffe7a0"/>';
+    },
+    cape(z) { // lantern-lit gazebo
+      let r = '';
+      for (let i = 0; i < 6; i++) { const a = i * Math.PI / 3, b = a + Math.PI / 3; r += '<path d="M0-18L' + f1(Math.cos(a) * 44) + ' ' + f1(Math.sin(a) * 30 - 10) + 'L' + f1(Math.cos(b) * 44) + ' ' + f1(Math.sin(b) * 30 - 10) + 'Z" fill="' + (i % 2 ? '#f1e3c8' : '#e6d2ae') + '" ' + OL + '/>'; }
+      return lsh(48, 30) + '<ellipse rx="46" ry="30" fill="#8c7aa8" ' + OL + '/><ellipse rx="38" ry="23" fill="#c9b6a0"/>' + lglow(46, .5) + '<g fill="#fbf5ea" stroke="#1c1630" stroke-width="1.4"><circle cx="-34" cy="4" r="3.4"/><circle cx="34" cy="4" r="3.4"/><circle cx="-18" cy="20" r="3.4"/><circle cx="18" cy="20" r="3.4"/></g>' + r + '<circle cy="-20" r="4" fill="#d9b05a" ' + OL + '/><circle cy="-8" r="3" fill="#ffe7a0"/>';
+    },
+    reef(z) { // cocktail terrace: bar, stools, glasses
+      return lsh(54, 26) + '<rect x="-54" y="-28" width="108" height="56" rx="12" fill="#a79bbd" ' + OL + '/><path d="M-54-8H54M-18-28V28M18-28V28" stroke="#8a7da4" stroke-width="1.2"/><rect x="-40" y="-14" width="80" height="14" rx="4" fill="#7a5236" ' + OL + '/><rect x="-40" y="-14" width="80" height="4" rx="2" fill="#a9794f"/>' +
+        '<g fill="#f7f1e4" stroke="#1c1630" stroke-width="1.2"><path d="M-26-24h8l-4 8zM-4-24h8l-4 8zM18-24h8l-4 8z" fill="#fff" opacity=".9"/></g><g fill="#d8455e" ' + OL + '><circle cx="-30" cy="14" r="6"/><circle cx="0" cy="14" r="6"/><circle cx="30" cy="14" r="6"/></g>' +
+        '<circle cx="-22" cy="-18" r="2.4" fill="#ffd36a"/><circle cx="22" cy="-18" r="2.4" fill="#f6b6c1"/>' + lglow(30, .35);
+    },
+    cave(z) { // wine cellar door and barrels
+      return lsh(52, 28) + '<path d="M-52 24Q-48-30 0-36Q48-30 52 24Z" fill="#6c5a74" ' + OL + '/><path d="M-30 24V-2a30 30 0 0 1 60 0V24Z" fill="#1c1228" stroke="#d9b05a" stroke-width="2.4"/><path d="M-22 24V0a22 22 0 0 1 44 0V24" fill="#3a2430"/><path d="M0 24V-22" stroke="#d9b05a" stroke-width="1.4"/>' +
+        '<circle cx="-8" cy="6" r="2" fill="#d9b05a"/><circle cx="8" cy="6" r="2" fill="#d9b05a"/><circle cx="-38" cy="-4" r="3.4" fill="#ffe7a0"/><circle cx="-38" cy="-4" r="11" fill="url(#tablesGlow)"/>' +
+        '<g transform="translate(40 18)"><ellipse rx="11" ry="9" fill="#8a5a3a" ' + OL + '/><path d="M-11 0H11M-9-5H9M-9 5H9" stroke="#5a3a24" stroke-width="1.2"/><circle r="2.6" fill="#d9b05a"/></g>';
+    },
+    volcano(z) { // wedding cake, three tiers
+      const tier = (y, w, h, c) => '<ellipse cx="2" cy="' + (y + h) + '" rx="' + w + '" ry="' + f1(w * .3) + '" fill="#0b0716" opacity=".3"/><rect x="' + -w + '" y="' + y + '" width="' + w * 2 + '" height="' + h + '" fill="' + c + '" ' + OL + '/><ellipse cy="' + (y + h) + '" rx="' + w + '" ry="' + f1(w * .3) + '" fill="' + c + '" ' + OL + '/><ellipse cy="' + y + '" rx="' + w + '" ry="' + f1(w * .3) + '" fill="#fff" ' + OL + '/>';
+      return lsh(54, 20) + tier(10, 46, 16, '#f6d6dc') + tier(-8, 34, 16, '#fbf5ea') + tier(-24, 22, 14, '#f6d6dc') +
+        '<path d="M-44 10Q-30 24-15 12T14 12T44 10" fill="none" stroke="#e8587a" stroke-width="3" stroke-dasharray="1 7" stroke-linecap="round"/><path d="M-32-6Q-16 6 0-6T32-6" fill="none" stroke="#d9b05a" stroke-width="2"/>' +
+        '<path d="M-3-34l3-12l3 12z" fill="#d9b05a" ' + OL + '/><circle cx="-4" cy="-48" r="4" fill="#e8587a" ' + OL + '/><circle cx="4" cy="-48" r="4" fill="#e8587a" ' + OL + '/>' + lglow(40, .35);
+    },
+  };
+  const segd = (px, py, a, b) => { const dx = b[0] - a[0], dy = b[1] - a[1], l = dx * dx + dy * dy || 1, t = Math.max(0, Math.min(1, ((px - a[0]) * dx + (py - a[1]) * dy) / l)); return Math.hypot(px - a[0] - t * dx, py - a[1] - t * dy); };
+  const LEXT = { town: 80, harbour: 60, forest: 44, cape: 38, cove: 40, beach: 40, reef: 34, cave: 40, volcano: 54 };
+  function landAt(z) { // the free spot of the zone farthest from the road through its stops
+    const S = z.stops; let best = null, bs = -1;
+    for (const x of [80, 320]) for (let y = z.y0 + 58 + (LEXT[z.theme] || 40); y <= z.y1 - 50; y += 14) {
+      let d = 999; S.forEach((p, i) => { d = Math.min(d, Math.hypot(p[0] - x, p[1] - y) - 8, i ? segd(x, y, S[i - 1], p) : 999); });
+      if (d > bs) { bs = d; best = [x, y]; }
+    }
+    return best;
+  }
+  const LDECO = {
+    cove: [r => '<circle r="8" fill="#e8f6fa" stroke="#7fb4c4" stroke-width="1.4"/><circle r="4" fill="#7fd0e4"/>', 'flowers', 'lamp', 'pot'],
+    beach: ['reed', 'bush', 'lamp'], town: ['bush', 'flowers', 'lamp', 'bench'], harbour: ['crate', 'barrel', 'lamp'], forest: ['bush', 'rose', 'rose', 'lamp'],
+    cape: ['bush', 'flowers', 'lamp'], reef: ['pot', 'lamp', 'stool'], cave: ['barrel', 'bottle', 'lamp'], volcano: ['pot', 'lamp', 'stool', 'candle'],
+  };
+  const LD = {
+    lamp: r => '<ellipse cx="2" cy="6" rx="6" ry="2.4" fill="#0b0716" opacity=".4"/><path d="M0 6V-8" stroke="#3a2d4a" stroke-width="2.6"/><circle cy="-10" r="13" fill="url(#tablesGlow)"/><circle cy="-10" r="4.2" fill="#ffe7a0" stroke="#d9b05a" stroke-width="1.4"/>',
+    bush: r => '<ellipse cx="2" cy="6" rx="12" ry="4" fill="#0b0716" opacity=".4"/><circle cx="-5" cy="0" r="8" fill="#2f6a3a" ' + OL + '/><circle cx="6" cy="-1" r="9" fill="#3f8648" ' + OL + '/><circle cx="-3" cy="-4" r="4" fill="#5aa862" opacity=".7"/>',
+    rose: r => '<ellipse cx="2" cy="6" rx="10" ry="3.4" fill="#0b0716" opacity=".4"/><circle r="9" fill="#2a5e36" ' + OL + '/><circle cx="-3" cy="-3" r="3.2" fill="#e8587a"/><circle cx="4" cy="1" r="3" fill="#f6b6c1"/><circle cx="-2" cy="4" r="2.6" fill="#d8455e"/>',
+    flowers: r => '<g stroke="#1c1630" stroke-width="1"><circle cx="-7" cy="2" r="3.6" fill="#f6b6c1"/><circle cx="2" cy="-4" r="3.8" fill="#ffe7a0"/><circle cx="8" cy="3" r="3.4" fill="#cfe0ff"/></g><path d="M-7 5v4M2 0v8M8 6v3" stroke="#3f8648" stroke-width="1.4"/>',
+    reed: r => '<path d="M-6 8L-8-8M0 8V-12M6 8L8-6" stroke="#6f9a5a" stroke-width="2.2" stroke-linecap="round"/><ellipse cx="0" cy="-12" rx="2.4" ry="5" fill="#7a4a30"/>',
+    bench: r => '<ellipse cx="2" cy="7" rx="16" ry="3.4" fill="#0b0716" opacity=".4"/><rect x="-15" y="-4" width="30" height="9" rx="2" fill="#a9794f" ' + OL + '/><rect x="-15" y="-7" width="30" height="4" rx="1.6" fill="#c99868" ' + OL + '/>',
+    crate: r => '<rect x="-8" y="-7" width="16" height="15" fill="#a9794f" ' + OL + '/><path d="M-8-7L8 8M8-7L-8 8" stroke="#6b4a30" stroke-width="1.2"/>',
+    barrel: r => '<ellipse cx="2" cy="9" rx="9" ry="3" fill="#0b0716" opacity=".4"/><path d="M-8-7Q-11 0-8 8H8Q11 0 8-7Z" fill="#8a5a3a" ' + OL + '/><path d="M-9-2H9M-9 4H9" stroke="#d9b05a" stroke-width="1.6"/><ellipse cy="-7" rx="8" ry="2.6" fill="#a9794f" ' + OL + '/>',
+    pot: r => '<ellipse cx="2" cy="8" rx="9" ry="3" fill="#0b0716" opacity=".4"/><path d="M-7 0H7L5 8H-5Z" fill="#b8654a" ' + OL + '/><circle cx="-3" cy="-4" r="5" fill="#3f8648" ' + OL + '/><circle cx="4" cy="-5" r="3.6" fill="#f6b6c1" ' + OL + '/>',
+    stool: r => '<ellipse cx="2" cy="6" rx="8" ry="3" fill="#0b0716" opacity=".4"/><circle r="8" fill="#a9794f" ' + OL + '/><circle r="5.4" fill="#fbf5ea" stroke="#d9b05a" stroke-width="1.2"/>',
+    bottle: r => '<path d="M-3 8V-2L-1-8H1L3-2V8Z" fill="#3a6a4a" ' + OL + '/><rect x="-3" y="1" width="6" height="5" fill="#f1e3c8"/><path d="M-12 8L-8-3L-4 8Z" fill="#5a2a3a" ' + OL + '/>',
+    candle: r => '<circle r="12" fill="url(#tablesGlow)"/><rect x="-3" y="-2" width="6" height="9" fill="#fbf5ea" ' + OL + '/><path d="M0-3Q-3-8 0-12Q3-8 0-3Z" fill="#ffd36a"/>',
+  };
+  const levelMap = {
+    bg: '#1c1630',
+    defs: '<linearGradient id="tablesSky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2a2040"/><stop offset=".5" stop-color="#3a2d58"/><stop offset="1" stop-color="#221a38"/></linearGradient>' +
+      '<radialGradient id="tablesGlow"><stop offset="0" stop-color="#ffe7a0" stop-opacity=".95"/><stop offset=".45" stop-color="#ffd36a" stop-opacity=".3"/><stop offset="1" stop-color="#ffd36a" stop-opacity="0"/></radialGradient>' +
+      Object.keys(LGROUND).map(k => '<linearGradient id="tablesG' + k + '" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="' + LGROUND[k][0] + '"/><stop offset="1" stop-color="' + LGROUND[k][1] + '"/></linearGradient>').join('') +
+      '<pattern id="tablesPG" width="14" height="14" patternUnits="userSpaceOnUse"><path d="M3 11l1.5-4M9 6l1.5-4" stroke="#9fd08a" stroke-width="1.2" stroke-linecap="round" opacity=".28"/></pattern>' +
+      '<pattern id="tablesPS" width="20" height="20" patternUnits="userSpaceOnUse"><path d="M0 0H20V20" fill="none" stroke="#fff" stroke-width="1" opacity=".12"/></pattern>' +
+      '<pattern id="tablesPP" width="40" height="14" patternUnits="userSpaceOnUse"><path d="M0 .5H40M20 .5V14" stroke="#2e1c14" stroke-width="1.4" opacity=".4"/></pattern>' +
+      '<pattern id="tablesPC" width="28" height="28" patternUnits="userSpaceOnUse"><path d="M0 0H14V14H0ZM14 14H28V28H14Z" fill="#2a1a24" opacity=".35"/></pattern>',
+    backdrop(H, rnd) {
+      let s = '<rect width="400" height="' + H + '" fill="url(#tablesSky)"/>';
+      for (let i = 0, n = Math.round(H / 14); i < n; i++) {
+        const x = f1(rnd(i, 1) * 400), y = f1(rnd(2, i) * H), rr = f1(.7 + rnd(i, 5) * 1.5);
+        s += '<circle cx="' + x + '" cy="' + y + '" r="' + rr + '" fill="' + (i % 4 ? '#f6e9d0' : '#ffd9a0') + '" opacity="' + f1(.3 + rnd(3, i) * .6) + '"/>';
+      }
+      for (let i = 0, n = Math.round(H / 230); i < n; i++) { // drifting paper lanterns
+        const x = f1(20 + rnd(i, 9) * 360), y = f1(60 + (i + rnd(9, i) * .8) * H / n * .96);
+        s += '<g transform="translate(' + x + ' ' + y + ')"><circle r="22" fill="url(#tablesGlow)" opacity=".7"/><rect x="-6" y="-8" width="12" height="15" rx="5" fill="#ffb86a" stroke="#c9742a" stroke-width="1.2"/><path d="M-6 0H6" stroke="#c9742a" stroke-width="1"/><path d="M0 7v5" stroke="#c9742a" stroke-width="1.2"/></g>';
+      }
+      for (let i = 0, n = Math.round(H / 420); i < n; i++) { // a crescent moon here and there
+        const x = f1(40 + rnd(i, 13) * 320), y = f1(120 + i * 420);
+        s += '<g transform="translate(' + x + ' ' + y + ')" opacity=".85"><circle r="9" fill="#fbf5ea"/><circle cx="4" cy="-2" r="8" fill="#2f2548"/></g>';
+      }
+      return s;
+    },
+    zone(z) {
+      const g = LGROUND[z.theme] || LGROUND.town, P = '<path d="' + z.path + '"', L = landAt(z), S = z.stops;
+      let s = P + ' fill="none" stroke="' + g[3] + '" stroke-width="18" opacity=".12"/><g transform="translate(2 6)">' + P + ' fill="#0b0716" opacity=".45"/></g>' +
+        P + ' fill="url(#tablesG' + z.theme + ')" stroke="' + g[3] + '" stroke-width="3"/>' + P + ' fill="url(#tablesP' + g[2] + ')"/>' +
+        P + ' fill="none" stroke="' + g[3] + '" stroke-width="9" stroke-dasharray="0.1 22" stroke-linecap="round" opacity=".28" transform="translate(0 0)"/>' +
+        P + ' fill="none" stroke="#fff6d8" stroke-width="3.4" stroke-dasharray="0.1 22" stroke-linecap="round"/>';
+      if (z.boss && S.length) { const b = [S.reduce((a, p) => a + p[0], 0) / S.length, S.reduce((a, p) => a + p[1], 0) / S.length]; // the ballroom dance floor under the boss table
+        s += '<circle cx="' + b[0] + '" cy="' + b[1] + '" r="76" fill="#f1dcae" opacity=".16"/><circle cx="' + b[0] + '" cy="' + b[1] + '" r="76" fill="none" stroke="#e6c375" stroke-width="2.4" stroke-dasharray="2 5" opacity=".7"/><circle cx="' + b[0] + '" cy="' + b[1] + '" r="58" fill="none" stroke="#e6c375" stroke-width="1.4" opacity=".6"/>';
+      }
+      if (L) s += '<g transform="translate(' + L[0] + ' ' + L[1] + ')">' + (LAND[z.theme] || LAND.town)(z) + '</g>';
+      return '<g>' + s + '</g>';
+    },
+    decor(theme, r, r2, z) {
+      const k = LDECO[theme] || LDECO.town, e = k[Math.floor(r * k.length) % k.length], f = typeof e === 'string' ? LD[e] : e;
+      return f(r2);
+    },
+    sign(label, w) {
+      return '<path d="M' + (w / 2 - 12) + ' 30L' + (w / 2 - 18) + ' 46M' + (w / 2 + 12) + ' 30L' + (w / 2 + 18) + ' 46" stroke="#a9794f" stroke-width="4" stroke-linecap="round"/><path d="M' + (w / 2 - 12) + ' 30L' + (w / 2 - 18) + ' 46M' + (w / 2 + 12) + ' 30L' + (w / 2 + 18) + ' 46" stroke="#6b4a30" stroke-width="1.2" stroke-linecap="round"/>' +
+        '<rect x="2" y="4" width="' + w + '" height="32" rx="6" fill="#0b0716" opacity=".4"/><rect width="' + w + '" height="32" rx="6" fill="' + CREAM + '" stroke="' + GOLD + '" stroke-width="2.4"/><rect x="3.5" y="3.5" width="' + (w - 7) + '" height="25" rx="4" fill="none" stroke="' + GOLD + '" stroke-width=".8" opacity=".8"/>' +
+        '<text x="' + w / 2 + '" y="17" text-anchor="middle" dominant-baseline="central" font-family="' + SERIF + '" font-style="italic" font-weight="700" font-size="13.5" fill="' + INK + '">' + label + '</text>';
+    },
+    road: { todo: ['#150f26', '#6b6478', '#4f4862'], done: ['#ffcf5a', '#fbf5ea', '#f1d58a'] },
+    node(state, num, e, boss) {
+      const nf = num.length > 3 ? 12 : num.length > 2 ? 14 : num.length > 1 ? 17 : 21;
+      const lbl = col => '<text y="1" text-anchor="middle" dominant-baseline="central" font-family="' + SERIF + '" font-weight="800" font-size="' + nf + '" fill="' + col + '">' + num + '</text>';
+      if (state === 'locked') {
+        return '<circle cy="3" r="31" fill="#0b0716" opacity=".45"/><circle r="30" fill="#8d8798" stroke="#4a4458" stroke-width="2.4"/><circle r="30" fill="url(#tablesPS)"/>' +
+          '<path d="M-26-14Q0-28 26-14M-26 14Q0 28 26 14M-14-26Q-26 0-14 26M14-26Q26 0 14 26" fill="none" stroke="#b3adc0" stroke-width="2.4" opacity=".7"/>' +
+          '<path d="M-7-3V-9a7 7 0 0 1 14 0V-3" fill="none" stroke="#e6c375" stroke-width="3"/><rect x="-11" y="-4" width="22" height="17" rx="4" fill="#d9b05a" stroke="#6d4a1c" stroke-width="1.8"/><circle cy="4" r="2.6" fill="#6d4a1c"/><path d="M0 5v4" stroke="#6d4a1c" stroke-width="2"/>';
+      }
+      const cl = CLOTH[e] || CLOTH[0], hm = HEM[e] || HEM[0], cur = state === 'current', beat = state === 'beaten';
+      let chairs = ''; for (let i = 0; i < 8; i++) { const a = i * Math.PI / 4 + .39; chairs += '<circle cx="' + f1(Math.cos(a) * 28.5) + '" cy="' + f1(Math.sin(a) * 28.5) + '" r="4" />'; }
+      let s = '';
+      if (cur) s += '<circle r="40" fill="url(#tablesGlow)"/>';
+      s += '<circle cy="3" r="33" fill="#0b0716" opacity=".5"/><g fill="' + (cur ? '#ffe7a0' : beat ? GOLD : '#6d5a83') + '" stroke="#1c1630" stroke-width="1.2">' + chairs + '</g>' +
+        '<circle r="25" fill="' + cl + '" stroke="' + (cur || boss ? '#ffd36a' : hm) + '" stroke-width="' + (cur || boss ? 3.4 : 2.4) + '"/><circle r="21.5" fill="none" stroke="' + hm + '" stroke-width="1.2" stroke-dasharray="3 3" opacity=".7"/>' +
+        '<path d="M-17-13A22 22 0 0 1 4-21" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" opacity=".6"/>' +
+        '<circle r="15" fill="' + CREAM + '" stroke="' + (beat || cur ? GOLD : hm) + '" stroke-width="1.8"/>' + lbl(INK) + emb(-18, 18, 6.5, e);
+      if (beat) s += '<g transform="translate(20 -20)"><circle r="8.5" fill="' + GOLD + '" stroke="#6d4a1c" stroke-width="1.6"/><path d="M0-5L1.5-1.6L5.2-1.4L2.4 .9L3.3 4.4L0 2.4L-3.3 4.4L-2.4 .9L-5.2-1.4L-1.5-1.6Z" fill="#fff6d8"/></g>';
+      if (cur) s += '<g fill="#ffd36a" stroke="#c9742a" stroke-width="1"><path d="M0-31Q-3-36 0-40Q3-36 0-31Z"/><path d="M-31 0Q-36-3-40 0Q-36 3-31 0Z"/><path d="M31 0Q36-3 40 0Q36 3 31 0Z"/><path d="M0 31Q-3 36 0 40Q3 36 0 31Z"/></g>';
+      if (boss) s += '<path d="M-10-27L-7-35L-3-30L0-37L3-30L7-35L10-27Z" fill="' + GOLD + '" stroke="#6d4a1c" stroke-width="1.4" stroke-linejoin="round"/>';
+      return s;
+    },
+    start() {
+      return '<ellipse cx="3" cy="14" rx="40" ry="8" fill="#0b0716" opacity=".4"/><path d="M-30 14V-26a30 38 0 0 1 60 0V14" fill="none" stroke="' + GOLD + '" stroke-width="3.4"/><path d="M-30-10Q0-34 30-10" fill="none" stroke="#fff6d8" stroke-width="2" stroke-dasharray="0.1 7" stroke-linecap="round"/>' +
+        '<g ' + OL + '><rect x="-40" y="-24" width="14" height="38" rx="2" fill="#cfc6d8"/><rect x="26" y="-24" width="14" height="38" rx="2" fill="#cfc6d8"/><rect x="-43" y="-28" width="20" height="7" rx="2" fill="#e5dcee"/><rect x="23" y="-28" width="20" height="7" rx="2" fill="#e5dcee"/></g>' +
+        '<circle cx="-33" cy="-38" r="16" fill="url(#tablesGlow)"/><circle cx="33" cy="-38" r="16" fill="url(#tablesGlow)"/><circle cx="-33" cy="-37" r="4.4" fill="#ffe7a0" stroke="' + GOLD + '"/><circle cx="33" cy="-37" r="4.4" fill="#ffe7a0" stroke="' + GOLD + '"/>' +
+        '<text y="6" text-anchor="middle" font-family="' + SERIF + '" font-style="italic" font-weight="700" font-size="12" fill="' + CREAM + '" stroke="#1c1630" stroke-width="3" paint-order="stroke">Welcome</text>';
+    },
+    pin() {
+      return '<path d="M0 27C-6 17-19 9-19-5A19 19 0 0 1 19-5C19 9 6 17 0 27Z" fill="' + GOLD + '" stroke="#6d4a1c" stroke-width="2.4"/><path d="M-15-7A15 15 0 0 1 -4-17" fill="none" stroke="#fff6d8" stroke-width="2" stroke-linecap="round"/>' + gran(0, -6, 13.5);
+    },
+  };
   FTH_SKINS.register({
     id: 'tables', name: 'Gran\'s Table', ic: '👵', blurb: 'a wedding, a feud, one seat',
     src: 'lab/tables.html', needs: ['cells'],
@@ -185,6 +352,7 @@
         path.closePath();
       },
     },
+    levelMap,
     words: { win: 'Gran has found her table!', perfect: 'Perfect seating! No shorter way exists.', par: 'Par is {par}. Can you get ★★★?', chart: 'SEATING PLANS' },
   });
 })();

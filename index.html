@@ -2385,7 +2385,9 @@
   const ISL = SKINS.find(k => k.id === 'islands') || SKINS[0];
   // SKIN is the player's choice; ACT is the style this level actually runs in (Islands when the choice cannot draw
   // the map: needs: ['cells'] means region shapes, which the hand-drawn Level -1 ponds do not have)
-  let SKIN = SKINS.find(k => k.id === save.skin) || ISL, ACT = SKIN, skinWinT = 0;
+  // preview mode for skin designers: ?skin=<id> (not saved), &view=menu|title|howto, &scroll=0..1 (level map position)
+  const PVQ = new URLSearchParams(location.search), PV = { skin: PVQ.get('skin'), view: PVQ.get('view'), scroll: PVQ.get('scroll') };
+  let SKIN = SKINS.find(k => k.id === (PV.skin || save.skin)) || ISL, ACT = SKIN, skinWinT = 0;
   // the look of a skin everywhere outside its play page: theme tokens, extra css, fonts, title art, map style
   const fontsLoaded = new Set();
   function applyLook(k) {
@@ -3075,28 +3077,33 @@
   function currentLevel() { for (let i = 0; i < G.levels.length; i++) if (isOpen(i) && !save.best[i]) return i; return G.levels.length - 1; }
   function renderSaga() {
     const { groups, H, P } = sagaLayout(), cur = currentLevel(), N = G.levels.length;
+    const LM = SKIN.levelMap || null, lmTry = (fn, dflt) => { try { const r = fn(); return typeof r === 'string' ? r : dflt; } catch (e) { console.warn('levelMap', e); return dflt; } };
     const S = [P[0][0] > 200 ? P[0][0] - 70 : P[0][0] + 70, H - 40];
     const segs = catmull([S].concat(P), 18), flat = [].concat(...segs);
     const roadNear = (x, y, d) => flat.some(p => Math.abs(p[0] - x) < d && Math.abs(p[1] - y) < d && Math.hypot(p[0] - x, p[1] - y) < d);
     let sea = '', land = '', deco = '', signs = '';
+    if (LM && LM.backdrop) sea = lmTry(() => LM.backdrop(H, (a, b) => hash01(a, b)), '');
     // sea sparkle waves
-    for (let k = 0; k < Math.floor(H / 70); k++) {
+    else for (let k = 0; k < Math.floor(H / 70); k++) {
       const x = 20 + hash01(k, 3) * 360, y = 20 + k * 70 + hash01(k, 5) * 30;
       sea += '<path d="M' + q1(x) + ' ' + q1(y) + 'q5 -5 10 0t10 0" stroke="#fff" stroke-width="2.2" fill="none" opacity=".45" stroke-linecap="round"/>';
     }
     groups.forEach((g, gi) => {
-      const [name, theme, emo] = DIST[g.kicker] || [g.kicker, 'town', '📍'], T = THEME[theme];
+      const [name, theme, emo] = DIST[g.kicker] || [g.kicker, 'town', '📍'], T = Object.assign({}, THEME[theme], LM && LM.zones && LM.zones[theme] || {});
       const x0 = 18, x1 = 382, y0 = g.top, y1 = g.bot;
       const ip = islandPath(x0, y0, x1, y1, gi * 1.7 + 1);
-      land += '<path d="' + ip + '" fill="#7fd6ff" stroke="#7fd6ff" stroke-width="22" opacity=".55"/>';
+      const Z = { x0, y0, x1, y1, index: gi, name, emoji: emo, theme, boss: g.kicker === 'Boss', stops: g.idx.map(i => P[i]), path: ip, rnd: (a, b) => hash01(a + gi * 13.7, b) };
+      if (LM && LM.zone) land += lmTry(() => LM.zone(Z), '');
+      else { land += '<path d="' + ip + '" fill="#7fd6ff" stroke="#7fd6ff" stroke-width="22" opacity=".55"/>';
       land += '<path d="' + ip + '" fill="' + T.land + '" stroke="' + T.edge + '" stroke-width="9"/>';
       for (let k = 0; k < 4; k++) land += '<ellipse cx="' + q1(60 + hash01(gi, k) * 280) + '" cy="' + q1(y0 + 30 + hash01(k, gi + 9) * (y1 - y0 - 60)) + '" rx="' + q1(28 + hash01(gi + 2, k) * 30) + '" ry="' + q1(10 + hash01(k, gi) * 10) + '" fill="' + T.patch + '" opacity=".8"/>';
-      if (theme === 'harbour') { for (let y = y0 + 26; y < y1 - 14; y += 13) land += '<line x1="40" y1="' + y + '" x2="360" y2="' + y + '" stroke="#c48e52" stroke-width="1.4" opacity=".55"/>'; }
+      if (theme === 'harbour') { for (let y = y0 + 26; y < y1 - 14; y += 13) land += '<line x1="40" y1="' + y + '" x2="360" y2="' + y + '" stroke="#c48e52" stroke-width="1.4" opacity=".55"/>'; } }
       // the sign
       const sy = y0 + 20, label = emo + ' ' + name, w = Math.round(28 + [...label].length * 8.4);
       const near = flat.filter(p => p[1] > sy - 10 && p[1] < sy + 50);
       const rx = near.length ? near.reduce((s, p) => s + p[0], 0) / near.length : 200;
       const sx = rx > 200 ? 30 : 370 - w;
+      if (LM && LM.sign) signs += '<g transform="translate(' + sx + ' ' + sy + ')">' + lmTry(() => LM.sign(label, w, Z), '') + '</g>'; else
       signs += '<g transform="translate(' + sx + ' ' + sy + ')"><rect x="' + (w / 2 - 14) + '" y="24" width="6" height="18" fill="#6b3f1c"/><rect x="' + (w / 2 + 8) + '" y="24" width="6" height="18" fill="#6b3f1c"/>' +
         '<rect width="' + w + '" height="32" rx="9" fill="#c98a4b" stroke="#1c1640" stroke-width="3"/><rect x="4" y="4" width="' + (w - 8) + '" height="6" rx="3" fill="#fff" opacity=".22"/>' +
         '<text x="' + w / 2 + '" y="17" text-anchor="middle" dominant-baseline="central" class="chunky" font-size="15" fill="#fff" stroke-width="4">' + label + '</text></g>';
@@ -3109,14 +3116,15 @@
         if (jx > signBox[0] && jx < signBox[2] && jy > signBox[1] && jy < signBox[3]) continue;
         if (theme === 'volcano') { const v = P[g.idx[0]]; if (jy > v[1] - 60 && Math.abs(jx - v[0]) < 70 + (jy - v[1]) * 1.3) continue; }
         if (Math.pow((jx - 200) / 172, 4) + Math.pow((jy - (y0 + y1) / 2) / ((y1 - y0) / 2 - 10), 4) > .8) continue;   // stay on land
+        if (LM && LM.decor) { const d = lmTry(() => LM.decor(theme, hash01(jy, jx), hash01(jx, jy * 3), Z), ''); if (d) deco += '<g transform="translate(' + q1(jx) + ' ' + q1(jy) + ')">' + d + '</g>'; continue; }
         const kind = T.deco[Math.floor(hash01(jy, jx) * T.deco.length)];
         deco += '<g transform="translate(' + q1(jx) + ' ' + q1(jy) + ')">' + DECO[kind](hash01(jx, jy * 3)) + '</g>';
       }
-      if (theme === 'harbour') [[30, y0 + 56, 1], [370, y1 - 56, -1]].forEach(([x, y, s]) => {
+      if (theme === 'harbour' && !(LM && LM.zone)) [[30, y0 + 56, 1], [370, y1 - 56, -1]].forEach(([x, y, s]) => {
         deco += '<g transform="translate(' + x + ' ' + q1(y) + ') scale(' + s + ' 1)"><rect x="0" y="-6" width="34" height="12" fill="#a8693a" ' + OUT + '/>' +
           '<g transform="translate(-6 22)"><path d="M-16 0H16L10 9H-10Z" fill="#fff" ' + OUT + '/><path d="M0 0V-24L14 -4Z" fill="#ef5a3c" ' + OUT + '/></g></g>';
       });
-      if (theme === 'cape') {   // the lighthouse, on the free side of the top stop
+      if (theme === 'cape' && !(LM && LM.zone)) {   // the lighthouse, on the free side of the top stop
         const top = P[g.idx[g.idx.length - 1]], lx = top[0] > 200 ? 70 : 330, ly = top[1] + 30;
         deco += '<g transform="translate(' + lx + ' ' + ly + ')">' +
           (reduced ? '' : '<g><path d="M0 -58L-90 -80L-90 -36Z" fill="#fff6a0" opacity=".45"/><animateTransform attributeName="transform" type="rotate" values="0 0 -58;360 0 -58" dur="6s" repeatCount="indefinite"/></g>') +
@@ -3124,7 +3132,7 @@
           '<rect x="-9" y="-62" width="18" height="14" rx="3" fill="#ffe066" ' + OUT + '/><path d="M-11 -62L0 -72L11 -62Z" fill="#ef3c3c" ' + OUT + '/></g>';
         deco += '<text x="' + (lx > 200 ? 300 : 100) + '" y="' + q1(g.bot - 40) + '" text-anchor="middle" font-size="36" font-weight="900" fill="#fff" opacity=".55">π</text>';
       }
-      if (theme === 'volcano') {   // a big cone with the boss level in its crater
+      if (theme === 'volcano' && !(LM && LM.zone)) {   // a big cone with the boss level in its crater
         const b = P[g.idx[0]], vy = b[1], vx = b[0];
         deco = '<g><path d="M' + (vx - 178) + ' ' + (vy + 158) + 'Q' + (vx - 70) + ' ' + (vy + 100) + ' ' + (vx - 50) + ' ' + (vy - 6) + 'Q' + vx + ' ' + (vy - 26) + ' ' + (vx + 50) + ' ' + (vy - 6) + 'Q' + (vx + 70) + ' ' + (vy + 100) + ' ' + (vx + 178) + ' ' + (vy + 158) + 'Z" fill="#6b3324" stroke="#1c1640" stroke-width="3"/>' +
           '<path d="M' + (vx - 30) + ' ' + (vy + 10) + 'Q' + (vx - 44) + ' ' + (vy + 90) + ' ' + (vx - 120) + ' ' + (vy + 150) + 'L' + (vx - 60) + ' ' + (vy + 150) + 'Q' + (vx - 22) + ' ' + (vy + 80) + ' ' + (vx - 10) + ' ' + (vy + 10) + 'Z" fill="#fff" opacity=".08"/>' +
@@ -3134,27 +3142,33 @@
       }
     });
     // start dock
+    if (LM && LM.start) deco += '<g transform="translate(' + q1(S[0]) + ' ' + q1(S[1]) + ')">' + lmTry(() => LM.start(), '') + '</g>'; else
     deco += '<g transform="translate(' + q1(S[0]) + ' ' + q1(S[1]) + ')"><rect x="-26" y="-6" width="52" height="22" rx="6" fill="#a8693a" ' + OUT + '/><line x1="18" y1="-6" x2="18" y2="-46" stroke="#3a3f55" stroke-width="3"/><path d="M18 -46L44 -38L18 -30Z" fill="#ff4fa3" ' + OUT + '/>' +
       '<text x="0" y="7" text-anchor="middle" dominant-baseline="central" class="chunky" font-size="12" fill="#fff" stroke-width="3">START</text></g>';
     // the ladder road, gold where it's been walked
     let done = '', todo = '';
     segs.forEach((seg, k) => { const d = 'M' + seg.map(p => q1(p[0]) + ' ' + q1(p[1])).join('L'); if (k === 0 || (save.best[k - 1] && isOpen(k))) done += d; else todo += d; });
-    const road = (d, a, b, c) => d ? '<path d="' + d + '" stroke="' + a + '" stroke-width="20" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="' + d + '" stroke="' + b + '" stroke-width="13" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="' + d + '" stroke="' + c + '" stroke-width="13" fill="none" stroke-dasharray="3 6"/>' : '';
-    const svg = '<svg viewBox="0 0 400 ' + H + '" aria-hidden="true"><rect width="400" height="' + H + '" fill="#2a9fd8"/>' + sea + land + deco +
-      road(todo, '#4b5260', '#b9c0c8', '#7d858f') + road(done, '#6b3f1c', '#f2c27a', '#a8693a') + signs + '</svg>';
+    // road layers: outer edge, bed, dashes; a skin may set levelMap.road.widths [outer, bed, dash], .dash (dasharray), .cap
+    const RDw = (LM && LM.road && LM.road.widths) || [20, 13, 13], RDd = (LM && LM.road && LM.road.dash) || '3 6', RDc = (LM && LM.road && LM.road.cap) || 'butt';
+    const road = (d, a, b, c) => d ? '<path d="' + d + '" stroke="' + a + '" stroke-width="' + RDw[0] + '" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="' + d + '" stroke="' + b + '" stroke-width="' + RDw[1] + '" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="' + d + '" stroke="' + c + '" stroke-width="' + RDw[2] + '" fill="none" stroke-linecap="' + RDc + '" stroke-dasharray="' + RDd + '"/>' : '';
+    const RD = LM && LM.road || {}, rt = RD.todo || ['#4b5260', '#b9c0c8', '#7d858f'], rdn = RD.done || ['#6b3f1c', '#f2c27a', '#a8693a'];
+    const svg = '<svg viewBox="0 0 400 ' + H + '" aria-hidden="true">' + (LM && LM.defs ? '<defs>' + LM.defs + '</defs>' : '') + '<rect width="400" height="' + H + '" fill="' + (LM && LM.bg || '#2a9fd8') + '"/>' + sea + land + deco +
+      road(todo, rt[0], rt[1], rt[2]) + road(done, rdn[0], rdn[1], rdn[2]) + signs + '</svg>';
     let nodes = '';
     G.levels.forEach((lv, i) => {
       const [x, y] = P[i], open = isOpen(i), b = save.best[i], num = lv.num || String(i + 1);
       const st = !open ? 'locked' : i === cur ? 'current' : b ? 'beaten' : 'open';
       const sides = [6, 5, 7, 6, 5, 6, 7, 5][i % 8], e = open ? i % 4 : 'g';
-      const tile = open ? uiTile(0, 0, 31, sides, e, { label: num, fs: num.length > 2 ? 16 : num.length > 1 ? 21 : 26 }) : uiTile(0, 0, 31, sides, 'g', { label: '🔒', fs: 20 });
+      const tile0 = () => open ? uiTile(0, 0, 31, sides, e, { label: num, fs: num.length > 2 ? 16 : num.length > 1 ? 21 : 26 }) : uiTile(0, 0, 31, sides, 'g', { label: '🔒', fs: 20 });
+      const tile = LM && LM.node ? lmTry(() => LM.node(st, num, open ? i % 4 : -1, lv.kicker === 'Boss'), tile0()) : tile0();
       const stars = b ? b.stars : 0;
       nodes += '<button class="mnode st-' + st + (lv.kicker === 'Boss' ? ' boss' : '') + '" data-i="' + i + '" style="left:' + q1(x / 4) + '%;top:' + (y / H * 100).toFixed(3) + '%" aria-label="Level ' + num + ': ' + lv.title +
         (open ? (b ? ', ' + stars + ' of 3 stars' : '') + (i === cur ? ', you are here' : '') : ', locked') + '">' +
         (st === 'current' ? '<span class="pulse"></span><span class="pulse p2"></span>' : '') +
         '<svg viewBox="-40 -40 80 80" aria-hidden="true">' + tile + '</svg>' +
         (open ? '<span class="mst" aria-hidden="true">' + '★'.repeat(stars) + '<i>' + '★'.repeat(3 - stars) + '</i></span>' : '<span class="mtag" aria-hidden="true">' + num + '</span>') +
-        (i === cur ? '<span class="me" aria-hidden="true"><svg viewBox="-23 -30 46 58"><path d="M0 27C-6 17 -19 9 -19 -5A19 19 0 0 1 19 -5C19 9 6 17 0 27Z" fill="#ff4fa3" stroke="#1c1640" stroke-width="3"/><circle cy="-6" r="12.5" fill="#fff"/><circle cx="-4.5" cy="-8" r="2.6" fill="#1c1640"/><circle cx="4.5" cy="-8" r="2.6" fill="#1c1640"/><circle cx="-3.6" cy="-9" r=".9" fill="#fff"/><circle cx="5.4" cy="-9" r=".9" fill="#fff"/><path d="M-4.5 -2Q0 2.5 4.5 -2" stroke="#1c1640" stroke-width="2" fill="none" stroke-linecap="round"/><circle cx="-8.5" cy="-3" r="2" fill="#ff9ccc"/><circle cx="8.5" cy="-3" r="2" fill="#ff9ccc"/></svg></span>' : '') +
+        (i === cur && LM && LM.pin ? '<span class="me" aria-hidden="true"><svg viewBox="-23 -30 46 58">' + lmTry(() => LM.pin(), '') + '</svg></span>' : '') +
+        (i === cur && !(LM && LM.pin) ? '<span class="me" aria-hidden="true"><svg viewBox="-23 -30 46 58"><path d="M0 27C-6 17 -19 9 -19 -5A19 19 0 0 1 19 -5C19 9 6 17 0 27Z" fill="#ff4fa3" stroke="#1c1640" stroke-width="3"/><circle cy="-6" r="12.5" fill="#fff"/><circle cx="-4.5" cy="-8" r="2.6" fill="#1c1640"/><circle cx="4.5" cy="-8" r="2.6" fill="#1c1640"/><circle cx="-3.6" cy="-9" r=".9" fill="#fff"/><circle cx="5.4" cy="-9" r=".9" fill="#fff"/><path d="M-4.5 -2Q0 2.5 4.5 -2" stroke="#1c1640" stroke-width="2" fill="none" stroke-linecap="round"/><circle cx="-8.5" cy="-3" r="2" fill="#ff9ccc"/><circle cx="8.5" cy="-3" r="2" fill="#ff9ccc"/></svg></span>' : '') +
         '</button>';
     });
     const box = $('saga'); box.innerHTML = svg + nodes;
@@ -3174,7 +3188,8 @@
     lootReset(); msg('');
     $('game').classList.remove('on'); $('title').classList.remove('on'); $('menu').classList.add('on');
     const r = renderSaga(), m = $('menu');
-    requestAnimationFrame(() => { m.scrollTop = Math.max(0, r.y * $('saga').clientHeight - m.clientHeight * .55); });
+    const toPos = () => { m.scrollTop = PV.view === 'menu' && PV.scroll !== null ? (+PV.scroll) * (m.scrollHeight - m.clientHeight) : Math.max(0, r.y * $('saga').clientHeight - m.clientHeight * .55); };
+    toPos(); requestAnimationFrame(toPos);
   }
   { let lpT = 0, lpDone = false; const bm = $('btnMenu');             // minimal HUD: long-press the menu button for the map
     bm.addEventListener('pointerdown', () => { lpDone = false; clearTimeout(lpT); if (!$('game').classList.contains('hud-minimal') || !W) return;
@@ -3183,6 +3198,8 @@
     bm.addEventListener('click', e => { if (lpDone) { lpDone = false; e.stopImmediatePropagation(); e.preventDefault(); } }, true); }
   applyLook(SKIN);
   renderSkinPick();
+  if (PV.view === 'menu') setTimeout(showMenu, 50);
+  else if (PV.view === 'howto') setTimeout(() => openHowTo(null), 50);
   $('btnPlay').onclick = () => { blip(523, .12, 'triangle', .05); titleStop(); if (!save.seenHowTo) openHowTo(showMenu); else showMenu(); };
   $('btnHowTitle').onclick = () => openHowTo(null);
 

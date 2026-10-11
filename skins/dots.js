@@ -71,7 +71,9 @@
     },
     fonts: ['https://fonts.googleapis.com/css2?family=Nunito:wght@300;400;600;800&display=swap'],
     css: '.tl .tin circle.d{transition:r .2s}.tl.lit .tin{opacity:1}.tl.lit .tin circle.d{stroke:#2d2a26;stroke-width:2}' +
-      '.tl.glow .tin circle.rg{opacity:.55;stroke-width:1.5}.tl .tin circle.rg{opacity:0}',
+      '.tl.glow .tin circle.rg{opacity:.55;stroke-width:1.5}.tl .tin circle.rg{opacity:0}' +
+      '.mnode .mst{background:#fbf8f1;color:#e0a93a;border:1px solid #2d2a26;font-size:.72rem;letter-spacing:2px}.mnode .mst i{color:#d6d0c2}' +
+      '.mnode .mtag{background:#fbf8f1;color:#a39d90;border:1px solid #b9b3a6;font-weight:800}.mnode .pulse{border:2px solid #e0a93a}',
     title: { svg: titleSvg },
     intro: I,
     bonus: {
@@ -89,6 +91,169 @@
       grey: '#b9b3a6', route: '#2d2a26', ink: 'rgba(45,42,38,.7)',
       cell(path, x, y, r) { path.moveTo(x + r, y); path.arc(x, y, r, 0, Math.PI * 2); },
     },
+    levelMap: (function () {
+      const f1 = n => Math.round(n * 10) / 10;
+      const HL = (a) => 'rgba(45,42,38,' + a + ')';                       // ink at some opacity
+      // a row of dots as one path: zero-length round-capped segments
+      const dts = (pts, w, col, op) => '<path d="' + pts.map(p => 'M' + f1(p[0]) + ' ' + f1(p[1]) + 'h0').join('') +
+        '" stroke="' + col + '" stroke-width="' + w + '" stroke-linecap="round" fill="none"' + (op != null ? ' opacity="' + op + '"' : '') + '/>';
+      const hair = (d, a, w) => '<path d="' + d + '" fill="none" stroke="' + HL(a == null ? 0.4 : a) + '" stroke-width="' + (w || 1.1) + '" stroke-linecap="round" stroke-linejoin="round"/>';
+      const ring = (r, a) => '<circle r="' + r + '" fill="none" stroke="' + HL(a) + '" stroke-width="1.1"/>';
+      const TINT = {
+        cove: ['#e1edf2', '#c3d6df'], beach: ['#f4ead0', '#e2d3ac'], town: ['#f1e4dc', '#dcc7bb'],
+        harbour: ['#dbe6ec', '#bccdd7'], forest: ['#e1ebd8', '#c2d3b6'], cape: ['#e9e6f1', '#cdc7de'],
+        reef: ['#f3e0da', '#dfbfb6'], cave: ['#e4e1ed', '#c6c0d8'], volcano: ['#f3dccf', '#dfb9a5'],
+      };
+      const freeSide = z => { const m = z.stops.reduce((s, p) => s + p[0], 0) / z.stops.length; return m > 200 ? 100 : 300; };
+      const arcDots = (cx, cy, R, a0, a1, n) => { const o = []; for (let i = 0; i < n; i++) { const a = a0 + (a1 - a0) * i / (n - 1); o.push([cx + R * Math.cos(a), cy + R * Math.sin(a)]); } return o; };
+
+      const motif = {
+        cove(z, x, my) {                              // ripple rings
+          let s = '<g transform="translate(' + x + ' ' + my + ')">';
+          [16, 30, 44, 58].forEach((r, i) => s += ring(r, 0.3 - i * 0.06));
+          return s + '<circle r="4" fill="' + C[1] + '"/></g>';
+        },
+        beach(z, x, my) {                             // a sun-dot with arcs of rays
+          const y = z.y1 - 70; let s = '<circle cx="' + x + '" cy="' + y + '" r="9" fill="' + C[2] + '"/>';
+          [24, 40, 56].forEach((R, i) => s += dts(arcDots(x, y, R, Math.PI, 2 * Math.PI, 7 + i * 3), 3.2 - i * 0.5, C[2], 0.8 - i * 0.18));
+          return s + hair('M' + (x - 78) + ' ' + y + 'H' + (x + 78), 0.3);
+        },
+        town(z) {                                     // a quiet ground line
+          return hair('M34 ' + (z.y1 - 30) + 'H366', 0.16);
+        },
+        harbour(z) {                                  // hairline waves and a quay
+          let s = '';
+          for (let y = z.y0 + 40; y < z.y1 - 20; y += 30) s += hair('M30 ' + y + 'q10 -6 20 0t20 0t20 0t20 0t20 0t20 0t20 0t20 0t20 0t20 0t20 0t20 0t20 0t20 0t20 0t20 0t20 0', 0.13);
+          return s;
+        },
+        forest(z) { return ''; },
+        cape(z) {                                     // hairline lighthouse with a beam of dots
+          const top = z.stops[z.stops.length - 1], left = top[0] > 200, lx = left ? 76 : 324, ly = top[1] + 52, d = left ? 1 : -1;
+          let s = '<g transform="translate(' + lx + ' ' + ly + ')">';
+          s += '<path d="M-13 0L-8 -62H8L13 0Z" fill="#fbf8f1" stroke="' + HL(0.6) + '" stroke-width="1.3" stroke-linejoin="round"/>' +
+            '<path d="M-11.3 -14L-9.8 -26H9.8L11.3 -14ZM-8.8 -42L-8.2 -54H8.2L8.8 -42Z" fill="' + C[0] + '" opacity=".75"/>' +
+            '<rect x="-10" y="-76" width="20" height="14" rx="3" fill="#fbf8f1" stroke="' + HL(0.6) + '" stroke-width="1.3"/>' +
+            '<circle cy="-69" r="4" fill="' + C[2] + '"/><path d="M-12 -76L0 -88L12 -76Z" fill="' + INK + '" opacity=".8"/>' + hair('M-24 0H24', 0.45);
+          [-0.28, 0, 0.28].forEach((a, k) => {
+            const pts = []; for (let i = 1; i <= 6; i++) pts.push([d * i * 15 * Math.cos(a), -69 + i * 15 * Math.sin(a)]);
+            s += dts(pts, 3.2, C[2], 0.75 - k * 0.0).replace(/^<path/, '<path') ;
+          });
+          s += '</g>';
+          return s + '<text x="' + (left ? 300 : 100) + '" y="' + f1(z.y1 - 36) + '" style="font-size:34px;font-weight:300;fill:' + HL(0.2) + ';text-anchor:middle">π</text>';
+        },
+        reef(z) { return ''; },
+        cave(z, x, my) {                              // one large crystal
+          const s = '<g transform="translate(' + x + ' ' + my + ')"><path d="M0 -58L26 -22L18 44L-14 52L-30 -8Z" fill="#8c80b8" fill-opacity=".1" stroke="' + HL(0.45) + '" stroke-width="1.2" stroke-linejoin="round"/>' +
+            hair('M0 -58L-6 10L18 44M-30 -8L-6 10L-14 52M26 -22L-6 10', 0.35) + '<path d="M0 -58L26 -22L-6 10L-30 -8Z" fill="#8c80b8" fill-opacity=".1"/></g>';
+          return s;
+        },
+        volcano(z) {                                  // a cone of dots with a glowing crater
+          const b = z.stops[0], vx = b[0], vy = b[1]; let s = '';
+          s += '<ellipse cx="' + vx + '" cy="' + vy + '" rx="64" ry="42" fill="url(#dotsLava)"/>';
+          const cols = ['#ef7a3c', '#f09a52', '#efae78', '#e6bf9c', '#dccab9', '#d9cdc2', '#d9d0c6', '#dad2c9'];
+          for (let j = 0; j < 8; j++) {
+            const y = vy + 38 + j * 17, hw = Math.min(160, 54 + j * 17), pts = [];
+            for (let x = -hw + (j % 2) * 9; x <= hw; x += 18) if (Math.abs(x) > 32 || j > 5) pts.push([vx + x, y]);
+            s += dts(pts.filter(p => p[0] > 30 && p[0] < 370), 8.5 - j * 0.3, cols[j], 0.9);
+          }
+          for (let k = 0; k < 4; k++) s += '<circle cx="' + f1(vx + 30 + k * 10 + (k % 2) * 6) + '" cy="' + (vy - 56 - k * 20) + '" r="' + (6 - k * 1.1) + '" fill="' + HL(0.14 - k * 0.02) + '"/>';
+          return s;
+        },
+      };
+
+      const D = {                                     // decor per theme, ~within +-20
+        cove(r, r2) {
+          if (r < 0.5) return ring(5 + r2 * 3, 0.38) + ring(11 + r2 * 4, 0.24) + ring(18, 0.12) + '<circle r="2.4" fill="' + C[1] + '" opacity=".8"/>';
+          if (r < 0.8) return dts(arcDots(0, 6, 12, Math.PI * 1.1, Math.PI * 1.9, 5), 3, C[1], 0.55);
+          return '<circle r="3.5" fill="' + C[1] + '" opacity=".55"/><circle cx="12" cy="-6" r="2" fill="' + C[1] + '" opacity=".4"/>';
+        },
+        beach(r, r2) {
+          if (r < 0.4) return '<circle cy="4" r="4" fill="' + C[2] + '"/>' + dts(arcDots(0, 4, 13, Math.PI, 2 * Math.PI, 6), 2.6, C[2], 0.7);
+          if (r < 0.75) return dts([[-8, 4], [0, 1], [7, 5]], 4.5 + r2 * 2, '#d9c796');
+          return hair('M-12 0q6 -6 12 0t12 0', 0.3) + '<circle cx="-4" cy="9" r="2" fill="' + C[0] + '" opacity=".55"/>';
+        },
+        town(r, r2) {
+          if (r < 0.7) { const w = 8 + r2 * 4, c = C[(r2 * 4) | 0];
+            return '<path d="M' + -w + ' 12V-1H' + w + 'V12Z" fill="#fbf8f1" stroke="' + HL(0.5) + '" stroke-width="1.2" stroke-linejoin="round"/>' +
+              '<path d="M' + (-w - 3) + ' -1L0 -12L' + (w + 3) + ' -1" fill="none" stroke="' + HL(0.6) + '" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>' +
+              '<circle cy="7" r="2.6" fill="' + c + '"/>'; }
+          return hair('M0 12V2', 0.4) + '<circle cy="-2" r="7" fill="' + C[3] + '" opacity=".5"/>';
+        },
+        harbour(r, r2) {
+          if (r < 0.6) return hair('M-13 4h26l-5 7h-16z', 0.55) + hair('M0 4V-12', 0.45) + '<circle cx="0" cy="-5" r="5.5" fill="' + C[(r2 * 4) | 0] + '" opacity=".85"/>' +
+            hair('M-18 16q4.5 -4 9 0t9 0t9 0t9 0', 0.25);
+          return '<circle cy="2" r="5" fill="none" stroke="' + C[0] + '" stroke-width="2.4" opacity=".75"/>' + hair('M-14 12q3.5 -4 7 0t7 0t7 0t7 0', 0.25);
+        },
+        forest(r, r2) {
+          const s = r2 > 0.5 ? 1 : 0.8;
+          if (r < 0.75) return hair('M0 14V3', 0.45) + dts([[0, -6 * s], [-7 * s, 1], [7 * s, 1]], 11 * s, C[3], 0.55) + dts([[0, -6 * s]], 7 * s, C[3], 0.8);
+          return hair('M0 12V4', 0.4) + '<circle cy="0" r="6" fill="' + C[3] + '" opacity=".7"/><circle cx="12" cy="10" r="2" fill="' + C[0] + '" opacity=".6"/>';
+        },
+        cape(r, r2) {
+          if (r < 0.4) return hair('M-8 -2q4 -6 8 0q4 -6 8 0', 0.5);
+          if (r < 0.75) return dts([[-6, 5], [4, 3], [10, 7]], 6 + r2 * 3, '#c5bfd6');
+          return dts([[0, 0]], 3, C[2], 0.7) + dts([[10, -8]], 2, C[2], 0.5) + dts([[-9, 8]], 2, C[2], 0.5);
+        },
+        reef(r, r2) {
+          const c1 = r2 < 0.5 ? C[0] : '#e8888a';
+          if (r < 0.55) return hair('M0 12V-2M0 5L-7 -3M0 2L7 -6', 0.4) + dts([[0, -3], [-7, -4], [7, -7]], 6, c1, 0.85) + dts([[-9, -10], [3, -12]], 3, c1, 0.6);
+          if (r < 0.8) return dts([[0, 0], [-8, 5], [8, 5], [0, 10], [-4, -8], [5, -8]], 5, c1, 0.7);
+          return dts([[-6, 4], [6, 4], [0, -4]], 5.5, C[1], 0.45);
+        },
+        cave(r, r2) {
+          const k = 8 + r2 * 6;
+          if (r < 0.7) return '<path d="M0 ' + -k * 1.5 + 'L' + k * 0.7 + ' ' + -k * 0.3 + 'L' + k * 0.4 + ' ' + k + 'L' + -k * 0.5 + ' ' + k + 'L' + -k * 0.7 + ' ' + -k * 0.3 + 'Z" fill="#8c80b8" fill-opacity=".12" stroke="' + HL(0.4) + '" stroke-width="1.1" stroke-linejoin="round"/>' + hair('M0 ' + -k * 1.5 + 'L0 ' + k + 'M' + -k * 0.7 + ' ' + -k * 0.3 + 'L' + k * 0.7 + ' ' + -k * 0.3, 0.25);
+          return dts([[-5, 3], [5, -2], [2, 8]], 3, '#8c80b8', 0.55);
+        },
+        volcano(r, r2) {
+          if (r < 0.5) return dts([[0, 8], [-4, -2], [3, -10]], 5 - r2, '#ef7a3c', 0.7);
+          return dts([[0, 6]], 3, '#ef7a3c', 0.4);
+        },
+      };
+
+      const lock = c => '<rect x="-6" y="-3" width="12" height="9.5" rx="2.2" fill="' + c + '"/><path d="M-3.6 -3v-3a3.6 3.6 0 0 1 7.2 0v3" fill="none" stroke="' + c + '" stroke-width="2"/>';
+
+      return {
+        bg: PAPER,
+        defs: '<pattern id="dotsGrid" width="26" height="26" patternUnits="userSpaceOnUse"><circle cx="13" cy="13" r="1.1" fill="#2d2a26" opacity=".12"/></pattern>' +
+          '<radialGradient id="dotsLava"><stop offset="0" stop-color="#ffb347" stop-opacity=".75"/><stop offset=".55" stop-color="#ef7a3c" stop-opacity=".28"/><stop offset="1" stop-color="#ef7a3c" stop-opacity="0"/></radialGradient>',
+        backdrop(H) { return '<rect width="400" height="' + H + '" fill="url(#dotsGrid)"/>'; },
+        zone(z) {
+          const t = TINT[z.theme] || TINT.town, x = z.x0 + 6, w = z.x1 - z.x0 - 12, y = z.y0 + 4, h = z.y1 - z.y0 - 8, my = (z.y0 + z.y1) / 2;
+          const side = freeSide(z);
+          return '<g><rect x="' + x + '" y="' + (y + 3) + '" width="' + w + '" height="' + h + '" rx="38" fill="' + HL(0.05) + '"/>' +
+            '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="38" fill="' + t[0] + '" stroke="' + t[1] + '" stroke-width="1.3"/>' +
+            '<rect x="' + (x + 7) + '" y="' + (y + 7) + '" width="' + (w - 14) + '" height="' + (h - 14) + '" rx="32" fill="none" stroke="' + t[1] + '" stroke-width=".9" stroke-dasharray="1 6" stroke-linecap="round"/>' +
+            (motif[z.theme] ? motif[z.theme](z, side, my) : '') + '</g>';
+        },
+        decor(theme, r, r2, z) { return D[theme] ? D[theme](r, r2) : ''; },
+        sign(label, w) {
+          const name = label.replace(/^\S+\s+/, '').replace(/[^π]+/g, m => m.toUpperCase());
+          return '<text x="' + w / 2 + '" y="16" textLength="' + Math.min(w - 8, Math.round(name.length * 9.6)) + '" lengthAdjust="spacing" style="font-size:12px;font-weight:800;letter-spacing:.14em;fill:' + INK + ';text-anchor:middle">' + name + '</text>' +
+            '<path d="M0 25.5H' + w + '" stroke="' + HL(0.4) + '" stroke-width="1"/><circle cx="0" cy="25.5" r="2.6" fill="' + INK + '"/>';
+        },
+        road: { todo: ['none', 'none', LINE], done: ['none', 'none', INK], widths: [0, 0, 5], dash: '0 12.5', cap: 'round' },   // a dotted line
+        node(state, num, e, boss) {
+          const R = boss ? 30 : 27, c = e >= 0 ? C[e] : LINE, fs = num.length > 3 ? 13 : num.length > 2 ? 15 : num.length > 1 ? 19 : 23;
+          const txt = '<text y="' + f1(fs * 0.36) + '" style="font-size:' + fs + 'px;font-weight:800;fill:' + INK + ';text-anchor:middle">' + num + '</text>';
+          let s = '<circle cy="2.5" r="' + (R + 3) + '" fill="' + HL(0.07) + '"/><circle r="' + (R + 3.5) + '" fill="' + PAPER + '"/>';
+          if (boss) s += '<circle r="' + (R + 7) + '" fill="none" stroke="' + HL(0.5) + '" stroke-width="1" stroke-dasharray="1 5" stroke-linecap="round"/>';
+          if (state === 'locked') return s + '<circle r="' + R + '" fill="#fbf8f1" stroke="' + LINE + '" stroke-width="2"/><g transform="translate(0 -1)">' + lock('#a39d90') + '</g>';
+          if (state === 'open') return s + '<circle r="' + R + '" fill="' + c + '" fill-opacity=".16" stroke="' + c + '" stroke-width="3"/>' + txt;
+          if (state === 'beaten') return s + '<circle r="' + R + '" fill="' + c + '"/><circle r="' + (R + 3.2) + '" fill="none" stroke="' + INK + '" stroke-width="1.3"/>' + txt;
+          return '<circle r="38" fill="none" stroke="#e0a93a" stroke-width="3" opacity=".35"/><circle r="34" fill="none" stroke="#e0a93a" stroke-width="2.4" opacity=".7"/>' +
+            s + '<circle r="' + R + '" fill="' + c + '"/><circle r="' + (R + 3.2) + '" fill="none" stroke="' + INK + '" stroke-width="1.6"/>' + txt;
+        },
+        start() {
+          return '<circle r="12" fill="none" stroke="' + HL(0.35) + '" stroke-width="1.1"/><circle r="5.5" fill="' + INK + '"/>' +
+            '<text y="30" style="font-size:11px;font-weight:800;letter-spacing:.2em;fill:' + INK + ';text-anchor:middle">START</text>';
+        },
+        pin() {
+          const d = 'M0 27C-5 18 -17 10 -17 -4A17 17 0 0 1 17 -4C17 10 5 18 0 27Z';
+          return '<path transform="translate(1.5 2)" d="' + d + '" fill="' + HL(0.12) + '"/><path d="' + d + '" fill="' + INK + '"/><circle cy="-4" r="6.5" fill="' + PAPER + '"/>';
+        },
+      };
+    })(),
     words: { win: 'Filled.', perfect: 'The shortest way, quietly done.', par: 'Par is {par}. Can you find it?', chart: 'ALL THE WAYS' },
   });
 })();

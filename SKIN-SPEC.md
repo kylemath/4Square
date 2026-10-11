@@ -133,6 +133,47 @@ words: { win: 'Hole filled!', perfect: 'Perfect route! No shorter way exists.', 
          chart: 'COLOURING SPACE' }
 ```
 
+## 8b. Level map
+
+The level map is one tall SVG (`viewBox="0 0 400 H"`, H about 3,500-4,500) drawn bottom to top: a start marker,
+then one **zone** per island of levels (Splash Cove, Warm-up Beach, Tutorial Town, Lock Harbour, Far Chains Forest,
+π Loop Lighthouse, Six-Ring Reef, The Depths, Volcano Boss), joined by a winding road through the level markers.
+The shell owns layout (where zones, stops, signs and the road go), scrolling, tap targets, stars and progress.
+The skin owns every pixel of the look through `levelMap` (all fields optional; Islands uses none):
+
+```js
+levelMap: {
+  bg: '#2a9fd8',                           // fill behind everything (the "sea")
+  defs: '<linearGradient id="dm-land">…',   // SVG <defs> content shared by all your pieces (prefix ids with your skin id!)
+  backdrop(H, rnd) { return '<g>…</g>'; },  // art across the whole height (waves, stars, paper texture, string lights…)
+  zone(z) { return '<g>…</g>'; },           // one zone's ground and landmarks (replaces the island shape)
+  zones: { cove: { land, edge, patch }, … },// OR just recolour the built-in island per theme (no zone())
+  decor(theme, r, r2, z) { return '<g>…</g>' or ''; }, // one decoration centred on (0, 0); called for each free spot
+  sign(label, w, z) { return '…'; },        // a zone's name sign, drawn at (0, 0), w wide, ~32 high (label = emoji + name)
+  road: { todo: [outer, inner, dash], done: [outer, inner, dash],   // road colours: unplayed / played
+          widths: [20, 13, 13], dash: '3 6', cap: 'butt' },              // optional: layer widths, dash pattern, dash caps ('none' hides a layer)
+  node(state, num, e, boss) { return '…'; },// one level marker in the box -40..40 (radius ~31)
+  start() { return '…'; },                  // the start marker at (0, 0)
+  pin() { return '…'; },                    // "you are here" marker, viewBox -23 -30 46 58 (tip at 0, 27)
+}
+```
+
+- `z` is `{ x0, y0, x1, y1, index, name, emoji, theme, boss, stops, path, rnd }`: the zone's box (x 18-382),
+  its theme id (`cove beach town harbour forest cape reef cave volcano`), whether it is the final boss zone, the
+  `[x, y]` of its level markers (keep landmarks clear of them), the built-in island outline `path` (an SVG path
+  you may reuse or ignore), and `rnd(a, b)` → [0, 1), deterministic.
+- `decor` is called for spots already checked to be clear of the road, the markers and the sign. Return `''` to
+  leave a spot empty. `r` picks the kind, `r2` varies it. Keep each piece within ~±22 px.
+- `node` states: `'locked'` (`e` = -1, show a lock), `'open'`, `'beaten'`, `'current'` (the shell adds a pulse
+  and the pin). Show `num` (e.g. "7.3", "-1.2", "16") legibly; `e` (0-3) is the element colour for open levels.
+  The shell draws the stars under the marker.
+- Quality bar: the Islands map is the reference. Layered shapes, a consistent light from the top left
+  (highlights top-left, shade bottom-right), a dark outline or crisp edge on every object, soft shadows (an
+  offset darker copy, not blur filters), lively varied decorations, and every zone clearly its own place. Prefer
+  gradients and shapes to `filter`s: dozens of filtered elements stutter on phones. Text inside the SVG must use
+  a font the page loads (your `fonts`) or a system fallback.
+- Everything is a string; no script, no external images. Prefix every id in `defs` with your skin id.
+
 ## 9. The play page contract (unchanged; see `lab/core.js`)
 
 - Load `../levels.js`, `../layout.js`, `core.js`; create the game with `LAB.game()` (it reads `?lvl=`).

@@ -42,6 +42,25 @@ for (const s of ctx.window.FTH_SKINS.list) {
       if (open !== close) fail(id, 'bonus.tile: unbalanced <g>');
     }
   }
+  if (s.levelMap) {
+    const L = s.levelMap, Z = { x0: 18, y0: 100, x1: 382, y1: 500, index: 2, name: 'Lock Harbour', emoji: '⚓', theme: 'harbour', boss: false,
+      stops: [[200, 420], [260, 300], [150, 180]], path: 'M18 300Q200 100 382 300Q200 500 18 300Z', rnd: (a, b) => ((Math.sin(a * 12.9898 + b * 78.233) * 43758.5453) % 1 + 1) % 1 };
+    const str = (v, where) => { if (typeof v !== 'string') fail(id, 'levelMap.' + where + ' must return a string'); else {
+      if (/<script/i.test(v)) fail(id, 'levelMap.' + where + ': no <script>');
+      if (/(href|src)="https?:/i.test(v)) fail(id, 'levelMap.' + where + ': no external images');
+      const o = (v.match(/<g[\s>]/g) || []).length, c = (v.match(/<\/g>/g) || []).length; if (o !== c) fail(id, 'levelMap.' + where + ': unbalanced <g>'); } };
+    const call = (where, fn) => { try { str(fn(), where); } catch (x) { fail(id, 'levelMap.' + where + ' throws: ' + x.message); } };
+    if (L.backdrop) call('backdrop', () => L.backdrop(4000, Z.rnd));
+    if (L.zone) for (const th of ['cove', 'beach', 'town', 'harbour', 'forest', 'cape', 'reef', 'cave', 'volcano']) call('zone(' + th + ')', () => L.zone(Object.assign({}, Z, { theme: th, boss: th === 'volcano' })));
+    if (L.decor) for (const th of ['cove', 'forest', 'volcano']) for (const r of [0.05, 0.4, 0.95]) call('decor', () => L.decor(th, r, 1 - r, Z));
+    if (L.sign) call('sign', () => L.sign('⚓ Lock Harbour', 140, Z));
+    for (const st of ['locked', 'open', 'beaten', 'current']) if (L.node) call('node(' + st + ')', () => L.node(st, '7.3', st === 'locked' ? -1 : 2, false));
+    if (L.node) call('node(boss)', () => L.node('open', '16', 1, true));
+    if (L.start) call('start', () => L.start());
+    if (L.pin) call('pin', () => L.pin());
+    if (L.road) for (const k of ['todo', 'done']) if (L.road[k] && L.road[k].length !== 3) fail(id, 'levelMap.road.' + k + ' needs 3 colours');
+    if (L.defs && /id="(?!' + id + ')/.test(L.defs)) { const bad = (L.defs.match(/id="([^"]+)"/g) || []).filter(x => !x.startsWith('id="' + id)); if (bad.length) fail(id, 'levelMap.defs ids must start with the skin id: ' + bad.slice(0, 3).join(' ')); }
+  }
   if (s.map) {
     if (s.map.sea && s.map.sea.length !== 9) fail(id, 'map.sea must have 9 colours');
     if (s.map.ramp && s.map.ramp.length !== 4) fail(id, 'map.ramp must have 4 colours');
