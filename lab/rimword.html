@@ -2,9 +2,10 @@
 <!--
   RIM WORD (lab front end: the puzzle as a word ladder, the map never shown until you win)
 
-  What the player sees: five wooden letter tiles spelling a non-word, a budget of flips (the level's par), and a
+  What the player sees: five wooden letter tiles spelling a non-word, a flip counter against the level's par, and a
   ladder of the words so far. Tap a tile: the letters it can flip to right now pop up above it; pick one and the tile
-  flips. A tile with nothing to offer is pinned. Spell a real word within the budget and you win; then the map
+  flips. A tile with nothing to offer is pinned. Every flip can be flipped back (a Kempe swap undoes itself), so you
+  can wander freely; spell a real word and you win, with stars for doing it in par; then the map
   underneath is revealed, with the swaps you made.
 
   Mapping (every flip is exactly one g.swap(K)):
@@ -14,7 +15,9 @@
     a real English word           = a fill (the rim down to three elements); every other state is a word-like
                                     non-word, and a state two or more swaps from a fill is never one letter from any
                                     common word, so the letters give no false scent
-    flips left                    = the level's par; the states are the swap graph within par swaps of the start
+    par                           = the fewest swaps to a fill. The words are charted for every state within R swaps
+                                    of the start (R = par + 1 where the search found labels, else par); at a state R
+                                    swaps out the page says the chart ends there and only the charted flips show
   The labels come from tools/word_graph.js (lab/rimword-data.js), which searches for strings with those properties.
   The page keeps a LAB.game() instance in step (each flip finds the chain whose swap gives the next colouring), so it
   embeds and reports like every other front end.
@@ -42,9 +45,11 @@
   .icon { width: 36px; height: 36px; border-radius: 10px; border: 1px solid var(--line); background: var(--card); cursor: pointer; font-size: 17px; line-height: 1; }
   .icon:active { transform: translateY(1px); }
   .icon:disabled { opacity: .35; cursor: default; }
-  #budget { margin: 18px 0 4px; display: flex; justify-content: center; gap: 7px; }
-  #budget i { width: 13px; height: 13px; border-radius: 50%; background: var(--wood2); box-shadow: inset 0 -2px 0 var(--edge); transition: transform .25s, opacity .25s; }
-  #budget i.used { opacity: .22; transform: scale(.75); }
+  #budget { margin: 18px 0 4px; display: flex; justify-content: center; align-items: baseline; gap: 10px; font-variant-numeric: tabular-nums; }
+  #budget b { font: 800 1.5rem Fraunces, Georgia, serif; }
+  #budget span { color: var(--dim); font-size: .86rem; }
+  #budget .stars { letter-spacing: .1em; color: var(--wood2); font-size: 1rem; }
+  #cue.edge { color: var(--bad); }
   #cue { text-align: center; color: var(--dim); font-size: .86rem; min-height: 1.3em; }
   #board { position: relative; margin: 22px auto 10px; display: flex; gap: clamp(6px, 2.4vw, 12px); justify-content: center; }
   .tile { position: relative; width: clamp(52px, 16.5vw, 82px); aspect-ratio: 1; perspective: 400px; cursor: pointer; }
@@ -98,13 +103,13 @@
     <button class="icon" id="undo" aria-label="Undo" title="Undo">&#8630;</button>
     <button class="icon" id="again" aria-label="Start over" title="Start over">&#8634;</button>
   </header>
-  <div id="budget" aria-label="Flips left"></div>
+  <div id="budget" aria-live="polite"></div>
   <div id="cue">Tap a tile to see what it can become.</div>
   <div id="board" role="group" aria-label="Letter tiles"></div>
   <div id="tray" aria-live="polite"></div>
   <section id="ladder"><h2>Your ladder</h2><ol id="steps"></ol></section>
   <section id="reveal"><p id="revealNote">The map underneath. Each flip was one Kempe swap.</p><canvas id="map" width="600" height="600"></canvas></section>
-  <p class="help">Every tile flip is a swap in a hidden map colouring. Real words are exactly the colourings where the hole can be filled. A tile only offers the letters a swap would give it.</p>
+  <p class="help">Every tile flip is a swap in a hidden map colouring. Real words are exactly the colourings where the hole can be filled. A tile only offers the letters a swap would give it, and every flip can be flipped back.</p>
 </main>
 <div id="win" role="dialog" aria-live="polite"><div><h3 id="winWord"></h3><p id="winNote"></p><button id="winMap">See the map</button><button class="alt" id="winAgain">Play again</button></div></div>
 <script src="../levels.js"></script>
@@ -130,21 +135,25 @@
     g = LAB.game(id);
     if (g.canon() !== D.col[0].replace('.', '')) console.warn('rimword: start state does not match the level');
     const L = g.level; $('title').firstChild.textContent = L.title + ' ';
-    $('sub').textContent = 'Level ' + L.num + ' · make a word in ' + D.par + ' flip' + (D.par > 1 ? 's' : '');
+    $('sub').textContent = 'Level ' + L.num + ' · par ' + D.par + ' flip' + (D.par > 1 ? 's' : '');
     path = [0]; open = -1; done = false; $('win').classList.remove('on'); $('reveal').classList.remove('on');
     render();
   }
   const cur = () => path[path.length - 1];
-  const left = () => D.par - (path.length - 1);
+  const flips = () => path.length - 1;
+  const R = () => D.R || D.par;
+  const atEdge = () => !done && D.d[cur()] >= R();   // charted no further: only the flips back inward exist here
+  const stars = n => n <= D.par ? 3 : n <= D.par + 2 ? 2 : 1;
   // the moves on tile i: neighbours of the current state whose string differs there
   function options(i) {
-    if (done || left() <= 0) return [];
+    if (done) return [];
     const s = D.w[cur()];
     return nb[cur()].filter(j => D.w[j][i] !== s[i]).map(j => ({ j, ch: D.w[j][i] })).sort((a, b) => a.ch < b.ch ? -1 : 1);
   }
   function render(flipAt) {
     const s = D.w[cur()];
-    $('budget').innerHTML = ''; for (let k = 0; k < D.par; k++) { const i = document.createElement('i'); if (k < D.par - left()) i.className = 'used'; $('budget').appendChild(i); }
+    const n = flips(), st = stars(Math.max(n, 1));
+    $('budget').innerHTML = '<b>' + n + '</b><span>flip' + (n === 1 ? '' : 's') + ' · par ' + D.par + '</span><span class="stars" aria-label="' + st + ' stars if you find a word now">' + '★'.repeat(st) + '☆'.repeat(3 - st) + '</span>';
     const B = $('board'); B.innerHTML = '';
     for (let i = 0; i < 5; i++) {
       const t = document.createElement('div'), opts = options(i);
@@ -162,11 +171,13 @@
       const a = document.createElement('span'); a.className = 'arrow'; a.textContent = s[open] + ' \u2192'; T.appendChild(a);
       options(open).forEach(o => { const b = document.createElement('button'); b.className = 'opt'; b.textContent = o.ch; b.setAttribute('aria-label', 'Flip tile ' + (open + 1) + ' to ' + o.ch.toUpperCase()); const i = open; b.onclick = e => { e.stopPropagation(); go(o.j, i); }; T.appendChild(b); });
     }
-    const st = cur();
-    $('cue').textContent = done ? 'A word! The hole can be filled.' : left() <= 0 ? 'Out of flips. Undo, or start over.' :
+    $('cue').classList.toggle('edge', atEdge());
+    $('cue').textContent = done ? 'A word! The hole can be filled.' : atEdge() ? 'The words are charted only this far. Flip back to explore elsewhere.' :
       open >= 0 ? 'Pick a letter for this tile.' : 'Tap a tile to see what it can become.';
     const ol = $('steps'); ol.innerHTML = '';
-    path.forEach((p, k) => {
+    const from = Math.max(0, path.length - 12);
+    if (from) { const li = document.createElement('li'); li.innerHTML = '<span></span><em>\u2026</em>'; ol.appendChild(li); }
+    path.forEach((p, k) => { if (k < from) return;
       const li = document.createElement('li'), w = D.w[p], prev = k ? D.w[path[k - 1]] : null;
       li.innerHTML = '<span>' + (k || '') + '</span><em>' + [...w].map((c, i) => prev && prev[i] !== c ? '<b class="ch">' + c + '</b>' : c).join('') + '</em>';
       if (D.won[p]) li.className = 'win'; ol.appendChild(li);
@@ -191,7 +202,7 @@
   }
   function win() {
     $('winWord').textContent = D.w[cur()];
-    const L = g.level; $('winNote').textContent = 'Spelled in ' + (path.length - 1) + ' flip' + (path.length > 2 ? 's' : '') + ' (par ' + D.par + '). Under the tiles, the hole now takes ' + LAB.ELEM[g.free()].name + '.';
+    const L = g.level; $('winNote').textContent = '★'.repeat(stars(flips())) + ' Spelled in ' + flips() + ' flip' + (flips() > 1 ? 's' : '') + ' (par ' + D.par + '). Under the tiles, the hole now takes ' + LAB.ELEM[g.free()].name + '.';
     $('win').classList.add('on');
     if (LAB.embedded) setTimeout(() => LAB.done(), 1800);
   }
