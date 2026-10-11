@@ -1,0 +1,695 @@
+<!doctype html>
+<!--
+  CANDY KEMPE (lab front end: a Candy-Crush-style candy board)
+
+  What the player sees: a glossy candy board on a sugary sky. Every map region is a jelly tile (its exact region
+  shape, from g.cells, faintly tinted by the candy it holds) with one candy on it. Four flavours, each with its own
+  colour AND shape: a round red jelly, a blue wrapped sweet, a yellow star and a green drop. In the middle of the
+  board sits an empty chocolate-frosted tile (the hole) holding an empty sweet wrapper, ringed by sockets: one per
+  neighbouring candy, each showing that neighbour's flavour. Goal cue (bottom panel): "Fill the wrapper: clear a
+  flavour from the sockets". When the sockets show one flavour fewer, that missing candy drops into the wrapper.
+
+  Why the classic Candy Crush gesture is exactly a Kempe move: two neighbouring candies of flavours a and b always
+  lie in the same {a, b} chain (the connected run of a- and b-candies through them). "Swap two neighbours" therefore
+  names one chain, K = g.chainAt(u, g.col[v]), and swapping a <-> b along K is the one move that keeps the board
+  legal (no two touching candies alike). There is no match-3 here: matching is the opposite of colouring. The payoff
+  is the chain reaction along K and the crush at the hole.
+
+  Mapping (faithful; every gesture is exactly one g.swap(K) or nothing):
+    tile + candy u            = region u, its flavour = g.col[u] (flavour k is element k: fire, water, air, earth)
+    chocolate tile + wrapper  = the hole g.hole; its sockets = g.rim (one socket per rim region, showing g.col[x])
+    DRAG candy u toward a     = K = g.chainAt(u, g.col[v]) where v is the neighbour under the finger, else the
+    neighbouring candy v        neighbour nearest the drag direction (forgiving angle snap). While dragging, every
+                                candy of K glows and the chain's links light up; if K.rimHits >= 2 the rim sockets
+                                it would flip both show a lock (that swap cannot empty a flavour from the sockets).
+                                On release, u and v slide past each other (the Candy Crush swap; it is literal:
+                                afterwards u holds v's flavour and v holds u's), then the swap ripples through the
+                                rest of K one BFS layer per beat, each candy flipping to its new flavour with a
+                                rising combo pitch and "Sweet! / Tasty! / Delicious! / Divine!" by chain size.
+    TAP candy u               = a radial picker of the other flavours (g.NC - 1 of them). Picking b swaps
+                                K = g.chainAt(u, b), rippling out from u. This reaches the one-candy chains (a candy
+                                with no b-neighbour just turns into b), as on every other page.
+    K.web === true            = g.swap is NOT called (that chain is every a and b on the board, so swapping it only
+                                renames two flavours): the candies start to swap, wobble and spring back, "no change".
+    g.won()                   = the sockets show g.goal flavours (3 on a 4-flavour board); the missing flavour
+                                g.free() drops into the wrapper, sugar-crush burst, "Sugar Crush!", stars by moves
+                                vs g.level.par (3 at par, 2 within par + 2, else 1, as in the app), then LAB.done().
+    undo / restart buttons    = g.undo() / g.reset() (also driven by the app's { fth, cmd } messages via core.js).
+  ?lvl= picks the level, ?embed=1 runs inside the app, &hud=full|compact hides this page's level title and stars.
+  Sound starts only after the first gesture; prefers-reduced-motion drops slides, ripples, particles and wobbles.
+  Test hook: window.CRUSH = { g, play(u, b, v), center(u), busy() }.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>Candy Kempe</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Nunito:wght@800;900&display=swap" rel="stylesheet">
+<style>
+  :root { --ink: #4a1a5c; --pink: #ff5fa8; --cream: #fff6e8; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #6b3fb8; touch-action: none;
+    -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent;
+    font-family: Nunito, 'Avenir Next', 'Trebuchet MS', system-ui, sans-serif; }
+  #cv { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; }
+  .lil { font-family: 'Lilita One', 'Arial Rounded MT Bold', 'Trebuchet MS', system-ui, sans-serif; font-weight: 400; }
+  #top { position: fixed; left: 0; right: 0; top: 0; height: 52px; display: flex; align-items: center; gap: 8px;
+    padding: 0 10px; padding-top: env(safe-area-inset-top); box-sizing: border-box; z-index: 2; pointer-events: none; }
+  #lvl { flex: 1; min-width: 0; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    font-size: clamp(14px, 4.2vw, 20px); letter-spacing: .02em; text-shadow: 0 2px 0 #7a2a8c, 0 0 8px rgba(122,42,140,.5); }
+  #lvl small { font-family: Nunito, system-ui, sans-serif; font-weight: 900; font-size: .62em; opacity: .85; display: block; letter-spacing: .08em; }
+  body.app #lvl { visibility: hidden; }
+  .pill { display: flex; align-items: baseline; gap: 4px; padding: 4px 12px 5px; border-radius: 999px; color: var(--ink);
+    background: linear-gradient(#fffaf2, #ffe1ef); border: 3px solid #fff; box-shadow: 0 3px 0 #b33a86, inset 0 -3px 0 #ffc4df; }
+  .pill small { font-weight: 900; font-size: 10px; letter-spacing: .08em; color: #b33a86; }
+  .pill b { font-family: 'Lilita One', system-ui, sans-serif; font-weight: 400; font-size: 22px; line-height: 1; }
+  .pill span { font-weight: 900; font-size: 11px; color: #8a5a9c; white-space: nowrap; }
+  .pill.over b { color: #d2283c; }
+  #top button, #again2 { pointer-events: auto; width: 40px; height: 40px; padding: 0; border-radius: 50%; cursor: pointer;
+    border: 3px solid #fff; color: #fff; font: 900 20px/1 system-ui, sans-serif;
+    background: radial-gradient(circle at 35% 30%, #ff9ccc, #ff4f9a 55%, #c51f6e); box-shadow: 0 3px 0 #8e1450; }
+  #top button:active { transform: translateY(3px); box-shadow: none; }
+  #top button:disabled { opacity: .45; }
+  #goal { position: fixed; left: 10px; right: 10px; margin: 0 auto; max-width: 480px; bottom: max(8px, env(safe-area-inset-bottom)); z-index: 2;
+    display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 20px;
+    box-sizing: border-box; background: linear-gradient(#fffaf2, #ffe6f2); border: 3px solid #fff; color: var(--ink);
+    box-shadow: 0 4px 0 #b33a86, 0 8px 18px rgba(60,10,80,.35); pointer-events: none; white-space: nowrap; }
+  #goal .t { flex: 1; display: flex; flex-direction: column; line-height: 1.1; min-width: 0; overflow: hidden; }
+  #goal .t span { overflow: hidden; text-overflow: ellipsis; }
+  #goal .t b { font-family: 'Lilita One', system-ui, sans-serif; font-weight: 400; font-size: 18px; color: #7a2a8c; }
+  #goal .t span { font-weight: 800; font-size: 11px; color: #8a5a9c; }
+  #counts { display: flex; gap: 4px; flex: none; }
+  .cnt { position: relative; width: 34px; height: 38px; border-radius: 10px; background: #fff; box-shadow: inset 0 -3px 0 #f2d3e6; }
+  .cnt canvas { position: absolute; left: 3px; top: 1px; width: 28px; height: 28px; }
+  .cnt i { position: absolute; right: 2px; bottom: 1px; font: 900 11px/1 Nunito, system-ui, sans-serif; color: #7a2a8c; font-style: normal; }
+  .cnt.zero { background: #fff7c2; box-shadow: inset 0 -3px 0 #f0c84a, 0 0 0 2px #ffd23a; }
+  .cnt.zero i { color: #2a9a3a; }
+  #wrapIc { width: 34px; height: 34px; flex: none; }
+  #toast { position: fixed; left: 50%; top: 62px; transform: translate(-50%, -8px); z-index: 3; opacity: 0; pointer-events: none;
+    padding: 7px 14px; border-radius: 999px; background: rgba(54,18,84,.9); color: #fff; font-weight: 900; font-size: 14px;
+    transition: opacity .25s, transform .25s; white-space: nowrap; max-width: calc(100vw - 24px); overflow: hidden; text-overflow: ellipsis; }
+  #toast.on { opacity: 1; transform: translate(-50%, 0); }
+  #win { position: fixed; left: 50%; bottom: max(10px, env(safe-area-inset-bottom)); transform: translate(-50%, 30px); z-index: 4;
+    display: none; flex-direction: column; align-items: center; gap: 4px; padding: 10px 18px 12px; border-radius: 24px;
+    background: linear-gradient(#fffaf2, #ffe1ef); border: 4px solid #fff; color: var(--ink); opacity: 0;
+    box-shadow: 0 5px 0 #b33a86, 0 14px 30px rgba(60,10,80,.45); transition: opacity .35s, transform .35s cubic-bezier(.3,1.6,.5,1); }
+  #win.on { display: flex; }
+  #win.show { opacity: 1; transform: translate(-50%, 0); }
+  #stars { display: flex; gap: 6px; }
+  #stars svg { width: 44px; height: 44px; transform: scale(0); transition: transform .35s cubic-bezier(.3,1.8,.5,1); }
+  #stars svg.in { transform: scale(1); }
+  #stars svg:nth-child(2) { margin-top: -10px; width: 52px; height: 52px; }
+  #wtxt { font-weight: 900; font-size: 13px; color: #8a5a9c; white-space: nowrap; }
+  #again2 { width: auto; height: auto; border-radius: 999px; padding: 8px 18px; font: 400 18px/1 'Lilita One', system-ui, sans-serif; letter-spacing: .03em; }
+  #again2:active { transform: translateY(3px); box-shadow: none; }
+  body.app #stars, body.app #wtxt { display: none; }
+  body.won #goal { display: none; }
+  @media (max-width: 370px) { .pill span { display: none; } .cnt { width: 30px; } .cnt canvas { left: 1px; } }
+  @media (prefers-reduced-motion: reduce) { #win, #toast, #stars svg { transition: none; } }
+</style>
+</head>
+<body>
+<canvas id="cv"></canvas>
+<div id="top">
+  <div id="lvl" class="lil"></div>
+  <div class="pill" id="mv"><small>MOVES</small><b id="mvN">0</b><span id="mvP"></span></div>
+  <button id="undo" aria-label="Undo" title="Undo">&#8630;</button>
+  <button id="again" aria-label="Start over" title="Start over">&#8634;</button>
+</div>
+<div id="goal"><canvas id="wrapIc" width="68" height="68"></canvas><div class="t"><b>Fill the wrapper</b><span id="gtxt">clear a flavour from its sockets</span></div><div id="counts"></div></div>
+<div id="toast"></div>
+<div id="win"><div id="stars"></div><div id="wtxt"></div><button id="again2">Play again</button></div>
+<script src="../levels.js"></script>
+<script src="../layout.js"></script>
+<script src="core.js"></script>
+<script>
+(function () {
+  'use strict';
+  const g = LAB.game();
+  const N = g.n, HOLE = g.hole, NC = g.NC || 4, RIM = g.rim, RIMS = new Set(RIM);
+  const HUD = new URLSearchParams(location.search).get('hud');
+  const IN_APP = HUD === 'full' || HUD === 'compact' || !!LAB.embedded;
+  if (IN_APP) document.body.classList.add('app');
+  const RM = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
+  const $ = id => document.getElementById(id);
+  const cv = $('cv'), ctx = cv.getContext('2d');
+  const now = () => performance.now();
+  const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
+  const lerp = (a, b, t) => a + (b - a) * t;
+  const hash = (i, k) => { const s = Math.sin(i * 127.1 + k * 311.7) * 43758.5453; return s - Math.floor(s); };
+  const easeOut = t => 1 - Math.pow(1 - t, 3);
+  const easeIO = t => t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+  const bounce = t => { const n1 = 7.5625, d1 = 2.75; if (t < 1 / d1) return n1 * t * t; if (t < 2 / d1) return n1 * (t -= 1.5 / d1) * t + .75; if (t < 2.5 / d1) return n1 * (t -= 2.25 / d1) * t + .9375; return n1 * (t -= 2.625 / d1) * t + .984375; };
+
+  // ---------------------------------------------------------------- flavours (colour AND shape)
+  const FL = [
+    { name: 'cherry jelly', hi: '#ffb3b8', c: '#f0263f', d: '#8e0a1f', tint: '#ff4d6a' },
+    { name: 'blueberry wrap', hi: '#bfe6ff', c: '#1f86f0', d: '#0b3b8c', tint: '#3aa0ff' },
+    { name: 'lemon star', hi: '#fffbc4', c: '#ffc41a', d: '#a86200', tint: '#ffd23a' },
+    { name: 'lime drop', hi: '#d4ffb0', c: '#33c43f', d: '#0c6a1e', tint: '#4fe060' },
+  ];
+  function candyPath(e, r) {
+    const p = new Path2D();
+    if (e === 0) { p.ellipse(0, 0, r * .9, r * .84, 0, 0, Math.PI * 2); }
+    else if (e === 1) {
+      const h = r * .56, q = r * .2;
+      p.moveTo(-h + q, -h); p.lineTo(h - q, -h); p.quadraticCurveTo(h, -h, h, -h + q);
+      p.lineTo(h, -r * .14); p.lineTo(r * .98, -r * .46); p.quadraticCurveTo(r * 1.04, 0, r * .98, r * .46); p.lineTo(h, r * .14);
+      p.lineTo(h, h - q); p.quadraticCurveTo(h, h, h - q, h); p.lineTo(-h + q, h); p.quadraticCurveTo(-h, h, -h, h - q);
+      p.lineTo(-h, r * .14); p.lineTo(-r * .98, r * .46); p.quadraticCurveTo(-r * 1.04, 0, -r * .98, -r * .46); p.lineTo(-h, -r * .14);
+      p.lineTo(-h, -h + q); p.quadraticCurveTo(-h, -h, -h + q, -h); p.closePath();
+    } else if (e === 2) {
+      const R = r * .98, ri = r * .5;
+      for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + i * Math.PI / 5, rr = i % 2 ? ri : R; i ? p.lineTo(rr * Math.cos(a), rr * Math.sin(a) + r * .06) : p.moveTo(rr * Math.cos(a), rr * Math.sin(a) + r * .06); }
+      p.closePath();
+    } else {
+      const cy = r * .26, rho = r * .66, a1 = -Math.PI / 2 + Math.acos(rho / (r + cy) * .98), a2 = -Math.PI / 2 - Math.acos(rho / (r + cy) * .98);
+      p.moveTo(0, -r * .98); p.lineTo(rho * Math.cos(a1), cy + rho * Math.sin(a1)); p.arc(0, cy, rho, a1, a2 + Math.PI * 2); p.closePath();
+    }
+    return p;
+  }
+  const pathCache = {};
+  const cpath = (e, r) => { const k = e + ':' + Math.round(r * 4); return pathCache[k] || (pathCache[k] = candyPath(e, Math.round(r * 4) / 4)); };
+  // draw candy e centred at (x, y), radius r; o: { sx, sy, rot, a (alpha), glow }
+  function drawCandy(c, e, x, y, r, o) {
+    if (e < 0 || r < 1) return;
+    o = o || {};
+    const F = FL[e], P = cpath(e, r);
+    c.save(); c.translate(x, y); if (o.rot) c.rotate(o.rot); c.scale(o.sx || 1, o.sy || 1);
+    if (o.a !== undefined) c.globalAlpha *= o.a;
+    if (o.glow) { const gg = c.createRadialGradient(0, 0, r * .6, 0, 0, r * 1.7); gg.addColorStop(0, 'rgba(255,255,255,' + (.75 * o.glow) + ')'); gg.addColorStop(1, 'rgba(255,240,180,0)'); c.fillStyle = gg; c.beginPath(); c.arc(0, 0, r * 1.7, 0, Math.PI * 2); c.fill(); }
+    c.save(); c.translate(0, r * .13); c.fillStyle = 'rgba(30,0,40,.32)'; c.fill(P); c.restore();
+    const gr = c.createRadialGradient(-r * .32, -r * .38, r * .08, 0, 0, r * 1.1);
+    gr.addColorStop(0, F.hi); gr.addColorStop(.45, F.c); gr.addColorStop(1, F.d);
+    c.fillStyle = gr; c.fill(P);
+    c.lineJoin = 'round';
+    if (e === 2) { c.strokeStyle = gr; c.lineWidth = r * .2; c.stroke(P); }
+    c.save(); c.clip(P);
+    if (e === 1) { c.strokeStyle = 'rgba(255,255,255,.28)'; c.lineWidth = r * .13; for (let k = -2; k <= 2; k++) { c.beginPath(); c.moveTo(k * r * .38 - r * .5, r * .6); c.lineTo(k * r * .38 + r * .5, -r * .6); c.stroke(); } c.fillStyle = 'rgba(0,30,90,.22)'; c.fillRect(-r * 1.1, -r * .6, r * .5, r * 1.2); c.fillRect(r * .6, -r * .6, r * .5, r * 1.2); }
+    if (e === 0) { c.fillStyle = 'rgba(255,255,255,.18)'; c.beginPath(); c.ellipse(r * .1, r * .5, r * .55, r * .2, 0, 0, Math.PI * 2); c.fill(); }
+    c.fillStyle = 'rgba(80,0,40,.18)'; c.beginPath(); c.ellipse(r * .25, r * .55, r * .9, r * .5, -.3, 0, Math.PI * 2); c.fill();
+    c.restore();
+    c.lineWidth = Math.max(1, r * .07); c.strokeStyle = F.d; c.globalAlpha *= .85; c.stroke(P); c.globalAlpha /= .85;
+    // gloss
+    const hx = e === 3 ? -r * .2 : -r * .3, hy = e === 3 ? 0 : -r * .36;
+    const gl = c.createLinearGradient(0, hy - r * .25, 0, hy + r * .25); gl.addColorStop(0, 'rgba(255,255,255,.95)'); gl.addColorStop(1, 'rgba(255,255,255,.1)');
+    c.fillStyle = gl; c.beginPath(); c.ellipse(hx, hy, r * (e === 2 ? .22 : .3), r * (e === 2 ? .13 : .17), -.6, 0, Math.PI * 2); c.fill();
+    c.fillStyle = 'rgba(255,255,255,.9)'; c.beginPath(); c.arc(r * .38, r * .22, r * .07, 0, Math.PI * 2); c.fill();
+    c.restore();
+  }
+
+  // ---------------------------------------------------------------- geometry (region polygons -> screen)
+  function inside(pt, poly) {
+    let c = false;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) { const a = poly[i], b = poly[j]; if ((a[1] > pt[1]) !== (b[1] > pt[1]) && pt[0] < (b[0] - a[0]) * (pt[1] - a[1]) / (b[1] - a[1]) + a[0]) c = !c; }
+    return c;
+  }
+  function edgeDist(pt, poly) {
+    let m = Infinity;
+    for (let i = 0; i < poly.length; i++) { const a = poly[i], b = poly[(i + 1) % poly.length], dx = b[0] - a[0], dy = b[1] - a[1], L2 = dx * dx + dy * dy || 1; let t = ((pt[0] - a[0]) * dx + (pt[1] - a[1]) * dy) / L2; t = clamp(t, 0, 1); m = Math.min(m, Math.hypot(a[0] + dx * t - pt[0], a[1] + dy * t - pt[1])); }
+    return m;
+  }
+  function pole(poly) {
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    poly.forEach(p => { x0 = Math.min(x0, p[0]); y0 = Math.min(y0, p[1]); x1 = Math.max(x1, p[0]); y1 = Math.max(y1, p[1]); });
+    let best = [(x0 + x1) / 2, (y0 + y1) / 2, -1], step = Math.max(x1 - x0, y1 - y0) / 20;
+    const probe = (x, y) => { const p = [x, y]; if (!inside(p, poly)) return; const d = edgeDist(p, poly); if (d > best[2]) best = [x, y, d]; };
+    for (let x = x0 + step / 2; x < x1; x += step) for (let y = y0 + step / 2; y < y1; y += step) probe(x, y);
+    for (let k = 0; k < 2; k++) { const c = best.slice(); step /= 4; for (let i = -4; i <= 4; i++) for (let j = -4; j <= 4; j++) probe(c[0] + i * step, c[1] + j * step); }
+    return best;
+  }
+  // fallback when layout.js has no cells for this map: Voronoi-free "bubble" tiles round g.pos
+  function fallbackCells() {
+    return g.pos.map(p => { const out = []; for (let k = 0; k < 16; k++) { const a = k / 16 * Math.PI * 2; out.push([p[0] + .12 * Math.cos(a), p[1] + .12 * Math.sin(a)]); } return out; });
+  }
+  const CELLS = g.cells || fallbackCells();
+  let W = 0, H = 0, DPR = 1, G = null, bgC = null;
+  const TOP = 56, BOT = 70;
+  function subdivide(poly, step) {     // split long edges so a warped border bends smoothly
+    const out = [];
+    for (let i = 0; i < poly.length; i++) { const a = poly[i], b = poly[(i + 1) % poly.length], m = Math.max(1, Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) / step)); for (let j = 0; j < m; j++) out.push([a[0] + (b[0] - a[0]) * j / m, a[1] + (b[1] - a[1]) * j / m]); }
+    return out;
+  }
+  const bounds = cells => { let bx0 = Infinity, by0 = Infinity, bx1 = -Infinity, by1 = -Infinity; cells.forEach(c => c.forEach(p => { bx0 = Math.min(bx0, p[0]); by0 = Math.min(by0, p[1]); bx1 = Math.max(bx1, p[0]); by1 = Math.max(by1, p[1]); })); return [bx0, by0, bx1, by1]; };
+  // Inflate the hole (a fisheye centred on it): d -> Rw (d / Rw)^0.5 inside a disc of radius Rw that stays inside the
+  // board, identity outside. A homeomorphism of the board, so every border (and so every adjacency) is kept exactly;
+  // it only gives the chocolate tile room for the wrapper and its sockets.
+  const WARPED = (() => {
+    const [bx0, by0, bx1, by1] = bounds(CELLS), sz = Math.max(bx1 - bx0, by1 - by0), h = pole(CELLS[HOLE]);
+    const Rw = Math.min(.3 * sz, h[0] - bx0, bx1 - h[0], h[1] - by0, by1 - h[1]);
+    return CELLS.map(c => subdivide(c, sz / 90).map(p => { const dx = p[0] - h[0], dy = p[1] - h[1], d = Math.hypot(dx, dy); if (d >= Rw || d < 1e-9) return p; const k = Rw * Math.sqrt(d / Rw) / d; return [h[0] + dx * k, h[1] + dy * k]; }));
+  })();
+  function buildGeom() {
+    const [bx0, by0, bx1, by1] = bounds(WARPED);
+    const pad = Math.max(16, Math.min(W, H) * .035), fr = Math.max(10, Math.min(18, Math.min(W, H) * .028));
+    const aw = W - 2 * pad - 2 * fr, ah = H - TOP - BOT - 2 * pad - 2 * fr;
+    const bw = bx1 - bx0, bh = by1 - by0;
+    let sx = aw / bw, sy = ah / bh; const s = Math.min(sx, sy); sx = Math.min(sx, s * 1.2); sy = Math.min(sy, s * 1.55);
+    const cx = W / 2, cy = TOP + pad + fr + ah / 2, mx = (bx0 + bx1) / 2, my = (by0 + by1) / 2;
+    const tr = p => [cx + (p[0] - mx) * sx, cy - (p[1] - my) * sy];
+    const polys = WARPED.map(c => c.map(tr));
+    const poles = polys.map(pole);
+    const box = { x: cx - bw * sx / 2, y: cy - bh * sy / 2, w: bw * sx, h: bh * sy, fr };
+    const ds = poles.filter((_, u) => u !== HOLE).map(p => p[2]).sort((a, b) => a - b);
+    const med = ds[Math.floor(ds.length / 2)] || 20;
+    const Rcap = clamp(med * .8, 12, 40);
+    const rr = poles.map(p => Math.max(8, Math.min(Rcap, p[2] * .84)));
+    const gap = clamp(Rcap * .16, 2.5, 6);
+    // the hole: wrapper at its pole, sockets on a ring pointing at each rim candy
+    const hp = poles[HOLE], hd = hp[2];
+    const ring = hd * .7, sr = clamp(Math.min(hd * .26, ring * Math.sin(Math.PI / Math.max(3, RIM.length)) * .78), 5, Rcap * .55);
+    const sockets = RIM.map(x => { const a = Math.atan2(poles[x][1] - hp[1], poles[x][0] - hp[0]); return { x, a, px: hp[0] + ring * Math.cos(a), py: hp[1] + ring * Math.sin(a) }; });
+    // spread sockets apart if two point almost the same way
+    for (let it = 0; it < 30; it++) for (let i = 0; i < sockets.length; i++) for (let j = 0; j < sockets.length; j++) {
+      if (i === j) continue; let d = sockets[j].a - sockets[i].a; d = Math.atan2(Math.sin(d), Math.cos(d));
+      const need = 2.3 * sr / ring; if (Math.abs(d) < need) { const push = (need - Math.abs(d)) / 2 * (d >= 0 ? 1 : -1); sockets[i].a -= push; sockets[j].a += push; }
+    }
+    sockets.forEach(s => { s.px = hp[0] + ring * Math.cos(s.a); s.py = hp[1] + ring * Math.sin(s.a); });
+    const wrapR = Math.max(6, Math.min(ring - sr * 1.7, Rcap));
+    return { polys, poles, rr, Rcap, gap, box, hp, hd, sockets, sr, wrapR };
+  }
+  function buildBg() {
+    bgC = document.createElement('canvas'); bgC.width = Math.round(W * DPR); bgC.height = Math.round(H * DPR);
+    const c = bgC.getContext('2d'); c.scale(DPR, DPR);
+    const sky = c.createLinearGradient(0, 0, 0, H); sky.addColorStop(0, '#ff9ccf'); sky.addColorStop(.45, '#b26be0'); sky.addColorStop(1, '#4b3fb0');
+    c.fillStyle = sky; c.fillRect(0, 0, W, H);
+    for (let k = 0; k < 26; k++) { // bokeh
+      const x = hash(k, 1) * W, y = hash(k, 2) * H, r = 10 + hash(k, 3) * Math.min(W, H) * .09;
+      const gg = c.createRadialGradient(x, y, 0, x, y, r); gg.addColorStop(0, 'rgba(255,255,255,' + (.08 + hash(k, 4) * .14) + ')'); gg.addColorStop(1, 'rgba(255,255,255,0)');
+      c.fillStyle = gg; c.beginPath(); c.arc(x, y, r, 0, Math.PI * 2); c.fill();
+    }
+    // lollipop hills at the bottom
+    c.fillStyle = 'rgba(255,255,255,.08)';
+    for (let k = 0; k < 5; k++) { const x = (k + .5) / 5 * W, r = W * .22; c.beginPath(); c.arc(x, H + r * .45, r, 0, Math.PI * 2); c.fill(); }
+    // the board frame: a candy-striped rounded rectangle
+    const b = G.box, fr = b.fr, R0 = Math.min(28, fr * 2);
+    const rrect = (cc, x, y, w, h, r) => { cc.beginPath(); cc.moveTo(x + r, y); cc.arcTo(x + w, y, x + w, y + h, r); cc.arcTo(x + w, y + h, x, y + h, r); cc.arcTo(x, y + h, x, y, r); cc.arcTo(x, y, x + w, y, r); cc.closePath(); };
+    c.save(); c.shadowColor = 'rgba(40,0,60,.45)'; c.shadowBlur = 24; c.shadowOffsetY = 8;
+    rrect(c, b.x - fr, b.y - fr, b.w + 2 * fr, b.h + 2 * fr, R0 + fr * .6); c.fillStyle = '#fff'; c.fill(); c.restore();
+    c.save(); rrect(c, b.x - fr, b.y - fr, b.w + 2 * fr, b.h + 2 * fr, R0 + fr * .6); c.clip();
+    c.fillStyle = '#fff'; c.fillRect(0, 0, W, H); c.strokeStyle = '#ff5fa8'; c.lineWidth = fr * .7;
+    for (let x = -H; x < W + H; x += fr * 1.8) { c.beginPath(); c.moveTo(x, b.y - fr - 2); c.lineTo(x + (b.h + 2 * fr + 4), b.y + b.h + fr + 2); c.stroke(); }
+    const sh = c.createLinearGradient(0, b.y - fr, 0, b.y + b.h + fr); sh.addColorStop(0, 'rgba(255,255,255,.35)'); sh.addColorStop(.5, 'rgba(255,255,255,0)'); sh.addColorStop(1, 'rgba(120,0,60,.18)');
+    c.fillStyle = sh; c.fillRect(0, 0, W, H); c.restore();
+    rrect(c, b.x - 2, b.y - 2, b.w + 4, b.h + 4, R0);
+    const inner = c.createLinearGradient(0, b.y, 0, b.y + b.h); inner.addColorStop(0, '#3b2a86'); inner.addColorStop(1, '#2a1f63');
+    c.fillStyle = inner; c.fill(); c.lineWidth = 3; c.strokeStyle = 'rgba(255,255,255,.7)'; c.stroke();
+    G.clip = new Path2D(); { const p = G.clip, x = b.x, y = b.y, w = b.w, h = b.h, r = R0 - 2; p.moveTo(x + r, y); p.arcTo(x + w, y, x + w, y + h, r); p.arcTo(x + w, y + h, x, y + h, r); p.arcTo(x, y + h, x, y, r); p.arcTo(x, y, x + w, y, r); p.closePath(); }
+    G.paths = G.polys.map(poly => { const p = new Path2D(); poly.forEach((q, i) => i ? p.lineTo(q[0], q[1]) : p.moveTo(q[0], q[1])); p.closePath(); return p; });
+    // sprinkles for the chocolate tile
+    G.sprinkles = []; const hp = G.hp;
+    for (let k = 0; k < 46; k++) { const a = hash(k, 9) * Math.PI * 2, d = Math.sqrt(hash(k, 10)) * G.hd * 2.2; G.sprinkles.push([hp[0] + d * Math.cos(a), hp[1] + d * Math.sin(a), hash(k, 11) * Math.PI, ['#ff5fa8', '#fff', '#5ad1ff', '#ffe14d', '#7dff8a'][k % 5]]); }
+  }
+  function layout() {
+    DPR = Math.min(window.devicePixelRatio || 1, 2.5);
+    W = innerWidth; H = innerHeight; cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR);
+    G = buildGeom(); buildBg();
+  }
+
+  // ---------------------------------------------------------------- sound (WebAudio, created on the first gesture)
+  let AC = null, master = null;
+  function audio() { if (AC) { if (AC.state === 'suspended') AC.resume(); return; } try { AC = new (window.AudioContext || window.webkitAudioContext)(); master = AC.createGain(); master.gain.value = .22; master.connect(AC.destination); } catch (_) { AC = null; } }
+  function tone(f, dur, type, vol, slide, delay) {
+    if (!AC) return;
+    try {
+      const o = AC.createOscillator(), gn = AC.createGain(), t = AC.currentTime + (delay || 0);
+      o.type = type || 'sine'; o.frequency.setValueAtTime(f, t); if (slide) o.frequency.exponentialRampToValueAtTime(f * slide, t + dur);
+      gn.gain.setValueAtTime(0.0001, t); gn.gain.exponentialRampToValueAtTime(vol || .3, t + .012); gn.gain.exponentialRampToValueAtTime(.0001, t + dur);
+      o.connect(gn); gn.connect(master); o.start(t); o.stop(t + dur + .03);
+    } catch (_) {}
+  }
+  const PENT = [0, 2, 4, 7, 9, 12, 14, 16, 19, 21, 24, 26, 28, 31, 33, 36];
+  const sfx = {
+    pick() { tone(880, .06, 'sine', .18, 1.5); },
+    swish() { tone(420, .14, 'triangle', .22, 1.9); },
+    pop(i) { const f = 523 * Math.pow(2, PENT[Math.min(i, PENT.length - 1)] / 12); tone(f, .14, 'sine', .32, 1.15); tone(f * 2, .08, 'triangle', .08, 1); },
+    boing() { tone(220, .3, 'sine', .35, .5); tone(330, .25, 'triangle', .12, .6, .05); },
+    undo() { tone(600, .08, 'triangle', .2, .7); },
+    word(n) { [0, 4, 7, 12].slice(0, 2 + Math.min(2, n)).forEach((s, i) => tone(784 * Math.pow(2, s / 12), .18, 'triangle', .18, 1, i * .07)); },
+    crush() { [0, 4, 7, 12, 16, 19, 24].forEach((s, i) => tone(523 * Math.pow(2, s / 12), .3, 'triangle', .22, 1, i * .07)); tone(90, .5, 'sine', .4, .5); },
+    star(i) { tone(1046 * Math.pow(2, [0, 4, 7][i] / 12), .3, 'sine', .25, 1.02); },
+  };
+
+  // ---------------------------------------------------------------- state
+  let shown = g.col.slice();                // what each candy shows right now (lags g.col during a ripple)
+  let tl = [], wtl = [];                    // timelines: { at, fn } (wtl = the win celebration)
+  let slide = null, flips = {}, wob = {}, pops = {}, parts = [], words = [], drag = null, picker = null;
+  let win = null, filled = -1, fillT0 = 0, lastSwap = null;
+  const BEAT = RM ? 0 : 115, SLIDE = RM ? 0 : 230;
+  const at = (t, fn) => tl.push({ at: t, fn }), wat = (t, fn) => wtl.push({ at: t, fn });
+  function runDue(list, t) { list.sort((a, b) => a.at - b.at); while (list.length && list[0].at <= t) list.shift().fn(); }
+  function finalize() { while (tl.length) runDue(tl, Infinity); slide = null; flips = {}; }
+  const busy = () => tl.length > 0 || !!slide;
+
+  // ---------------------------------------------------------------- particles and words
+  function burst(x, y, cols, n, spd) {
+    if (RM) return;
+    for (let i = 0; i < n; i++) { const a = Math.random() * Math.PI * 2, s = (spd || 1) * (60 + Math.random() * 220); parts.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s - 80, life: 0, max: .6 + Math.random() * .7, c: cols[i % cols.length], k: i % 3, r: 2 + Math.random() * 3.5, rot: Math.random() * 6 }); }
+  }
+  function say(txt, x, y, size, sub) { words.push({ txt, sub, x: clamp(x, size * 2.4, W - size * 2.4), y: clamp(y, TOP + size, H - BOT - size), size, t0: now() }); }
+  let toastT = 0;
+  function toast(msg) { const el = $('toast'); el.textContent = msg; el.classList.add('on'); clearTimeout(toastT); toastT = setTimeout(() => el.classList.remove('on'), 1800); }
+
+  // ---------------------------------------------------------------- the move
+  // BFS layers of chain K from the seeds (inside K, along map edges)
+  function layers(K, seeds) {
+    const seen = new Set(seeds), out = [seeds.slice()]; let front = seeds.slice();
+    while (front.length) { const nx = []; for (const u of front) for (const w of g.adj[u]) if (K.set.has(w) && !seen.has(w)) { seen.add(w); nx.push(w); } if (nx.length) out.push(nx); front = nx; }
+    return out;
+  }
+  const WORDS = [[12, 'Divine!'], [8, 'Delicious!'], [5, 'Tasty!'], [3, 'Sweet!']];
+  // u: the candy touched; b: the flavour it becomes; v: the neighbour it was dragged onto (or -1 for the picker)
+  function play(u, b, v) {
+    if (win || u === HOLE || u < 0 || b === g.col[u] || b < 0 || b >= NC) return false;
+    finalize();
+    const K = g.chainAt(u, b); if (!K) return false;
+    const t = now();
+    if (K.web) {   // renaming two flavours everywhere: no move
+      if (!RM && v >= 0) slide = { u, v, eu: shown[u], ev: shown[v], t0: t, dur: 520, back: true };
+      K.vs.forEach(w => { wob[w] = t + (RM ? 0 : 60); });
+      sfx.boing(); toast('No change: that renames ' + FL[K.pair[0]].name.split(' ')[0] + ' \u2194 ' + FL[K.pair[1]].name.split(' ')[0] + ' everywhere');
+      return false;
+    }
+    const before = g.col.slice();
+    g.swap(K);
+    const after = g.col.slice(); lastSwap = { K, t };
+    const seeds = v >= 0 ? [u, v] : [u], L = layers(K, seeds);
+    const sx = v >= 0 ? SLIDE : 0;
+    if (v >= 0) {
+      if (SLIDE) { slide = { u, v, eu: before[u], ev: before[v], t0: t, dur: SLIDE }; sfx.swish(); }
+      at(t + sx, () => { slide = null; shown[u] = after[u]; shown[v] = after[v]; pops[u] = pops[v] = now(); burstAt(u, 6); burstAt(v, 6); sfx.pop(0); });
+    } else {
+      at(t, () => { flipTo(u, after[u]); sfx.pop(0); });
+    }
+    L.forEach((lay, i) => { if (i === 0) return; at(t + sx + i * BEAT, () => { lay.forEach(w => flipTo(w, after[w])); sfx.pop(i); }); });
+    const end = t + sx + (L.length - 1) * BEAT + (RM ? 0 : 200);
+    at(end, () => {
+      let wd = null; for (const [n, s] of WORDS) if (K.size >= n) { wd = s; break; }
+      if (wd) { let mx = 0, my = 0; K.vs.forEach(w => { mx += G.poles[w][0]; my += G.poles[w][1]; }); say(wd, mx / K.size, my / K.size - G.Rcap, clamp(G.Rcap * .9 + K.size * 1.2, 26, 54), K.size + ' candy chain'); sfx.word(K.size >= 8 ? 2 : K.size >= 5 ? 1 : 0); }
+      if (g.won()) startWin();
+    });
+    hud();
+    return true;
+  }
+  function flipTo(w, e) { if (shown[w] === e && !flips[w]) return; flips[w] = { t0: now(), dur: RM ? 1 : 300, from: shown[w], to: e }; shown[w] = e; burstAt(w, 4); }
+  function burstAt(w, n) { const p = G.poles[w]; burst(p[0], p[1], [FL[shown[w]].c, FL[shown[w]].hi, '#fff'], n, .6); }
+  function transition() { // after undo / reset: flip every candy that differs
+    finalize(); words = []; const t = now();
+    for (let u = 0; u < N; u++) if (u !== HOLE && shown[u] !== g.col[u]) flips[u] = { t0: t + (RM ? 0 : (hash(u, 5) * 120)), dur: RM ? 1 : 260, from: shown[u], to: g.col[u] };
+    shown = g.col.slice(); hud();
+  }
+  // undo / reset arrive here whether from the buttons or from the app (core.js handles { fth, cmd })
+  g.on((_, info) => { if (info.type === 'undo' || info.type === 'reset') { endWin(); transition(); } });
+
+  // ---------------------------------------------------------------- win: the sugar crush
+  function startWin() {
+    const t = now(), e = g.free(); win = { t0: t, e, stars: g.moves <= g.level.par ? 3 : g.moves <= g.level.par + 2 ? 2 : 1 };
+    document.body.classList.add('won'); $('undo').disabled = true; hud();
+    const hp = G.hp;
+    wat(t + (RM ? 0 : 350), () => { filled = e; fillT0 = now(); });
+    wat(t + (RM ? 0 : 1050), () => {
+      sfx.crush(); burst(hp[0], hp[1], [FL[e].c, FL[e].hi, '#fff', '#ff5fa8', '#ffe14d'], 60, 1.6);
+      for (let u = 0; u < N; u++) if (u !== HOLE) { const d = Math.hypot(G.poles[u][0] - hp[0], G.poles[u][1] - hp[1]); wat(now() + (RM ? 0 : d * 1.6), () => { pops[u] = now(); burstAt(u, 5); }); }
+      win.banner = now();
+    });
+    wat(t + (RM ? 0 : 2000), () => {
+      const el = $('win'); el.classList.add('on'); requestAnimationFrame(() => el.classList.add('show'));
+      $('wtxt').textContent = g.moves + ' move' + (g.moves === 1 ? '' : 's') + ' · par ' + g.level.par + (g.moves <= g.level.par ? ' · perfect!' : '');
+      const st = $('stars'); st.innerHTML = '';
+      for (let i = 0; i < 3; i++) { st.insertAdjacentHTML('beforeend', starSvg(i < win.stars)); }
+      [...st.children].forEach((s, i) => wat(now() + (RM ? 0 : 250 * i + 150), () => { s.classList.add('in'); if (i < win.stars) sfx.star(i); }));
+    });
+    wat(t + (RM ? 600 : 3300), () => { LAB.done(); });
+  }
+  function endWin() { win = null; filled = -1; wtl = []; document.body.classList.remove('won'); const el = $('win'); el.classList.remove('show', 'on'); $('undo').disabled = false; }
+  const starSvg = on => '<svg viewBox="-12 -12 24 24"><path d="M0-10.5 3 -3.6 10.4-3.2 4.7 1.6 6.6 9 0 4.9-6.6 9-4.7 1.6-10.4-3.2-3-3.6Z" fill="' + (on ? '#ffd23a' : '#e9d4ef') + '" stroke="' + (on ? '#c27a00' : '#c9a8d6') + '" stroke-width="1.6" stroke-linejoin="round"/>' + (on ? '<path d="M-2.5-6.5 -1-3.4-4.6-3.1" fill="none" stroke="#fff8c8" stroke-width="1.4" stroke-linecap="round"/>' : '') + '</svg>';
+
+  // ---------------------------------------------------------------- HUD
+  const lvlEl = $('lvl');
+  lvlEl.innerHTML = '<small>LEVEL ' + g.level.num + '</small>' + (g.level.title || g.name || '');
+  $('mvP').textContent = '/ par ' + g.level.par;
+  const cnt = $('counts'), cntEls = [];
+  for (let e = 0; e < NC; e++) {
+    const d = document.createElement('div'); d.className = 'cnt'; const c = document.createElement('canvas'); c.width = c.height = 56;
+    const cc = c.getContext('2d'); cc.scale(2, 2); drawCandy(cc, e, 14, 14.5, 11);
+    const i = document.createElement('i'); d.appendChild(c); d.appendChild(i); cnt.appendChild(d); cntEls.push({ d, i });
+  }
+  $('gtxt').textContent = 'clear a flavour from its ' + RIM.length + ' sockets';
+  function drawWrapIcon() {
+    const c = $('wrapIc').getContext('2d'); c.clearRect(0, 0, 68, 68); c.save(); c.scale(2, 2);
+    c.fillStyle = '#5a2e14'; c.beginPath(); c.arc(17, 17, 16, 0, Math.PI * 2); c.fill();
+    if (win) drawCandy(c, win.e, 17, 17.5, 10); else drawWrapper(c, 17, 17, 9, .9);
+    c.restore();
+  }
+  function hud() {
+    $('mvN').textContent = g.moves; $('mv').classList.toggle('over', g.moves > g.level.par);
+    const rc = RIM.map(x => g.col[x]);
+    cntEls.forEach((o, e) => { const k = rc.filter(c => c === e).length; o.i.textContent = k ? '×' + k : '✓'; o.d.classList.toggle('zero', !k); });
+    drawWrapIcon();
+  }
+  function drawWrapper(c, x, y, r, a) { // an empty sweet wrapper outline (where the prize lands)
+    c.save(); c.translate(x, y); c.globalAlpha *= a;
+    c.setLineDash([r * .28, r * .22]); c.lineWidth = Math.max(1.2, r * .12); c.strokeStyle = '#ffe9c9'; c.lineJoin = 'round';
+    c.stroke(cpath(1, r)); c.setLineDash([]);
+    c.fillStyle = 'rgba(255,233,201,.12)'; c.fill(cpath(1, r));
+    c.restore();
+  }
+
+  // ---------------------------------------------------------------- render
+  function drawLock(c, x, y, s) {
+    c.save(); c.translate(x, y);
+    c.lineWidth = s * .22; c.strokeStyle = '#3a2a4a'; c.beginPath(); c.arc(0, -s * .2, s * .38, Math.PI, 0); c.stroke();
+    c.fillStyle = '#ffd23a'; c.strokeStyle = '#7a4a00'; c.lineWidth = Math.max(1, s * .1);
+    c.beginPath(); c.roundRect ? c.roundRect(-s * .55, -s * .25, s * 1.1, s * .85, s * .15) : c.rect(-s * .55, -s * .25, s * 1.1, s * .85); c.fill(); c.stroke();
+    c.fillStyle = '#7a4a00'; c.beginPath(); c.arc(0, s * .12, s * .12, 0, Math.PI * 2); c.fill();
+    c.restore();
+  }
+  function frame() {
+    requestAnimationFrame(frame);
+    const t = now();
+    runDue(tl, t); runDue(wtl, t);
+    if (slide && t > slide.t0 + slide.dur) slide = null;
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    ctx.drawImage(bgC, 0, 0, W, H);
+    const P = G.poles, R = G.rr;
+    // preview chain (while dragging, or the picker's hovered flavour)
+    let PK = null;
+    if (drag && drag.v >= 0) PK = g.chainAt(drag.u, g.col[drag.v]);
+    else if (picker && picker.hover >= 0) PK = g.chainAt(picker.u, picker.hover);
+    const pulse = .5 + .5 * Math.sin(t / 130);
+    // tiles
+    ctx.save(); ctx.clip(G.clip);
+    for (let u = 0; u < N; u++) {
+      const p = G.paths[u];
+      if (u === HOLE) {
+        const hp = G.hp, ch = ctx.createRadialGradient(hp[0] - G.hd * .3, hp[1] - G.hd * .4, 2, hp[0], hp[1], G.hd * 2.4);
+        ch.addColorStop(0, '#8a4f2a'); ch.addColorStop(.6, '#5a2e14'); ch.addColorStop(1, '#3a1a08');
+        ctx.fillStyle = ch; ctx.fill(p);
+        ctx.save(); ctx.clip(p); ctx.lineCap = 'round'; ctx.lineWidth = Math.max(2, G.Rcap * .09);
+        G.sprinkles.forEach(([x, y, a, col]) => { ctx.strokeStyle = col; ctx.beginPath(); ctx.moveTo(x - Math.cos(a) * 3, y - Math.sin(a) * 3); ctx.lineTo(x + Math.cos(a) * 3, y + Math.sin(a) * 3); ctx.stroke(); });
+        ctx.restore();
+        continue;
+      }
+      const e = shown[u], base = (hash(u, 1) * .1 + .36);
+      ctx.fillStyle = 'rgba(178,196,255,' + base + ')'; ctx.fill(p);
+      ctx.globalAlpha = .14; ctx.fillStyle = FL[e].tint; ctx.fill(p); ctx.globalAlpha = 1;
+      if (PK && PK.set.has(u)) { ctx.globalAlpha = .25 + .25 * pulse; ctx.fillStyle = '#fff6c0'; ctx.fill(p); ctx.globalAlpha = 1; }
+    }
+    ctx.lineJoin = 'round'; ctx.lineWidth = G.gap * 2; ctx.strokeStyle = '#2f2373';
+    for (let u = 0; u < N; u++) ctx.stroke(G.paths[u]);
+    ctx.lineWidth = 1.2; ctx.strokeStyle = 'rgba(255,255,255,.22)';
+    for (let u = 0; u < N; u++) if (u !== HOLE) ctx.stroke(G.paths[u]);
+    ctx.restore();
+    // rim links: a caramel thread from each socket to its candy
+    ctx.save(); ctx.lineCap = 'round';
+    G.sockets.forEach(s => { const q = P[s.x]; ctx.strokeStyle = 'rgba(255,214,140,.45)'; ctx.lineWidth = Math.max(2, G.sr * .3); ctx.setLineDash([2, 5]); ctx.beginPath(); ctx.moveTo(s.px, s.py); ctx.lineTo(q[0], q[1]); ctx.stroke(); });
+    ctx.restore();
+    // chain links for the preview
+    if (PK) {
+      ctx.save(); ctx.lineCap = 'round'; ctx.strokeStyle = PK.web ? 'rgba(200,200,220,.6)' : 'rgba(255,250,210,' + (.55 + .4 * pulse) + ')'; ctx.lineWidth = Math.max(3, G.Rcap * .16);
+      g.edges.forEach(([a, b]) => { if (PK.set.has(a) && PK.set.has(b)) { ctx.beginPath(); ctx.moveTo(P[a][0], P[a][1]); ctx.lineTo(P[b][0], P[b][1]); ctx.stroke(); } });
+      ctx.restore();
+    }
+    // the hole: wrapper + sockets
+    const hp = G.hp;
+    if (filled >= 0) {
+      const ft = RM ? 1 : clamp((t - fillT0) / 750, 0, 1), y0 = TOP - G.wrapR, y = lerp(y0, hp[1], bounce(ft));
+      ctx.save(); ctx.globalAlpha = .35 + .3 * pulse; const gg = ctx.createRadialGradient(hp[0], hp[1], 0, hp[0], hp[1], G.hd * 1.3); gg.addColorStop(0, '#fff3b0'); gg.addColorStop(1, 'rgba(255,243,176,0)'); ctx.fillStyle = gg; ctx.beginPath(); ctx.arc(hp[0], hp[1], G.hd * 1.3, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+      if (ft < 1) drawWrapper(ctx, hp[0], hp[1], G.wrapR, 1);
+      const sq = ft >= 1 ? 1 : (ft > .35 ? 1 - .12 * Math.sin((ft - .35) / .65 * Math.PI * 3) * (1 - ft) : 1);
+      drawCandy(ctx, filled, hp[0], y, G.wrapR * 1.05, { sx: 2 - sq, sy: sq, glow: ft >= 1 ? .6 + .4 * pulse : 0 });
+    } else {
+      const br = RM ? 1 : 1 + .05 * Math.sin(t / 400);
+      drawWrapper(ctx, hp[0], hp[1], G.wrapR * br, .95);
+    }
+    const lockSet = PK && !PK.web && PK.rimHits >= 2 ? PK.set : null;
+    G.sockets.forEach(s => {
+      ctx.fillStyle = '#2a1206'; ctx.beginPath(); ctx.arc(s.px, s.py + 1.5, G.sr * 1.12, 0, Math.PI * 2); ctx.fill();
+      const cup = ctx.createRadialGradient(s.px, s.py - G.sr * .4, 1, s.px, s.py, G.sr * 1.1); cup.addColorStop(0, '#c88a52'); cup.addColorStop(1, '#6b3a1a');
+      ctx.fillStyle = cup; ctx.beginPath(); ctx.arc(s.px, s.py, G.sr * 1.05, 0, Math.PI * 2); ctx.fill();
+      const e = shown[s.x], fl = flips[s.x], ft = fl ? clamp((t - fl.t0) / fl.dur, 0, 1) : 1;
+      drawCandy(ctx, fl && ft < .5 ? fl.from : e, s.px, s.py, G.sr * .82, { sx: fl ? Math.max(.05, Math.abs(Math.cos(Math.PI * ft))) : 1, glow: win ? .5 * pulse : 0 });
+      if (lockSet && lockSet.has(s.x)) drawLock(ctx, s.px + G.sr * .7, s.py - G.sr * .7, Math.max(9, G.sr * .95));
+    });
+    // candies
+    const order = [];
+    for (let u = 0; u < N; u++) if (u !== HOLE && !(slide && (u === slide.u || u === slide.v)) && !(drag && u === drag.u)) order.push(u);
+    order.forEach(u => drawOne(u, t, PK, pulse));
+    if (slide) {
+      const st = clamp((t - slide.t0) / slide.dur, 0, 1);
+      const k = slide.back ? Math.sin(st * Math.PI) * .42 * (1 - st * .3) : easeIO(st);
+      const a = P[slide.u], b = P[slide.v];
+      drawCandy(ctx, slide.ev, lerp(b[0], a[0], k), lerp(b[1], a[1], k), R[slide.v], { sx: 1 + .08 * Math.sin(st * Math.PI), sy: 1 - .08 * Math.sin(st * Math.PI) });
+      drawCandy(ctx, slide.eu, lerp(a[0], b[0], k), lerp(a[1], b[1], k), lerp(R[slide.u], R[slide.v], k) * (1 + .12 * Math.sin(st * Math.PI)));
+    }
+    if (drag) {
+      const u = drag.u, p = P[u]; let dx = drag.x - p[0], dy = drag.y - p[1]; const d = Math.hypot(dx, dy), lim = R[u] * .55;
+      if (d > lim) { dx *= lim / d; dy *= lim / d; }
+      drawCandy(ctx, shown[u], p[0] + dx, p[1] + dy, R[u] * 1.1, { glow: .7 });
+      if (drag.v >= 0 && PK) { // size badge
+        const q = P[drag.v], bx = (p[0] + q[0]) / 2, by = Math.min(p[1], q[1]) - R[u] * 1.3;
+        const txt = PK.web ? 'no change' : PK.size + (PK.size === 1 ? ' candy' : ' candies') + (PK.rimHits >= 2 ? '  • locked' : '');
+        ctx.font = '800 13px Nunito, system-ui, sans-serif'; const tw = ctx.measureText(txt).width + 18, x = clamp(bx, tw / 2 + 4, W - tw / 2 - 4), y = Math.max(TOP + 14, by);
+        ctx.fillStyle = PK.web ? 'rgba(70,60,90,.9)' : 'rgba(255,255,255,.95)'; ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x - tw / 2, y - 12, tw, 24, 12) : ctx.rect(x - tw / 2, y - 12, tw, 24); ctx.fill();
+        ctx.fillStyle = PK.web ? '#fff' : '#7a2a8c'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(txt, x, y + 1);
+      }
+    }
+    // picker
+    if (picker) {
+      const p = P[picker.u];
+      ctx.save(); ctx.fillStyle = 'rgba(40,10,60,.35)'; ctx.beginPath(); ctx.arc(p[0], p[1], R[picker.u] * 1.15, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+      picker.items.forEach(it => {
+        const ap = RM ? 1 : easeOut(clamp((t - picker.t0) / 180, 0, 1)), x = lerp(p[0], it.x, ap), y = lerp(p[1], it.y, ap);
+        ctx.save(); ctx.fillStyle = 'rgba(255,255,255,.96)'; ctx.shadowColor = 'rgba(40,0,60,.4)'; ctx.shadowBlur = 8; ctx.shadowOffsetY = 3;
+        ctx.beginPath(); ctx.arc(x, y, it.r, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+        if (picker.hover === it.b) { ctx.strokeStyle = '#ff5fa8'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(x, y, it.r, 0, Math.PI * 2); ctx.stroke(); }
+        drawCandy(ctx, it.b, x, y, it.r * .72 * ap);
+      });
+    }
+    // particles
+    const dt = 1 / 60;
+    parts = parts.filter(q => (q.life += dt) < q.max);
+    parts.forEach(q => {
+      q.vy += 420 * dt; q.vx *= .985; q.x += q.vx * dt; q.y += q.vy * dt; q.rot += .2;
+      ctx.globalAlpha = 1 - q.life / q.max; ctx.fillStyle = q.c;
+      if (q.k === 0) { ctx.beginPath(); ctx.arc(q.x, q.y, q.r, 0, Math.PI * 2); ctx.fill(); }
+      else if (q.k === 1) { ctx.save(); ctx.translate(q.x, q.y); ctx.rotate(q.rot); ctx.fillRect(-q.r, -q.r * .4, q.r * 2, q.r * .8); ctx.restore(); }
+      else { ctx.save(); ctx.translate(q.x, q.y); ctx.rotate(q.rot); ctx.beginPath(); for (let i = 0; i < 8; i++) { const a = i * Math.PI / 4, rr = i % 2 ? q.r * .4 : q.r * 1.4; ctx.lineTo(rr * Math.cos(a), rr * Math.sin(a)); } ctx.fill(); ctx.restore(); }
+    });
+    ctx.globalAlpha = 1;
+    // combo words
+    words = words.filter(w => t - w.t0 < 1400);
+    words.forEach(w => {
+      const k = (t - w.t0) / 1400, sc = RM ? 1 : (k < .2 ? easeOut(k / .2) * 1.15 : 1.15 - .15 * Math.min(1, (k - .2) / .2)), a = k > .75 ? 1 - (k - .75) / .25 : 1;
+      candyText(w.txt, w.x, w.y - (RM ? 0 : k * 26), w.size * sc, a, w.sub);
+    });
+    if (win && win.banner) {
+      const k = (t - win.banner) / 600, sc = RM ? 1 : (k < 1 ? 1.25 * easeOut(Math.min(1, k * 1.4)) - .25 * clamp(k * 1.4 - 1, 0, 1) * 0 : 1 + .03 * Math.sin(t / 300));
+      const fs = clamp(W * .13, 38, 84), y = Math.max(TOP + fs, G.box.y + G.box.h * .2);
+      candyText('Sugar Crush!', W / 2, y, fs * Math.min(1.15, sc), 1, null, -.06);
+    }
+  }
+  function drawOne(u, t, PK, pulse) {
+    const p = G.poles[u]; let r = G.rr[u], sx = 1, sy = 1, rot = 0, x = p[0], y = p[1], e = shown[u];
+    const fl = flips[u];
+    if (fl) { const k = (t - fl.t0) / fl.dur; if (k >= 1) delete flips[u]; else if (k >= 0) { sx = Math.max(.04, Math.abs(Math.cos(Math.PI * k))); sy = 1 + .18 * Math.sin(Math.PI * k); y -= r * .25 * Math.sin(Math.PI * k); if (k < .5) e = fl.from; } else e = fl.from; }
+    if (wob[u] !== undefined) { const k = (t - wob[u]) / 600; if (k > 1) delete wob[u]; else if (k >= 0) { rot = .35 * Math.sin(k * Math.PI * 5) * (1 - k); sx *= 1 + .1 * Math.sin(k * Math.PI * 4) * (1 - k); } }
+    if (pops[u] !== undefined) { const k = (t - pops[u]) / 380; if (k > 1) delete pops[u]; else if (k >= 0) { const b = Math.sin(k * Math.PI) * (1 - k * .4); sx *= 1 + .3 * b; sy *= 1 + .3 * b; } }
+    if (!RM && !fl) { const br = Math.sin(t / 700 + u * 1.7) * .025; sx *= 1 + br; sy *= 1 - br; }
+    if (drag && drag.v === u) { const q = G.poles[drag.u], d = Math.hypot(q[0] - x, q[1] - y) || 1; x += (q[0] - x) / d * r * .12; y += (q[1] - y) / d * r * .12; }
+    const lit = PK && PK.set.has(u);
+    if (picker && picker.u === u) r *= 1.05;
+    drawCandy(ctx, e, x, y, r, { sx, sy, rot, glow: lit ? (PK.web ? .25 : .45 + .45 * pulse) : 0 });
+  }
+  function candyText(txt, x, y, size, a, sub, tilt) {
+    ctx.save(); ctx.globalAlpha = a; ctx.translate(x, y); if (tilt) ctx.rotate(tilt);
+    ctx.font = '400 ' + size + "px 'Lilita One', 'Arial Rounded MT Bold', 'Trebuchet MS', sans-serif"; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.lineJoin = 'round'; ctx.lineWidth = size * .26; ctx.strokeStyle = '#5a1470'; ctx.strokeText(txt, 0, size * .06);
+    ctx.lineWidth = size * .12; ctx.strokeStyle = '#fff'; ctx.strokeText(txt, 0, 0);
+    const gr = ctx.createLinearGradient(0, -size * .5, 0, size * .5); gr.addColorStop(0, '#fff3a0'); gr.addColorStop(.45, '#ffb21e'); gr.addColorStop(.55, '#ff6aa8'); gr.addColorStop(1, '#d21f7a');
+    ctx.fillStyle = gr; ctx.fillText(txt, 0, 0);
+    ctx.fillStyle = 'rgba(255,255,255,.55)'; ctx.save(); ctx.beginPath(); ctx.rect(-size * 8, -size * .5, size * 16, size * .32); ctx.clip(); ctx.fillText(txt, 0, 0); ctx.restore();
+    if (sub) { ctx.font = '900 ' + Math.round(size * .32) + 'px Nunito, system-ui, sans-serif'; ctx.lineWidth = 4; ctx.strokeStyle = '#5a1470'; ctx.strokeText(sub, 0, size * .78); ctx.fillStyle = '#fff'; ctx.fillText(sub, 0, size * .78); }
+    ctx.restore();
+  }
+
+  // ---------------------------------------------------------------- input
+  function hitCandy(x, y) {
+    for (let u = 0; u < N; u++) if (u !== HOLE && Math.hypot(x - G.poles[u][0], y - G.poles[u][1]) < G.rr[u] * 1.05) return u;
+    for (let u = 0; u < N; u++) if (inside([x, y], G.polys[u])) return u;
+    return -1;
+  }
+  function targetOf(u, x, y) {
+    const p = G.poles[u], dx = x - p[0], dy = y - p[1], d = Math.hypot(dx, dy);
+    if (d < Math.max(12, G.rr[u] * .4)) return -1;
+    const under = hitCandy(x, y);
+    if (under >= 0 && under !== u && under !== HOLE && g.adj[u].includes(under)) return under;
+    let best = -1, ba = 1.25;
+    for (const w of g.adj[u]) { if (w === HOLE) continue; const q = G.poles[w], a = Math.abs(Math.atan2(Math.sin(Math.atan2(q[1] - p[1], q[0] - p[0]) - Math.atan2(dy, dx)), Math.cos(Math.atan2(q[1] - p[1], q[0] - p[0]) - Math.atan2(dy, dx)))); if (a < ba) { ba = a; best = w; } }
+    return best;
+  }
+  function openPicker(u) {
+    const p = G.poles[u], opts = []; for (let b = 0; b < NC; b++) if (b !== g.col[u]) opts.push(b);
+    const r = clamp(G.Rcap * .72, 18, 28), D = Math.max(G.rr[u] + r + 8, r * 2.6), n = opts.length;
+    let base = -Math.PI / 2; if (p[1] - D - r < TOP + 4) base = Math.PI / 2;
+    const spread = n > 1 ? Math.min(1.1, 2.4 / (n - 1) * .55) : 0;
+    const items = opts.map((b, i) => { let a = base + (i - (n - 1) / 2) * spread; return { b, r, x: clamp(p[0] + D * Math.cos(a), r + 4, W - r - 4), y: clamp(p[1] + D * Math.sin(a), TOP + r, H - r - 4) }; });
+    picker = { u, items, t0: now(), hover: -1 }; sfx.pick();
+  }
+  const pt = ev => [ev.clientX, ev.clientY];
+  cv.addEventListener('pointerdown', ev => {
+    ev.preventDefault(); audio();
+    const [x, y] = pt(ev);
+    if (win) return;
+    if (picker) {
+      const it = picker.items.find(it => Math.hypot(x - it.x, y - it.y) < it.r * 1.25);
+      if (it) { picker.hover = it.b; picker.pressing = it.b; try { cv.setPointerCapture(ev.pointerId); } catch (_) {} return; }
+      picker = null;
+    }
+    const u = hitCandy(x, y);
+    if (u < 0) return;
+    if (u === HOLE) { toast('Fill the wrapper: clear a flavour from its sockets'); sfx.boing(); return; }
+    finalize();
+    drag = { u, x0: x, y0: y, x, y, v: -1, moved: false, id: ev.pointerId, t0: now() }; sfx.pick();
+    try { cv.setPointerCapture(ev.pointerId); } catch (_) {}
+  });
+  cv.addEventListener('pointermove', ev => {
+    const [x, y] = pt(ev);
+    if (picker && picker.pressing !== undefined) { const it = picker.items.find(it => Math.hypot(x - it.x, y - it.y) < it.r * 1.4); picker.hover = it ? it.b : -1; return; }
+    if (!drag || ev.pointerId !== drag.id) return;
+    drag.x = x; drag.y = y;
+    if (Math.hypot(x - drag.x0, y - drag.y0) > 8) drag.moved = true;
+    const v = drag.moved ? targetOf(drag.u, x, y) : -1;
+    if (v !== drag.v) { drag.v = v; if (v >= 0) tone(660 + 40 * (g.chainAt(drag.u, g.col[v]) || { size: 1 }).size, .05, 'sine', .1, 1.2); }
+  });
+  function up(ev, cancel) {
+    if (picker && picker.pressing !== undefined) {
+      const b = picker.hover, u = picker.u; picker.pressing = undefined;
+      if (!cancel && b >= 0) { picker = null; play(u, b, -1); } else picker.hover = -1;
+      return;
+    }
+    if (!drag || ev.pointerId !== drag.id) return;
+    const d = drag; drag = null;
+    if (cancel) return;
+    if (d.v >= 0) play(d.u, g.col[d.v], d.v);
+    else if (!d.moved) openPicker(d.u);
+  }
+  cv.addEventListener('pointerup', ev => up(ev, false));
+  cv.addEventListener('pointercancel', ev => up(ev, true));
+  function doUndo() { if (win || !g.history.length) return; picker = null; drag = null; finalize(); g.undo(); sfx.undo(); }
+  function doReset() { picker = null; drag = null; finalize(); if (!g.moves && !win) return; g.reset(); sfx.undo(); }
+  ['undo', 'again', 'again2'].forEach(id => $(id).addEventListener('pointerdown', ev => { ev.stopPropagation(); audio(); }));
+  $('undo').addEventListener('click', doUndo);
+  $('again').addEventListener('click', doReset);
+  $('again2').addEventListener('click', () => { endWin(); g.reset(); });
+  addEventListener('keydown', ev => { if ((ev.ctrlKey || ev.metaKey) && ev.key === 'z') doUndo(); else if (ev.key === 'Escape') picker = null; });
+  addEventListener('resize', () => { finalize(); layout(); });
+
+  layout(); hud();
+  if (document.fonts && document.fonts.load) document.fonts.load("40px 'Lilita One'").catch(() => {});
+  requestAnimationFrame(frame);
+  window.CRUSH = { g, play, center: u => G.poles[u].slice(0, 2), busy, won: () => !!win };
+})();
+</script>
+</body>
+</html>

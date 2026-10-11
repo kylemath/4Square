@@ -21,6 +21,13 @@ title art, how-to-play pages, bonus-round tiles and the look of the exploration 
 swap. The contract is in [SKIN-SPEC.md](SKIN-SPEC.md); a skin is `skins/<id>.js` plus an optional play page
 `lab/<id>.html`, checked with `node tools/skin_check.js`. `lab/Families.html` shows the experimental styles side by side.
 
+**Further abstractions (lab only).** Three pages go one layer further from the map:
+[Rim Word](lab/rimword.html) labels every state within par swaps with a five-letter string so that each swap flips
+one tile and the fillable states are exactly the real words (labels from `node tools/word_graph.js`, which writes
+`lab/rimword-data.js`); [Lab Maze](lab/maze.html) draws the swap graph itself as a rat maze in a 3/4 view (collect a
+coin in every room, then find the cheese; `node tools/maze_check.js`); [Candy Kempe](lab/crush.html) turns the
+Candy-Crush gesture of swapping two neighbouring candies into the Kempe chain that runs through them.
+
 Research logging is off unless the player agrees on the title screen, and it stays on the device unless an upload
 form is configured in `telemetry.js` (none is).
 
