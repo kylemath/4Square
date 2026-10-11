@@ -2,7 +2,7 @@
 // Pages: network first (so a new version shows up straight away), cache when offline.
 // Everything else (levels.js, skins, icons, fonts): served from the cache at once and refreshed in the background.
 // Bump VERSION to drop old caches.
-const VERSION = 'fth-v1';
+const VERSION = 'fth-v2';
 const CORE = ['./', 'index.html', 'levels.js', 'layout.js', 'telemetry.js', 'manifest.webmanifest',
   'lab/core.js', 'lab/dots.html', 'lab/doodle.html',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png'];

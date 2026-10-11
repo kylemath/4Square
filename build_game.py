@@ -59,7 +59,9 @@ class Board:
             assert self.tri, key + ': game maps must be triangulations (or onboarding ponds with "onboard": true)'
             from hole_layout import layout
             self.seed = sp.get('layoutSeed', 1)
-            self.pos, self.link, _ = layout(self.rot, self.h, seed=self.seed)
+            # pos: the straight-line drawing the graph skins (Dots, Spheres, ...) start from; drawSeed picks a
+            # different drawing when the default one is cramped (set automatically by check_drawings)
+            self.pos, self.link, _ = layout(self.rot, self.h, seed=sp.get('drawSeed', self.seed))
         adj = [list(r) for r in self.rot]
         self.H = HoleGame(self.n, adj, self.h, self.link, ncol=self.ncol, goal=sp.get('goal'))
         H = self.H
@@ -161,7 +163,8 @@ def lay_out(b, bad=0.3, seeds=range(2, 9)):
     keep the best, and write the winning seed into the map JSON (as layoutSeed)"""
     from build_layout import build as build_layout
     from hole_layout import layout
-    best = build_layout(b.rot, b.h, b.pos); seed = b.seed
+    pos0 = b.pos if b.spec.get('drawSeed', b.seed) == b.seed else layout(b.rot, b.h, seed=b.seed)[0]
+    best = build_layout(b.rot, b.h, pos0); seed = b.seed
     if best['cv'] > bad:
         for sd in seeds:
             if sd == b.seed: continue
@@ -169,7 +172,7 @@ def lay_out(b, bad=0.3, seeds=range(2, 9)):
             except AssertionError: continue
             r = build_layout(b.rot, b.h, pos)
             print('  seed %d: tile area CV %.3f' % (sd, r['cv']))
-            if r['cv'] < best['cv']: best, seed, b.pos = r, sd, pos
+            if r['cv'] < best['cv']: best, seed = r, sd
             if best['cv'] <= bad: break
         if seed != b.seed:
             path = os.path.join(MAPS, b.key + '.json'); txt = open(path).read()
@@ -177,6 +180,37 @@ def lay_out(b, bad=0.3, seeds=range(2, 9)):
             open(path, 'w').write(txt.replace('\n  "hole":', '\n  "layoutSeed": %d,\n  "hole":' % seed, 1))
             b.seed = seed; print('  %s: using layout seed %d (saved in maps/%s.json)' % (b.key, seed, b.key))
     return best
+
+
+def check_drawings(B, graphs, seeds=range(1, 31)):
+    """run the Dots skin's own layout (tools/drawing_check.js, needs node) on every map; for a map whose final
+    drawing is cramped (not "good": dots too close, or many left off the lattice), try other drawing seeds and save
+    the first good one (else the roomiest) as drawSeed in the map JSON"""
+    import subprocess, shutil, tempfile
+    if not shutil.which('node'): print('(node not found: skipping the drawing check)'); return False
+    chk = os.path.join(HERE, 'tools', 'drawing_check.js'); changed = False
+    run = lambda *a: [json.loads(l) for l in subprocess.run(['node', chk, *a], capture_output=True, text=True).stdout.split('\n') if l.strip()]
+    from hole_layout import layout
+    for r in run():
+        b = B.get(r['key'])
+        if r['good'] or b is None or b.onboard: continue
+        print('drawing for %s is cramped in the graph skins (spread %.3f); trying other seeds' % (b.key, r['spread']))
+        best = (r['spread'], b.spec.get('drawSeed', b.seed), None)
+        for sd in seeds:
+            try: pos = layout(b.rot, b.h, seed=sd)[0]
+            except AssertionError: continue
+            with tempfile.NamedTemporaryFile('w', suffix='.json', delete=False) as f: json.dump(pos, f)
+            q = run(b.key, f.name)[0]; os.unlink(f.name)
+            if q['good'] or q['spread'] > best[0]: best = (q['spread'] + (9 if q['good'] else 0), sd, pos)
+            if q['good']: break
+        if best[2] is None: print('  %s: no better seed in %s' % (b.key, list(seeds))); continue
+        sd, pos = best[1], best[2]
+        path = os.path.join(MAPS, b.key + '.json'); txt = open(path).read()
+        if 'drawSeed' in b.spec: txt = txt.replace('\n  "drawSeed": %d,' % b.spec['drawSeed'], '')
+        open(path, 'w').write(txt.replace('\n  "hole":', '\n  "drawSeed": %d,\n  "hole":' % sd, 1))
+        b.spec['drawSeed'] = sd; graphs[b.key]['pos'] = pos; changed = True
+        print('  %s: drawing seed %d%s (saved in maps/%s.json)' % (b.key, sd, '' if best[0] >= 9 else ' (best found, still tight)', b.key))
+    return changed
 
 
 def check_expect(b, k, L):
@@ -266,6 +300,8 @@ def build(fresh=False):
     out = {'graphs': graphs, 'levels': levels, 'islands': spec.get('islands', {}), 'legacy': spec.get('legacy', [])}
     write_js(os.path.join(HERE, 'levels.js'), 'GAME', out, 'levels.json and maps/*.json')
     write_js(os.path.join(HERE, 'layout.js'), 'LAYOUT', lay, 'maps/*.json')
+    if check_drawings(B, graphs):
+        write_js(os.path.join(HERE, 'levels.js'), 'GAME', out, 'levels.json and maps/*.json')
     print('wrote levels.js (%d levels, %d maps) and layout.js' % (len(levels), len(graphs)))
 
 
