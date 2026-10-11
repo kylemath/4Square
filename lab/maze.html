@@ -15,13 +15,31 @@
   can be filled are goal rooms: a glowing pad on the floor, and the cheese sits on one of them.
 
   Two modes (the chip at the top left):
-    Coins            Pac-Man: a coin in every room of the maze (goal rooms too). Walking into a goal room grabs its
-                     coin and the rat backs straight out again. Collect them all. Coins left and steps are shown.
+    Coins            Pac-Man: a coin in every room of the maze (goal rooms too), and a cheese bonus in every goal room:
+                     10 + 10 x (best possible steps) - 5 x (extra steps taken), at least 10. Then the scientist's
+                     gloved hand lifts the rat out and drops it into another room (one it has seen, or any room with
+                     the lights on) for a new run, so the way to a fill gets learned from many starting points. The bar
+                     shows coins banked, coins left, steps this run and the best possible from where the run began
+                     (the true distance to a fill, a BFS in the maze with goal rooms terminal).
     Find the cheese  the cheese waits in a goal room exactly n steps from the start (n = the level's par; "Farther"
                      picks a deeper goal room if the maze has one). Its glow shows through the dark, the way does not.
                      Score: steps against the shortest route, stars as in the main game (par, par + 2).
   Rooms the rat has seen stay mapped (per level, in localStorage), so the coin round teaches the layout and the
-  cheese round tests it. "Forget map" in the mode menu clears it.
+  cheese round tests it. "Forget map and memory" in the mode menu clears it.
+
+  The rat's memory (the route button on the right rail, M): every room remembers the fewest steps to a fill the player
+  has actually found from it, over corridors actually walked: a Bellman fixed point (backwards BFS from the fills
+  reached, won rooms terminal) over walked edges only, saved with the map. Shown as a gold number on the floor and a
+  gold arrow at the door that leads that way.
+
+  The self-training rat (the curve button, T): tabular Q-learning over rooms x doors. Reward -1 per corridor, a fill ends
+  the episode, Q starts at 0 (optimistic), epsilon 0.2, alpha 0.5, episodes from random rooms that can reach a fill. A
+  ghost rat walks the episodes (speed: slow, fast, max). The panel shows episodes and the share of rooms whose greedy
+  door is a shortest-route door (one that lowers the true distance to a fill by one); arrows are blue when right,
+  orange when not yet. It learns every room in a few hundred to a few thousand episodes (tidy-trap ~500, kempes-double
+  ~1,000-1,700, deepest-pit ~2,000-4,300). But a table only memorises this one maze. The interesting question for the proof is
+  whether a policy over FEATURES of the colouring (rim pattern, chain counts, locks, which chains touch the rim) can
+  learn the same moves and carry them over to other maps; that is not built here.
 
   Mapping (faithful: the maze IS the puzzle's state graph):
     room                  = a legal colouring of the map up to renaming the elements (core.js canon), reachable
@@ -49,7 +67,9 @@
   (an L through the streets), each street segment on its own lane where possible. Where two corridors cross, the one
   running east-west is drawn as a raised bridge over the other.
 
-  Controls: tap a door / corridor / neighbouring room; swipe; arrow keys (Tab picks a door, Enter walks it);
+  Controls: tap a door / corridor / neighbouring room; keys 1-9 walk the numbered doors (clockwise from the top);
+  an arrow key or swipe takes the only door within 60 degrees of that way, or, if there are several, highlights the
+  nearest one, the same direction again cycles through them, Enter / Space / a tap walks the highlighted door;
   drag to pan, pinch or wheel to zoom, 0 or a double tap to recentre; U / Backspace undo, R restart, L lights,
   P peek. Embedding: ?embed=1 starts in cheese mode at par and calls LAB.done() after the celebration.
 -->
@@ -82,6 +102,19 @@
   #stat svg { width: 16px; height: 16px; flex: none; }
   #stat b { color: var(--acc); }
   #stat .dim { opacity: .75; font-weight: 600; }
+  #rail { position: fixed; right: 8px; top: calc(max(6px, env(safe-area-inset-top)) + 40px); display: flex; flex-direction: column; gap: 6px; z-index: 3; }
+  #stat .sm { font-size: 11px; font-weight: 600; opacity: .8; margin-left: -2px; }
+  #trainBox { position: fixed; left: 50%; transform: translateX(-50%); bottom: max(10px, env(safe-area-inset-bottom)); z-index: 4; display: none;
+    width: min(420px, calc(100vw - 24px)); box-sizing: border-box; padding: 9px 12px; border-radius: 12px; background: rgba(16, 30, 38, .92);
+    border: 1px solid rgba(63, 208, 234, .45); color: #dff6fb; box-shadow: 0 6px 18px rgba(0,0,0,.45); font-variant-numeric: tabular-nums; }
+  #trainBox.on { display: block; }
+  #trainBox b { color: #3fd0ea; }
+  #trainBox .bar { height: 5px; border-radius: 3px; background: rgba(255,255,255,.12); margin: 6px 0 2px; overflow: hidden; }
+  #trainBox .bar i { display: block; height: 100%; background: linear-gradient(90deg, #ff7a59, #3fd0ea); }
+  #trainBox .row { display: flex; gap: 8px; justify-content: flex-end; margin-top: 6px; }
+  #trainBox button { height: 30px; padding: 0 12px; border-radius: 8px; border: 1px solid rgba(63,208,234,.5); background: rgba(63,208,234,.12); color: #dff6fb; font: 700 13px system-ui, sans-serif; cursor: pointer; }
+  #trainBox.on ~ #toast { bottom: calc(max(10px, env(safe-area-inset-bottom)) + 110px); }
+  #trainBox.on ~ #peekBox { display: none; }
   #menu { position: fixed; top: 46px; left: 8px; z-index: 4; display: none; flex-direction: column; gap: 4px; padding: 6px;
     background: rgba(30, 26, 22, .96); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,.5); min-width: 220px; }
   #menu.on { display: flex; }
@@ -125,17 +158,22 @@
 <div id="hud">
   <button class="chip" id="mode" aria-haspopup="true" title="Game mode"><span id="modeTxt">Coins</span><span class="car">&#9660;</span></button>
   <div id="stat" aria-live="polite"></div>
-  <button class="btn" id="lights" title="Lab lights (L)" aria-label="Lights" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3z"/></svg></button>
-  <button class="btn" id="peek" title="Peek at the map (P)" aria-label="Peek" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="7" r="2.2"/><circle cx="18" cy="6" r="2.2"/><circle cx="12" cy="17" r="2.2"/><path d="M8 7.5l7.9-1.2M7.2 9l3.8 6M16.9 8l-3.8 7"/></svg></button>
   <button class="btn" id="undo" title="Walk back (U)" aria-label="Undo">&#8630;</button>
   <button class="btn" id="again" title="Start over (R)" aria-label="Start over">&#8634;</button>
 </div>
+<div id="rail">
+  <button class="btn" id="lights" title="Lab lights (L)" aria-label="Lights" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3z"/></svg></button>
+  <button class="btn" id="peek" title="Peek at the map (P)" aria-label="Peek" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="7" r="2.2"/><circle cx="18" cy="6" r="2.2"/><circle cx="12" cy="17" r="2.2"/><path d="M8 7.5l7.9-1.2M7.2 9l3.8 6M16.9 8l-3.8 7"/></svg></button>
+  <button class="btn" id="memory" title="The rat's memory: learned steps to a fill (M)" aria-label="Memory" aria-pressed="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19c3 0 3-6 7-6s3-6 7-6"/><path d="M15 4h4v4"/><circle cx="4.5" cy="19" r="1.5" fill="currentColor"/></svg></button>
+  <button class="btn" id="train" title="Train a rat by Q-learning (T)" aria-label="Train" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 20h18"/><path d="M4 17c3-1 4-9 7-9s3 5 5 5 3-6 4-8"/></svg></button>
+</div>
+<div id="trainBox"><div id="trainTxt"></div><div class="row"><button id="tSpeed">Slow</button><button id="tStop">Stop</button></div></div>
 <div id="menu" role="menu">
   <button id="mCoins" role="menuitem">Coins<small>Visit every room, grab every coin</small></button>
   <button id="mCheese" role="menuitem">Find the cheese<small>Shortest route to the cheese</small></button>
   <button id="mFar" role="menuitem">Farther cheese<small></small></button>
   <hr>
-  <button id="mForget" role="menuitem">Forget map<small>Lights out on every room you have seen</small></button>
+  <button id="mForget" role="menuitem">Forget map and memory<small>Lights out on every room you have seen</small></button>
 </div>
 <div id="peekBox"><canvas id="pk" width="380" height="368"></canvas><div>the map now</div></div>
 <div id="toast"></div>
@@ -376,8 +414,47 @@
     const RT = routeMaze(SG, cell);
     return { SG, cell, ...RT };
   }
+  // ---- true distance to a fill from every room (won rooms are terminal: paths only run through unwon rooms) ----
+  function fillDist(SG) {
+    const N = SG.nodes.length, D = new Array(N).fill(Infinity), q = [];
+    SG.nodes.forEach((v, i) => { if (v.won) { D[i] = 0; q.push(i); } });
+    for (let i = 0; i < q.length; i++) for (const { to } of SG.nb[q[i]]) if (!SG.nodes[to].won && D[to] === Infinity) { D[to] = D[q[i]] + 1; q.push(to); }
+    return D;
+  }
+  // ---- a self-training rat: tabular Q-learning over rooms x doors ----
+  // reward -1 per corridor, a fill ends the episode (value 0), Q starts at 0 (optimistic, so untried doors get tried),
+  // epsilon-greedy, episodes start in random rooms that can reach a fill. At convergence Q(v, door) = -(1 + D(next)).
+  function qTrainer(SG, D, seed, opt) {
+    opt = opt || {};
+    const N = SG.nodes.length, R = rng(seed), nb = SG.nb, won = SG.nodes.map(v => v.won);
+    const Q = nb.map(l => new Float64Array(l.length)), seen = new Uint32Array(N);
+    const starts = []; for (let i = 0; i < N; i++) if (!won[i] && D[i] < Infinity && nb[i].length) starts.push(i);
+    const T = { Q, seen, starts, D, episodes: 0, steps: 0, eps: opt.eps != null ? opt.eps : 0.2, alpha: opt.alpha != null ? opt.alpha : 0.5, cap: opt.cap || 4 * N, v: -1, len: 0 };
+    function greedy(v, rand) {
+      const q = Q[v]; let best = -Infinity, c = [];
+      for (let k = 0; k < q.length; k++) { if (q[k] > best + 1e-9) { best = q[k]; c = [k]; } else if (q[k] > best - 1e-9) c.push(k); }
+      return rand ? c[Math.floor(R() * c.length)] : c[0];
+    }
+    const vmax = t => { const q = Q[t]; let m = -Infinity; for (let k = 0; k < q.length; k++) if (q[k] > m) m = q[k]; return q.length ? m : 0; };
+    T.greedy = v => greedy(v, false);
+    T.value = v => won[v] ? 0 : -vmax(v);   // learned steps to a fill
+    T.step = () => {
+      if (T.v < 0) { if (!starts.length) return null; T.v = starts[Math.floor(R() * starts.length)]; T.len = 0; }
+      const v = T.v; seen[v]++;
+      const k = R() < T.eps ? Math.floor(R() * nb[v].length) : greedy(v, true), t = nb[v][k].to;
+      const target = -1 + (won[t] ? 0 : vmax(t));
+      Q[v][k] += T.alpha * (target - Q[v][k]); T.steps++; T.len++;
+      const ev = { v, t, e: nb[v][k].e, end: false };
+      if (won[t] || T.len >= T.cap) { T.episodes++; T.v = -1; ev.end = true; } else T.v = t;
+      return ev;
+    };
+    T.episode = () => { let ev; do { ev = T.step(); } while (ev && !ev.end); };
+    T.correct = v => { if (won[v] || !seen[v] || !nb[v].length) return false; return D[nb[v][greedy(v, false)].to] === D[v] - 1; };
+    T.match = () => { let ok = 0; for (const v of starts) if (T.correct(v)) ok++; return starts.length ? ok / starts.length : 1; };
+    return T;
+  }
   /*END PURE*/
-  if (typeof document === 'undefined') { module.exports = { stateGraph, layoutMaze, routeMaze, buildMaze, hashStr, RH }; return; }
+  if (typeof document === 'undefined') { module.exports = { stateGraph, layoutMaze, routeMaze, buildMaze, fillDist, qTrainer, hashStr, RH }; return; }
 
   // ======================================================================= the page
   const g = LAB.game();
@@ -397,17 +474,45 @@
   const OBJ = ['plant', 'flask', 'books', 'mug', 'cactus', 'globe', 'duck', 'tubes', 'clock', 'scope'];
   const ROOM = NODES.map((v, i) => { const h = hashStr(v.key + '|' + L.id); return { tint: TINTS[h % TINTS.length], obj: OBJ[(h >>> 4) % OBJ.length], side: (h >>> 9) & 1, hue: (h >>> 11) % 4 }; });
 
-  // persistent map memory
+  // persistent map memory: rooms seen, corridors walked, fills reached
   const SKEY = 'fth-maze-v1-' + L.id;
-  let mapped = new Set([0]), savedMode = null;
-  try { const s = JSON.parse(localStorage.getItem(SKEY) || 'null'); if (s) { (s.m || []).forEach(k => { const i = SG.idx.get(k); if (i !== undefined) mapped.add(i); }); savedMode = s.mode; } } catch (_) {}
-  function save() { try { localStorage.setItem(SKEY, JSON.stringify({ m: [...mapped].map(i => NODES[i].key), mode })); } catch (_) {} }
+  const edgeOf = new Map(); SG.edges.forEach(([a, b], e) => { edgeOf.set(a + ',' + b, e); edgeOf.set(b + ',' + a, e); });
+  let mapped = new Set([0]), walked = new Set(), found = new Set(), savedMode = null, memView = 'mine';
+  try {
+    const s = JSON.parse(localStorage.getItem(SKEY) || 'null');
+    if (s) {
+      const ix = k => SG.idx.get(k);
+      (s.m || []).forEach(k => { const i = ix(k); if (i !== undefined) mapped.add(i); });
+      (s.w || []).forEach(([ka, kb]) => { const e = edgeOf.get(ix(ka) + ',' + ix(kb)); if (e !== undefined) walked.add(e); });
+      (s.f || []).forEach(k => { const i = ix(k); if (i !== undefined && NODES[i].won) found.add(i); });
+      savedMode = s.mode; if (s.v === 'off' || s.v === 'mine') memView = s.v;
+    }
+  } catch (_) {}
+  function save() {
+    try { localStorage.setItem(SKEY, JSON.stringify({ m: [...mapped].map(i => NODES[i].key), w: [...walked].map(e => SG.edges[e].map(i => NODES[i].key)), f: [...found].map(i => NODES[i].key), mode, v: memView === 'rat' ? 'mine' : memView })); } catch (_) {}
+  }
+  // the rat's memory: fewest steps to a fill it has actually found, over corridors it has actually walked
+  // (a Bellman / backwards-BFS fixed point over walked edges, sources = fills reached; won rooms are terminal)
+  const DF = fillDist(SG);
+  let mem = new Array(NN).fill(Infinity), memDoor = new Array(NN).fill(-1);
+  function recomputeMem() {
+    mem = new Array(NN).fill(Infinity); memDoor = new Array(NN).fill(-1);
+    const adjW = NODES.map(() => []); walked.forEach(e => { const [a, b] = SG.edges[e]; adjW[a].push([b, e]); adjW[b].push([a, e]); });
+    const q = [...found]; q.forEach(i => { mem[i] = 0; });
+    for (let h = 0; h < q.length; h++) { const u = q[h]; for (const [w, e] of adjW[u]) if (!NODES[w].won && mem[w] === Infinity) { mem[w] = mem[u] + 1; memDoor[w] = e; q.push(w); } }
+  }
+  recomputeMem();
+  // the BFS tree from the nest (through unwon rooms): how the hidden game is moved to a room the rat is dropped into
+  const tpar = new Array(NN).fill(-1);
+  for (let v = 1; v < NN; v++) for (const { to } of SG.nb[v]) if (!NODES[to].won && NODES[to].d === NODES[v].d - 1) { tpar[v] = to; break; }
 
   // game state
   const wonDepths = [...new Set(NODES.filter(v => v.won).map(v => v.d))].sort((a, b) => a - b);
   let mode = IN_APP ? 'cheese' : (savedMode === 'cheese' ? 'cheese' : 'coins');
   let cheeseN = wonDepths.includes(L.par) ? L.par : wonDepths[0], cheese = -1;
   let cur = 0, path = [], steps = 0, coins = new Set([0]), finished = false, lights = false, peek = false;
+  let bank = 0, runStart = 0, runSteps = 0, runs = 0, hand = null, cyc = null, floaters = [];
+  let trainer = null, training = false, tSpeed = 0, ghost = null, tDoneAt = 0;
   let anim = null, rat = { x: cell[0][0], y: cell[0][1] + 0.05, a: Math.PI / 2, t: 0 }, sel = -1, bounces = [];
   const cam = { x: 0, y: 0, z: 80, free: false };
   let W = 0, H = 0, DPR = 1, TOP = 44, zBase = 80;
@@ -423,6 +528,10 @@
     const want = NODES[j].key;
     for (const K of g.chains) { if (K.web) continue; if (SG.canon(g.preview(K).col) === want) return K; }
     return null;
+  }
+  function syncTo(j) {   // put the hidden game into room j: back to the start, then down the BFS tree
+    g.reset(); const P = []; for (let x = j; x > 0; x = tpar[x]) P.unshift(x);
+    for (const x of P) { const K = chainTo(x); if (!K) { console.error('maze: cannot reach', NODES[x].key); return; } g.swap(K); }
   }
   function permToRoom() { const rep = NODES[cur].c, p = [0, 1, 2, 3]; for (let u = 0; u < g.n; u++) if (u !== g.hole) p[g.col[u]] = rep[u]; return p; }
 
@@ -675,8 +784,49 @@
     if (lights) { ctx.fillStyle = 'rgba(255,240,180,.9)'; ctx.beginPath(); ctx.ellipse(lx + 0.45 * z, ly - 0.57 * z, 0.08 * z, 0.04 * z, 0.3, 0, 7); ctx.fill(); }
     ctx.restore();
   }
+  // ---------------------------------------------------------------- the self-training rat
+  let gstep = null, lastEval = 0;
+  function trainTick(t) {
+    if (!training || !trainer) return;
+    if (tSpeed === 0) {   // slow: one corridor at a time, the ghost rat walks it
+      if (gstep && t - gstep.t0 < gstep.dur) { const q = polyAt(gstep.pts, gstep.len * clamp((t - gstep.t0) / gstep.dur, 0, 1)); ghost = { x: q.x, y: q.y, a: q.a }; return; }
+      const ev = trainer.step(); if (!ev) return stopTraining();
+      if (ev.end) checkLearned();
+      const pts = walkPts(routes[ev.e], ev.v); gstep = { pts, len: polyLen(pts), t0: t, dur: RM ? 60 : 260 };
+    } else {             // fast: a few episodes per frame; max: as many as fit in a few milliseconds
+      const t1 = performance.now() + 7, e0 = trainer.episodes; let ev = null;
+      while (training && (tSpeed === 2 ? performance.now() < t1 : trainer.episodes < e0 + 2 && performance.now() < t1)) {
+        ev = trainer.step(); if (!ev) return stopTraining();
+        if (ev.end && trainer.episodes % (tSpeed === 2 ? 20 : 1) === 0) checkLearned();
+      }
+      if (ev) { const c = cell[ev.end ? ev.t : trainer.v < 0 ? ev.t : trainer.v]; ghost = { x: c[0], y: c[1] + REST, a: (ghost && ghost.a || 0) + 0.3 }; }
+    }
+    if (t - lastEval > 120) { lastEval = t; trainReadout(); }
+  }
+  function checkLearned() { if (!tDoneAt && trainer.match() === 1) { tDoneAt = trainer.episodes; stopTraining(true); } }
+  function trainReadout() {
+    if (!trainer) return;
+    const m = trainer.match(), ok = Math.round(m * trainer.starts.length);
+    const pct = (m * 100).toFixed(m === 1 ? 0 : 1);
+    $('trainTxt').innerHTML = (tDoneAt ? `<b>Learned.</b> After ${tDoneAt.toLocaleString()} episodes the rat's best door is a shortest-route door in <b>every</b> room (${ok}/${trainer.starts.length}). It memorised a table: no rule that carries over to another map.`
+      : `${training ? 'Training' : 'Paused'}: <b>${trainer.episodes.toLocaleString()}</b> episodes, ${trainer.steps.toLocaleString()} corridors. Its best door is a shortest-route door in <b>${pct}%</b> of rooms (${ok}/${trainer.starts.length}).`)
+      + `<div class="bar"><i style="width:${(m * 100).toFixed(1)}%"></i></div>`;
+    $('tStop').textContent = tDoneAt ? 'Close' : training ? 'Stop' : 'Go on';
+    $('tSpeed').textContent = 'Speed: ' + ['slow', 'fast', 'max'][tSpeed];
+  }
+  function startTraining() {
+    if (!trainer || tDoneAt) { trainer = qTrainer(SG, DF, (Math.random() * 4294967296) >>> 0); tDoneAt = 0; }
+    training = true; memView = 'rat'; gstep = null;
+    if (!lights) { lights = true; }
+    if (!cam.free) recentreOverview();
+    $('trainBox').classList.add('on'); trainReadout(); hud();
+    toast('A second rat learns by trial and error (Q-learning). Arrows: its best door; blue = a shortest route, orange = not yet.', 3200);
+  }
+  function stopTraining(done) { training = false; ghost = null; gstep = null; trainReadout(); hud(); if (done) toast('Every room learned.', 1600); }
+
   function draw() {
     const t = now();
+    trainTick(t);
     // camera
     if (!cam.free) { const k = RM ? 1 : 0.14; cam.x += (rat.x - cam.x) * k; cam.y += (rat.y - cam.y) * k; }
     ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
@@ -713,6 +863,8 @@
       if (mode === 'cheese' && i === cheese) { const ate = finished && cur === cheese; drawCheese(SX(cx + (ate ? 0.12 : 0)), SY(cy + (ate ? 0.12 : 0.06)), z * (ate ? 0.75 : 1), t); }
       ctx.restore();
       roomWalls(i, a, false);
+      if (memView !== 'off') memoryMark(i, z);
+      if (i === cur && !anim && !finished && z >= 40) doorNumbers(i, z);
     }
     // unknown cheese room glow in the dark
     if (mode === 'cheese' && cheese >= 0 && !lights && !mapped.has(cheese)) {
@@ -722,13 +874,26 @@
     }
     // the rat
     let moving = false;
-    if (anim) {
+    if (anim && anim.kind === 'hand') {
+      const p = clamp((t - anim.t0) / anim.dur, 0, 1), { A, B } = anim;
+      const ph = (a, b) => clamp((p - a) / (b - a), 0, 1);
+      const down = ph(0, .22), mv = ease(ph(.32, .78)), drop = ph(.78, .88), up = ph(.9, 1);
+      rat.x = A[0] + (B[0] - A[0]) * mv; rat.y = A[1] + (B[1] - A[1]) * mv;
+      rat.lift = p < .32 ? 0 : p < .78 ? 0.25 + 0.55 * Math.sin(Math.PI * mv) : 0.25 * (1 - drop);
+      hand = { x: rat.x, y: rat.y, lift: p < .22 ? rat.lift + 0.12 + 2.5 * (1 - down) : p < .9 ? rat.lift + 0.12 : 0.12 + 2.5 * up, grip: p > .26 && p < .86 };
+      moving = p > .3 && p < .8;
+      if (p >= 1) finishAnim();
+    } else if (anim) {
       const p = clamp((t - anim.t0) / anim.dur, 0, 1), d = (anim.back ? (p < .5 ? p * 2 : 2 - p * 2) : RM ? p : ease(p)) * anim.len;
       const q = polyAt(anim.pts, Math.min(d, anim.len - 1e-6));
       rat.x = q.x; rat.y = q.y; rat.a = anim.back && p >= .5 ? q.a + Math.PI : q.a; moving = true;
       if (p >= 1) finishAnim();
     }
-    drawRat(SX(rat.x), SY(rat.y, 0.02), rat.a, z, t, moving);
+    if (rat.lift) { ctx.fillStyle = 'rgba(20,12,4,.25)'; ctx.beginPath(); ctx.ellipse(SX(rat.x), SY(rat.y), 0.12 * z, 0.05 * z, 0, 0, 7); ctx.fill(); }
+    if (ghost && training) drawGhost(t, z);
+    drawRat(SX(rat.x), SY(rat.y, 0.02 + (rat.lift || 0)), rat.a + (rat.lift ? Math.sin(t / 160) * 0.25 : 0), z, t, moving);
+    if (hand) drawHand(SX(hand.x), SY(hand.y, hand.lift), z, hand.grip);
+    drawFloaters(t);
     // lab lights off: darkness except round the rat
     if (!lights) {
       const gx = SX(rat.x), gy = SY(rat.y), r0 = 0.8 * z, r1 = Math.max(3.2 * z, Math.min(W, H) * 0.7);
@@ -738,6 +903,82 @@
     if (mode === 'cheese' && cheese >= 0 && !(finished && cur === cheese)) cheeseCompass(t);
     drawFx(t);
     requestAnimationFrame(draw);
+  }
+
+  // ---------------------------------------------------------------- memory, door numbers, the hand, the training ghost
+  function doorOrder(i) {   // the room's doors clockwise from straight up: the numbers 1-9
+    return incident(i).map(x => { const d = doorDir(i, x.r); let a = Math.atan2(d[0], -d[1]); if (a < -1e-9) a += 2 * Math.PI; return { ...x, ang: a, d }; }).sort((p, q) => p.ang - q.ang);
+  }
+  function arrowTo(i, e, col, z, w) {
+    const r = routes[e], p0 = doorPt(r, r.a === i ? 'a' : 'b'), [cx, cy] = cell[i], far = z < 70;   // zoomed out: a longer, bolder arrow
+    const ux = p0[0] - cx, uy = p0[1] - cy, ul = Math.hypot(ux, uy) || 1, p = far ? [p0[0] + ux / ul * 0.14, p0[1] + uy / ul * 0.14] : p0, f0 = far ? 0 : 0.25;
+    const x0 = SX(cx + ux * f0), y0 = SY(cy + uy * f0 + 0.02, 0.02), x1 = SX(p[0]), y1 = SY(p[1], 0.02);
+    const a = Math.atan2(y1 - y0, x1 - x0), hl = Math.max(7, 0.06 * z);
+    ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = w; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1 - Math.cos(a) * hl * 0.6, y1 - Math.sin(a) * hl * 0.6); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x1 - Math.cos(a - 0.5) * hl, y1 - Math.sin(a - 0.5) * hl); ctx.lineTo(x1 - Math.cos(a + 0.5) * hl, y1 - Math.sin(a + 0.5) * hl); ctx.closePath(); ctx.fill();
+  }
+  function memoryMark(i, z) {
+    if (NODES[i].won) return;
+    let n, e, col;
+    if (memView === 'mine') { if (mem[i] === Infinity) return; n = mem[i]; e = memDoor[i]; col = '#ffc93c'; }
+    else { if (!trainer || !trainer.seen[i] || !SG.nb[i].length) return; e = SG.nb[i][trainer.greedy(i)].e; n = Math.max(0, Math.round(trainer.value(i))); col = trainer.correct(i) ? '#3fd0ea' : '#ff7a59'; }
+    ctx.save();
+    ctx.globalAlpha = 0.95;
+    if (z < 70) arrowTo(i, e, 'rgba(10,20,30,.55)', z, Math.max(2.6, 0.022 * z) + 2);
+    arrowTo(i, e, col, z, Math.max(2.6, 0.022 * z));
+    if (z >= 30) {
+      const [cx, cy] = cell[i], bx = SX(cx + (ROOM[i].side ? -0.14 : 0.14)), by = SY(cy + 0.12, 0.05), rr = 0.06 * z;
+      ctx.globalAlpha = 1; ctx.fillStyle = 'rgba(24,22,30,.78)'; ctx.strokeStyle = col; ctx.lineWidth = Math.max(1.2, 0.012 * z);
+      ctx.beginPath(); ctx.ellipse(bx, by, rr, rr * 0.85, 0, 0, 7); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = col; ctx.font = `800 ${Math.round(0.07 * z)}px system-ui, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(String(n), bx, by + 0.5);
+    }
+    ctx.restore();
+  }
+  function doorNumbers(i, z) {
+    const D = doorOrder(i); if (D.length < 2) return;
+    ctx.save(); ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.font = `800 ${Math.max(9, Math.round(0.055 * z))}px system-ui, sans-serif`;
+    D.slice(0, 9).forEach((x, k) => {
+      const p = doorPt(x.r, x.r.a === i ? 'a' : 'b'), l = Math.hypot(...x.d) || 1, ox = p[0] + x.d[0] / l * 0.085, oy = p[1] + x.d[1] / l * 0.085;
+      const px = SX(ox), py = SY(oy, 0.12), rr = Math.max(7, 0.042 * z), on = sel === x.e;
+      ctx.fillStyle = on ? '#ff7a3c' : 'rgba(26,22,18,.86)'; ctx.strokeStyle = on ? '#fff' : '#ffd36a'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(px, py, rr, 0, 7); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#fff'; ctx.fillText(String(k + 1), px, py + 0.5);
+    });
+    ctx.restore();
+  }
+  function drawHand(x, y, z, grip) {   // a blue nitrile glove coming down from above, white lab-coat sleeve
+    const s = z / 100;
+    ctx.save(); ctx.translate(x, y);
+    ctx.fillStyle = '#f4f4f0'; ctx.strokeStyle = 'rgba(60,60,70,.5)'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(-16 * s, -30 * s); ctx.lineTo(-22 * s, -y - 20); ctx.lineTo(22 * s, -y - 20); ctx.lineTo(16 * s, -30 * s); ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#6fa6dc'; ctx.strokeStyle = '#2f5f93';
+    ctx.beginPath(); ctx.ellipse(0, -22 * s, 15 * s, 13 * s, 0, 0, 7); ctx.fill(); ctx.stroke();   // back of the hand
+    const f = grip ? 0 : 5 * s;
+    [[-10, -1], [-3.5, 0], [3.5, 0], [10, -1]].forEach(([fx2, fy]) => { ctx.beginPath(); ctx.ellipse((fx2 * s) * (grip ? 0.8 : 1), (fy - 8) * s + f * 0.3, 3.4 * s, 9 * s, fx2 * 0.02, 0, 7); ctx.fill(); ctx.stroke(); });
+    ctx.beginPath(); ctx.ellipse(-15 * s - f, -16 * s, 4 * s, 8 * s, 0.7, 0, 7); ctx.fill(); ctx.stroke();   // thumb
+    ctx.fillStyle = '#8fbbe6'; ctx.fillRect(-16 * s, -36 * s, 32 * s, 5 * s);   // cuff
+    ctx.restore();
+  }
+  function drawGhost(t, z) {
+    ctx.save(); ctx.globalAlpha = 0.7;
+    const gx = SX(ghost.x), gy = SY(ghost.y, 0.02);
+    const gr = ctx.createRadialGradient(gx, gy, 0, gx, gy, 0.22 * z); gr.addColorStop(0, 'rgba(63,208,234,.55)'); gr.addColorStop(1, 'rgba(63,208,234,0)');
+    ctx.fillStyle = gr; ctx.fillRect(gx - 0.22 * z, gy - 0.22 * z, 0.44 * z, 0.44 * z);
+    drawRat(gx, gy, ghost.a, z * 0.85, t, true);
+    ctx.restore();
+  }
+  function floater(text, col) { floaters.push({ text, col, x: rat.x, y: rat.y, t0: now() }); }
+  function drawFloaters(t) {
+    floaters = floaters.filter(f => t - f.t0 < 1600);
+    floaters.forEach(f => {
+      const p = (t - f.t0) / 1600; ctx.save(); ctx.globalAlpha = 1 - p * p;
+      ctx.font = `900 ${Math.round(Math.max(18, 0.2 * cam.z))}px system-ui, sans-serif`; ctx.textAlign = 'center';
+      ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(40,24,6,.85)'; ctx.fillStyle = f.col;
+      const x = SX(f.x), y = SY(f.y, 0.4 + (RM ? 0 : p * 0.6));
+      ctx.strokeText(f.text, x, y); ctx.fillText(f.text, x, y); ctx.restore();
+    });
   }
 
   // the cheese is off screen: a badge on the screen edge points at it
@@ -769,11 +1010,14 @@
   function hud() {
     $('modeTxt').textContent = mode === 'coins' ? 'Coins' : 'Cheese';
     let s;
-    if (mode === 'coins') s = `${ICO.coin}<b>${NN - coins.size}</b><span class="dim">left</span>${ICO.feet}<b>${steps}</b><span class="dim">steps</span>`;
+    if (mode === 'coins') s = `${ICO.coin}<b>${bank}</b><span class="sm">${NN - coins.size} left</span>${ICO.feet}<b>${runSteps}</b><span class="sm">best ${DF[runStart] === Infinity ? '-' : DF[runStart]}</span>`;
     else s = `${ICO.cheese}<b>${cheese < 0 ? '-' : cheeseN}</b><span class="dim">away</span>${ICO.feet}<b>${steps}</b><span class="dim">steps</span>`;
     $('stat').innerHTML = s;
     $('lights').classList.toggle('on', lights); $('lights').setAttribute('aria-pressed', lights);
     $('peek').classList.toggle('on', peek); $('peek').setAttribute('aria-pressed', peek);
+    $('memory').classList.toggle('on', memView !== 'off'); $('memory').setAttribute('aria-pressed', memView !== 'off');
+    $('memory').style.color = memView === 'rat' ? '#12424d' : ''; $('memory').style.background = memView === 'rat' ? '#3fd0ea' : '';
+    $('train').classList.toggle('on', training); $('train').setAttribute('aria-pressed', training);
     $('undo').disabled = !path.length || finished;
     $('peekBox').classList.toggle('on', peek);
     if (peek) drawPeek();
@@ -802,22 +1046,38 @@
     const end = back ? pts[0] : pts[pts.length - 1];
     anim = { r, pts, len, back, t0: now(), dur: back ? walkDur(len * 0.55) * 2 : walkDur(len), done: () => { rat.x = end[0]; rat.y = end[1]; done(); } };
   }
+  function startHand(from, to, done) {   // the scientist's gloved hand lifts the rat out and drops it elsewhere
+    const A = [cell[from][0], cell[from][1] + REST], B = [cell[to][0], cell[to][1] + REST];
+    const len = Math.hypot(B[0] - A[0], B[1] - A[1]);
+    anim = { kind: 'hand', A, B, t0: now(), dur: RM ? 200 : clamp(1500 + len * 120, 1600, 3200), done: () => { rat.x = B[0]; rat.y = B[1]; rat.lift = 0; hand = null; done(); } };
+  }
   function finishAnim() { if (anim) { const f = anim.done; anim = null; f(); } }
   function walk(e) {
     if (anim || finished || e < 0) return;
     const r = routes[e]; if (r.a !== cur && r.b !== cur) return;
     const j = r.a === cur ? r.b : r.a, v = NODES[j];
-    sel = -1; cam.free = false;
-    if (v.won && !(mode === 'cheese' && j === cheese)) {
-      // a goal room without the cheese: the rat pops in and backs out; the puzzle state never changes
-      steps += 2;
-      const first = !mapped.has(j);
-      startAnim(r, cur, true, () => {
-        mapped.add(j);
-        if (mode === 'coins') { coins.add(j); toast(first ? 'The hole is filled here! Coin grabbed; it is a dead end, so back out.' : 'Dead end: the hole is filled here.'); }
-        else toast('The hole is filled here, but no cheese.');
-        save(); hud(); checkCoins();
+    sel = -1; cyc = null; cam.free = false;
+    if (v.won && mode === 'coins') {
+      // a fill: the cheese bonus, then the scientist's hand moves the rat to another room for a new run
+      steps++; runSteps++; walked.add(e); found.add(j); mapped.add(j);
+      const from = cur;
+      startAnim(r, from, false, () => {
+        if (!coins.has(j)) { coins.add(j); bank++; }
+        const best = DF[runStart], bonus = Math.max(10, 10 + 10 * best - 5 * (runSteps - best));
+        bank += bonus; runs++;
+        recomputeMem(); save();
+        floater('+' + bonus, '#ffd36a'); burst(SX(rat.x), SY(rat.y), 40);
+        toast(`Filled! ${runSteps} step${runSteps === 1 ? '' : 's'} this run, best possible ${best}. Cheese bonus +${bonus}.`, 2600);
+        hud();
+        if (window.__mazeNoDrop) { cur = from; rat.x = cell[from][0]; rat.y = cell[from][1] + REST; return; }   // test hook: no drop, the rat stays put (g never left this room)
+        dropRat(j);
       });
+      hud(); return;
+    }
+    if (v.won && !(mode === 'cheese' && j === cheese)) {
+      // cheese mode, a fill without the cheese: the rat pops in and backs out; the puzzle state never changes
+      steps += 2;
+      startAnim(r, cur, true, () => { mapped.add(j); found.add(j); walked.add(e); recomputeMem(); toast('The hole is filled here, but no cheese.'); save(); hud(); });
       hud(); return;
     }
     const K = chainTo(j);
@@ -825,36 +1085,51 @@
     const from = cur;
     g.swap(K);
     path.push({ e, from, to: j });
-    steps++;
+    steps++; runSteps++; walked.add(e);
     startAnim(r, from, false, () => {
-      cur = j; mapped.add(j); if (mode === 'coins') coins.add(j);
-      save(); hud();
+      cur = j; mapped.add(j); if (mode === 'coins' && !coins.has(j)) { coins.add(j); bank++; }
+      if (mode === 'cheese' && j === cheese) found.add(j);
+      recomputeMem(); save(); hud();
       if (mode === 'cheese' && j === cheese) win(); else checkCoins();
     });
     hud();
   }
+  function dropRat(fillRoom) {   // pick a room, lift the rat out of the fill and drop it there
+    let pool = [];
+    for (let i = 0; i < NN; i++) if ((lights || mapped.has(i)) && !NODES[i].won && DF[i] < Infinity && i !== runStart) pool.push(i);
+    if (!pool.length) pool = [0];
+    const to = pool[Math.floor(Math.random() * pool.length)];
+    startHand(fillRoom, to, () => {
+      cur = to; syncTo(to); path = []; runStart = to; runSteps = 0;
+      mapped.add(to); if (!coins.has(to)) { coins.add(to); bank++; }
+      save(); hud();
+      toast(`New run from here: the best route to a fill is ${DF[to]} step${DF[to] === 1 ? '' : 's'}.`, 2400);
+      checkCoins();
+    });
+  }
   function undo() {
     if (anim || finished) return;
-    if (!path.length) { toast('Back at the nest.'); return; }
+    if (!path.length) { toast(runStart ? 'This is where the hand dropped the rat.' : 'Back at the nest.'); return; }
     const last = path.pop();
     g.undo();
-    steps += mode === 'coins' ? 1 : -1;
-    sel = -1; cam.free = false;
+    steps += mode === 'coins' ? 1 : -1; if (mode === 'coins') runSteps++;
+    sel = -1; cyc = null; cam.free = false;
     startAnim(routes[last.e], last.to, false, () => { cur = last.from; hud(); });
     hud();
   }
   function restart(silent) {
-    anim = null; finished = false; path = []; steps = 0; cur = 0; coins = new Set([0]); sel = -1; cam.free = false;
-    g.reset(); rat.x = cell[0][0]; rat.y = cell[0][1] + REST; rat.a = Math.PI / 2;
+    anim = null; hand = null; finished = false; path = []; steps = 0; cur = 0; coins = new Set([0]); sel = -1; cyc = null; cam.free = false;
+    bank = 0; runStart = 0; runSteps = 0; runs = 0;
+    g.reset(); rat.x = cell[0][0]; rat.y = cell[0][1] + REST; rat.a = Math.PI / 2; rat.lift = 0;
     $('card').classList.remove('on'); fx = [];
     hud();
-    if (!silent) toast(mode === 'coins' ? `Grab all ${NN} coins.` : cheese < 0 ? 'No cheese in this maze.' : `The cheese is ${cheeseN} rooms away. Shortest route wins.`);
+    if (!silent) toast(mode === 'coins' ? `Grab the coins. A filled room pays a cheese bonus, bigger for a shorter route.` : cheese < 0 ? 'No cheese in this maze.' : `The cheese is ${cheeseN} rooms away. Shortest route wins.`);
   }
   function setMode(m) { mode = m; save(); closeMenu(); restart(); }
   function checkCoins() {
     if (mode !== 'coins' || coins.size < NN || finished || window.__mazeNoEnd) return;
     finished = true; hud(); burst(W / 2, H / 2, 90);
-    card('All ' + NN + ' coins!', '', `You explored the whole maze in ${steps} steps. The map is yours: now find the cheese.`,
+    card('All ' + NN + ' coins!', '', `You explored the whole maze in ${steps} steps and banked ${bank} coins over ${runs} fill${runs === 1 ? '' : 's'}. Now find the cheese.`,
       [['Find the cheese', () => setMode('cheese')], ['Again', () => restart(), true]]);
   }
   function win() {
@@ -882,14 +1157,23 @@
 
   // ---------------------------------------------------------------- input
   function doorDir(i, r) { const p = doorPt(r, r.a === i ? 'a' : 'b'); return [p[0] - cell[i][0], p[1] - cell[i][1]]; }
-  function bestInDir(dx, dy) {
-    let best = -1, bs = 0.35;
-    for (const { e, r, to } of incident(cur)) {
-      const dd = doorDir(cur, r), l1 = Math.hypot(...dd) || 1, o = [cell[to][0] - cell[cur][0], cell[to][1] - cell[cur][1]], l2 = Math.hypot(...o) || 1;
-      const s = (dd[0] * dx + dd[1] * dy) / l1 + 0.35 * (o[0] * dx + o[1] * dy) / l2;
-      if (s > bs) { bs = s; best = e; }
-    }
-    return best;
+  // arrows / swipes with many doors: the doors within 60 degrees of that direction, nearest angle first;
+  // one door: walk it; several: the first press highlights, the same direction again cycles, Enter / Space / tap walks
+  function doorsInDir(dx, dy) {
+    const l = Math.hypot(dx, dy) || 1, ux = dx / l, uy = dy / l;
+    return doorOrder(cur).map(x => { const m = Math.hypot(...x.d) || 1; return { e: x.e, n: x, c: (x.d[0] * ux + x.d[1] * uy) / m }; })
+      .filter(x => x.c >= Math.cos(Math.PI / 3) - 1e-9).sort((p, q) => q.c - p.c);
+  }
+  function dirPress(name, dx, dy) {
+    if (anim || finished) return;
+    const L2 = doorsInDir(dx, dy);
+    if (!L2.length) { sel = -1; cyc = null; toast('No door that way.', 900); return; }
+    if (L2.length === 1) { walk(L2[0].e); return; }
+    let k = 0;
+    if (cyc && cyc.dir === name && cyc.at === cur) k = (L2.findIndex(x => x.e === sel) + 1) % L2.length;
+    cyc = { dir: name, at: cur }; sel = L2[k].e;
+    const num = doorOrder(cur).findIndex(x => x.e === sel) + 1;
+    toast(`Door ${num} (${k + 1} of ${L2.length} that way): press ${name} again for the next, Enter or tap to walk.`, 1800);
   }
   function hitEdge(px, py) {
     const w = toWorld(px, py), tol = Math.max(0.1, 16 / cam.z);
@@ -929,8 +1213,8 @@
     const dx = ev.clientX - G.x0, dy = ev.clientY - G.y0, dt = now() - G.t0, dist = Math.hypot(dx, dy);
     if (G.moved && dt < 280 && dist > 30) {   // a flick: walk that way, undo the pan
       cam.x = G.cx; cam.y = G.cy; cam.free = false;
-      const e = bestInDir(dx / dist, dy / dist / KY);
-      if (e >= 0) walk(e); return;
+      const nm = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : (dy > 0 ? 'down' : 'up');
+      dirPress(nm, dx / dist, dy / dist / KY); return;
     }
     if (G.moved) return;
     const e = hitEdge(ev.clientX, ev.clientY);
@@ -943,6 +1227,9 @@
   cv.addEventListener('wheel', ev => { ev.preventDefault(); cam.z = clamp(cam.z * Math.exp(-ev.deltaY * 0.0015), 12, 220); }, { passive: false });
   function recentre() {   // toggles between the rat's close-up and the whole board
     if (Math.abs(cam.z - zBase) > 1 || cam.free) { cam.free = false; cam.z = zBase; return; }
+    recentreOverview();
+  }
+  function recentreOverview() {
     cam.free = true; cam.z = clamp(Math.min((W - 20) / (BX1 - BX0 + 1.2), (H - TOP - 20) / ((BY1 - BY0 + 1.4) * KY)), 12, zBase);
     cam.x = (BX0 + BX1) / 2 + 0.2; cam.y = (BY0 + BY1) / 2 - 0.2;
   }
@@ -950,21 +1237,34 @@
     if (ev.target && ev.target.tagName === 'BUTTON' && (ev.key === 'Enter' || ev.key === ' ')) return;
     const k = ev.key, dirs = { ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0], w: [0, -1], s: [0, 1], a: [-1, 0], d: [1, 0] };
     if ($('card').classList.contains('on')) { if (k === 'Enter') { const b = $('cardB').querySelector('button'); if (b) b.click(); } return; }
-    if (dirs[k]) { ev.preventDefault(); const e = bestInDir(...dirs[k]); if (e >= 0) walk(e); else toast('No door that way.', 900); return; }
+    if (dirs[k]) { ev.preventDefault(); const nm = { ArrowUp: 'up', w: 'up', ArrowDown: 'down', s: 'down', ArrowLeft: 'left', a: 'left', ArrowRight: 'right', d: 'right' }[k]; dirPress(nm, ...dirs[k]); return; }
+    if (/^[1-9]$/.test(k)) { const D = doorOrder(cur), x = D[+k - 1]; if (x) walk(x.e); else toast('This room has ' + D.length + ' doors.', 900); return; }
+    if (k === 'Escape') { sel = -1; cyc = null; return; }
     if (k === 'Tab') { ev.preventDefault(); const L2 = incident(cur); if (!L2.length) return; const i = L2.findIndex(x => x.e === sel); sel = L2[(i + (ev.shiftKey ? L2.length - 1 : 1)) % L2.length].e; return; }
     if ((k === 'Enter' || k === ' ') && sel >= 0) { ev.preventDefault(); walk(sel); return; }
     if (k === 'u' || k === 'z' || k === 'Backspace') { ev.preventDefault(); undo(); }
     else if (k === 'r') restart();
     else if (k === 'l') toggleLights();
     else if (k === 'p') togglePeek();
+    else if (k === 'm') toggleMemory();
+    else if (k === 't') (training ? stopTraining() : startTraining());
     else if (k === '0') recentre();
     else if (k === '+' || k === '=') cam.z = clamp(cam.z * 1.2, 24, 200);
     else if (k === '-') cam.z = clamp(cam.z / 1.2, 24, 200);
   });
   function toggleLights() { lights = !lights; hud(); toast(lights ? 'Lab lights on: the whole maze.' : 'Lights off: only rooms you have seen.', 1400); }
   function togglePeek() { peek = !peek; hud(); }
+  function toggleMemory() {
+    const order = trainer ? ['mine', 'rat', 'off'] : ['mine', 'off'];
+    memView = order[(order.indexOf(memView) + 1) % order.length]; save(); hud();
+    toast(memView === 'off' ? 'Memory hidden.' : memView === 'mine' ? 'Your rat\'s memory: steps to a fill it has found, and the door it took.' : 'The trained rat\'s table: its best door and learned steps (blue = a shortest route).', 2200);
+  }
   const stopP = el => el.addEventListener('pointerdown', ev => ev.stopPropagation());
-  ['lights', 'peek', 'undo', 'again', 'mode'].forEach(id => stopP($(id)));
+  ['lights', 'peek', 'undo', 'again', 'mode', 'memory', 'train', 'tSpeed', 'tStop'].forEach(id => stopP($(id)));
+  $('memory').onclick = toggleMemory;
+  $('train').onclick = () => (training ? stopTraining() : startTraining());
+  $('tSpeed').onclick = () => { tSpeed = (tSpeed + 1) % 3; gstep = null; trainReadout(); };
+  $('tStop').onclick = () => { if (tDoneAt) { $('trainBox').classList.remove('on'); cam.free = false; cam.z = zBase; return; } training ? stopTraining() : startTraining(); };
   $('lights').onclick = toggleLights; $('peek').onclick = togglePeek; $('undo').onclick = undo; $('again').onclick = () => { closeMenu(); restart(); };
   function closeMenu() { $('menu').classList.remove('on'); }
   $('mode').onclick = () => {
@@ -979,7 +1279,7 @@
   $('mCoins').onclick = () => setMode('coins');
   $('mCheese').onclick = () => setMode('cheese');
   $('mFar').onclick = farther;
-  $('mForget').onclick = () => { mapped = new Set([0]); [...path.map(p => p.to), cur].forEach(i => mapped.add(i)); save(); closeMenu(); toast('Map forgotten.'); };
+  $('mForget').onclick = () => { mapped = new Set([0]); [...path.map(p => p.to), cur].forEach(i => mapped.add(i)); walked = new Set(); found = new Set(); recomputeMem(); save(); closeMenu(); hud(); toast('Map and memory forgotten.'); };
 
   // ---------------------------------------------------------------- size
   function resize() {
@@ -991,10 +1291,12 @@
   resize();
   cam.x = rat.x; cam.y = rat.y;
   restart(true);
-  toast(mode === 'coins' ? `Lab rat, ${NN} rooms. Tap a door to walk; every corridor is one swap. Grab all the coins.` : `The cheese is ${cheeseN} rooms away. Find the shortest route.`, 3600);
+  toast((mode === 'coins' ? `Lab rat, ${NN} rooms; every corridor is one swap. Coins everywhere, a cheese bonus in every filled room. ` : `The cheese is ${cheeseN} rooms away. `)
+    + 'Tap a door, swipe or use the arrows (again: the next door that way, Enter walks), or keys 1-9.', 5200);
   window.__maze = {
     g, M, state: () => ({ cur, key: NODES[cur].key, gcanon: g.canon(), steps, mode, cheese, cheeseN, finished, anim: !!anim, coins: coins.size, mapped: mapped.size, path: path.length }),
-    walk, undo, restart, setMode, farther, incident: () => incident(cur).map(x => ({ e: x.e, to: x.to })), toggleLights, togglePeek,
+    walk, undo, restart, setMode, farther, startTraining, stopTraining, toggleMemory, dirPress, doorOrder: () => doorOrder(cur).map(x => ({ e: x.e, to: x.to })),
+    doorsInDir: (dx, dy) => doorsInDir(dx, dy).map(x => x.e), trainer: () => trainer, run: () => ({ bank, runStart, runSteps, runs, best: DF[runStart], memKnown: mem.filter(x => x < Infinity).length, sel, memView, training, tDoneAt }), DF, setSpeed: v => { tSpeed = v; }, incident: () => incident(cur).map(x => ({ e: x.e, to: x.to })), toggleLights, togglePeek,
     finishAnim, NODES, routes, dbg: () => ({ cam, rat, cell: cell[cur] }), proj: (x, y) => [SX(x), SY(y)], cell,
   };
   requestAnimationFrame(draw);

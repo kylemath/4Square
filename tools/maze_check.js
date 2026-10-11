@@ -14,8 +14,8 @@ const G = window.GAME;
 const src = fs.readFileSync(path.join(root, 'lab/maze.html'), 'utf8');
 const pure = src.slice(src.indexOf('/*PURE*/'), src.indexOf('/*END PURE*/'));
 const mod = { exports: {} };
-new Function('module', pure + '\nmodule.exports = { stateGraph, layoutMaze, routeMaze, buildMaze, RH };')(mod);
-const { buildMaze, RH } = mod.exports;
+new Function('module', pure + '\nmodule.exports = { stateGraph, layoutMaze, routeMaze, buildMaze, fillDist, qTrainer, RH };')(mod);
+const { buildMaze, fillDist, qTrainer, RH } = mod.exports;
 
 let bad = 0;
 const fail = (L, msg) => { bad++; console.log('  FAIL ' + L.id + ': ' + msg); };
@@ -70,6 +70,16 @@ for (const L of G.levels) {
   if (through) fail(L, through + ' corridor segments run through a room');
   const adjE = routes.filter(r => r.kind === 'adjH' || r.kind === 'adjV').length;
   console.log(`${String(L.num).padStart(5)} ${L.id.padEnd(16)} ${SG.whole ? 'whole' : 'R=' + SG.R} rooms ${String(N).padStart(3)} corridors ${String(SG.edges.length).padStart(3)} (next-door ${adjE}) bridges ${String(cross.length).padStart(4)} overlaps ${overlaps} ${ms}ms`);
+}
+// the self-training rat: tabular Q-learning should find a shortest-route door in every room
+console.log('Q-learning (episodes until the greedy door is a shortest-route door in every room):');
+for (const id of ['tidy-trap', 'kempes-double', 'six-ring-trap', 'depth-4', 'deepest-pit', 'far-away']) {
+  const L = G.levels.find(l => l.id === id), SG = buildMaze(G, L, {}).SG, D = fillDist(SG);
+  const fake = { id }, T = qTrainer(SG, D, 12345);
+  const t0 = Date.now(); let hit = null;
+  while (T.episodes < 50000) { T.episode(); if (T.match() === 1) { hit = T.episodes; break; } }
+  if (hit === null) fail(fake, 'Q-learning never reached 100%');
+  console.log(`  ${id.padEnd(16)} rooms ${String(T.starts.length).padStart(3)} -> 100% after ${hit} episodes, ${T.steps} corridors, ${Date.now() - t0}ms`);
 }
 console.log(bad ? bad + ' failures' : 'all good');
 process.exit(bad ? 1 : 0);
