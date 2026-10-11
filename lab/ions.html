@@ -136,6 +136,7 @@
 
   // ---------------------------------------------------------------- the cell
   const g = LAB.game();
+  const HUD = new URLSearchParams(location.search).get('hud'); // 'full'/'compact': the app already shows title and stars; this page draws neither
   const NC = g.NC, hole = g.hole, rimSet = new Set(g.rim), NR = g.rim.length;
   const RM = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
   const cv = document.getElementById('c'), ctx = cv.getContext('2d');
@@ -369,7 +370,8 @@
 
   function win() {
     won = true; busy = true;
-    const F = g.free(), C = L.ch[F];
+    let F = g.free(); if (F < 0 || F >= NC) { F = 0; for (let k = 1; k < NC; k++) if (rivalsIn(k) < rivalsIn(F)) F = k; }
+    const C = L.ch[F];
     mol.F = F; mol.phase = 'travel'; mol.t0 = now();
     // the receptor channel runs along the outer membrane, then down a gap between chambers, then in
     const ty = L.top - 4;
@@ -381,6 +383,7 @@
     const T = RM ? 300 : 1700;
     mol.dur = T;
     const tok = ++winTok;
+    setTimeout(() => { if (tok === winTok) LAB.done(); }, T + 1100); // celebration over: tell the app (harmless if repeated)
     setTimeout(() => {
       if (tok !== winTok) return;
       mol.phase = 'docked'; mol.x = C.cx; mol.y = C.cy; mol.R = R * 2; mol.t0 = now();
@@ -483,7 +486,7 @@
     if (w > 60) {
       let l1, l2;
       if (won) { l1 = mol.phase === 'docked' ? 'Signal received' : 'A channel opens…'; l2 = mol.phase === 'docked' && !busy ? 'tap to play again' : ''; }
-      else { l1 = 'Free a chamber for the signal'; l2 = 'none of its 5 ✦ ions may be inside'; }
+      else { l1 = 'Free a chamber for the signal'; l2 = g.goal >= NC - 1 ? 'none of its ' + NR + ' ✦ ions may be inside' : 'the ' + NR + ' ✦ ions may use only ' + g.goal + ' chambers'; }
       let f1 = Math.max(10, Math.min(20, gh * .17)); ctx.font = `700 ${f1}px ${FONT}`;
       while (f1 > 9 && ctx.measureText(l1).width > w) { f1 -= .5; ctx.font = `700 ${f1}px ${FONT}`; }
       ctx.textBaseline = 'middle'; ctx.textAlign = 'left';

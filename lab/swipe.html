@@ -54,6 +54,7 @@
   #ring { flex: 1; min-width: 0; height: 30px; display: flex; align-items: center; }
   #ring svg { height: 30px; width: auto; max-width: 100%; overflow: visible; }
   .bskip { background: rgba(18,22,70,.55); color: #fff; border: 2px solid #fff; border-radius: 999px; width: 32px; height: 28px; padding: 0; font-weight: 900; font-size: .95rem; line-height: 1; flex: none; }
+  body.inapp .btag { letter-spacing: .04em; }   /* ?hud=full|compact: the app's bar already has the title and stars; this page shows neither */
   .bskip:disabled { opacity: .35; }
   #msg { height: 2.5em; line-height: 1.25; font-weight: 800; font-size: .86rem; display: flex; align-items: center; overflow: hidden; }
   .bwrap { position: relative; flex: 1; min-height: 0; border-radius: 18px; background: rgba(18,22,70,.45); box-shadow: inset 0 0 0 2px rgba(255,255,255,.35); padding: 4px; }
@@ -293,6 +294,10 @@ const SWIPE_CACHE = {"1spd2mn":[[1,0],[0,0],[0,-1],[2,-1],[2,0],[1,1],[0,1],[-1,
   const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const S = 40, h = S * .47, RW = S * .46, NS = 'http://www.w3.org/2000/svg';
   const IPATH = ['M12 2c.8 3.6 5.5 5.8 5.5 11.2A5.5 5.5 0 0 1 6.5 13.2c0-2.6 1.6-4 2-6.4 1.2 1 2.2 2.4 2.3 4.4 1-1.9 1.4-5.4 1.2-9.2z', 'M12 2.5C9.2 7 5.5 10.6 5.5 15a6.5 6.5 0 0 0 13 0c0-4.4-3.7-8-6.5-12.5z', 'M3 8.5h10.5a3 3 0 1 0-3-3M3 12.5h14.5a3 3 0 1 1-3 3M3 16.5h7', 'M5 19.5C5 10 11 4.5 20 4.5c0 9.5-5.5 15-15 15z'];
+  const HUD = new URLSearchParams(location.search).get('hud'), CHROME = HUD === 'full' || HUD === 'compact';   // the app's bar already shows the title and stars
+  document.body.classList.toggle('inapp', CHROME);
+  const FULL4 = g.NC >= 4 && g.rim.length === 5 && g.goal === 3;     // the big maps: two pairs + one; the ponds: just fewer kinds
+  const GOALTXT = FULL4 ? '<b>two pairs + one</b>' : 'only <b>' + g.goal + ' kinds</b>';
   const NAMES = ['fire', 'water', 'air', 'earth'], NEONH = ['#ff7a52', '#5ab4ff', '#ffe066', '#5cff8a'];
   const $ = id => document.getElementById(id), svg = $('bsvg');
   const q1 = v => Math.round(v * 10) / 10;
@@ -452,6 +457,7 @@ const SWIPE_CACHE = {"1spd2mn":[[1,0],[0,0],[0,-1],[2,-1],[2,0],[1,1],[0,1],[-1,
   function ringSay() {
     const G = ringGroups(g), pairs = G.filter(x => x[1] > 1).length;
     if (g.won()) return;
+    if (!FULL4) { say('Make the gold ring show ' + GOALTXT + ' for the jackpot!'); return; }
     say(pairs >= 1 ? 'Gold ring: <b>one pair</b>. Make it <b>two pairs + one</b> for the jackpot!' : 'Make the gold ring <b>two pairs + one</b> for the jackpot!');
   }
 
@@ -526,13 +532,13 @@ const SWIPE_CACHE = {"1spd2mn":[[1,0],[0,0],[0,-1],[2,-1],[2,0],[1,1],[0,1],[-1,
     if (dr.bad === v) return; dr.bad = v;           // wrong tile: shake + buzz once per visit, then ignore it
     shake(v); buzz();
     if (r.why === 'gap') say('No bridge there! Follow the bridges.');
-    else if (r.why === 'gold') say('The golden tile pays out when its ring shows <b>two pairs + one</b>.');
+    else if (r.why === 'gold') say('The golden tile pays out when its ring shows ' + GOALTXT + '.');
     else if (dr.K) say('Only ' + kindB(dr.K.pair[0]) + ' and ' + kindB(dr.K.pair[1]) + ', across a bridge from the end!');
     else say('Two <b>different</b> kinds: hop to a tile that is not ' + kindB(g.col[dr.path[0]]) + '.');
   }
   // press and hold: three kind bubbles
   function openBubbles(u) {
-    const kinds = [0, 1, 2, 3].filter(e => e !== g.col[u]), c = ANCH[u];
+    const kinds = [0, 1, 2, 3].filter(e => e !== g.col[u] && e < g.NC), c = ANCH[u];
     const up = c[1] - S * 1.5 > VB[1], els = [];
     kinds.forEach((e, i) => {
       const a = (up ? -90 : 90) + (i - 1) * 52, x = c[0] + Math.cos(a * Math.PI / 180) * S * 1.05, y = c[1] + Math.sin(a * Math.PI / 180) * S * 1.05;
@@ -602,7 +608,7 @@ const SWIPE_CACHE = {"1spd2mn":[[1,0],[0,0],[0,-1],[2,-1],[2,0],[1,1],[0,1],[-1,
     g.rim.forEach((u, i) => later(i * 70, () => pop(u, 1.3)));
     const el = $('cd'); el.className = 'bcd burst'; el.textContent = 'JACKPOT!';
     if (!reduced && el.animate) el.animate([{ transform: 'scale(.2) rotate(-8deg)', opacity: 0 }, { transform: 'scale(1.25) rotate(4deg)', opacity: 1, offset: .5 }, { transform: 'scale(1)', opacity: 1 }], { duration: 600, easing: 'cubic-bezier(.3,1.6,.5,1)', fill: 'forwards' });
-    say('<b>Two pairs + one!</b> The golden tile turns ' + kindB(f) + '. Tap to replay.');
+    say('<b>' + (FULL4 ? 'Two pairs + one!' : 'Jackpot ring!') + '</b> The golden tile turns ' + kindB(f) + (LAB.embedded ? '.' : '. Tap to replay.'));
     let cdn = 5;
     const tick = () => {
       if (!won) return;
@@ -612,7 +618,8 @@ const SWIPE_CACHE = {"1spd2mn":[[1,0],[0,0],[0,-1],[2,-1],[2,0],[1,1],[0,1],[-1,
       blip(cdn === 1 ? 1046 : 784, .08, 'square', .035); blip(cdn === 1 ? 523 : 392, .05, 'sine', .03);
       cdn--; later(1000, tick);
     };
-    later(reduced ? 1500 : 2200, tick);
+    if (LAB.embedded) later(reduced ? 900 : 1800, () => LAB.done());       // the app shows its win screen; no replay countdown
+    else later(reduced ? 1500 : 2200, tick);
   }
   function doReset() {
     timers.forEach(clearTimeout); timers = []; won = false; busy = false; cancelDrag(); closeBubbles();
@@ -639,7 +646,7 @@ const SWIPE_CACHE = {"1spd2mn":[[1,0],[0,0],[0,-1],[2,-1],[2,0],[1,1],[0,1],[-1,
     if (bub) { const i = bubAt(p); if (i >= 0) { pickBubble(i); return; } closeBubbles(); }
     if (dr) cancelDrag();
     const u = hit(p); if (u < 0) return;
-    if (u === H) { pop(H, 1.4); g.rim.forEach((r, i) => setTimeout(() => pop(r, 1.25), 120 + i * 70)); blip(1320, .1, 'triangle', .03); say('The golden tile pays out when its gold ring shows <b>two pairs + one</b>.'); return; }
+    if (u === H) { pop(H, 1.4); g.rim.forEach((r, i) => setTimeout(() => pop(r, 1.25), 120 + i * 70)); blip(1320, .1, 'triangle', .03); say('The golden tile pays out when its gold ring shows ' + GOALTXT + '.'); return; }
     dr = { path: [], K: null, bad: -1, p0: p, at0: isRail(u) ? nearIdx(u, p) : 0 };
     addStep(u); armSay();
     dr.hold = setTimeout(() => { if (dr && dr.path.length === 1) { const w = dr.path[0]; cancelDrag(); openBubbles(w); } }, 420);

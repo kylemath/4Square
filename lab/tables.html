@@ -202,6 +202,9 @@
   // ---------------------------------------------------------------- the reception
   const g = LAB.game();
   const NC = g.NC, hole = g.hole, rimSet = new Set(g.rim);
+  // ponds: g.NC is 2, 3 or 4, so only g.NC tables are laid out (layoutHall, order, cards) and g.won()/g.free() decide the win.
+  // hud=full|compact: the app already shows the level title and stars, so this page repeats neither (it shows neither anyway).
+  const HUD = new URLSearchParams(location.search).get('hud'), IN_APP = HUD === 'full' || HUD === 'compact' || !!LAB.embedded;
   const RM = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
   const NS = 'http://www.w3.org/2000/svg';
   const svg = document.getElementById('s');
@@ -658,7 +661,8 @@
       burst(t.cx, t.cy - t.Rt * .3, 60, [TABLE[F].hem, '#ffffff', '#ffd84a', '#f6b6c1', '#9b7fc2']);
       A.forEach(a => { if (a) a.g.classList.add('party'); });
       setTimeout(() => sfx.clink(), 450);
-      setTimeout(() => { setMsg('A toast to Gran! Tap to plan another'); busy = false; G.remove(); }, 1900);
+      setTimeout(() => { setMsg(IN_APP ? 'A toast to Gran!' : 'A toast to Gran! Tap to plan another'); busy = false; G.remove(); }, 1900);
+      setTimeout(LAB.done, 2200);
     };
   }
 
