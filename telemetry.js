@@ -62,7 +62,7 @@
       if (cur) this.end('abandoned');
       if (consent() !== 'on') { cur = null; return; }
       inputs = {};
-      cur = { v: VERSION, player, session, attempt: rid(), level: level.num, map: level.map, par: level.par, startState: level.state,
+      cur = { v: VERSION, player, session, attempt: rid(), level: level.num, levelId: level.id, skin: level.skin || 'islands', map: level.map, par: level.par, startState: level.state,
         startedAt: new Date().toISOString(), t0: performance.now(), device: device(), ev: [] };
     },
     ev(type, data) { if (!cur) return; cur.ev.push([now(), type, data || 0]); if (cur.ev.length >= 4000) this.end('truncated'); },

@@ -194,6 +194,16 @@
   .ccard.sel { transform: translateY(-6px); border-color: #ffd84a; box-shadow: 0 11px 0 #141a4a, 0 0 18px rgba(255,216,74,.7); }
   .ccard.lock { filter: saturate(.75); }
   .board { position: relative; flex: 1; min-height: 0; touch-action: none; overflow: hidden; }
+  /* skins: any other game style plays in this frame instead of the island board (lab/core.js reports to the app) */
+  #skinFrame { display: none; flex: 1; min-height: 0; width: 100%; border: 0; background: #fff; }
+  #game.skinned .board, #game.skinned .bar { display: none; }
+  #game.skinned #skinFrame { display: block; }
+  .skins { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin: 2px 0 4px; }
+  .skins .lbl { width: 100%; text-align: center; color: #fff; font-weight: 800; font-size: .8rem; letter-spacing: .08em; text-transform: uppercase; text-shadow: 0 2px 0 rgba(14,52,110,.5); }
+  .skins button { display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 84px; padding: 6px 10px 5px; border-radius: 14px; border: 3px solid rgba(255,255,255,.55);
+    background: rgba(255,255,255,.18); color: #fff; font: inherit; font-weight: 800; font-size: .82rem; cursor: pointer; box-shadow: 0 3px 0 rgba(14,52,110,.35); }
+  .skins button .ic { font-size: 1.4rem; line-height: 1.1; }
+  .skins button[aria-checked="true"] { background: #fff; color: #1c1640; border-color: #ffd84a; box-shadow: 0 3px 0 #c9a21a; }
   .board #cv { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; user-select: none; -webkit-user-select: none; }
   #cv .wl > path { fill: none; stroke-linecap: round; stroke-linejoin: round; } #cv .wl .ws { stroke: var(--d); } #cv .wl .wo { stroke: #1c1640; }
   #cv .wl .wb { stroke: var(--c); } #cv .wl .wr { stroke: var(--n); } #cv .wl .wp { stroke: #07090d; } #cv .wl .wi { fill: #07090d; stroke: var(--c); }
@@ -391,12 +401,13 @@
     <svg id="tDemo" viewBox="0 0 300 250" role="img" aria-label="Five element tiles round a grey question-mark tile; one swaps and the middle lights up"></svg>
     <div class="tbtns">
       <button class="btn3d green" id="btnPlay" aria-label="Play">PLAY ▶</button>
+      <div class="skins" id="skinPick" role="radiogroup" aria-label="Game style"></div>
       <button class="btn3d yellow" id="btnHowTitle" aria-label="How to play">❓ How to play</button>
       <div class="consent" id="consent" hidden>
         <p>🔬 Can we save your moves to help scientists learn how people solve puzzles? No names, just taps and timing.</p>
         <div><button id="consentYes">OK!</button><button id="consentNo">No thanks</button></div>
       </div>
-      <div class="tfoot">Part of the <a href="../index.html">Graph Colour Deductive Solver</a> · <a href="index-3d.html">3D mode (desktop)</a></div>
+      <div class="tfoot">Part of the <a href="https://kylemath.github.io/GraphColourDeductiveSolver/">Graph Colour Deductive Solver</a> · <a href="index-3d.html">3D mode (desktop)</a></div>
     </div>
   </div>
 </section>
@@ -432,6 +443,7 @@
     <div id="compass" aria-hidden="true"></div>
     <div id="toast"></div>
   </div>
+  <iframe id="skinFrame" title="Game" allow="autoplay"></iframe>
   <div class="bar">
     <button class="btn3d orange rb" id="btnUndo" aria-label="Flip back the last flip" title="Back"><svg viewBox="0 0 28 28" aria-hidden="true"><g fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11h9a6 6 0 0 1 0 12h-6M13 6l-5 5 5 5" stroke="#1c1640" stroke-width="7"/><path d="M9 11h9a6 6 0 0 1 0 12h-6M13 6l-5 5 5 5" stroke="#fff" stroke-width="3.6"/></g></svg></button>
     <button class="btn3d go trace" id="btnGo" aria-label="Next action"><span id="goIcon">👆</span><span id="goText">TRACE</span></button>
@@ -499,9 +511,19 @@
   let save = { best: {} };
   try { save = JSON.parse(localStorage.getItem(KEY)) || save; } catch (e) {}
   const persist = () => { try { localStorage.setItem(KEY, JSON.stringify(save)); } catch (e) {} };
-  // progress is keyed by level index: the Level -1 onboarding levels were added in front of 0.1, so shift old saves once
-  { const m0 = G.levels.findIndex(l => l.num === '0.1');
-    if (save.lv !== 2 && m0 > 0) { const b = {}; for (const k in save.best || {}) b[+k + m0] = save.best[k]; save.best = b; save.lv = 2; persist(); } }
+  // progress is kept per level id (save.byId), so levels can be inserted or reordered in levels.json. Old saves were
+  // keyed by position: v1 had no Level -1 (4 onboarding levels added in front), v2 matched G.legacy (the old 20 levels).
+  save.byId = save.byId || {};
+  if (save.lv !== 3) {
+    const old = save.best || {}, shift = save.lv === 2 ? 0 : 4, leg = G.legacy || [];
+    for (const k in old) { const id = leg[+k + shift]; if (id && !save.byId[id]) save.byId[id] = old[k]; }
+    save.lv = 3; delete save.best; persist();
+  }
+  // index-keyed view used by the rest of the page: save.best[i] is the record of G.levels[i]
+  save.best = new Proxy({}, {
+    get: (_, i) => { const L = G.levels[+i]; return L ? save.byId[L.id] : undefined; },
+    set: (_, i, v) => { const L = G.levels[+i]; if (L) save.byId[L.id] = v; return true; },
+  });
   const unlockAll = /[?&]all=1/.test(location.search);
 
   // ---------------- sound ----------------
@@ -2249,6 +2271,41 @@
   }).observe($('board'));
   window.addEventListener('resize', () => { clearTimeout(rsT); rsT = setTimeout(() => { if ($('game').classList.contains('on') && L) { buildBoard(false); drawTraced(); drawActive(); } pmDirty = true; }, 150); });
 
+  // ---------------- skins ----------------
+  // The app is the shell (title, level map, briefs, scoring, saves, research log); a skin is the play surface.
+  // 'islands' is this page's own board. Every other skin is a page in lab/ built on lab/core.js, loaded in #skinFrame
+  // with ?lvl=<level id>&embed=1; core.js posts each change here and LAB.done() when its win celebration is over.
+  const SKINS = [
+    { id: 'islands', name: 'Islands', ic: '🏝️' },
+    { id: 'dots', name: 'Dots', ic: '⚫', src: 'lab/dots.html' },
+    { id: 'doodle', name: 'Line Doodle', ic: '🖍️', src: 'lab/doodle.html', waits: true },   // waits: the player still colours the blank piece
+  ];
+  let SKIN = SKINS.find(k => k.id === save.skin) || SKINS[0], skinWinT = 0;
+  function renderSkinPick() {
+    const el = $('skinPick'); if (!el) return;
+    el.innerHTML = '<span class="lbl">Game style</span>' + SKINS.map(k => '<button role="radio" aria-checked="' + (k === SKIN) + '" data-s="' + k.id + '"><span class="ic" aria-hidden="true">' + k.ic + '</span>' + k.name + '</button>').join('');
+    el.querySelectorAll('button').forEach(b => b.onclick = () => { SKIN = SKINS.find(k => k.id === b.dataset.s); save.skin = SKIN.id; persist(); blip(660, .08, 'triangle', .04); renderSkinPick(); });
+  }
+  function skinStart() {
+    clearTimeout(skinWinT);
+    const on = !!SKIN.src, f = $('skinFrame');
+    $('game').classList.toggle('skinned', on);
+    f.src = on ? SKIN.src + '?lvl=' + encodeURIComponent(L.id) + '&embed=1' : 'about:blank';
+  }
+  function skinStop() { clearTimeout(skinWinT); $('game').classList.remove('skinned'); $('skinFrame').src = 'about:blank'; }
+  addEventListener('message', e => {
+    const d = e.data, f = $('skinFrame');
+    if (!d || !d.fth || !SKIN.src || e.source !== f.contentWindow || !L || d.id !== L.id || won) return;
+    if (d.type === 'swap' || d.type === 'undo' || d.type === 'reset') {
+      col = d.col.slice(); col[hole] = -1; flips = d.moves; computeChains(); updateHud();
+      if (window.FTH_LOG) FTH_LOG.ev(d.type, { skin: SKIN.id, state: canon(col), moves: d.moves });
+    }
+    if (d.won && (d.type === 'done' || (d.type === 'swap' && !SKIN.waits))) {
+      clearTimeout(skinWinT);                              // done: now; a skin that never calls LAB.done(): after 6 s
+      skinWinT = setTimeout(() => { if (!won) win(); }, d.type === 'done' ? 0 : 6000);
+    }
+  });
+
   // ---------------- levels ----------------
   function startLevel(i, brief) {
     levelIdx = i; L = G.levels[i]; Gr = G.graphs[L.g];
@@ -2259,7 +2316,7 @@
     ring = new Array(n).fill(99); ring[hole] = 0; const q = [hole];
     while (q.length) { const u = q.shift(); adj[u].forEach(w => { if (ring[w] > ring[u] + 1) { ring[w] = ring[u] + 1; q.push(w); } }); }
     col = L.start.slice();
-    if (window.FTH_LOG) FTH_LOG.start({ num: L.num, map: L.g, par: L.par, state: canon(col) });
+    if (window.FTH_LOG) FTH_LOG.start({ num: L.num, id: L.id, skin: SKIN.id, map: L.g, par: L.par, state: canon(col) });
     found = new Set(); traced = new Map(); visited = new Set([canon(col)]); needFind = false; lastFlip = null; active = null; afterFlip = null;
     score = 0; flips = 0; hintsUsed = 0; won = false; bestLen = 0; history = []; busy = false; trace = null; lastPartial = null;
     $('lvKicker').textContent = 'Level ' + (L.num || i + 1) + ' · ' + L.kicker; $('lvTitle').textContent = L.title;
@@ -2269,6 +2326,7 @@
     holeFill = -1; cer = null; cerLight = null; compass = null; $('compass').classList.remove('on'); anim.clear(); computeChains(); memRecall(); buildBoard(); closeWheel(); drawTraced(); drawActive(); worldStart();
     msg('Drag across two colours to <b>catch</b> a chain!');
     updateHud();
+    skinStart();
     if (brief) showBrief();
   }
   function showBrief() {
@@ -2290,7 +2348,7 @@
     save.best[levelIdx] = { score: Math.max(score, prev ? prev.score : 0), stars: Math.max(stars, prev ? prev.stars : 0) };
     persist(); updateHud();
     const gen = lootGen, later = (ms, fn) => setTimeout(() => { if (gen === lootGen) fn(); }, reduced ? 0 : ms);
-    holeCeremony(free, () => { drawHoleFill(); arp(523, 6, 80); msg('<b>You did it!</b> The hole takes ' + NAMES[free] + '!'); },
+    (SKIN.src ? (f, a, b) => b() : holeCeremony)(free, () => { drawHoleFill(); arp(523, 6, 80); msg('<b>You did it!</b> The hole takes ' + NAMES[free] + '!'); },
       () => { confetti(); later(900, () => {
       $('winStars').innerHTML = [0, 1, 2].map(() => '<span class="ws">' + starSvg + '</span>').join('');
       const ws = [...$('winStars').children];
@@ -2790,7 +2848,8 @@
 
   // ---------- the level map: a cartoon archipelago, one island per group, levels as tiles on a ladder road ----------
   const DIST = { 'First steps': ['Splash Cove', 'cove', '🐚'], 'Warm-up': ['Warm-up Beach', 'beach', '🏖️'], 'Tutorial': ['Tutorial Town', 'town', '🏘️'], 'Locks': ['Lock Harbour', 'harbour', '⚓'],
-    'Far chains': ['Far Chains Forest', 'forest', '🌲'], 'π': ['π Loop Lighthouse', 'cape', '💡'], 'Depths': ['The Depths', 'cave', '💎'], 'Boss': ['Volcano Boss', 'volcano', '🌋'] };
+    'Far chains': ['Far Chains Forest', 'forest', '🌲'], 'π': ['π Loop Lighthouse', 'cape', '💡'], 'Depths': ['The Depths', 'cave', '💎'], 'Boss': ['Volcano Boss', 'volcano', '🌋'],
+    ...(G.islands || {}) };   // levels.json can name new islands (kicker: [name, theme, emoji])
   const THEME = {
     cove: { land: '#ffe9b0', edge: '#ffffff', patch: '#bfeef0', deco: ['duck', 'shell', 'star', 'ball', 'shell', 'star'] },   // Level -1: a paddling cove
     beach: { land: '#f7d98a', edge: '#fff6d2', patch: '#f0c967', deco: ['palm', 'palm', 'umbrella', 'star', 'ball', 'shell'] },
@@ -2800,6 +2859,7 @@
     cape: { land: '#c7cdd5', edge: '#f2f4f6', patch: '#b4bcc6', deco: ['rock', 'rock', 'gull', 'flowers', 'rock', 'gull'] },
     cave: { land: '#7a64a8', edge: '#b9a6e0', patch: '#6a5596', deco: ['crystal', 'crystal', 'stal', 'crystal', 'shroomglow', 'stal'] },
     volcano: { land: '#a3583c', edge: '#e6a882', patch: '#8c4a32', deco: ['rock', 'lava', 'deadtree', 'lava', 'deadtree', 'rock'] },
+    reef: { land: '#f3c9a8', edge: '#fff1e2', patch: '#9fe3dc', deco: ['shell', 'star', 'rock', 'ball', 'shell', 'gull'] },
   };
   const OUT = 'stroke="#1c1640" stroke-width="1.6" stroke-linejoin="round"';
   const DECO = {
@@ -2961,12 +3021,14 @@
     return { y: P[cur][1] / H };
   }
   function showMenu() {
+    skinStop();
     $('win').classList.remove('on'); $('brief').classList.remove('on'); closeWheel(); titleStop();
     lootReset(); msg('');
     $('game').classList.remove('on'); $('title').classList.remove('on'); $('menu').classList.add('on');
     const r = renderSaga(), m = $('menu');
     requestAnimationFrame(() => { m.scrollTop = Math.max(0, r.y * $('saga').clientHeight - m.clientHeight * .55); });
   }
+  renderSkinPick();
   $('btnPlay').onclick = () => { blip(523, .12, 'triangle', .05); titleStop(); if (!save.seenHowTo) openHowTo(showMenu); else showMenu(); };
   $('btnHowTitle').onclick = () => openHowTo(null);
   $('btnHowMap').onclick = () => openHowTo(null);
@@ -2978,7 +3040,7 @@
     document.getElementById('consentYes').onclick = () => { FTH_LOG.setConsent(true); box.hidden = true; };
     document.getElementById('consentNo').onclick = () => { FTH_LOG.setConsent(false); box.hidden = true; };
   })();
-  if (LABN) { const i = G.levels.findIndex(l => String(l.num) === LABN); startLevel(i >= 0 ? i : 0, false); }
+  if (LABN) { const i = G.levels.findIndex(l => l.id === LABN || String(l.num) === LABN); startLevel(i >= 0 ? i : 0, false); }
   else showTitle();
 })();
 </script>

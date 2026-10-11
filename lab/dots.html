@@ -419,6 +419,7 @@ const DOTS_CACHE = {"8cxvpa":[[0,0],[-1.5,-0.866],[1.5,-0.866],[0,-3.4641],[0,1.
   });
   function celebrate() {
     const t = win.t0, rm = reduce();
+    setTimeout(LAB.done, rm ? 300 : 2200);                 // inside the app: hand over to its win screen
     [0, 2, 4, 5, 7].forEach((k, i) => pluck(pitch(k + 3), 0.08 * i, 0.06));
     tone(pitch(10), 1.2, 0.03, 'sine', 0.5);
     for (let u = 0; u < n; u++) {

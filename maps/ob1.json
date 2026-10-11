@@ -1,0 +1,10 @@
+{
+  "name": "two puddles",
+  "note": "onboarding pond, not a triangulation (drawn by hand)",
+  "hole": 0,
+  "ncol": 2,
+  "goal": 1,
+  "onboard": true,
+  "pos": [[0,0],[-0.52,-0.26],[0.52,-0.26],[0,-0.74],[0,0.46],[-0.56,0.84],[0.56,0.84]],
+  "edges": [[0,1],[0,2],[0,4],[1,3],[2,3],[4,5],[4,6]]
+}

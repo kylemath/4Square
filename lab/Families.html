@@ -54,16 +54,16 @@
 <script>
   // the map every game plays: picked at the top, remembered in this browser; changing it rebuilds every tile
   const LEVELS = [
-    ['0.2', 'Small', '12 regions · 1 swap'],
-    ['1', 'Icosahedron', '11 regions · symmetric · 1 swap'],
-    ['4', 'Current', '21 regions · 2 swaps'],
-    ['0.4', 'Big, easy', '33 regions · 1 swap'],
-    ['7', 'Big', '33 regions · 3 swaps'],
-    ['12', 'Deepest pit', '33 regions · 6 swaps'],
+    ['ripples', 'Small', '12 regions · 1 swap'],
+    ['first-flip', 'Icosahedron', '11 regions · symmetric · 1 swap'],
+    ['kempes-double', 'Current', '21 regions · 2 swaps'],
+    ['big-water', 'Big, easy', '33 regions · 1 swap'],
+    ['the-loop', 'Big', '33 regions · 3 swaps'],
+    ['deepest-pit', 'Deepest pit', '33 regions · 6 swaps'],
   ];
   let lvl = new URLSearchParams(location.search).get('lvl');
   try { lvl = lvl || localStorage.getItem('fam-lvl'); } catch (_) {}
-  if (!LEVELS.some(l => l[0] === lvl)) lvl = '4';
+  if (!LEVELS.some(l => l[0] === lvl)) lvl = 'kempes-double';   // level ids (stable across renumbering)
   function row(id, list) {
     const el = document.getElementById(id);
     list.forEach(([name, note, skins]) => {

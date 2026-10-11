@@ -7,7 +7,7 @@
  *
  * Load ../levels.js (and ../layout.js if you want region polygons) before this file.
  *
- *   const g = LAB.game('4');             // level number as shown in the game ('4' by default, or ?lvl= in the URL)
+ *   const g = LAB.game('4');             // level id or number as shown in the game ('4' by default, or ?lvl= in the URL)
  *   g.n, g.hole, g.rim                    // regions 0..n-1, the hole, the rim regions in cyclic order
  *   g.adj[u]                              // neighbours of u (the hole included)
  *   g.rot[u]                              // neighbours of u in cyclic (planar) order
@@ -28,6 +28,11 @@
  *   g.good()                              // chains whose swap brings dist() down by one
  *   g.moves                               // swaps made so far
  *   g.on(fn)                              // fn(g, info) after every change: info = { type: 'swap'|'undo'|'reset', changed }
+ *
+ * Embedding (the skin system): when a skin page is opened with ?embed=1 inside the Fill the Hole app, every change is
+ * posted to the parent window as { fth: 1, type: 'ready'|'swap'|'undo'|'reset'|'done', id, moves, won, free, col }.
+ * A skin calls LAB.done() when its own win celebration is over (the app then shows its win screen); the app can send
+ * { fth: 1, cmd: 'undo'|'reset' }. A skin needs nothing else to run inside the app.
  *
  * A chain is a "web" when it is the only {a, b} chain on the map: swapping it just renames two elements everywhere,
  * so it never changes anything. LAB.ELEM gives names, colours and icons for the 4 elements.
@@ -50,7 +55,7 @@
   function game(num) {
     const G = window.GAME; if (!G) throw new Error('load ../levels.js first');
     num = String(num || new URLSearchParams(location.search).get('lvl') || '4');
-    const L = G.levels.find(l => String(l.num) === num) || G.levels.find(l => String(l.num) === '4');
+    const L = G.levels.find(l => l.id === num || String(l.num) === num) || G.levels.find(l => l.id === 'kempes-double');   // a level id or its number
     const Gr = G.graphs[L.g], n = Gr.n, hole = Gr.hole, rim = Gr.link.slice(), NC = Gr.ncol || 4, goal = Gr.goal || 3;
     const adj = Array.from({ length: n }, () => []);
     Gr.edges.forEach(([a, b]) => { adj[a].push(b); adj[b].push(a); });
@@ -103,7 +108,18 @@
     g.on = fn => { g.subs.push(fn); return g; };
     g.canon = () => canon(g.col);
     compute();
+    if (EMBED) {
+      const post = type => parent.postMessage({ fth: 1, type, id: L.id, num: String(L.num), moves: g.moves, won: g.won(), free: g.free(), col: g.col.slice() }, '*');
+      g.post = post; LAST = g;
+      g.on((_, info) => post(info.type));
+      addEventListener('message', e => { const d = e.data; if (!d || !d.fth || e.source !== parent) return; if (d.cmd === 'undo') g.undo(); else if (d.cmd === 'reset') g.reset(); });
+      post('ready');
+    }
     return g;
   }
-  window.LAB = { game, ELEM, ICON };
+  // inside the app (?embed=1 in a frame): report to the parent; LAB.done() says the skin's win celebration is over
+  const EMBED = new URLSearchParams(location.search).get('embed') === '1' && window.parent !== window;
+  let LAST = null;
+  const done = () => { if (LAST && LAST.won()) LAST.post('done'); };
+  window.LAB = { game, ELEM, ICON, embedded: EMBED, done };
 })();

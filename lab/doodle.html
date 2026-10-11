@@ -530,6 +530,7 @@ const DM = (() => {
   }
   function win() {
     won = true; wonAt = performance.now(); clearTimeout(idleT);
+    setTimeout(LAB.done, RM ? 300 : 1800);                 // inside the app: hand over to its win screen once the piece is coloured
     setTimeout(() => { stamp.classList.add('on'); pop(); }, RM ? 0 : 160); setTimeout(fanfare, RM ? 0 : 260);
     if (!RM) { const [cx, cy] = cen(g.hole);
       for (let k = 0; k < 46; k++) {
