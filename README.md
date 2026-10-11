@@ -28,6 +28,14 @@ one tile and the fillable states are exactly the real words (labels from `node t
 coin in every room, then find the cheese; `node tools/maze_check.js`); [Candy Kempe](lab/crush.html) turns the
 Candy-Crush gesture of swapping two neighbouring candies into the Kempe chain that runs through them.
 
+**Maze Arena (lab research page).** [Maze Arena](lab/MazeArena.html) trains one map-independent graph neural network
+(afterstate TD learning, hand-written backward pass, `lab/arena/engine.js`) with mice in up to 25 swap mazes at once,
+in a Web Worker, and scores it on held-out maps: does it pick a swap that lowers the exact distance to a fill (from
+the census) on maps it never trained on? Models are plain JSON with their settings and metrics, ranked on a
+leaderboard (committed ones in `lab/arena/models/`, made by `node tools/arena_train.js`; tests in
+`node tools/arena_check.js`). Pretraining on random generated maps and what scaling it up would take:
+[lab/arena/PRETRAINING.md](lab/arena/PRETRAINING.md).
+
 Research logging is off unless the player agrees on the title screen, and it stays on the device unless an upload
 form is configured in `telemetry.js` (none is).
 
