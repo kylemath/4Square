@@ -85,6 +85,11 @@
 <script src="../layout.js"></script>
 <script src="core.js"></script>
 <script>
+// inside the app the shell's HUD (hud=full|compact) already shows the level title and stars; this page keeps only its own cue, undo and restart
+const HUD = new URLSearchParams(location.search).get('hud'), IN_HUD = HUD === 'full' || HUD === 'compact';
+document.documentElement.dataset.hud = IN_HUD ? HUD : '';
+</script>
+<script>
 /*LOGIC-START*/
 const BD = (() => {
   // map geometry in unit-square coords [0,1]^2 (cell x,y in [-1,1] -> (x+1)/2, (y+1)/2; y grows down the page)

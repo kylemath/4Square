@@ -1,4 +1,4 @@
-# 4Square: Fill the Hole
+# 4square
 
 A mobile puzzle game about the Four Colour Theorem. A map is coloured with four elements so that neighbours differ;
 one region, the hole, is left blank because its five neighbours use all four. Your move is a **Kempe swap**: pick a
@@ -15,9 +15,11 @@ The levels come from real research data: maps from an exhaustive census of spher
 ([site](https://kylemath.github.io/GraphColourDeductiveSolver/)). The Four Colour Theorem is already proved; this
 game explores the Kempe-swap dynamics behind Kempe's 1879 attempt and Heawood's 1890 objection.
 
-**Game styles (skins).** The same levels can be played in several styles, chosen on the title screen: Islands (the
-main board), Dots and Line Doodle. A style is any page in `lab/` built on `lab/core.js`; it reports its moves to the
-app, which keeps scoring, progress and the level map. `lab/Families.html` shows every experimental style side by side.
+**Game styles (skins).** The same levels play in four styles, chosen on the title screen: Islands, Dots, Line Doodle
+and Blank Doodle. Each skin restyles the whole game, not just the board: theme, HUD level (full, compact, minimal),
+title art, how-to-play pages, bonus-round tiles and the look of the exploration map, which every skin charts as you
+swap. The contract is in [SKIN-SPEC.md](SKIN-SPEC.md); a skin is `skins/<id>.js` plus an optional play page
+`lab/<id>.html`, checked with `node tools/skin_check.js`. `lab/Families.html` shows the experimental styles side by side.
 
 Research logging is off unless the player agrees on the title screen, and it stays on the device unless an upload
 form is configured in `telemetry.js` (none is).

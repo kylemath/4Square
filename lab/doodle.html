@@ -185,6 +185,9 @@ const DM = (() => {
 (() => {
   const RM = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
   const g = LAB.game(), M = DM.prep(g);
+  // inside the app the shell's bar already shows the level title and stars, so this page keeps only its own cue, undo and restart
+  const HUD = new URLSearchParams(location.search).get('hud'), SHELL_HUD = HUD === 'full' || HUD === 'compact';
+  document.documentElement.dataset.hud = HUD || '';
   const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
   const palEl = document.getElementById('pal'), stamp = document.getElementById('stamp');
   const INK = '#2b2d42', PENCIL = 'rgba(80,82,96,', PAPER = '#fffcf3';

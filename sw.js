@@ -1,10 +1,11 @@
-// Service worker for the installable 4Square / Fill the Hole app: works offline after the first visit.
+// Service worker for the installable 4square app: works offline after the first visit.
 // The game's own files: network first (a page, its levels and its skins always match), the cache when offline.
 // Google Fonts: cache first.
 // Bump VERSION to drop old caches.
-const VERSION = 'fth-v4';
+const VERSION = 'fth-v5';
 const CORE = ['./', 'index.html', 'levels.js', 'layout.js', 'telemetry.js', 'manifest.webmanifest',
   'lab/core.js', 'lab/dots.html', 'lab/doodle.html', 'lab/blank.html',
+  'skins/registry.js', 'skins/islands.js', 'skins/dots.js', 'skins/doodle.js', 'skins/blank.js',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png'];
 
 self.addEventListener('install', e => {
