@@ -6,6 +6,8 @@ chain of regions that alternate two elements and swap them. Get the rim down to 
 filled.
 
 **Play:** https://kylemath.github.io/4Square/ (open `index.html`; it is a static site, no build needed to play).
+It is a progressive web app: the **📲 Install** button on the title screen adds it to an Android or iPhone home screen,
+where it runs full screen and offline (`manifest.webmanifest`, `sw.js`; icons from `tools/make_icons.py`).
 
 The levels come from real research data: maps from an exhaustive census of sphere triangulations, with locked
 "π loops", 66666 six-rings and the deepest known start (6 swaps). The game grew out of

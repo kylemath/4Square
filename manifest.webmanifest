@@ -1,0 +1,18 @@
+{
+  "name": "4Square: Fill the Hole",
+  "short_name": "4Square",
+  "description": "A Kempe-swap puzzle game about the Four Colour Theorem: swap two-colour chains until the hole can be filled.",
+  "id": "./",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#3aa6f0",
+  "theme_color": "#2a7fdc",
+  "categories": ["games", "education", "puzzle"],
+  "icons": [
+    {"src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
+    {"src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any"},
+    {"src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"}
+  ]
+}
