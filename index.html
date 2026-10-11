@@ -2278,9 +2278,12 @@
   const SKINS = [
     { id: 'islands', name: 'Islands', ic: '🏝️' },
     { id: 'dots', name: 'Dots', ic: '⚫', src: 'lab/dots.html' },
-    { id: 'doodle', name: 'Line Doodle', ic: '🖍️', src: 'lab/doodle.html', waits: true },   // waits: the player still colours the blank piece
+    { id: 'doodle', name: 'Line Doodle', ic: '🖍️', src: 'lab/doodle.html', waits: true, needs: ['cells'] },   // waits: the player still colours the blank piece; cells: region shapes
   ];
-  let SKIN = SKINS.find(k => k.id === save.skin) || SKINS[0], skinWinT = 0;
+  // SKIN is the player's choice; ACT is the style this level actually runs in (Islands when the choice cannot draw
+  // the map: needs: ['cells'] means region shapes, which the hand-drawn Level -1 ponds do not have)
+  let SKIN = SKINS.find(k => k.id === save.skin) || SKINS[0], ACT = SKIN, skinWinT = 0;
+  const skinFits = k => !k.needs || k.needs.every(nd => nd === 'cells' ? !!(window.LAYOUT && LAYOUT[L.g] && LAYOUT[L.g].cells) : true);
   function renderSkinPick() {
     const el = $('skinPick'); if (!el) return;
     el.innerHTML = '<span class="lbl">Game style</span>' + SKINS.map(k => '<button role="radio" aria-checked="' + (k === SKIN) + '" data-s="' + k.id + '"><span class="ic" aria-hidden="true">' + k.ic + '</span>' + k.name + '</button>').join('');
@@ -2288,19 +2291,29 @@
   }
   function skinStart() {
     clearTimeout(skinWinT);
-    const on = !!SKIN.src, f = $('skinFrame');
+    ACT = SKIN.src && skinFits(SKIN) ? SKIN : SKINS[0];
+    if (ACT !== SKIN) msg(SKIN.name + ' cannot draw this map yet, so it plays on the island.');
+    const on = !!ACT.src, f = $('skinFrame');
     $('game').classList.toggle('skinned', on);
-    f.src = on ? SKIN.src + '?lvl=' + encodeURIComponent(L.id) + '&embed=1' : 'about:blank';
+    f.src = on ? ACT.src + '?lvl=' + encodeURIComponent(L.id) + '&embed=1' : 'about:blank';
   }
   function skinStop() { clearTimeout(skinWinT); $('game').classList.remove('skinned'); $('skinFrame').src = 'about:blank'; }
   addEventListener('message', e => {
     const d = e.data, f = $('skinFrame');
-    if (!d || !d.fth || !SKIN.src || e.source !== f.contentWindow || !L || d.id !== L.id || won) return;
+    if (!d || !d.fth || !ACT.src || e.source !== f.contentWindow || !L || won) return;
+    if (d.type === 'error') {                              // the skin broke: finish this level on the island board
+      console.warn('skin ' + ACT.id + ' failed on ' + L.id + ': ' + d.message);
+      ACT = SKINS[0]; skinStop(); msg(SKIN.name + ' hit a problem here, so this level plays on the island.');
+      requestAnimationFrame(() => { computeChains(); buildBoard(false); drawTraced(); drawActive(); updateHud(); });   // the board was hidden
+      if (window.FTH_LOG) FTH_LOG.ev('skin-error', { skin: SKIN.id, message: d.message });
+      return;
+    }
+    if (d.id !== L.id) return;
     if (d.type === 'swap' || d.type === 'undo' || d.type === 'reset') {
       col = d.col.slice(); col[hole] = -1; flips = d.moves; computeChains(); updateHud();
-      if (window.FTH_LOG) FTH_LOG.ev(d.type, { skin: SKIN.id, state: canon(col), moves: d.moves });
+      if (window.FTH_LOG) FTH_LOG.ev(d.type, { skin: ACT.id, state: canon(col), moves: d.moves });
     }
-    if (d.won && (d.type === 'done' || (d.type === 'swap' && !SKIN.waits))) {
+    if (d.won && (d.type === 'done' || (d.type === 'swap' && !ACT.waits))) {
       clearTimeout(skinWinT);                              // done: now; a skin that never calls LAB.done(): after 6 s
       skinWinT = setTimeout(() => { if (!won) win(); }, d.type === 'done' ? 0 : 6000);
     }
@@ -2348,7 +2361,7 @@
     save.best[levelIdx] = { score: Math.max(score, prev ? prev.score : 0), stars: Math.max(stars, prev ? prev.stars : 0) };
     persist(); updateHud();
     const gen = lootGen, later = (ms, fn) => setTimeout(() => { if (gen === lootGen) fn(); }, reduced ? 0 : ms);
-    (SKIN.src ? (f, a, b) => b() : holeCeremony)(free, () => { drawHoleFill(); arp(523, 6, 80); msg('<b>You did it!</b> The hole takes ' + NAMES[free] + '!'); },
+    (ACT.src ? (f, a, b) => b() : holeCeremony)(free, () => { drawHoleFill(); arp(523, 6, 80); msg('<b>You did it!</b> The hole takes ' + NAMES[free] + '!'); },
       () => { confetti(); later(900, () => {
       $('winStars').innerHTML = [0, 1, 2].map(() => '<span class="ws">' + starSvg + '</span>').join('');
       const ws = [...$('winStars').children];

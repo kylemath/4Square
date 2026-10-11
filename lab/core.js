@@ -119,6 +119,8 @@
   }
   // inside the app (?embed=1 in a frame): report to the parent; LAB.done() says the skin's win celebration is over
   const EMBED = new URLSearchParams(location.search).get('embed') === '1' && window.parent !== window;
+  // a skin that throws (for example on a map it cannot draw) tells the app, which falls back to its own board
+  if (EMBED) addEventListener('error', e => /ResizeObserver/.test(e.message) ? 0 : parent.postMessage({ fth: 1, type: 'error', lvl: new URLSearchParams(location.search).get('lvl'), message: String(e.message) }, '*'));
   let LAST = null;
   const done = () => { if (LAST && LAST.won()) LAST.post('done'); };
   window.LAB = { game, ELEM, ICON, embedded: EMBED, done };
