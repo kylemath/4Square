@@ -228,6 +228,25 @@
   body:not([data-skin="islands"]) .tfoot a { color: inherit; }
   body:not([data-skin="islands"]) .skinblurb { color: var(--sk-ink); }
   body:not([data-skin="islands"]) .howto h2 { color: var(--sk-ink); text-shadow: none; }
+  /* chrome tokens (SKIN-SPEC section 3b): bars, chips, secondary buttons; each falls back to the card colours */
+  body:not([data-skin="islands"]) .badge, body:not([data-skin="islands"]) .goalbar, body:not([data-skin="islands"]) .starbar,
+  body:not([data-skin="islands"]) .mnode .mst, body:not([data-skin="islands"]) .mnode .mtag, body:not([data-skin="islands"]) .say .msg {
+    background: var(--sk-chip, var(--sk-card)); color: var(--sk-chip-ink, var(--sk-card-ink)); border-color: var(--sk-edge, color-mix(in srgb, var(--sk-card-ink) 28%, transparent)); text-shadow: none; }
+  body:not([data-skin="islands"]) .mnode .mst i { color: color-mix(in srgb, var(--sk-chip-ink, var(--sk-card-ink)) 35%, transparent); }
+  body:not([data-skin="islands"]) .mnode .pulse { border-color: var(--sk-accent); }
+  body:not([data-skin="islands"]) .coins { background: var(--sk-coin, var(--sk-accent)); color: var(--sk-btn-ink); border-color: var(--sk-edge, color-mix(in srgb, var(--sk-card-ink) 28%, transparent)); box-shadow: none; text-shadow: none; }
+  body:not([data-skin="islands"]) .btn3d.white, body:not([data-skin="islands"]) .btn3d.yellow, body:not([data-skin="islands"]) .btn3d.blue, body:not([data-skin="islands"]) .btn3d.orange {
+    background: var(--sk-btn2, var(--sk-card)); color: var(--sk-btn2-ink, var(--sk-card-ink)); text-shadow: none; --sh: var(--sk-edge, color-mix(in srgb, var(--sk-card-ink) 30%, transparent)); border: 2px solid var(--sk-edge, color-mix(in srgb, var(--sk-card-ink) 22%, transparent)); }
+  body:not([data-skin="islands"]) .btn3d.go { background: var(--sk-btn); color: var(--sk-btn-ink); --sh: var(--sk-btn-shadow); text-shadow: none; }
+  /* the MAP hexagon and the level badge follow the skin's accent and edge */
+  body:not([data-skin="islands"]) #mini .hx { background: var(--sk-edge, color-mix(in srgb, var(--sk-card-ink) 40%, transparent)); }
+  body:not([data-skin="islands"]) #mini .hx canvas { background: var(--sk-bg-map, #05070a); }
+  body:not([data-skin="islands"]) #mini .lbl { background: var(--sk-accent); border-color: var(--sk-edge, #1c1640); color: var(--sk-btn-ink); }
+  body:not([data-skin="islands"]) #lvBadge .tl, body:not([data-skin="islands"]) #briefBadge .tl {
+    --c: var(--sk-accent); --d: color-mix(in srgb, var(--sk-accent) 55%, #000); --n: color-mix(in srgb, var(--sk-accent) 40%, #fff); }
+  body:not([data-skin="islands"]) #lvBadge .tl .tp, body:not([data-skin="islands"]) #briefBadge .tl .tp { fill: color-mix(in srgb, var(--sk-accent) 18%, #000); }
+  body:not([data-skin="islands"]) .btn3d svg path, body:not([data-skin="islands"]) .btn3d svg g { stroke: currentColor !important; }
+  body:not([data-skin="islands"]) .btn3d.rb svg g path:first-child { stroke: none !important; }
   body:not([data-skin="islands"]) .gtop .lvname, body:not([data-skin="islands"]) .gtop .lvname * { color: var(--sk-ink); text-shadow: none; }
   body:not([data-skin="islands"]) #brief .card, body:not([data-skin="islands"]) #win .card { background: var(--sk-card); color: var(--sk-card-ink);
     border-color: color-mix(in srgb, var(--sk-card-ink) 18%, transparent); box-shadow: 0 10px 30px rgba(0,0,0,.25); }
@@ -3077,6 +3096,7 @@
   function currentLevel() { for (let i = 0; i < G.levels.length; i++) if (isOpen(i) && !save.best[i]) return i; return G.levels.length - 1; }
   function renderSaga() {
     const { groups, H, P } = sagaLayout(), cur = currentLevel(), N = G.levels.length;
+    const lmKeep = (fn, d) => { try { const r = fn(); return Array.isArray(r) ? r : d; } catch (e) { console.warn('levelMap.keepOut', e); return d; } };
     const LM = SKIN.levelMap || null, lmTry = (fn, dflt) => { try { const r = fn(); return typeof r === 'string' ? r : dflt; } catch (e) { console.warn('levelMap', e); return dflt; } };
     const S = [P[0][0] > 200 ? P[0][0] - 70 : P[0][0] + 70, H - 40];
     const segs = catmull([S].concat(P), 18), flat = [].concat(...segs);
@@ -3109,11 +3129,14 @@
         '<text x="' + w / 2 + '" y="17" text-anchor="middle" dominant-baseline="central" class="chunky" font-size="15" fill="#fff" stroke-width="4">' + label + '</text></g>';
       // decorations on free land
       const signBox = [sx - 10, sy - 10, sx + w + 10, sy + 50];
+      const keep = LM && LM.keepOut ? lmKeep(() => LM.keepOut(Z), []) : [], pc = P[cur];
       for (let y = y0 + 34; y < y1 - 14; y += 40) for (let x = 44; x < 360; x += 44) {
         const r = hash01(x * .37 + gi, y * .11), jx = x + (hash01(y, x) - .5) * 20, jy = y + (hash01(x, y) - .5) * 14;
         if (r > (theme === 'forest' ? .75 : .5)) continue;
         if (roadNear(jx, jy, 40) || P.some(p => Math.hypot(p[0] - jx, p[1] - jy) < 56)) continue;
         if (jx > signBox[0] && jx < signBox[2] && jy > signBox[1] && jy < signBox[3]) continue;
+        if (LM && keep.some(b => jx > b[0] && jx < b[2] && jy > b[1] && jy < b[3])) continue;       // the skin's own landmarks
+        if (LM && Math.abs(jx - pc[0]) < 42 && jy > pc[1] - 84 && jy < pc[1] + 24) continue;        // room for the "you are here" pin
         if (theme === 'volcano') { const v = P[g.idx[0]]; if (jy > v[1] - 60 && Math.abs(jx - v[0]) < 70 + (jy - v[1]) * 1.3) continue; }
         if (Math.pow((jx - 200) / 172, 4) + Math.pow((jy - (y0 + y1) / 2) / ((y1 - y0) / 2 - 10), 4) > .8) continue;   // stay on land
         if (LM && LM.decor) { const d = lmTry(() => LM.decor(theme, hash01(jy, jx), hash01(jx, jy * 3), Z), ''); if (d) deco += '<g transform="translate(' + q1(jx) + ' ' + q1(jy) + ')">' + d + '</g>'; continue; }
@@ -3199,6 +3222,11 @@
   applyLook(SKIN);
   renderSkinPick();
   if (PV.view === 'menu') setTimeout(showMenu, 50);
+  else if (PV.view === 'game' || PV.view === 'brief' || PV.view === 'win') setTimeout(() => {   // design review: a level, its brief, or the win screen
+    const i = Math.max(0, G.levels.findIndex(l => l.id === (PVQ.get('lvl') || 'kempes-double')));
+    startLevel(i, PV.view === 'brief');
+    if (PV.view === 'win') { $('win').classList.add('on'); bonusStart(0, 4); }
+  }, 50);
   else if (PV.view === 'howto') setTimeout(() => openHowTo(null), 50);
   $('btnPlay').onclick = () => { blip(523, .12, 'triangle', .05); titleStop(); if (!save.seenHowTo) openHowTo(showMenu); else showMenu(); };
   $('btnHowTitle').onclick = () => openHowTo(null);

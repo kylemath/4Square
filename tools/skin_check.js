@@ -24,7 +24,7 @@ for (const s of ctx.window.FTH_SKINS.list) {
   if (!s.ic) fail(id, 'missing ic');
   if (s.hud && !['full', 'compact', 'minimal'].includes(s.hud)) fail(id, 'hud must be full | compact | minimal');
   if (s.src && !fs.existsSync(path.join(__dirname, '..', s.src))) fail(id, 'src ' + s.src + ' not found');
-  for (const k of Object.keys(s.theme || {})) if (!/^--sk-[a-z-]+$/.test(k)) fail(id, 'theme key ' + k + ' is not --sk-*');
+  for (const k of Object.keys(s.theme || {})) if (!/^--sk-[a-z0-9-]+$/.test(k)) fail(id, 'theme key ' + k + ' is not --sk-*');
   if (s.title && s.title.svg) svgOk(s.title.svg, 'title.svg', id);
   if (s.intro) {
     if (!Array.isArray(s.intro) || s.intro.length < 3 || s.intro.length > 5) fail(id, 'intro must have 3-5 pages');
@@ -56,6 +56,7 @@ for (const s of ctx.window.FTH_SKINS.list) {
     if (L.sign) call('sign', () => L.sign('⚓ Lock Harbour', 140, Z));
     for (const st of ['locked', 'open', 'beaten', 'current']) if (L.node) call('node(' + st + ')', () => L.node(st, '7.3', st === 'locked' ? -1 : 2, false));
     if (L.node) call('node(boss)', () => L.node('open', '16', 1, true));
+    if (L.keepOut) { try { const k = L.keepOut(Z); if (!Array.isArray(k) || k.some(b => !Array.isArray(b) || b.length !== 4 || b.some(v => typeof v !== 'number'))) fail(id, 'levelMap.keepOut must return [[x0,y0,x1,y1], ...]'); } catch (x) { fail(id, 'levelMap.keepOut throws: ' + x.message); } }
     if (L.start) call('start', () => L.start());
     if (L.pin) call('pin', () => L.pin());
     if (L.road) for (const k of ['todo', 'done']) if (L.road[k] && L.road[k].length !== 3) fail(id, 'levelMap.road.' + k + ' needs 3 colours');

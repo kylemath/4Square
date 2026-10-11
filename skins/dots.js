@@ -68,12 +68,53 @@
       '--sk-btn-shadow': '#b9b3a6',
       '--sk-font': "Nunito, Quicksand, 'Avenir Next', system-ui, sans-serif",
       '--sk-radius': '18px',
+      '--sk-chip': '#fbf8f1',
+      '--sk-chip-ink': INK,
+      '--sk-edge': INK,
+      '--sk-btn2': '#fbf8f1',
+      '--sk-btn2-ink': INK,
+      '--sk-coin': '#e0a93a',
     },
     fonts: ['https://fonts.googleapis.com/css2?family=Nunito:wght@300;400;600;800&display=swap'],
-    css: '.tl .tin circle.d{transition:r .2s}.tl.lit .tin{opacity:1}.tl.lit .tin circle.d{stroke:#2d2a26;stroke-width:2}' +
+    css: '--text:#2d2a26;--dim:#4f4a40;--faint:#6f6a5e;--bg2:#f1ecdf;--line:#b9b3a6;' +
+      '.tl .tin circle.d{transition:r .2s}.tl.lit .tin{opacity:1}.tl.lit .tin circle.d{stroke:#2d2a26;stroke-width:2}' +
       '.tl.glow .tin circle.rg{opacity:.55;stroke-width:1.5}.tl .tin circle.rg{opacity:0}' +
-      '.mnode .mst{background:#fbf8f1;color:#e0a93a;border:1px solid #2d2a26;font-size:.72rem;letter-spacing:2px}.mnode .mst i{color:#d6d0c2}' +
-      '.mnode .mtag{background:#fbf8f1;color:#a39d90;border:1px solid #b9b3a6;font-weight:800}.mnode .pulse{border:2px solid #e0a93a}',
+      '.mnode .mst{background:#fbf8f1;color:#8a5f00;border:1.5px solid #2d2a26;font-size:.72rem;letter-spacing:2px;box-shadow:none}.mnode .mst i{color:#b9b3a6}' +
+      '.mnode .mtag{background:#fbf8f1;color:#6b665c;border:1.5px solid #b9b3a6;font-weight:800;box-shadow:none}.mnode .pulse{border:2px solid #e0a93a}' +
+      '.btn3d{border:1.5px solid #2d2a26;border-radius:999px;box-shadow:none;font-weight:800;letter-spacing:.02em;min-height:44px}' +
+      '.btn3d:active{box-shadow:none;transform:scale(.97)}' +
+      '.btn3d:focus-visible{outline:2px solid #e0a93a;outline-offset:3px}' +
+      '.btn3d.white,.btn3d.blue,.btn3d.orange{background:#fbf8f1;color:#2d2a26;border-color:#2d2a26}' +
+      '.btn3d.yellow{background:#e0a93a;color:#2d2a26;border-color:#2d2a26}' +
+      '.btn3d.go{background:#2d2a26;color:#f5f1e8;border-color:#2d2a26}' +
+      '.rbtn,.rbtn.sm{border-radius:999px;box-shadow:none}' +
+      '.bar .rb{border-radius:999px;border:1.5px solid #2d2a26;box-shadow:none}.bar .rb:active{box-shadow:none}' +
+      '.gtop{box-shadow:none;border-bottom:1.5px solid #b9b3a6}' +
+      '.badge,.goalbar,.starbar{box-shadow:none;border:1.5px solid #2d2a26;border-radius:999px}' +
+      '.badge{background:#fbf8f1;color:#2d2a26;font-weight:800}.badge .s{color:#8a5f00}.badge .p{color:#2d2a26}' +
+      '.goalbar,.starbar{background:#fbf8f1;color:#2d2a26}' +
+      '.goalbar .tl.one .tin,.goalbar .tl.hole .tin{filter:none}.goalbar .tl.one .tr{stroke:#2d2a26}' +
+      '.starbar .st path{fill:#e0a93a;stroke:#2d2a26;stroke-width:1.6}.starbar .st.off path{fill:#e6dfcc;stroke:#b9b3a6}' +
+      '.coins{box-shadow:none;background:#e0a93a;color:#2d2a26;border:1.5px solid #2d2a26}.coins::after{display:none}' +
+      '.say .msg{background:#fbf8f1;color:#2d2a26;border:1.5px solid #2d2a26;border-radius:18px;box-shadow:none;font-weight:700}' +
+      '.say .msg::before{border-right-color:#2d2a26}.say .msg::after{border-right-color:#fbf8f1}' +
+      '.say .pinm svg path:first-of-type{fill:#2d2a26;stroke:#2d2a26}' +
+      '.say .pinm svg circle:nth-of-type(1){fill:#fbf8f1}.say .pinm svg circle:nth-of-type(n+2):nth-of-type(-n+3){fill:#2d2a26}' +
+      '.say .pinm svg circle:nth-of-type(n+4):nth-of-type(-n+5){fill:#fbf8f1}.say .pinm svg circle:nth-of-type(n+6){fill:#e0a93a}' +
+      '#brief .card,#win .card,#installSheet .card{border:1.5px solid #b9b3a6;box-shadow:none;border-radius:18px}' +
+      '.skins button{border:1.5px solid #2d2a26;border-radius:16px;box-shadow:none}' +
+      '.skins button[aria-checked="true"]{box-shadow:none}' +
+      '.htnum{box-shadow:none;border:1.5px solid #2d2a26}' +
+      '.htdots button.on{background:#e0a93a}' +
+      '.btn3d.green{background:#2d2a26;color:#f5f1e8;border-color:#2d2a26;text-shadow:none}' +
+      '#briefGo{background:#2d2a26;color:#f5f1e8;box-shadow:none;height:auto;min-height:54px}' +
+      '.pill{background:#fbf8f1;color:#2d2a26;border:1.5px solid #2d2a26;box-shadow:none;text-shadow:none}.pill b{color:#8a5f00}' +
+      '.mbar{background:linear-gradient(180deg,rgba(245,241,232,.96) 0%,rgba(245,241,232,.8) 70%,rgba(245,241,232,0) 100%)}' +
+      '.bar{background:none;box-shadow:none}' +
+      '#brief .card p,#brief .card .k,#brief details,#brief .card table,#brief .card td:first-child{color:#4f4a40;text-shadow:none;font-weight:600}' +
+      '#brief details summary{color:#2d2a26;text-shadow:none}' +
+      '#brief .card .k{color:#6f6a5e;font-weight:800}' +
+      '.wtotal{background:#e0a93a;color:#2d2a26;border:1.5px solid #2d2a26;box-shadow:none;text-shadow:none}.wtotal::after{display:none}',
     title: { svg: titleSvg },
     intro: I,
     bonus: {
@@ -227,6 +268,23 @@
             (motif[z.theme] ? motif[z.theme](z, side, my) : '') + '</g>';
         },
         decor(theme, r, r2, z) { return D[theme] ? D[theme](r, r2) : ''; },
+        keepOut(z) {                                  // boxes the big motifs and landmarks cover
+          const b = [];
+          if (z.theme === 'cape') {                   // lighthouse, its beam, and the pi sign
+            const top = z.stops[z.stops.length - 1], left = top[0] > 200, lx = left ? 76 : 324, ly = top[1] + 52;
+            b.push(left ? [lx - 28, ly - 98, lx + 96, ly + 4] : [lx - 96, ly - 98, lx + 28, ly + 4]);
+            const px = left ? 300 : 100; b.push([px - 24, z.y1 - 70, px + 24, z.y1 - 30]);
+          } else if (z.theme === 'cove') {            // ripple rings
+            const s = freeSide(z), my = (z.y0 + z.y1) / 2; b.push([s - 62, my - 62, s + 62, my + 62]);
+          } else if (z.theme === 'beach') {           // sun and its rays
+            const s = freeSide(z), y = z.y1 - 70; b.push([s - 82, y - 60, s + 82, y + 6]);
+          } else if (z.theme === 'cave') {            // the large crystal
+            const s = freeSide(z), my = (z.y0 + z.y1) / 2; b.push([s - 34, my - 62, s + 34, my + 58]);
+          } else if (z.theme === 'volcano') {         // the cone of dots and the crater
+            const vx = z.stops[0][0], vy = z.stops[0][1]; b.push([Math.max(30, vx - 170), vy - 125, Math.min(370, vx + 170), vy + 162]);
+          }
+          return b;
+        },
         sign(label, w) {
           const name = label.replace(/^\S+\s+/, '').replace(/[^π]+/g, m => m.toUpperCase());
           return '<text x="' + w / 2 + '" y="16" textLength="' + Math.min(w - 8, Math.round(name.length * 9.6)) + '" lengthAdjust="spacing" style="font-size:12px;font-weight:800;letter-spacing:.14em;fill:' + INK + ';text-anchor:middle">' + name + '</text>' +

@@ -1,7 +1,8 @@
 #!/bin/sh
 # Screenshots of a skin for design review (headless Chrome, a 390 x 844 phone frame):
 #   sh docs/game/tools/preview.sh <skin> <outdir>
-# writes <outdir>/<skin>-title.png, -howto.png and -map-0 .. -map-4.png (level map from top to bottom)
+# writes <outdir>/<skin>-title.png, -howto.png, -game.png (a level with the HUD), -brief.png, -win.png (bonus round)
+# and -map-0 .. -map-4.png (level map from top to bottom)
 SKIN=$1; OUT=${2:-.}; DIR=$(cd "$(dirname "$0")/.." && pwd)
 CH="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 [ -x "$CH" ] || CH=$(command -v chromium || command -v google-chrome)
@@ -10,4 +11,7 @@ shot() { "$CH" --headless=new --disable-gpu --hide-scrollbars --virtual-time-bud
 mkdir -p "$OUT"
 shot title ""
 shot howto "&view=howto"
+shot game "&view=game&lvl=kempes-double"
+shot brief "&view=brief&lvl=kempes-double"
+shot win "&view=win&lvl=kempes-double"
 k=0; for f in 0 0.25 0.5 0.75 1; do shot map-$k "&view=menu&scroll=$f"; k=$((k + 1)); done

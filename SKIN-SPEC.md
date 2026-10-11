@@ -72,6 +72,23 @@ win card, bonus round and how-to-play:
 | `--sk-font` | font-family stack for headings and buttons | system rounded |
 | `--sk-radius` | corner radius of cards and buttons | `22px` |
 
+## 3b. Chrome tokens (optional)
+
+Bars, chips and secondary buttons (home, help, undo, restart, hint, back/next, the star and lock chips under level
+markers, the points counter, the talking-pin bubble) use these. Each falls back to the card colours, so a skin can
+ignore them, but a high-end look sets them (and may add more in `css`):
+
+| token | meaning |
+|---|---|
+| `--sk-chip` / `--sk-chip-ink` | background / text of bars and chips (goal bar, star meter, badge, star and lock chips) |
+| `--sk-edge` | border colour of chips and secondary buttons |
+| `--sk-btn2` / `--sk-btn2-ink` | secondary buttons (white, yellow, blue, orange variants) |
+| `--sk-coin` | the points counter |
+
+Selectors worth restyling in `css` (it is scoped to your skin): `.btn3d` and its variants `.white .yellow .blue
+.orange .go .rb .rbtn`, `.badge`, `.coins`, `.goalbar`, `.starbar`, `.mnode .mst` (stars) and `.mnode .mtag`
+(lock number), `.mnode .pulse`, `.say .msg` (the talking-pin bubble), `.skins button`, `.htdots`, `.htnum`, `#installSheet .card`.
+
 ## 4. Title art
 
 `title.svg`: an SVG string with `viewBox="0 0 300 250"`, drawn under the "4square" logo while this skin is
@@ -149,6 +166,7 @@ levelMap: {
   zone(z) { return '<g>…</g>'; },           // one zone's ground and landmarks (replaces the island shape)
   zones: { cove: { land, edge, patch }, … },// OR just recolour the built-in island per theme (no zone())
   decor(theme, r, r2, z) { return '<g>…</g>' or ''; }, // one decoration centred on (0, 0); called for each free spot
+  keepOut(z) { return [[x0, y0, x1, y1], …]; }, // boxes (SVG coords) where the shell must not place decor: your landmarks
   sign(label, w, z) { return '…'; },        // a zone's name sign, drawn at (0, 0), w wide, ~32 high (label = emoji + name)
   road: { todo: [outer, inner, dash], done: [outer, inner, dash],   // road colours: unplayed / played
           widths: [20, 13, 13], dash: '3 6', cap: 'butt' },              // optional: layer widths, dash pattern, dash caps ('none' hides a layer)

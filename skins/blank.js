@@ -285,6 +285,12 @@
           '<rect width="' + w + '" height="32" rx="9" fill="none"' + SB.replace('stroke-width="4"', 'stroke-width="3.2"') + '/>' +
           '<text x="' + w / 2 + '" y="17" text-anchor="middle" dominant-baseline="central" font-family="' + F + '" font-weight="700" font-size="15" fill="' + INK + '">' + label + '</text>';
       },
+      keepOut(z) {   // the lighthouse (cape) and the volcano cone (volcano) are drawn in zone(); keep decor off them
+        const out = [];
+        if (z.theme === 'cape') { const t = z.stops[z.stops.length - 1], x = t[0] > 200 ? 62 : 338, y = t[1] + 34; out.push([x - 54, y - 96, x + 54, y + 4]); }
+        if (z.theme === 'volcano') { const b = z.stops[0], vx = b[0], vy = b[1], bt = z.y1 - 14; out.push([Math.max(24, vx - 176), vy - 40, Math.min(376, vx + 176), bt]); }
+        return out;
+      },
       road: { todo: [INK, '#ffffff', '#d4d6e6'], done: [INK, '#ffc928', '#fff3b0'] },
       node(state, num, e, boss) {
         const c = e >= 0 ? e : 0, big = boss ? 34 : 29, pts = boss ? (function () { let p = []; for (let i = 0; i < 16; i++) { const R = i % 2 ? 29 : 37, a = i * Math.PI / 8; p.push(f1(R * Math.cos(a)) + ',' + f1(R * Math.sin(a))); } return p.join(' '); })() : hexPts(0, 0, big, 30);
@@ -315,23 +321,70 @@
     src: 'lab/blank.html', waits: true, own: true, needs: ['cells'],
     hud: 'compact',
     theme: {
-      '--sk-bg': 'radial-gradient(rgba(43,45,66,.09) 1.1px, transparent 1.5px) 0 0 / 18px 18px, linear-gradient(180deg, #ffffff 0%, #fffaf0 100%)',
-      '--sk-ink': '#2b2d42',
-      '--sk-accent': '#ffb800',
+      '--sk-bg': 'radial-gradient(rgba(27,27,47,.13) 1px, transparent 1.4px) 0 0 / 16px 16px, #ffffff',
+      '--sk-ink': INK,
+      '--sk-accent': '#ffc928',
       '--sk-card': '#ffffff',
-      '--sk-card-ink': '#2b2d42',
-      '--sk-hud': 'linear-gradient(180deg, #fff3b0 0%, #ffe066 100%)',
-      '--sk-btn': 'linear-gradient(180deg, #ffd23f, #ffb800)',
-      '--sk-btn-ink': '#2b2d42',
-      '--sk-btn-shadow': '#c98400',
+      '--sk-card-ink': INK,
+      '--sk-hud': '#ffffff',
+      '--sk-btn': '#ffc928',
+      '--sk-btn-ink': INK,
+      '--sk-btn-shadow': INK,
+      '--sk-chip': '#ffffff',
+      '--sk-chip-ink': INK,
+      '--sk-edge': INK,
+      '--sk-coin': '#ffc928',
       '--sk-font': "Fredoka, 'Baloo 2', 'Arial Rounded MT Bold', 'Trebuchet MS', system-ui, sans-serif",
-      '--sk-radius': '20px',
+      '--sk-radius': '18px',
     },
     css: '.tl .hx{transition:filter .15s,stroke .15s}' +
       '.tl.lit .hx{fill-opacity:1;filter:saturate(1.25) brightness(1.06)}' +
       '.tl.lit .gr{stroke-opacity:.5}' +
       '.tl.glow .halo{opacity:.85}' +
-      '.tl.glow .hx{stroke:#1b1b2f;fill-opacity:1;filter:saturate(1.4) brightness(1.12)}',
+      `.tl.glow .hx{stroke:${INK};fill-opacity:1;filter:saturate(1.4) brightness(1.12)}` +
+      // chrome: thick ink outlines, flat 3px offset shadows, Fredoka everywhere
+      `.btn3d,.badge,.pill,.coins,.goalbar,.starbar,.mnode .mst,.mnode .mtag,.say .msg,.skins button,#btnGo{font-family:var(--sk-font);text-shadow:none}` +
+      `.btn3d{border:3px solid ${INK};border-radius:16px;color:${INK};--sh:${INK};box-shadow:3px 3px 0 ${INK};letter-spacing:.02em;font-weight:700}` +
+      `.btn3d:active{transform:translate(3px,3px);box-shadow:0 0 0 ${INK}}` +
+      `.btn3d.green,.btn3d.go,.btn3d.yellow{background:#ffc928;color:${INK}}` +
+      `.btn3d.white{background:#fff;color:${INK}}` +
+      `.btn3d.blue{background:#3fa7f5;color:${INK}}` +
+      `.btn3d.orange{background:#ff9a3c;color:${INK}}` +
+      `.btn3d:focus-visible,.mnode:focus-visible,.htdots button:focus-visible{outline:3px solid ${INK};outline-offset:3px}` +
+      `.rbtn{border-radius:14px}` +
+      `.rbtn.sm{border-radius:12px;box-shadow:2px 2px 0 ${INK}}` +
+      `.rbtn.sm:active{box-shadow:0 0 0 ${INK}}` +
+      `.bar .rb{border:3px solid ${INK};border-radius:14px;box-shadow:3px 3px 0 ${INK}}` +
+      `.bar .rb:active{box-shadow:0 0 0 ${INK}}` +
+      `.bar{background:#fff;border-top:3px solid ${INK}}` +
+      `.gtop{box-shadow:none;border-bottom:3px solid ${INK}}` +
+      `.badge,.pill{background:#fff;color:${INK};border:3px solid ${INK};border-radius:14px;box-shadow:2px 2px 0 ${INK}}` +
+      `.badge .s,.pill b{color:${INK}}` +
+      `.badge .p{color:#1f6fc0}` +
+      `.coins{background:#ffc928;color:${INK};border:3px solid ${INK};border-radius:14px;box-shadow:3px 3px 0 ${INK};min-width:0}` +
+      `.coins::after{display:none}` +
+      `.goalbar,.starbar{background:#fff;border:3px solid ${INK};border-radius:14px;box-shadow:3px 3px 0 ${INK};height:40px}` +
+      `.starbar .st path{fill:#ffc928;stroke:${INK};stroke-width:2.2}` +
+      `.starbar .st.off path{fill:#eeeae0;stroke:${INK}}` +
+      `.mnode .mst{background:#fff;color:${INK};border:2.5px solid ${INK};border-radius:8px;box-shadow:2px 2px 0 ${INK}}` +
+      `.mnode .mtag{background:#ebe6d6;color:${INK};border:2.5px solid ${INK};border-radius:8px;box-shadow:2px 2px 0 ${INK}}` +
+      `.mnode .pulse{border:3px solid #ffc928;box-shadow:0 0 0 2px ${INK}}` +
+      `.say .msg{background:#fff;color:${INK};border:3px solid ${INK};border-radius:14px;box-shadow:3px 3px 0 ${INK}}` +
+      `.skins button{background:#fff;color:${INK};border:3px solid ${INK};border-radius:14px;box-shadow:2px 2px 0 ${INK}}` +
+      `.skins button[aria-checked="true"]{background:#ffc928;color:${INK};border-color:${INK};box-shadow:2px 2px 0 ${INK}}` +
+      `.htdots button{border:2px solid ${INK}}` +
+      `.htdots button.on{background:#ffc928}` +
+      `.htnum{background:#ffc928;color:${INK};border:3px solid ${INK};box-shadow:2px 2px 0 ${INK}}` +
+      `.card,#installSheet .card{border:3px solid ${INK};border-radius:22px;box-shadow:6px 6px 0 ${INK}}` +
+      `#brief .card,#win .card{border:3px solid ${INK};box-shadow:6px 6px 0 ${INK}}` +
+      `#btnGo{border:3px solid ${INK};border-radius:16px;box-shadow:3px 3px 0 ${INK};color:${INK}}` +
+      `#btnGo.swap,#btnGo.next{background:#3ccf6e}` +
+      `#btnGo.trace{background:#3fa7f5}` +
+      `#btnGo.catch{background:#ff9a3c}` +
+      `#briefGo,#winNext{background:#ffc928;color:${INK};--sh:${INK};border:3px solid ${INK};box-shadow:3px 3px 0 ${INK};text-shadow:none;border-radius:16px}` +
+      `#briefGo:active,#winNext:active{box-shadow:0 0 0 ${INK}}` +
+      `.htskip{background:#fff;color:${INK};border:3px solid ${INK};border-radius:14px;box-shadow:2px 2px 0 ${INK};font-family:var(--sk-font)}` +
+      `#mini .lbl{background:#ffc928;color:${INK};border-color:${INK};border-radius:6px}`,
     fonts: ['https://fonts.googleapis.com/css2?family=Fredoka:wght@500;700&display=swap'],
     title: { svg: titleSvg },
     intro: [

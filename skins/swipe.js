@@ -103,9 +103,36 @@
       '--sk-btn-shadow': GOLD2,
       '--sk-font': "'Lilita One', 'Fredoka', 'Baloo 2', ui-rounded, system-ui, sans-serif",
       '--sk-radius': '20px',
+      '--sk-chip': 'linear-gradient(180deg, #2c2088, #1d1562)',
+      '--sk-chip-ink': '#f1edff',
+      '--sk-edge': GOLD,
+      '--sk-btn2': 'linear-gradient(180deg, #3d2fae, #241a7a)',
+      '--sk-btn2-ink': '#ffe9a6',
+      '--sk-coin': 'linear-gradient(180deg, #ffe46b, #ffb81a)',
     },
     css: '.tl .tr,.tl .rm{transition:stroke .15s}.tl.lit .rm{stroke:#fff}.tl.lit .tin{filter:drop-shadow(0 0 6px #fff) drop-shadow(0 0 3px currentColor)}' +
-      '.tl.glow .tin{filter:drop-shadow(0 0 10px #ffd84a) drop-shadow(0 0 4px #fff)}',
+      '.tl.glow .tin{filter:drop-shadow(0 0 10px #ffd84a) drop-shadow(0 0 4px #fff)}' +
+      // chrome: neon pills and arcade buttons (violet bodies, gold and magenta rims, glow from box-shadow)
+      '.btn3d{border-radius:16px;text-transform:uppercase;letter-spacing:.08em;font-size:1.05em;box-shadow:0 5px 0 var(--sh),0 0 14px rgba(255,216,74,.4)}' +
+      '.btn3d:active{box-shadow:0 1px 0 var(--sh),0 0 10px rgba(255,216,74,.4)}' +
+      '.btn3d.white,.btn3d.yellow,.btn3d.blue,.btn3d.orange{border:2px solid #ff4fd8;--sh:#7a1a6a;box-shadow:0 5px 0 #7a1a6a,0 0 12px rgba(255,79,216,.55)}' +
+      '.btn3d.go{border:2px solid #fff6c8;box-shadow:0 5px 0 #b06a00,0 0 18px rgba(255,216,74,.7)}' +
+      '.rbtn,.rbtn.sm{border-radius:14px}' +
+      '.bar .rb{border:2px solid #ffd84a;border-radius:16px}' +
+      '.badge,.goalbar,.starbar,.mnode .mst,.mnode .mtag{border-width:2px;border-style:solid;box-shadow:0 0 10px rgba(255,216,74,.35)}' +
+      '.badge,.goalbar,.starbar{border-radius:999px}' +
+      '.mnode .mtag,.mnode .mst{font-family:var(--sk-font);letter-spacing:.04em}' +
+      '.say .msg{border-width:2px;border-style:solid;border-radius:16px;box-shadow:0 0 12px rgba(255,79,216,.45)}' +
+      '.say .msg::before{border-right-color:#ffd84a}.say .msg::after{border-right-color:#231a6e}' +
+      '.coins{border-width:2px;font-family:var(--sk-font);box-shadow:0 0 14px rgba(255,216,74,.6),inset 0 -3px 0 rgba(176,106,0,.45)}' +
+      '.mnode .pulse{border-color:#ff4fd8;box-shadow:0 0 12px #ff4fd8}' +
+      '.htnum{box-shadow:0 0 14px rgba(255,216,74,.6)}' +
+      '.skins button{border-radius:14px}.skins button[aria-checked="true"]{box-shadow:0 0 12px rgba(255,216,74,.7)}' +
+      '#brief .card,#win .card,#installSheet .card{border-radius:var(--sk-radius);border:2px solid #ffd84a;box-shadow:0 0 28px rgba(138,108,255,.6)}' +
+      '#installSheet .card{background:var(--sk-card);color:var(--sk-card-ink)}#installSheet h2{font-family:var(--sk-font);color:var(--sk-ink)}' +
+      '#briefGo{--sh:#b06a00;background:var(--sk-btn);color:var(--sk-btn-ink);box-shadow:0 5px 0 #b06a00,0 0 18px rgba(255,216,74,.7);border:2px solid #fff6c8}' +
+      '#briefGo:active{box-shadow:0 1px 0 #b06a00,0 0 12px rgba(255,216,74,.6)}' +
+      '#bonus .bhead{flex-wrap:wrap;row-gap:4px}#bonus #bonusMsg{order:1;flex:1 0 100%;font-size:.84rem;line-height:1.25}',
     fonts: ['https://fonts.googleapis.com/css2?family=Lilita+One&display=swap'],
     title: { svg: titleSvg },
     intro: [
@@ -251,6 +278,12 @@
           return '<g>' + s + '</g>';
         },
         decor(theme, r, r2, z) { const K = KIND[theme] || KIND.town; return '<g>' + pick(K, (r * 5.7 + r2 * 3.3) % 1)(r2, r) + '</g>'; },
+        keepOut(z) {   // the lighthouse on the cape, and the volcano with its boss crater and coin spray
+          const out = [];
+          if (z.theme === 'cape') { const t = z.stops[z.stops.length - 1], lx = t[0] > 200 ? 70 : 330, ly = t[1] + 30; out.push([lx - 76, ly - 84, lx + 76, ly + 14]); }
+          if (z.boss) { const b = z.stops[0], vx = b[0], vy = b[1]; out.push([vx - 120, vy - 126, vx + 120, vy + 160], [vx - 182, vy + 56, vx + 182, vy + 160]); }
+          return out;
+        },
         sign(label, w) {
           return '<rect x="-2" y="-2" width="' + (w + 4) + '" height="36" rx="11" fill="none" stroke="' + GOLD + '" stroke-width="7" opacity=".22"/><rect width="' + w + '" height="32" rx="9" fill="#1a1058" stroke="' + GOLD + '" stroke-width="2.6"/>' +
             '<rect x="3.5" y="3.5" width="' + (w - 7) + '" height="25" rx="6.5" fill="' + PLATE + '" stroke="' + EDGE + '" stroke-width="1"/>' +

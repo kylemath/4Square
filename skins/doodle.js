@@ -215,6 +215,20 @@
       }
       return o;
     },
+    keepOut(z) {   // boxes for the hatched volcano, the lighthouse and the pi sign
+      const b = [];
+      if (z.theme === 'volcano') {
+        const v = z.stops[0], t = z.stops[z.stops.length - 1];
+        b.push([v[0] - 176, v[1] - 70, v[0] + 176, v[1] + 152]);
+        if (t[1] < v[1] - 70) b.push([t[0] - 60, t[1] - 58, t[0] + 60, t[1] + 40]);
+      }
+      if (z.theme === 'cape') {
+        const top = z.stops[z.stops.length - 1], lx = top[0] > 200 ? 70 : 330, ly = top[1] + 30, dr = lx < 200 ? 1 : -1, px = lx > 200 ? 290 : 110;
+        b.push([Math.min(lx, lx + dr * 112) - 6, ly - 84, Math.max(lx, lx + dr * 112) + 6, ly + 10]);
+        b.push([px - 26, z.y1 - 88, px + 26, z.y1 - 34]);
+      }
+      return b;
+    },
     decor(theme, r, r2, z) {
       const L = DEC[theme] || DEC.town, f = L[Math.floor(r * L.length) % L.length], k = Math.floor(r2 * 997) + 1;
       return '<g transform="rotate(' + f1((r2 - .5) * 10) + ')">' + f(k, r2) + '</g>';
@@ -269,9 +283,53 @@
       '--sk-btn-shadow': '#b78a00',
       '--sk-font': "'Patrick Hand', 'Fredoka', 'Comic Sans MS', 'Chalkboard SE', cursive",
       '--sk-radius': '14px',
+      '--sk-chip': '#fffcf3',
+      '--sk-chip-ink': '#2b2d42',
+      '--sk-edge': '#2b2d42',
+      '--sk-coin': '#ffc928',
     },
-    css: '.tl .hl{opacity:0;transition:opacity .15s}.tl.lit .hl{opacity:.95}.tl.lit .hx{stroke-width:3.4}' +
-      '.tl.glow .tin{filter:drop-shadow(0 0 5px #fff59d) drop-shadow(0 0 2px #2b2d42)}',
+    css: '--sk-btn2:#fffcf3;--sk-btn2-ink:#2b2d42;' + // secondary buttons (set here: validator rejects digits in theme keys)
+      '.tl .hl{opacity:0;transition:opacity .15s}.tl.lit .hl{opacity:.95}.tl.lit .hx{stroke-width:3.4}' +
+      '.tl.glow .tin{filter:drop-shadow(0 0 5px #fff59d) drop-shadow(0 0 2px #2b2d42)}' +
+      // buttons: paper stickers with a wobbly ink border and a hard offset shadow
+      '.btn3d{border:2.5px solid #2b2d42;border-radius:15px 19px 14px 18px/18px 14px 19px 15px;box-shadow:3px 4px 0 #2b2d42;font-family:var(--sk-font);font-weight:700;letter-spacing:.02em;color:#2b2d42;text-shadow:none;transition:transform .12s,box-shadow .12s}' +
+      '.btn3d.white{background:#fffcf3}.btn3d.yellow{background:#ffc928}.btn3d.blue{background:#3fa7f5}.btn3d.orange{background:#ff9a3c}' +
+      '.btn3d.go{background:#3ccf6e;color:#2b2d42}' +
+      '.btn3d svg path,.btn3d svg g{stroke:#2b2d42}' +
+      '.btn3d.rb svg g path:first-child{stroke:none}' +
+      '.btn3d.rbtn,.btn3d.rb{border-radius:14px 17px 13px 16px/16px 13px 17px 14px}' +
+      '.btn3d:active{transform:translate(2px,3px) rotate(1.5deg);box-shadow:1px 1px 0 #2b2d42}' +
+      '@media (hover:hover){.btn3d:hover{transform:rotate(-1.2deg)}.btn3d:active{transform:translate(2px,3px) rotate(1.5deg)}}' +
+      '.bar .rb{border:2.5px solid #2b2d42;box-shadow:3px 4px 0 #2b2d42}' +
+      '.bar .rb:active{transform:translate(2px,3px);box-shadow:1px 1px 0 #2b2d42}' +
+      '.bar .rb:disabled{filter:saturate(.3) brightness(1.05);opacity:.6}' +
+      '.htnum{border:2.5px solid #2b2d42;box-shadow:2px 2px 0 #2b2d42;font-family:var(--sk-font)}' +
+      '.htskip{border:2px solid #2b2d42;border-radius:12px 15px 11px 14px;font-family:var(--sk-font)}' +
+      // kraft strips for the HUD, the level-map bar and the play bar; stitched lower edge
+      '.gtop{background:var(--sk-hud);border-bottom:2.5px solid #2b2d42;box-shadow:none}' +
+      '.mbar{background:var(--sk-hud);border-bottom:2.5px solid #2b2d42;box-shadow:0 3px 0 rgba(43,45,66,.18)}' +
+      '.bar{background:var(--sk-hud);border-top:2.5px solid #2b2d42;box-shadow:none}' +
+      // chips and bars: taped labels with a hard shadow
+      '.badge,.goalbar,.starbar{border:2.5px solid #2b2d42;border-radius:14px 17px 13px 16px/16px 13px 17px 14px;box-shadow:2px 3px 0 #2b2d42;font-family:var(--sk-font)}' +
+      '.goalbar,.starbar{background:#fffcf3}' +
+      '.starbar .st.off path{fill:#e6dcc4;stroke:#2b2d42}' +
+      '.starbar .st path{fill:#ffc928;stroke:#2b2d42;stroke-width:2.2}' +
+      '.coins{border:2.5px solid #2b2d42;border-radius:14px 18px 13px 16px/16px 13px 18px 14px;box-shadow:2px 3px 0 #2b2d42;font-family:var(--sk-font);font-size:1.1rem;padding:2px 12px 2px 4px}' +
+      '.mnode .mst,.mnode .mtag{border:2px solid #2b2d42;border-radius:9px 11px 8px 10px;box-shadow:1.5px 2px 0 #2b2d42;font-family:var(--sk-font);font-size:.95rem;font-weight:700}' +
+      '.mnode .mtag{background:#d9d2bd;color:#2b2d42}' +
+      '.mnode .pulse{border:3px dashed #2b2d42;border-radius:44% 56% 52% 48%/50% 44% 56% 50%}' +
+      // talking pin: a note on lined paper
+      '.say .msg{border:2.5px solid #2b2d42;border-radius:14px 17px 13px 16px;box-shadow:3px 3px 0 #2b2d42;font-family:var(--sk-font);font-size:1.02rem;font-weight:700}' +
+      '.say .msg::before{border-right-color:#2b2d42}.say .msg::after{border-right-color:#fffcf3}' +
+      // cards: a sketchbook page with a stitched inner edge
+      '#brief .card,#win .card,#installSheet .card{border:2.5px solid #2b2d42;border-radius:16px 20px 15px 19px/19px 15px 20px 16px !important;box-shadow:5px 6px 0 #2b2d42;outline:1.5px dashed rgba(43,45,66,.35);outline-offset:-8px;font-family:var(--sk-font)}' +
+      '#installSheet .card h2{font-family:var(--sk-font)}' +
+      '#brief .card p,#brief .card table,#brief .card td,#brief details,#brief details summary,#brief .card .k,#win .card p{color:var(--sk-card-ink)}' +
+      // language picker and how-to dots
+      '.skins button{border:2.5px solid #2b2d42;border-radius:12px 15px 11px 14px/14px 11px 15px 12px;box-shadow:2px 2px 0 #2b2d42;font-family:var(--sk-font)}' +
+      '.skins button[aria-checked="true"]{background:#ffc928;color:#2b2d42;border-color:#2b2d42;box-shadow:3px 3px 0 #2b2d42}' +
+      '.htdots button{border:1.5px solid #2b2d42}' +
+      '.htdots button.on{background:#ffc928}',
     fonts: ['https://fonts.googleapis.com/css2?family=Patrick+Hand&family=Fredoka:wght@500;700&display=swap'],
     title: { svg: titleSvg },
     intro: [

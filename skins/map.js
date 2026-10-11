@@ -1,7 +1,7 @@
 // Island Map: a bright cartoon treasure map. Sea-blue page, sandy island, chunky countries with dark outlines,
 // an element icon on a dark plate in each, and a row of flags as the goal. Matches lab/map.html.
 (function () {
-  const INK = '#1c1640', SAND = '#f7d98a', GRASS = '#8fd36b', GOLD = '#ffd84a';
+  const INK = '#1c1640', SAND = '#f7d98a', GRASS = '#8fd36b', GOLD = '#ffd84a', PAPER = '#f3e3b8', BR = '#7a4a24';
   const COL = ['#ef5a3c', '#3d8fe8', '#e8c547', '#4caf50'], DK = ['#8e1c17', '#1b4f91', '#8a6510', '#1a6b2a'], NEON = ['#ff7a52', '#5ab4ff', '#ffe066', '#5cff8a'];
   const ICON = [
     'M12 2c1 3.4 5.4 5.6 5.4 11a5.4 5.4 0 0 1-10.8 0c0-2.4 1.1-4.1 2.3-5.2.1 1.6.8 2.7 1.9 3.3C10.3 8 11 5 12 2z',
@@ -220,6 +220,14 @@
         const sc = f1(.9 + r2 * .25), flip = r2 > .5 && k !== 'anchor';
         return '<g transform="scale(' + (flip ? -sc : sc) + ' ' + sc + ')">' + f(r2) + '</g>';
       },
+      // decor must stay off the landmarks: same spots and sizes as zone() draws them
+      keepOut(z) {
+        if (z.theme === 'volcano') { const b = z.stops.reduce((m, p) => p[1] < m[1] ? p : m); return [[b[0] - 175, b[1] - 130, b[0] + 175, b[1] + 156]]; }
+        const hh = { town: 40, harbour: 38, cape: 60, reef: 36, cave: 40 }[z.theme];
+        if (!hh) return [];
+        const p = freeSpot(z, hh), B = { town: [-40, -56, 40, 28], harbour: [-38, -38, 38, 34], cape: [-38, -98, 58, 28], reef: [-48, -32, 48, 42], cave: [-50, -50, 50, 36] }[z.theme];
+        return [[p[0] + B[0], p[1] + B[1], p[0] + B[2], p[1] + B[3]]];
+      },
       sign(label, w, z) {
         return '<rect x="3" y="5" width="' + (w - 2) + '" height="28" rx="6" fill="' + INK + '" opacity=".22"/>' +
           '<path d="M10 4H' + (w - 10) + 'V29H10Z" fill="#fbf0cc" stroke="' + INK + '" stroke-width="2.4" stroke-linejoin="round"/><path d="M10 7H' + (w - 10) + 'M10 26H' + (w - 10) + '" stroke="' + BR + '" stroke-width="1" opacity=".5"/>' +
@@ -260,19 +268,65 @@
     src: 'lab/map.html', needs: ['cells'],
     hud: 'compact',
     theme: {
-      '--sk-bg': 'radial-gradient(ellipse at 50% 40%, #46b8ea, #1f86c4 80%)',
-      '--sk-ink': '#ffffff',
+      '--sk-bg': 'radial-gradient(ellipse at 50% 40%, #2c4f7a, #1c1640 85%)',
+      '--sk-ink': PAPER,
       '--sk-accent': GOLD,
-      '--sk-card': 'linear-gradient(180deg, #fff3c9, #f7d98a)',
+      '--sk-card': 'linear-gradient(180deg, #f8ecc8, ' + PAPER + ')',
       '--sk-card-ink': INK,
-      '--sk-hud': 'linear-gradient(180deg, #2a9fd8, #1b78b3)',
-      '--sk-btn': 'linear-gradient(180deg, #8af574, #4caf50)',
+      '--sk-hud': 'linear-gradient(180deg, #2a2360, ' + INK + ')',
+      '--sk-btn': 'linear-gradient(180deg, #ffe680, ' + GOLD + ')',
       '--sk-btn-ink': INK,
-      '--sk-btn-shadow': '#1a6b2a',
+      '--sk-btn-shadow': INK,
       '--sk-font': "'Fredoka', ui-rounded, 'SF Pro Rounded', system-ui, sans-serif",
       '--sk-radius': '20px',
+      '--sk-chip': PAPER,
+      '--sk-chip-ink': INK,
+      '--sk-edge': INK,
+      '--sk-coin': GOLD,
     },
-    css: '.tl .hl{opacity:0;transition:opacity .15s}.tl.lit .hl{opacity:1}.tl.lit .hx{stroke-width:3.6}.tl.glow .tin{filter:drop-shadow(0 0 5px #fff) drop-shadow(0 0 2px ' + INK + ')}',
+    css: [
+      // secondary-button tokens (spec 3b) set as declarations: skin_check only accepts --sk-letters as theme keys
+      '--sk-btn2:' + PAPER + ';--sk-btn2-ink:' + INK + ';',
+      '.tl .hl{opacity:0;transition:opacity .15s}.tl.lit .hl{opacity:1}.tl.lit .hx{stroke-width:3.6}.tl.glow .tin{filter:drop-shadow(0 0 5px #fff) drop-shadow(0 0 2px ' + INK + ')}',
+      // buttons: parchment scroll label with a stitched inner keyline and a 3px hard navy shadow
+      '.btn3d{border:2.5px solid ' + INK + ';border-radius:16px;text-shadow:none;box-shadow:inset 0 0 0 4px rgba(255,246,214,.45),inset 0 0 0 5.5px rgba(122,74,36,.4),inset 0 3px 0 rgba(255,255,255,.5),0 3px 0 ' + INK + ',0 6px 12px rgba(28,22,64,.25)}',
+      '.btn3d:active{transform:translateY(3px);box-shadow:inset 0 0 0 4px rgba(255,246,214,.35),0 0 0 ' + INK + '}',
+      '.btn3d.white,.btn3d.yellow,.btn3d.blue,.btn3d.orange{border-width:2.5px;background:' + PAPER + ';color:' + INK + '}',
+      '.btn3d.go{border-width:2.5px}',
+      '.rbtn,.rbtn.sm,.bar .rb{border-radius:14px}',
+      '.bar .rb{border-width:2.5px}',
+      '.badge,.goalbar,.starbar,.coins,.mnode .mst,.mnode .mtag,.say .msg,.htnum,.htskip{font-family:var(--sk-font)}',
+      // chips and bars: pill ends, parchment fill, navy edge, gold keyline
+      '.badge,.goalbar,.starbar{border-width:2.5px;border-radius:999px;box-shadow:inset 0 0 0 3px rgba(255,246,214,.55),0 3px 0 ' + INK + '}',
+      '.starbar .st.off path{fill:#e2d3a6;stroke:' + BR + '}',
+      '.coins{border:2.5px solid ' + INK + ';color:' + INK + ';box-shadow:inset 0 0 0 3px rgba(255,255,255,.45),0 3px 0 ' + INK + '}',
+      '.mnode .mst{border-width:2px;border-radius:999px;box-shadow:0 2px 0 ' + INK + '}',
+      '.mnode .mtag{border-width:2px;border-radius:999px;box-shadow:0 2px 0 ' + INK + '}',
+      '.mnode .pulse{border:3px solid ' + GOLD + ';box-shadow:0 0 0 2px ' + INK + '}',
+      // talking pin: a parchment label with a scroll edge
+      '.say .msg{border-width:2.5px;border-radius:16px;box-shadow:inset 0 0 0 3px rgba(255,246,214,.5),0 3px 0 ' + INK + '}',
+      '.say .msg::after{border-right-color:' + PAPER + '}',
+      // skin picker, how-to dots and step number
+      '.skins button{border:2.5px solid ' + INK + ';border-radius:16px;box-shadow:0 3px 0 ' + INK + '}',
+      '.skins button[aria-checked="true"]{box-shadow:inset 0 0 0 3px rgba(255,246,214,.55),0 3px 0 ' + INK + '}',
+      '.htdots button{border:1.5px solid ' + INK + '}',
+      '.htdots button.on{border-width:1.5px}',
+      '.htnum{border:2.5px solid ' + INK + ';box-shadow:0 3px 0 ' + INK + '}',
+      '.htskip{border:2px solid rgba(243,227,184,.55);border-radius:999px}',
+      // level map top bar: navy with a gold keyline
+      '.gtop{box-shadow:inset 0 -3px 0 ' + GOLD + ',0 3px 0 ' + INK + '}',
+      // cards: parchment panel, navy frame, inner keyline
+      '#brief .card,#win .card,#installSheet .card{border:3px solid ' + INK + ';box-shadow:inset 0 0 0 5px ' + PAPER + ',inset 0 0 0 6.5px rgba(122,74,36,.45),0 6px 0 ' + INK + ',0 14px 30px rgba(0,0,0,.3)}',
+      '#brief .card .k{color:' + BR + '}',
+      '#brief .card p,#win .card p,#brief .card table,#brief .card td:first-child{color:' + INK + '}',
+      '#brief details{color:' + BR + '}',
+      '#brief details summary{color:' + INK + '}',
+      // the brief's PLAY button: the gold primary of this skin, not the shell's green
+      '#briefGo{background:linear-gradient(180deg,#ffe680,' + GOLD + ');color:' + INK + ';border:2.5px solid ' + INK + ';border-radius:16px;text-shadow:none;box-shadow:inset 0 0 0 4px rgba(255,246,214,.45),inset 0 3px 0 rgba(255,255,255,.5),0 3px 0 ' + INK + '}',
+      '#briefGo:active{transform:translateY(3px);box-shadow:inset 0 0 0 4px rgba(255,246,214,.35),0 0 0 ' + INK + '}',
+      // star slots under markers: brown-navy so empty stars read on parchment
+      '.mnode .mst i{color:rgba(122,74,36,.5)}',
+    ].join(''),
     fonts: ['https://fonts.googleapis.com/css2?family=Fredoka:wght@500;700&display=swap'],
     title: { svg: titleSvg },
     intro: [
@@ -284,7 +338,7 @@
     ],
     bonus: {
       label: 'TREASURE BONUS',
-      board: 'radial-gradient(ellipse at 50% 40%, #46b8ea, #1f86c4 85%)',
+      board: 'radial-gradient(ellipse at 50% 40%, #2a3f7a, #151a45 88%)',
       line: '#ffffff',
       tile(x, y, r, e, k) {
         const R = r * 0.95, pr = R * 0.5, d = tileHex(R, k * 5 + e);

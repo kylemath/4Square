@@ -172,6 +172,23 @@
         '<circle cx="17" cy="16" r="9" fill="' + c + '" fill-opacity=".18"/><circle cx="17" cy="16" r="4.5" fill="' + c + '"/><circle cx="15.6" cy="14.6" r="1.4" fill="#fff"/>' +
         '<text x="31" y="20.5" font-family="' + MONO + '" font-size="12" font-weight="700" letter-spacing=".6" fill="#d6f6fb">' + name + '</text>';
     },
+    // boxes covering the big landmarks drawn in zone() (same placement maths: ax/bx/fy)
+    keepOut(z) {
+      const h = z.y1 - z.y0, ms = z.stops.reduce((s, p) => s + p[0], 0) / z.stops.length, ax = ms > 200 ? 74 : 326, bx = 400 - ax, fy = f => z.y0 + h * f;
+      const B = (x, y, w, hh) => [f1(x - w), f1(y - hh), f1(x + w), f1(y + hh)], R = (x0, y0, x1, y1) => [f1(x0), f1(y0), f1(x1), f1(y1)];
+      switch (ZT[z.theme] ? z.theme : 'cove') {
+        case 'cove': return [B(ax, fy(.42), 36, 36), B(bx, fy(.7), 30, 30)];
+        case 'beach': return [B(ax, fy(.5), 50, 28), B(bx, fy(.82), 28, 18), B(bx, fy(.36), 16, 16)];
+        case 'town': return [B(ax, fy(.5), 72, 72), B(bx, fy(.82), 18, 18)];
+        case 'harbour': { const rx = ax < 200 ? 20 : 330; return [B(ax, fy(.5), 54, 28), B(bx, fy(.8), 36, 20), R(rx, fy(.3), rx + 50, fy(.3) + 14)]; }
+        case 'forest': return [B(ax, fy(.52), 72, 68), B(bx, fy(.84), 44, 40), B(bx, fy(.3), 14, 14)];
+        case 'cape': return [R(ax - 16, fy(.68) - 58, ax + 16, fy(.68) + 40), B(bx, fy(.78), 22, 22), B(bx, fy(.35), 14, 14)];
+        case 'reef': return [R(ax - 34, fy(.55) - 64, ax + 34, fy(.55) + 50), R(bx - 26, fy(.82) - 46, bx + 26, fy(.82) + 36), R(bx - 18, fy(.34) - 32, bx + 18, fy(.34) + 24)];
+        case 'cave': { const gx = ax < 200 ? 30 : 250, gy = fy(.4); return [R(gx - 4, gy - 4, gx + 112, gy + 88), B(bx, fy(.85), 20, 50), B(ax, fy(.9), 14, 34)]; }
+        case 'volcano': { const t = z.y0 + 64, b = z.y1 - 36; return [R(110, t - 24, 290, b + 24)]; }
+        default: return [B(ax, fy(.42), 36, 36), B(bx, fy(.7), 30, 30)];
+      }
+    },
     road: { todo: ['#0d3640', '#041419', '#2f8a98'], done: ['#5fe6ff', '#0a5566', '#d8fbff'] },
     node(state, num, e, boss) {
       const L = num.length, fs = L > 2 ? 17 : L > 1 ? 22 : 27;
@@ -216,8 +233,46 @@
       '--sk-btn-shadow': '#0f6f86',
       '--sk-font': "'Space Grotesk', 'Inter', system-ui, sans-serif",
       '--sk-radius': '16px',
+      '--sk-chip': 'linear-gradient(180deg, rgba(10,44,52,.9), rgba(4,20,25,.94))',
+      '--sk-chip-ink': '#d6f6fb',
+      '--sk-edge': 'rgba(95,230,255,.7)',
+      '--sk-coin': 'linear-gradient(180deg, #9ff3ff, #3fd6f2)',
     },
-    css: '.tl .tin{transition:filter .15s}.tl.lit .tin{filter:brightness(1.35)}.tl.glow .tin{filter:drop-shadow(0 0 6px #5fe6ff) drop-shadow(0 0 2px #fff)}',
+    // --sk-btn2 / --sk-btn2-ink are set here rather than in theme: tools/skin_check.js rejects digits in theme keys
+    css: '--sk-btn2:linear-gradient(180deg,rgba(16,58,68,.95),rgba(6,26,31,.95));--sk-btn2-ink:#bff3ff;' + '.tl .tin{transition:filter .15s}.tl.lit .tin{filter:brightness(1.35)}.tl.glow .tin{filter:drop-shadow(0 0 6px #5fe6ff) drop-shadow(0 0 2px #fff)}' +
+      // primary and secondary buttons: squared glass mounts, cyan hairline, inner highlight, soft glow instead of a solid edge
+      '.btn3d{border-radius:12px;border:1px solid rgba(95,230,255,.55);letter-spacing:.14em;text-transform:uppercase;font-weight:700;font-family:var(--sk-font);' +
+      'box-shadow:inset 0 1px 0 rgba(255,255,255,.14),0 0 14px rgba(95,230,255,.2),0 8px 18px rgba(0,0,0,.45)}' +
+      '.btn3d:active{transform:translateY(2px);box-shadow:inset 0 1px 0 rgba(255,255,255,.1),0 0 8px rgba(95,230,255,.25)}' +
+      '.btn3d.go{border-color:#cffbff;box-shadow:inset 0 1px 0 rgba(255,255,255,.55),0 0 22px rgba(95,230,255,.45),0 8px 18px rgba(0,0,0,.4)}' +
+      '.btn3d.white,.btn3d.yellow,.btn3d.blue,.btn3d.orange{border:1px solid rgba(95,230,255,.7)}' +
+      '.btn3d.green,#briefGo{background:var(--sk-btn);color:var(--sk-btn-ink);text-shadow:none;border-color:#cffbff;box-shadow:inset 0 1px 0 rgba(255,255,255,.55),0 0 22px rgba(95,230,255,.4),0 8px 18px rgba(0,0,0,.4)}' +
+      // brief and win cards: a fine glass frame instead of the chunky white card border
+      '#brief .card,#win .card{border:1px solid rgba(95,230,255,.45);border-radius:14px}' +
+      // win-card points total: the same lit cyan readout as the HUD counter
+      '.wtotal{background:var(--sk-coin);color:var(--sk-btn-ink);border:1px solid #cffbff;border-radius:10px;box-shadow:0 0 18px rgba(95,230,255,.45);font-family:var(--sk-font)}' +
+      // round tool buttons and the game bar
+      '.rbtn,.rbtn.sm,.bar .rb{border-radius:12px;border:1px solid rgba(95,230,255,.7);box-shadow:inset 0 1px 0 rgba(255,255,255,.14),0 0 12px rgba(95,230,255,.22),0 6px 14px rgba(0,0,0,.45)}' +
+      '.bar .rb svg{filter:drop-shadow(0 0 4px rgba(95,230,255,.6))}' +
+      // bars, chips and badges: thin glass slides with a faint inner rim
+      '.badge,.goalbar,.starbar{border-width:1px;border-radius:10px;font-family:var(--sk-font);box-shadow:inset 0 1px 0 rgba(255,255,255,.1),0 0 14px rgba(95,230,255,.18)}' +
+      '.badge{text-transform:uppercase;letter-spacing:.12em;font-size:.9rem;font-weight:700}' +
+      '.coins{border-radius:10px;border:1px solid rgba(214,246,251,.8);font-family:var(--sk-font);box-shadow:0 0 14px rgba(95,230,255,.45)}' +
+      '.coins b{font-variant-numeric:tabular-nums}' +
+      '.mnode .mst{border-radius:6px;border-width:1px;letter-spacing:.06em}' +
+      '.mnode .mtag{border-radius:6px;border-width:1px;font-family:ui-monospace,"SF Mono",Menlo,monospace;letter-spacing:.08em;text-transform:uppercase}' +
+      '.mnode .pulse{border-width:2px;box-shadow:0 0 12px rgba(95,230,255,.5)}' +
+      // talking pin bubble: glass with a matching tail
+      '.say .msg{border-radius:10px;border-width:1px;font-family:var(--sk-font);font-weight:500;box-shadow:0 0 16px rgba(95,230,255,.22)}' +
+      '.say .msg::before{border-right-color:rgba(95,230,255,.7)}' +
+      '.say .msg::after{border-right-color:#0a2a31}' +
+      // skin picker, how-to dots and step numbers
+      '.skins button{border-radius:12px;font-family:var(--sk-font)}' +
+      '.skins button[aria-checked="true"]{box-shadow:0 0 14px rgba(95,230,255,.5)}' +
+      '.htdots button{border-radius:3px}' +
+      '.htnum{border-radius:8px;box-shadow:0 0 12px rgba(95,230,255,.35)}' +
+      // install sheet and cards: a slide with a fine inner frame
+      '#installSheet .card{border-radius:14px;border:1px solid rgba(95,230,255,.45);box-shadow:0 0 30px rgba(95,230,255,.12);font-family:var(--sk-font)}',
     fonts: ['https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&display=swap'],
     title: { svg: titleSvg },
     intro: [

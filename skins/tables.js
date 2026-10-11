@@ -265,6 +265,10 @@
       if (L) s += '<g transform="translate(' + L[0] + ' ' + L[1] + ')">' + (LAND[z.theme] || LAND.town)(z) + '</g>';
       return '<g>' + s + '</g>';
     },
+    keepOut(z) { // the landmark's box, from the same spot zone() draws it at, so decor stays clear of it
+      const L = landAt(z);
+      return L ? [[L[0] - 74, L[1] - 84, L[0] + 74, L[1] + 56]] : [];
+    },
     decor(theme, r, r2, z) {
       const k = LDECO[theme] || LDECO.town, e = k[Math.floor(r * k.length) % k.length], f = typeof e === 'string' ? LD[e] : e;
       return f(r2);
@@ -315,16 +319,43 @@
       '--sk-ink': '#f6e9d0',
       '--sk-accent': '#d9b05a',
       '--sk-card': 'linear-gradient(180deg, #fbf5ea, #f1e6cf)',
-      '--sk-card-ink': '#3a2a3f',
+      '--sk-card-ink': '#2a1840',
       '--sk-hud': 'linear-gradient(180deg, #382c52, #2a2040)',
-      '--sk-btn': 'linear-gradient(180deg, #e6c375, #c9a34a)',
-      '--sk-btn-ink': '#3a2410',
-      '--sk-btn-shadow': '#8a6a1c',
+      '--sk-btn': 'linear-gradient(180deg, #f0d28a, #d9a441)',
+      '--sk-btn-ink': '#2a1840',
+      '--sk-btn-shadow': '#9c6f1f',
+      '--sk-chip': '#fbf5ea',
+      '--sk-chip-ink': '#2a1840',
+      '--sk-edge': '#d9a441',
+      '--sk-btn2': '#fbf5ea',
+      '--sk-btn2-ink': '#2a1840',
+      '--sk-coin': '#f3d78a',
       '--sk-font': "'Playfair Display', Georgia, 'Times New Roman', serif",
       '--sk-radius': '16px',
     },
+    // place cards: cream chips, a double gold ring (outline 1px, inset 2px gap inside the 1px border), warm shadows
     css: '.tl .hl{opacity:0;transition:opacity .15s}.tl.lit .hl{opacity:.9}.tl.lit .hx{stroke-width:3.4}' +
-      '.tl.glow .tin{filter:drop-shadow(0 0 5px #ffe7a0) drop-shadow(0 0 2px #7a5406)}',
+      '.tl.glow .tin{filter:drop-shadow(0 0 5px #ffe7a0) drop-shadow(0 0 2px #7a5406)}' +
+      '.btn3d{border:1px solid #d9a441;border-radius:12px;outline:1px solid #d9a441;outline-offset:-3px;font-family:var(--sk-font);font-style:italic;font-weight:700;letter-spacing:.02em;box-shadow:0 5px 0 var(--sh),0 10px 18px rgba(12,4,20,.4)}' +
+      '.btn3d.white,.btn3d.yellow,.btn3d.blue,.btn3d.orange,.btn3d.teal,.btn3d.purple{background:#fbf5ea;color:#2a1840;--sh:#a87a2c}' +
+      '.btn3d.go{color:#2a1840;outline-color:rgba(42,24,64,.5)}' +
+      '.btn3d.rbtn,.bar .rb{border-radius:12px;border:1px solid #d9a441}' +
+      '.bar .rb{outline:1px solid #d9a441;outline-offset:-3px}' +
+      '.badge,.goalbar,.starbar,.mnode .mst,.mnode .mtag,.say .msg{border:1px solid #d9a441;outline:1px solid #d9a441;outline-offset:-3px;border-radius:12px;box-shadow:0 4px 10px rgba(12,4,20,.35)}' +
+      '.mnode .mst,.mnode .mtag{border-radius:10px}' +
+      '.say .msg::before{border-right-color:#d9a441}.say .msg::after{border-right-color:#fbf5ea}' +
+      '.coins{border:1px solid #d9a441;outline:1px solid #d9a441;outline-offset:-3px;border-radius:12px;box-shadow:0 4px 10px rgba(12,4,20,.35);color:#2a1840;font-family:var(--sk-font);font-style:italic}' +
+      '.skins button{border:1px solid #d9a441;outline:1px solid rgba(217,164,65,.7);outline-offset:-3px;border-radius:12px;box-shadow:0 3px 8px rgba(12,4,20,.35);font-family:var(--sk-font);font-style:italic}' +
+      '.skins button[aria-checked="true"]{background:#fbf5ea;color:#2a1840;border-color:#d9a441}' +
+      '.htdots button,.htdots button.on{border-radius:999px}' +
+      '.htnum{border:1px solid #d9a441;outline:1px solid #d9a441;outline-offset:-3px;box-shadow:0 4px 10px rgba(12,4,20,.35)}' +
+      '#brief .card,#win .card,#installSheet .card{border:1px solid #d9a441;outline:1px solid #d9a441;outline-offset:-3px;box-shadow:0 12px 30px rgba(12,4,20,.45)}' +
+      '#brief .card h2,#win .card h2,#installSheet h2{font-family:var(--sk-font);font-style:italic;color:#2a1840}' +
+      '#briefGo{--sh:#9c6f1f;background:var(--sk-btn);color:var(--sk-btn-ink);border:1px solid #d9a441;outline:1px solid #d9a441;outline-offset:-3px;box-shadow:0 5px 0 var(--sh),0 10px 18px rgba(12,4,20,.4);text-shadow:none}' +
+      '#briefGo:active{box-shadow:0 1px 0 var(--sh)}' +
+      '#brief .card p,#brief .card .k,#brief details,#brief details summary,#brief .card table,#brief .card td:first-child{color:#2a1840 !important;text-shadow:none}' +
+      '#brief details summary{font-weight:800}' +
+      '.gtop{box-shadow:0 2px 0 #d9a441,0 8px 16px rgba(12,4,20,.45)}',
     fonts: ['https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;1,600&family=Nunito:wght@700;800&display=swap'],
     title: { svg: titleSvg },
     intro: [
