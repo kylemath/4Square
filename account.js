@@ -62,10 +62,12 @@
         getEntry: async (skin, uid) => (boards()[skin] || {})[uid] || null,
         putEntry: async (skin, uid, entry) => { const b = boards(); (b[skin] = b[skin] || {})[uid] = Object.assign({}, entry, { updatedAt: Date.now() }); jset(BOARDK, b); },
         board: async (skin, n) => Object.entries(boards()[skin] || {}).map(([uid, e]) => Object.assign({ uid }, e)).sort(order).slice(0, n || TOP_N),
+        top: async (skin, n) => Object.entries(boards()[skin] || {}).map(([uid, e]) => Object.assign({ uid }, e)).filter(e => e.coins > 0).sort(byCoins).slice(0, n || 12),
         deleteMine: async (uid, skins) => { const b = boards(); skins.forEach(s => { if (b[s]) delete b[s][uid]; }); jset(BOARDK, b); },
       },
     };
   }
+  const byCoins = (a, b) => ((b.coins || 0) - (a.coins || 0)) || ((a.updatedAt || 0) - (b.updatedAt || 0));
   const order = (a, b) => (b.stars - a.stars) || (b.levels - a.levels) || (b.pars - a.pars) || (b.points - a.points) || ((a.updatedAt || 0) - (b.updatedAt || 0));
 
   // ---------------------------------------------------------------- firebase adapter (sdk injected so it can be mocked)
@@ -122,6 +124,10 @@
         },
         board: async (skin, n) => {
           const q = F.query(F.collection(db, 'boards', skin, 'entries'), F.orderBy('stars', 'desc'), F.orderBy('levels', 'desc'), F.orderBy('points', 'desc'), F.limit(n || TOP_N));
+          return (await F.getDocs(q)).docs.map(d => Object.assign({ uid: d.id }, unpackEntry(d.data()), { updatedAt: ts(d.data().updatedAt) }));
+        },
+        top: async (skin, n) => {
+          const q = F.query(F.collection(db, 'boards', skin, 'entries'), F.orderBy('coins', 'desc'), F.limit(n || 12));
           return (await F.getDocs(q)).docs.map(d => Object.assign({ uid: d.id }, unpackEntry(d.data()), { updatedAt: ts(d.data().updatedAt) }));
         },
         deleteMine: async (uid, skins) => {
@@ -216,18 +222,21 @@
       // anything in the device store that was never sent is dirty
       const sent = jget(SENTK, {});
       Object.keys(st).forEach(s => Object.keys(st[s]).forEach(l => { if (sent[user.uid + '/' + s + '/' + l] !== st[s][l].p.fp + ':' + st[s][l].pts) q[s] = q[s] || { tries: 0 }; }));
+      skinIds().forEach(s => { if (earned(s) > 0 && sent[user.uid + '/' + s + '/#coins'] !== earned(s)) q[s] = q[s] || { tries: 0 }; });
       let fail = 0;
       for (const skin of Object.keys(q)) {
         const local = {}; Object.keys(st[skin] || {}).forEach(l => { local[l] = JSON.parse(JSON.stringify(st[skin][l].p)); local[l].claim.pts = st[skin][l].pts; });
-        if (!Object.keys(local).length) { done.push(skin); continue; }
+        if (!Object.keys(local).length && !earned(skin)) { done.push(skin); continue; }
         if (!online()) { fail++; continue; }
         try {
           const old = await AD.store.getEntry(skin, user.uid);
           const pr = mergePr(local, old && old.pr), t = totals(pr), changedRuns = {};
           Object.keys(pr).forEach(l => { if (sent[user.uid + '/' + skin + '/' + l] !== pr[l].fp + ':' + pr[l].claim.pts) changedRuns[l] = pr[l]; });
           await AD.store.putPlayer(user.uid, { nick: nick(), linked: !!user.linked });
-          await AD.store.putEntry(skin, user.uid, Object.assign({ nick: nick(), v: 1, app: R.APP, pr, int: intSummary() }, t), changedRuns);
+          const coins = Math.max(earned(skin), (old && old.coins) || 0);              // lifetime coins earned in this skin (never goes down)
+          await AD.store.putEntry(skin, user.uid, Object.assign({ nick: nick(), v: 1, app: R.APP, pr, int: intSummary(), coins }, t), changedRuns);
           Object.keys(pr).forEach(l => { sent[user.uid + '/' + skin + '/' + l] = pr[l].fp + ':' + pr[l].claim.pts; });
+          sent[user.uid + '/' + skin + '/#coins'] = earned(skin);
           done.push(skin);
         } catch (e) { fail++; q[skin].tries = (q[skin].tries || 0) + 1; q[skin].err = String(e && (e.code || e.message)).slice(0, 60); lastErr = 'Could not send your score yet (' + q[skin].err + '). It will retry.'; }
       }
@@ -238,6 +247,9 @@
     })().finally(() => { flushing = null; });
     return flushing;
   }
+
+  // lifetime coins earned in a skin, from the game's wallet (index.html FTH_WALLET; 0 in node tests without one)
+  const earned = s => (window.FTH_WALLET && FTH_WALLET.earned(s)) || 0;
 
   // ---------------------------------------------------------------- reading boards (everything re-verified)
   async function ensureCore() { if (window.LAB) return; await R.loadScripts(['lab/core.js']); }
@@ -273,22 +285,59 @@
       const v = await verifyEntry(e, owner);
       if (!v.ok) { hidden++; continue; }
       const me = !!user && e.uid === user.uid;
-      const ent = me && window.FTH_WALLET ? Object.assign({}, e, { wealth: FTH_WALLET.wealth(skin) }) : e;   // coins are client state, never sent or proof-checked: only your own row has a wealth (see ACCOUNTS.md)
-      rows.push({ uid: e.uid, nick: e.nick, stars: v.stars, levels: v.levels, pars: v.pars, points: v.points, updatedAt: e.updatedAt, me, wealth: ent.wealth, entry: ent });
+      rows.push({ uid: e.uid, nick: e.nick, stars: v.stars, levels: v.levels, pars: v.pars, points: v.points, coins: e.coins || 0, updatedAt: e.updatedAt, me, entry: e });
     }
     const M = api.metrics.find(m => m.id === metric);
     rows.sort(M && M.id !== 'stars' ? (a, b) => (M.of(b.entry) - M.of(a.entry)) || order(a, b) : order); rows.forEach((r, i) => { r.rank = i + 1; });
     return { rows: rows.slice(0, TOP_N), hidden, me: rows.find(r => r.me) || null, total: rows.length };
   }
 
+  // ---------------------------------------------------------------- the podium: per skin, the top 3 by coins earned there
+  // Coins are client state, so the replay cannot prove them. What it can do: an entry must pass verifyEntry (its levels
+  // replay, no tamper flags), and its coins count only up to what those levels could plausibly pay: COIN_PTS points per
+  // verified level (first wins pay up to 6000, replays a quarter: twice that is generous) at the skin's coin rate. Blank
+  // Doodle (own: true) makes no proofs, so its cap counts every level. See ACCOUNTS.md.
+  const COIN_PTS = 2 * MAX_POINTS_PER_LEVEL;
+  function coinCap(skin, levels) {
+    const k = (window.FTH_SKINS && FTH_SKINS.list || []).find(x => x.id === skin); if (!k || !FTH_SKINS.rate) return 0;
+    const lv = k.own ? ((window.GAME && GAME.levels.length) || 64) : levels;
+    return Math.ceil(FTH_SKINS.rate(k) * COIN_PTS * lv);
+  }
+  // podium(scope): [{ skin, top: [{rank, nick, coins, me}] (up to 3), me: {rank, coins} | null, mine: coins on this device, hidden }]
+  async function podium(scope) {
+    await init(); await ensureCore();
+    const list = (window.FTH_SKINS && FTH_SKINS.list || []).map(k => k.id), out = [];
+    for (const skin of list) {
+      const spec = FTH_SKINS.list.find(k => k.id === skin);
+      let entries;
+      if (scope === 'device' && AD.kind !== 'local') {          // online mode: this device's own row
+        const st = R.store(), pr = {}; Object.keys(st[skin] || {}).forEach(l => { pr[l] = JSON.parse(JSON.stringify(st[skin][l].p)); pr[l].claim.pts = st[skin][l].pts; });
+        entries = earned(skin) > 0 ? [Object.assign({ uid: user ? user.uid : 'device', nick: nick() || 'You', pr, int: intSummary(), coins: earned(skin) }, totals(pr))] : [];
+      } else entries = await AD.store.top(skin, scope === 'device' ? 200 : 12);
+      const owner = new Map(); entries.slice().sort((a, b) => (a.updatedAt || 0) - (b.updatedAt || 0)).forEach(e => Object.values(e.pr || {}).forEach(p => { if (p && p.fp && !owner.has(p.fp)) owner.set(p.fp, e.uid); }));
+      const rows = []; let hidden = 0;
+      for (const e of entries) {
+        let levels = 0;
+        if (spec && spec.own && !Object.keys(e.pr || {}).length) { if (e.int && e.int.tamper > 0) { hidden++; continue; } }
+        else { const v = await verifyEntry(e, owner); if (!v.ok) { hidden++; continue; } levels = v.levels; }
+        const coins = Math.min(e.coins || 0, coinCap(skin, levels));
+        if (coins > 0) rows.push({ uid: e.uid, nick: e.nick, coins, capped: coins < (e.coins || 0), me: !!user && e.uid === user.uid, updatedAt: e.updatedAt });
+      }
+      rows.sort(byCoins); rows.forEach((r, i) => { r.rank = i + 1; });
+      const me = rows.find(r => r.me);
+      out.push({ skin, top: rows.slice(0, 3), me: me ? { rank: me.rank, coins: me.coins } : null, mine: earned(skin), hidden });
+    }
+    return out;
+  }
+
   const api = {
+    podium, coinCap,
     init, ensureIdentity, setNick, validateNick, randomNick, linkGoogle, useCredential, signOut, deleteMine, flush, board, verifyEntry, totals,
     setSubmit(on) { setPrefs({ submit: !!on }); if (on) { markDirty(skinIds()); flush(); } },
     state() { return { kind: AD ? AD.kind : 'local', hasGoogle: !!(AD && AD.hasGoogle), note: AD ? AD.note : '', uid: user && user.uid, anon: !user || user.anon, linked: !!(user && user.linked), nick: nick(), submit: !!prefs().submit, signedIn: !!user, err: lastErr, queued: Object.keys(dirty()).length, online: online() }; },
     // future hook: a board can rank by another currency; register { id, label, of: entry -> number }
-    // 'coins' ranks by the skin's coin wealth (lifetime coins x value, in G). UNVERIFIED and local: the replay verifier cannot check coins,
-    // so the entry carries no wealth upstream; board() stamps it on your own row from this device's wallet, nobody else's.
-    metrics: [{ id: 'stars', label: 'Stars', of: e => e.stars }, { id: 'coins', label: 'Wealth (unverified)', local: true, of: e => e.wealth || 0 }],
+    // (coins earned per skin are on the podium instead: see podium() above)
+    metrics: [{ id: 'stars', label: 'Stars', of: e => e.stars }],
     registerMetric(m) { if (!api.metrics.some(x => x.id === m.id)) api.metrics.push(m); },
     _adapters: { localAdapter, firebaseAdapter }, _setAdapter(a, u) { AD = a; user = u || null; ready = Promise.resolve(api); },
   };

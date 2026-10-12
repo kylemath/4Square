@@ -13,6 +13,9 @@
     coinArt(art) { return size => { const z = size || 26; return '<svg viewBox="-13 -13 26 26" width="' + z + '" height="' + z + '" aria-hidden="true">' + art + '</svg>'; }; },
     // the coin of a skin, or the plain gold coin when the spec has none
     coinOf(spec) { return spec && spec.coin && spec.coin.svg ? spec.coin : DEF; },
+    // coins a point of play pays in this skin's currency: sqrt(10 / value) / 4 (4 points = 1 doubloon; rarer coins pay fewer).
+    // One formula for earning (index.html), ticket prices (tickets.js) and the leaderboard's plausibility cap (account.js).
+    rate(spec) { return Math.sqrt(10 / this.coinOf(spec).value) / 4; },
     get(id) { return list.find(s => s.id === id) || list[0]; },
     // a skin derived from an already registered one: extend('islands', { id, name, ic, blurb, ... }). Plain-object fields
     // (theme, words, map, bonus, levelMap, title, board) are merged one level deep, everything else is replaced.

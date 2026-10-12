@@ -25,9 +25,16 @@ scene (`lab/islands3d.html`, `node tools/islands3d_check.js`). The contract is i
 is `skins/<id>.js` plus an optional play page `lab/<id>.html`, checked with `node tools/skin_check.js`.
 `lab/Families.html` shows the experimental styles side by side.
 
-**Coins.** Each skin earns its own currency (ink beads, doubloons, pearls, crystal shards...) worth between 1 and 100 G, and
-the wallet button opens a graph of direct markets between them where coins convert along the cheapest route (`economy.js`,
-`node tools/economy_check.js` proves there is no arbitrage; `node tools/coins_check.js` plays it headlessly). SKIN-SPEC.md section 12.
+**Coins and skin tickets.** Each skin earns its own currency (ink beads, doubloons, pearls, crystal shards...). A new player
+owns Islands only; every other skin is unlocked with a **skin ticket** (`tickets.js`, the 🎟️ Skins button). Ticket *n* opens
+once enough levels are beaten (1, 3, 5, 8, 11, 14, 17, 21, 25) and costs coins from any one wallet (900 points' worth at
+first, about one level's pay, rising to 5,600): each skin comes a little further on and costs a little more. The ticket
+then unlocks any locked skin. `node tools/tickets_check.js` checks the rules and that each ticket is affordable at its gate
+on clean play (16-22% to spare, before bonus rounds); `node tools/shop_check.js` plays it end to end. SKIN-SPEC.md section 12.
+
+**Feature bench.** Parked features stay in the code, switched off, until they are wanted again:
+- *Currency exchange* (`economy.js`: a graph of direct markets where coins convert along the cheapest route, with no
+  arbitrage, `node tools/economy_check.js`). Off: no wallet button. `?feat=exchange` brings the button back.
 
 Accounts, per-skin leaderboards and the cheat-evidence log are described in [ACCOUNTS.md](ACCOUNTS.md); they work locally
 with no setup and go online once `account-config.js` is filled in.

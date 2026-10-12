@@ -85,7 +85,7 @@
   #btnHowTitle { font-size: 1.1rem; padding: 11px 24px; }
   .trow { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
   #btnInstall { font-size: 1.1rem; padding: 11px 20px; }
-  #btnInstall[hidden] { display: none; }
+  #btnInstall[hidden], #btnWallet[hidden], .tdot[hidden], .tribbon[hidden] { display: none !important; }
   /* install sheet: how to add the game to the home screen (iPhone Safari, or Android when the browser has no prompt) */
   #installSheet .card { text-align: left; color: var(--text); }
   #installSheet h2 { margin: 4px 0 8px; font-size: 1.35rem; text-align: center; }
@@ -294,6 +294,13 @@
   .skins button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; min-width: 0; padding: 5px 3px 4px; line-height: 1.1; font-size: .68rem !important; border-radius: 14px; border: 3px solid rgba(255,255,255,.55);
     background: rgba(255,255,255,.18); color: #fff; font: inherit; font-weight: 800; font-size: .82rem; cursor: pointer; box-shadow: 0 3px 0 rgba(14,52,110,.35); }
   .skins button .ic { font-size: 1.25rem; line-height: 1.1; }
+  .skins button.lock { opacity: .55; filter: grayscale(.8); border-style: dashed; }
+  .skins button.lock .ic::after { content: '🔒'; font-size: .7rem; margin-left: -.35rem; vertical-align: -.1rem; filter: none; }
+  .tdot { position: absolute; top: -3px; right: -3px; width: 12px; height: 12px; border-radius: 50%; background: #ff4d5e; border: 2px solid #fff; }
+  #btnShopTitle, #btnShopMap { position: relative; }
+  .tribbon { display: block; width: 100%; margin: 8px 0 2px; padding: 9px 12px; border-radius: 14px; border: 2px dashed var(--sk-accent, #ffd84a); background: color-mix(in srgb, var(--sk-accent, #ffd84a) 22%, transparent); color: inherit; font: inherit; font-size: .95rem; cursor: pointer; }
+  .tribbon b { color: var(--sk-accent, #ffd84a); }
+  @media (prefers-reduced-motion: no-preference) { .tribbon:not([hidden]) { animation: tribb 1.6s ease-in-out infinite; } @keyframes tribb { 50% { transform: scale(1.03); } } }
   .skins .skgrp { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, minmax(0, 84px)); gap: 6px; justify-content: center; padding: 5px 6px 6px; border: 2px dashed color-mix(in srgb, var(--sk-ink, #fff) 38%, transparent); border-radius: 18px; }
   .skins button[aria-checked="true"] { background: #fff; color: #1c1640; border-color: #ffd84a; box-shadow: 0 3px 0 #c9a21a; }
   .board #cv { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; user-select: none; -webkit-user-select: none; }
@@ -504,7 +511,7 @@
       <div class="trow">
         <button class="btn3d yellow" id="btnHowTitle" aria-label="How to play">❓ How to play</button>
         <button class="btn3d white" id="btnLbTitle" aria-label="Leaderboard and profile">🏆 Scores</button>
-        <button class="btn3d white" id="btnWalletTitle" aria-label="Wallet and currency exchange">👛 Wallet</button>
+        <button class="btn3d white" id="btnShopTitle" aria-label="Skins and skin tickets">🎟️ Skins<i class="tdot" hidden></i></button>
         <button class="btn3d blue" id="btnInstall" aria-label="Install the game on this phone" hidden>📲 Install</button>
       </div>
       <div class="consent" id="consent" hidden><!-- research request: no longer shown -->
@@ -521,7 +528,7 @@
     <button class="btn3d white rbtn" id="btnTitle" aria-label="Back to title screen">🏠</button>
     <div class="badge" aria-label="Your stars and points"><span class="s">★ <b id="totalStars">0</b></span><span class="p">✦ <b id="totalScore">0</b></span></div>
     <button class="btn3d white rbtn" id="btnLbMap" aria-label="Leaderboard and profile">🏆</button>
-    <button class="btn3d white rbtn" id="btnWalletMap" aria-label="Wallet and currency exchange">👛</button>
+    <button class="btn3d white rbtn" id="btnShopMap" aria-label="Skins and skin tickets">🎟️<i class="tdot" hidden></i></button>
     <button class="btn3d yellow rbtn" id="btnHowMap" aria-label="How to play">?</button>
   </div>
   <div id="saga"></div>
@@ -533,7 +540,7 @@
       <button class="btn3d white rbtn sm" id="btnMenu" aria-label="Back to levels">☰</button>
       <div class="lvname"><svg id="lvBadge" viewBox="-40 -40 80 80" aria-hidden="true"></svg><div class="t"><span class="sr" id="lvKicker"></span><span id="lvTitle"></span></div></div>
       <div class="coins" id="coinBox" title="Coins" aria-label="Coins"><svg class="coin" viewBox="-13 -13 26 26" aria-hidden="true"><use href="#coinG"/></svg><b id="score">0</b></div>
-      <button class="btn3d white rbtn sm" id="btnWallet" aria-label="Wallet and currency exchange" title="Wallet"><svg viewBox="0 0 24 24" aria-hidden="true"><g fill="none" stroke="#1c1640" stroke-width="2" stroke-linecap="round"><path d="M7 7.5L17 7.5M6.5 9L11 17M17.5 9L13 17"/></g><g fill="#ffd84a" stroke="#1c1640" stroke-width="1.6"><circle cx="6" cy="7" r="3.2"/><circle cx="18" cy="7" r="3.2"/><circle cx="12" cy="18" r="3.2"/></g></svg></button>
+      <button class="btn3d white rbtn sm" id="btnWallet" aria-label="Wallet and currency exchange" title="Wallet" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><g fill="none" stroke="#1c1640" stroke-width="2" stroke-linecap="round"><path d="M7 7.5L17 7.5M6.5 9L11 17M17.5 9L13 17"/></g><g fill="#ffd84a" stroke="#1c1640" stroke-width="1.6"><circle cx="6" cy="7" r="3.2"/><circle cx="18" cy="7" r="3.2"/><circle cx="12" cy="18" r="3.2"/></g></svg></button>
       <button class="btn3d yellow rbtn sm" id="btnHelp" aria-label="Level briefing">?</button>
     </div>
     <div class="stats">
@@ -588,6 +595,7 @@
   <div><div class="wtotal" id="winTotal" aria-label="Points"><svg class="coin" viewBox="-13 -13 26 26" aria-hidden="true"><use href="#coinG"/></svg><b id="winScore">0</b></div></div>
   <p id="winText"></p>
   <div id="bonus"></div>
+  <button class="tribbon" id="winTicket" hidden>🎟️ A skin ticket is ready! <b>Open ▶</b></button>
   <div class="wbtns"><button class="btn3d white" id="winRetry" aria-label="Retry this level">↺ Retry</button><button class="btn3d green" id="winNext">NEXT ▶</button></div>
 </div></div>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs><g id="coinG"><circle cy="1.8" r="11" fill="#c27a00" stroke="#1c1640" stroke-width="2"/><circle r="11" fill="#ffd84a" stroke="#1c1640" stroke-width="2"/><circle r="7.4" fill="none" stroke="#f0a91c" stroke-width="1.8"/><path d="M0 -4.8L1.4 -1.4 4.8 0 1.4 1.4 0 4.8-1.4 1.4-4.8 0-1.4-1.4Z" fill="#fff6c8" stroke="#c27a00" stroke-width=".8"/><path d="M-6.5 -6A9 9 0 0 1 1 -9.2" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round" opacity=".85"/></g></defs></svg>
@@ -616,6 +624,7 @@
 <script src="skins/swipe.js"></script>
 <script src="skins/ions.js"></script>
 <script src="skins/tables.js"></script>
+<script src="tickets.js"></script>
 <script>
 (function () {
   'use strict';
@@ -661,8 +670,9 @@
     save.wallet = {}; if (t > 0) save.wallet.islands = { bal: t, earned: t, f: 0 };
     persist();
   }
-  const PT = 10, PPC = 4;                       // a point is worth coins = sqrt(PT / value) / PPC: 4 points = 1 doubloon (value 10); rarer coins pay fewer
-  const wal = id => save.wallet[id] || (save.wallet[id] = { bal: 0, earned: 0, f: 0 });
+  // owned skins (tickets.js): a new or older save owns Islands only; other skins are unlocked with skin tickets
+  if (!save.skins) { FTH_TICKETS.state(save); persist(); }
+    const wal = id => save.wallet[id] || (save.wallet[id] = { bal: 0, earned: 0, f: 0 });
   function walletAdd(id, x) {                   // x: coins, fractional or negative (a hint's price); never below 0
     if (LABN || !x) return; const w = wal(id), t = w.f + x, whole = Math.floor(t + 1e-9);
     w.f = Math.round((t - whole) * 1e6) / 1e6; w.bal = Math.max(0, w.bal + whole); if (whole > 0) w.earned += whole;
@@ -901,7 +911,7 @@
   const cfl = p => { const x = p * RATE; return String(x >= 10 ? Math.round(x) : Math.round(x * 10) / 10); };
   const gain = p => { score += p; walletAdd(ACT.id, p * RATE); };
   function applyCoin(k) {
-    CN = FTH_SKINS.coinOf(k); BASE = Math.sqrt(PT / CN.value) / PPC; RATE = BASE * MUL;
+    CN = FTH_SKINS.coinOf(k); BASE = FTH_SKINS.rate(k); RATE = BASE * MUL;   // FTH_SKINS.rate: sqrt(10 / value) / 4
     $('coinG').innerHTML = CN.svg(26).replace(/^<svg[^>]*>/, '').replace(/<\/svg>\s*$/, '');
     const cb = $('coinBox'); if (cb) { cb.title = CN.plural[0].toUpperCase() + CN.plural.slice(1); cb.setAttribute('aria-label', cfmt(shown) + ' ' + CN.plural); }
     $('winTotal').setAttribute('aria-label', CN.plural);
@@ -1740,7 +1750,8 @@
   // the map: needs: ['cells'] means region shapes, which the hand-drawn Level -1 ponds do not have)
   // preview mode for skin designers: ?skin=<id> (not saved), &view=menu|title|howto, &scroll=0..1 (level map position)
   const PVQ = new URLSearchParams(location.search), PV = { skin: PVQ.get('skin'), view: PVQ.get('view'), scroll: PVQ.get('scroll') };
-  let SKIN = SKINS.find(k => k.id === (PV.skin || save.skin)) || ISL, ACT = SKIN, skinWinT = 0;
+  const owns = id => unlockAll || !!PV.skin || FTH_TICKETS.owns(save, id);   // skin tickets (tickets.js); designers' previews see every skin
+  let SKIN = SKINS.find(k => k.id === (PV.skin || save.skin) && owns(k.id)) || ISL, ACT = SKIN, skinWinT = 0;
   // the look of a skin everywhere outside its play page: theme tokens, extra css, fonts, title art, map style
   const fontsLoaded = new Set();
   function applyLook(k) {
@@ -1760,13 +1771,24 @@
   const skinFits = k => !k.needs || k.needs.every(nd => nd === 'cells' ? !!(window.LAYOUT && LAYOUT[L.g] && LAYOUT[L.g].cells) : true);
   function renderSkinPick() {
     const el = $('skinPick'); if (!el) return;
-    const chip = k => '<button role="radio" aria-checked="' + (k === SKIN) + '" data-s="' + k.id + '"><span class="ic" aria-hidden="true">' + k.ic + '</span>' + k.name + '</button>';
+    const chip = k => owns(k.id) ? '<button role="radio" aria-checked="' + (k === SKIN) + '" data-s="' + k.id + '"><span class="ic" aria-hidden="true">' + k.ic + '</span>' + k.name + '</button>'
+      : '<button class="lock" role="radio" aria-checked="false" aria-disabled="true" data-s="' + k.id + '" aria-label="' + k.name + ', locked: needs a skin ticket"><span class="ic" aria-hidden="true">' + k.ic + '</span>' + k.name + '</button>';
     const fam = SKINS.filter(k => k.family && SKINS.filter(j => j.family === k.family).length > 1);   // skins of one family sit together in a box (SKIN-SPEC.md section 11)
     const fams = [...new Set(fam.map(k => k.family))];
     el.innerHTML = '<span class="lbl">Game style</span>' + fams.map(f => '<div class="skgrp" role="group" aria-label="' + f + ' styles">' + fam.filter(k => k.family === f).map(chip).join('') + '</div>').join('') +
       SKINS.filter(k => !fam.includes(k)).map(chip).join('') + '<span class="skinblurb">' + (SKIN.blurb || '') + '</span>';
-    el.querySelectorAll('button').forEach(b => b.onclick = () => { SKIN = SKINS.find(k => k.id === b.dataset.s); save.skin = SKIN.id; persist(); blip(660, .08, 'triangle', .04); applyLook(SKIN); renderSkinPick(); });
+    el.querySelectorAll('button').forEach(b => b.onclick = () => { if (!owns(b.dataset.s)) return openShop(b.dataset.s); selectSkin(b.dataset.s); blip(660, .08, 'triangle', .04); });
   }
+  function selectSkin(id) { SKIN = SKINS.find(k => k.id === id) || ISL; save.skin = SKIN.id; persist(); applyLook(SKIN); renderSkinPick(); if ($('menu').classList.contains('on')) showMenu(); }
+  // ---------------- skin tickets (tickets.js): beat levels and earn coins to buy a ticket, then unlock any skin with it ----------------
+  const beaten = () => G.levels.filter(l => save.byId[l.id] && save.byId[l.id].stars > 0).length;
+  const shopCtx = () => ({ save, skins: SKINS, beaten, persist,
+    onUnlock: id => selectSkin(id), onClose: () => { renderSkinPick(); ticketDots(); },
+    say: k => { if (k === 'buy') arp(660, 5, 60); else { arp(523, 8, 45); confetti(); } } });
+  function openShop(focus) { blip(523, .08, 'triangle', .04); LOG('shop_open', { focus: focus || '', n: FTH_TICKETS.state(save).own.length }); FTH_TICKETS.open(shopCtx(), focus); }
+  const ticketReady = () => !unlockAll && !LABN && (FTH_TICKETS.state(save).tickets > 0 || FTH_TICKETS.canBuy(shopCtx()));
+  window.FTH_OWNS = id => owns(id);              // read-only, for the leaderboard's lock tags
+  function ticketDots() { const on = ticketReady(); document.querySelectorAll('.tdot').forEach(d => { d.hidden = !on; }); return on; }
   function skinStart() {
     clearTimeout(skinWinT);
     ACT = !SKIN.src || skinFits(SKIN) ? SKIN : SKINS[0];                       // a skin with a play page that cannot draw this map plays on the island
@@ -1813,7 +1835,7 @@
   // ---------------- levels ----------------
   function startLevel(i, brief) {
     levelIdx = i; L = G.levels[i]; Gr = G.graphs[L.g];
-    const cf = $('confetti'); cf.width = cf.width; $('toast').innerHTML = ''; wrongSteps = 0; lastProgress = performance.now();
+    const cf = $('confetti'); cf.width = cf.width; $('toast').innerHTML = ''; $('winTicket').hidden = true; wrongSteps = 0; lastProgress = performance.now();
     n = Gr.n; hole = Gr.hole; link = Gr.link;
     adj = Array.from({ length: n }, () => []);
     Gr.edges.forEach(([a, b]) => { adj[a].push(b); adj[b].push(a); });
@@ -1931,7 +1953,7 @@
   }
   function bonusStack(k) { let s = ''; for (let q = 0; q < k; q++) s += '<g transform="translate(0 ' + q1(5 - q * 3.6) + ') scale(.62)"><use href="#coinG"/></g>'; return s; }
   function bonusStop() { if (bz) { bz.t.forEach(clearTimeout); bz.ct.forEach(clearTimeout); bz.dead = true; if (!bz.done && window.FTH_LOG) FTH_LOG.end('bonus_left', { n: bz.path.length, got: bz.got, ch: bz.ch, chains: bz.chains }); } bz = null; }
-  function bonusUnlock() { $('winNext').disabled = $('winRetry').disabled = false; $('win').classList.remove('bonusing'); }
+  function bonusUnlock() { $('winNext').disabled = $('winRetry').disabled = false; $('win').classList.remove('bonusing'); $('winTicket').hidden = !ticketDots(); }
   function bonusSay(t) { const m = $('bonusMsg'); if (m) m.innerHTML = '<span>' + t + '</span>'; }   // one flex item, so the words wrap as text
   function bonusPips(me) { const p = $('bonusPips'); if (!p) return; [...p.children].forEach((d, i) => { d.className = me.done || i < me.ch - 1 ? 'done' : i === me.ch - 1 ? 'on' : ''; }); p.setAttribute('aria-label', me.done ? 'all chains used' : 'chain ' + me.ch + ' of ' + BCHAINS); }
   function bonusStart(delay, force) {
@@ -2218,7 +2240,7 @@
   function showTitle() {
     $('win').classList.remove('on'); $('brief').classList.remove('on');
     $('game').classList.remove('on'); $('menu').classList.remove('on'); $('title').classList.add('on');
-    uiTotals(); titleStart();
+    uiTotals(); titleStart(); ticketDots();
   }
 
   // ---------- how to play ----------
@@ -2589,7 +2611,7 @@
     $('win').classList.remove('on'); $('brief').classList.remove('on'); closeWheel(); titleStop();
     lootReset(); msg('');
     $('game').classList.remove('on'); $('title').classList.remove('on'); $('menu').classList.add('on');
-    const r = renderSaga(), m = $('menu');
+    const r = renderSaga(), m = $('menu'); ticketDots();
     const toPos = () => { m.scrollTop = PV.view === 'menu' && PV.scroll !== null ? (+PV.scroll) * (m.scrollHeight - m.clientHeight) : Math.max(0, r.y * $('saga').clientHeight - m.clientHeight * .55); };
     toPos(); requestAnimationFrame(toPos);
   }
@@ -2657,7 +2679,11 @@
   $('btnHowMap').onclick = () => openHowTo(null);
   $('btnTitle').onclick = showTitle;
   // the wallet and exchange (economy.js, lazy: loaded on the first open)
-  $('btnWallet').onclick = $('btnWalletMap').onclick = $('btnWalletTitle').onclick = () => {
+  $('btnShopTitle').onclick = $('btnShopMap').onclick = () => openShop();
+  $('winTicket').onclick = () => openShop();
+  // FEATURE BENCH (README): the currency exchange (economy.js) is parked; ?feat=exchange brings back its wallet button
+  if (PVQ.get('feat') && PVQ.get('feat').split(',').includes('exchange')) $('btnWallet').hidden = false;
+  $('btnWallet').onclick = () => {
     const go = () => FTH_ECON.open({ skin: ACT.id });
     if (window.FTH_ECON && FTH_ECON.open) return go();
     const sc = document.createElement('script'); sc.src = 'economy.js'; sc.onload = go; sc.onerror = () => alert('The wallet could not load. Check your connection and try again.'); document.head.appendChild(sc);

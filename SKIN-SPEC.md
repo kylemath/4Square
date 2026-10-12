@@ -302,8 +302,12 @@ coin: { name: 'pearl', plural: 'pearls',        // singular and plural, lower ca
   event handlers or `id`s (an id must start with `coin-`). `tools/skin_check.js` rejects an unbalanced `<g>`, a missing size, two
   skins with the same coin name, value or art. A skin with no `coin` gets the plain gold coin (`FTH_SKINS.coinOf(spec)`).
 - Skins that `extend` another merge `coin` field by field, so give every field again.
-- **Value and the economy.** `value` is the coin's price in G. Coins trade in the exchange (`economy.js`, opened from the wallet
-  button beside the counter, the menu and the title screen): direct markets between a few coins, a fee of 1 to 5% on each, so
+- **Skin tickets.** Coins buy skin tickets (`tickets.js`; README "Coins and skin tickets"): a ticket's price is set in points and
+  shown in each coin as `ceil(points x FTH_SKINS.rate(spec))`, the rate play pays, so every coin costs the same effort.
+  `FTH_SKINS.rate(spec) = sqrt(10 / value) / 4`. A new skin is locked until a ticket unlocks it; add a `GATE`/`PRICE` step in
+  `tickets.js` for it (`node tools/tickets_check.js` fails until there is one ticket per skin other than Islands).
+- **Value and the economy.** `value` is the coin's price in G. Coins trade in the exchange (on the feature bench: `?feat=exchange`;
+  `economy.js`, opened from the wallet button beside the counter): direct markets between a few coins, a fee of 1 to 5% on each, so
   no cycle of swaps can make money (`node tools/economy_check.js` proves it and prints every best route). Adding a skin means
   a unique value and one or two market lines in `EDGES` and a node position in `POS` (the check fails until they exist).
 

@@ -106,18 +106,23 @@ The seal key sits on the same device, so someone who reads it can forge a consis
 determined ones. Because boards are built from verified proofs and never from the save, an edited save cannot raise a
 board score anyway; the flag is there so the attempt is on record.
 
-## Coin currencies and the Wealth board
+## The podium: coins earned in each skin
 
-Each skin has its own coin (SKIN-SPEC.md section 12); balances live in `save.wallet` and are sealed with the progress save
-(`FTH_INT.seal/check` hash `byId` plus the wallet, so a hand-edited balance logs `save-edited` and adds to the tamper count
-like any other save edit; the wallet is not reset). **Coins are client state and are not verified**: the replay verifier checks
-swaps, stars and moves, it cannot see coins. So the leaderboard keeps them out of the verified board:
+The leaderboard screen is one list: every skin, with its 1st, 2nd and 3rd by **lifetime coins earned in that skin**
+(`FTH_ACCT.podium(scope)`). Spending coins on skin tickets does not lower it (`earned` only ever grows). Each skin's coin
+balance lives in `save.wallet`, sealed with the progress save, and owned skins and tickets (`save.skins`) are sealed too
+(`FTH_INT.seal/check`): a hand-edited balance or a hand-unlocked skin logs `save-edited` and adds to the tamper count.
 
-- `FTH_ACCT.registerMetric({ id: 'coins', label: 'Wealth (unverified)', of: e => e.wealth })` is registered, and the board offers
-  "Rank by: Stars | Wealth (unverified)" on the **This device** tab only. A skin's wealth is its lifetime coins earned times the coin's
-  value in G (exchanges do not change it, so converting everything into one coin cannot lift a board).
-- `wealth` is stamped on your own row at read time from this device's wallet. It is never put in an entry and never uploaded, so on **Everyone** the toggle is disabled and no one else's wealth exists to rank by.
-  It never affects the stars / levels / points ranking, which stays proof-verified.
+**Coins are client state, so the replay cannot prove them.** What the podium does instead:
+- an entry carries `coins` (uploaded with the proofs when you have joined); it must first pass `verifyEntry` (its levels replay,
+  no tamper flags, no copied proofs), else it is hidden and counted;
+- its coins count only up to a plausibility cap: `coinCap(skin, levels)` = the skin's coin rate x 12,000 points per verified level
+  (a first win pays at most 6,000 points; replays pay a quarter, so twice that is generous). A capped entry ranks by the cap;
+- Blank Doodle (`own: true`) makes no proofs, so its cap counts every level of the game: its podium is the weakest;
+- Firestore rules: `coins` is an int, 0 to 10,000,000, and never goes down.
 
-`FTH_ACCT.registerMetric({id, label, of: entry => number})` is still the hook for any later metric; `FTH_ACCT.board(skin, scope, metricId)`
-sorts by it.
+A player farming replays at a quarter rate, within the cap, is not stopped; neither is a forged client that reports plausible
+coins with real proofs. A server-side tally (Blaze plan, see above) would be the next step.
+
+`FTH_ACCT.board(skin, scope, metricId)` (stars, levels, points per skin, proof-verified) is still there for a detailed board;
+`FTH_ACCT.registerMetric({id, label, of: entry => number})` is the hook for another metric.
