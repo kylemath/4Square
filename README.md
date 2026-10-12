@@ -15,11 +15,29 @@ The levels come from real research data: maps from an exhaustive census of spher
 ([site](https://kylemath.github.io/GraphColourDeductiveSolver/)). The Four Colour Theorem is already proved; this
 game explores the Kempe-swap dynamics behind Kempe's 1879 attempt and Heawood's 1890 objection.
 
-**Game styles (skins).** The same levels play in four styles, chosen on the title screen: Islands, Dots, Line Doodle
-and Blank Doodle. Each skin restyles the whole game, not just the board: theme, HUD level (full, compact, minimal),
-title art, how-to-play pages, bonus-round tiles and the look of the exploration map, which every skin charts as you
-swap. The contract is in [SKIN-SPEC.md](SKIN-SPEC.md); a skin is `skins/<id>.js` plus an optional play page
-`lab/<id>.html`, checked with `node tools/skin_check.js`. `lab/Families.html` shows the experimental styles side by side.
+**Game styles (skins).** The same levels play in ten styles, chosen on the title screen: the Islands family (Islands,
+Islands Free, Islands 3D), Dots, Line Doodle, Blank Doodle, Island Map, Bonus Swipe, Ion Channels and Gran's Table.
+Each skin restyles the whole game, not just the board: theme, HUD level (full, compact, minimal), title art,
+how-to-play pages, bonus-round tiles and the look of the exploration map, which every skin charts as you swap.
+Islands and Islands Free are two layouts of one board renderer (`board/island.js`: walls, or no walls with tiles that
+settle like soft bubbles; `node tools/free_check.js` checks the free layout on every level); Islands 3D is a three.js
+scene (`lab/islands3d.html`, `node tools/islands3d_check.js`). The contract is in [SKIN-SPEC.md](SKIN-SPEC.md); a skin
+is `skins/<id>.js` plus an optional play page `lab/<id>.html`, checked with `node tools/skin_check.js`.
+`lab/Families.html` shows the experimental styles side by side.
+
+**Coins and skin tickets.** Each skin earns its own currency (ink beads, doubloons, pearls, crystal shards...). A new player
+owns Islands only; every other skin is unlocked with a **skin ticket** (`tickets.js`, the 🎟️ Skins button). Ticket *n* opens
+once enough levels are beaten (1, 3, 5, 8, 11, 14, 17, 21, 25) and costs coins from any one wallet (900 points' worth at
+first, about one level's pay, rising to 5,600): each skin comes a little further on and costs a little more. The ticket
+then unlocks any locked skin. `node tools/tickets_check.js` checks the rules and that each ticket is affordable at its gate
+on clean play (16-22% to spare, before bonus rounds); `node tools/shop_check.js` plays it end to end. SKIN-SPEC.md section 12.
+
+**Feature bench.** Parked features stay in the code, switched off, until they are wanted again:
+- *Currency exchange* (`economy.js`: a graph of direct markets where coins convert along the cheapest route, with no
+  arbitrage, `node tools/economy_check.js`). Off: no wallet button. `?feat=exchange` brings the button back.
+
+Accounts, per-skin leaderboards and the cheat-evidence log are described in [ACCOUNTS.md](ACCOUNTS.md); they work locally
+with no setup and go online once `account-config.js` is filled in.
 
 **Further abstractions (lab only).** Three pages go one layer further from the map:
 [Rim Word](lab/rimword.html) labels every state within par swaps with a five-letter string so that each swap flips

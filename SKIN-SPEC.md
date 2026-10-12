@@ -8,8 +8,9 @@ A skin is two things:
 
 1. **A spec file** `skins/<id>.js` that registers one object with `FTH_SKINS.register({...})` (fields below). It is
    loaded by the app on every page load, so it must be small, synchronous and side-effect free apart from `register`.
-2. **A play page** (optional) `lab/<id>.html` built on `lab/core.js`. The built-in Islands skin has no page: the shell
-   draws its own board. Every other skin plays inside a frame.
+2. **A play page** (optional) `lab/<id>.html` built on `lab/core.js`. The Islands skins that draw the island board
+   (Islands, Islands Free) have no page: the shell draws the board with `board/island.js` (section 11). Every other
+   skin plays inside a frame.
 
 Nothing else is per-skin. A skin never edits `index.html`, `lab/core.js` or another skin's files.
 
@@ -20,7 +21,10 @@ FTH_SKINS.register({
   id: 'dots',                      // matches the file name and save keys
   name: 'Dots', ic: '⚫',           // title-screen chip (short name, one emoji)
   blurb: 'one finger, one line',   // under the chip when selected (max ~30 chars)
-  src: 'lab/dots.html',            // the play page; omit for the built-in Islands board
+  src: 'lab/dots.html',            // the play page; omit for the island board (section 11)
+  family: 'islands',               // optional: skins of one family sit together in a box on the title screen
+  look: 'islands',                 // optional: the skin whose chrome CSS scope applies (default: this skin's own id)
+  board: { free: false },          // island-board skins only: layout and physics of the board (section 11)
   waits: false,                    // true: after the winning swap the player still has a step (Line Doodle colours the hole)
   own: false,                      // true: the skin has its own goal and reports with LAB.finish(swaps) (Blank Doodle)
   needs: [],                       // ['cells']: needs region shapes (every map has them now)
@@ -35,10 +39,15 @@ FTH_SKINS.register({
   bonus: { ... },                  // the win-screen bonus round (section 6)
   map: { ... },                    // the exploration map's look (section 7)
   words: { ... },                  // optional copy overrides (section 8)
+  coin: { ... },                   // the skin's own currency: name, value, art (section 12)
 });
 ```
 
-Every field except `id`, `name`, `ic` is optional; the shell falls back to the Islands look.
+Every field except `id`, `name`, `ic` is optional; the shell falls back to the Islands look. A skin can be derived from
+another one that is registered before it: `FTH_SKINS.register(FTH_SKINS.extend('islands', { id: 'islands-free', name: …, ic: …, blurb: …, board: … }))`.
+`extend` copies the base spec and merges plain-object fields (`theme`, `words`, `map`, `bonus`, `levelMap`, `title`,
+`board`, `coin`) one level deep; everything else in the override replaces the base's. **Skin ids are permanent**: saves,
+leaderboards and the research log key on them (progress itself is per level id and shared by every skin).
 
 ## 2. HUD levels
 
@@ -84,6 +93,17 @@ ignore them, but a high-end look sets them (and may add more in `css`):
 | `--sk-edge` | border colour of chips and secondary buttons |
 | `--sk-btn2` / `--sk-btn2-ink` | secondary buttons (white, yellow, blue, orange variants) |
 | `--sk-coin` | the points counter |
+| `--sk-ctl` / `--sk-ctl-ink` / `--sk-ctl-edge` | **the play page's own small controls** (undo, restart, and any button the page draws): background, glyph or text, border. Solid colours (the page also uses `--sk-ctl` as the halo behind a glyph) |
+| `--sk-star-on` / `--sk-star-edge` | an earned star's fill / outline (star meter, level-map star chip) |
+| `--sk-star-off` / `--sk-star-off-edge` | an unearned star's fill / outline. **Both must be at least 3:1 against the chip** (WCAG non-text contrast), yet quieter than the earned star |
+
+**Tokens reach the play page.** The shell posts the skin's whole token set (`{ fth: 1, cmd: 'tokens', vars }`) to the
+frame when it reports `ready` and again whenever the skin changes; `lab/core.js` turns it into an injected
+`<style id="sk-tokens">:root { --sk-... }</style>` (and, when the frame is same-origin, reads the parent's tokens at load so
+there is no flash). A page uses `var(--sk-ctl, <its own colour>)` in CSS or `LAB.tok('--sk-ctl', '<its own colour>')` in
+canvas code (`LAB.tokens()` returns all; a `sk-tokens` event on `document` says they changed). Standalone nothing is
+set, so the fallback, the page's own look, applies. **Every control a page draws must wear `--sk-ctl*`**; the artwork
+stays the page's. `node tools/contrast_check.js` fails a skin whose stars are under 3:1 on their chips.
 
 Selectors worth restyling in `css` (it is scoped to your skin): `.btn3d` and its variants `.white .yellow .blue
 .orange .go .rb .rbtn`, `.badge`, `.coins`, `.goalbar`, `.starbar`, `.mnode .mst` (stars) and `.mnode .mtag`
@@ -104,8 +124,13 @@ SVGs may animate with CSS; no script inside them.
 
 ## 6. Bonus round
 
-The win screen's mini-game: a 9 x 7 hex board, one drag along a path alternating two elements collects coins. The
-shell owns the rules, input, coins and countdown. The skin owns the look:
+The win screen's mini-game: a 9 x 7 hex board; a drag along a path alternating two elements finds and collects coins.
+The shell owns the rules, input, coins and countdown. The skin owns the look. Rules the skin should know about:
+the coins are HIDDEN (the shell draws them only when a chain reveals them, so **a tile must not draw coins itself**:
+no coin pips or stacks in `tile`), a round has THREE chains (header pips `.bpips`, drawn from `--sk-chip`, `--sk-edge`,
+`--sk-accent`), and the tiles of an ended chain get the extra class `spent` (dimmed by the shell). Chain, clock and
+board rules are documented at the top of the bonus-round section of `index.html`; boards are validated by
+`tools/bonus_boards.js`.
 
 ```js
 bonus: {
@@ -119,7 +144,8 @@ bonus: {
 `tile` returns the SVG for one tile of element `e` (0 fire, 1 water, 2 air, 3 earth) centred at `(x, y)` with radius
 `r`. **The outer `<g>` must keep `class="tl e{e}"`, `data-k="{k}"` and the translate; the inner `<g class="tin">` must
 wrap everything else** (the shell scales `.tin` when a tile pops and adds the classes `lit` and `glow` to the outer
-`<g>` when it is traced; style those in `css`). Draw in local coordinates round (0, 0).
+`<g>` when it is traced, and `spent` once its chain has ended (it keeps `lit`); style those in `css`). Draw in local
+coordinates round (0, 0).
 
 ## 7. Exploration map
 
@@ -196,7 +222,13 @@ levelMap: {
 
 - Load `../levels.js`, `../layout.js`, `core.js`; create the game with `LAB.game()` (it reads `?lvl=`).
 - Inside the app (`?embed=1`), core.js posts every swap, undo and reset to the app; call `LAB.done()` when your win
-  celebration ends (`own` skins call `LAB.finish(swaps)` instead). Script errors fall back to the Islands board.
+  celebration ends (`own` skins call `LAB.finish(swaps)` instead; `done` is posted once per win). Script errors fall back to the Islands board.
+- **After a win, an embedded page never restarts itself; the shell owns what happens next** (its win screen, bonus
+  round, next level). When `LAB.embedded`: a tap, click or key on the frame after the win does nothing (no `g.reset()`,
+  no fresh sheet, no replay countdown, no level step), the page's own undo/restart are inert once won, and no dev text
+  stays on screen ("tap for a fresh sheet", "tap to play again", "click", "lab", "TODO", "debug"...). Finish the
+  celebration, call `LAB.done()`, idle. Tap-to-restart is for standalone lab use only (`if (!LAB.embedded)`); `<html class="embed">`
+  is set for CSS (`.embed .hint { display: none }`). `node tools/embed_win_check.js` enforces this on every play page.
 - Read `&hud=` from the URL to decide which of your own labels to show.
 - Every map's region shapes (`g.cells`) are exact: two pieces share a border iff their tiles are joined
   (`python3 tools/cells_check.py`). Keep any drawing you derive from them honest the same way.
@@ -205,5 +237,99 @@ levelMap: {
 
 1. `skins/<id>.js` registers a complete spec; `node tools/skin_check.js` passes (loads every spec, calls every
    function with sample arguments, checks the bonus tile contract and the intro SVGs).
-2. The play page passes the embed test (`ready` and no `error` on every level).
+2. The play page passes the embed test (`ready` and no `error` on every level) and `node tools/embed_win_check.js <id>`
+   (nothing restarts or shows dev text after a win), draws its controls with `--sk-ctl*`, and `node tools/contrast_check.js` passes.
 3. Add `<script src="skins/<id>.js"></script>` to `index.html` (the shell owner does this) and the files to `sw.js`.
+4. Island-board skins: `node tools/free_check.js` passes for the free layout. Islands 3D: `node tools/islands3d_check.js` passes.
+
+## 11. The island board (`board/island.js`)
+
+The island board is one renderer with two layouts; the skin spec picks one with `board`:
+
+```js
+board: { free: false }                                  // Islands: the three far regions are walls, tiles sit on the planar layout
+board: { free: true, guard: false,                      // Islands Free: no walls, the whole map settles like soft bubbles
+         live: { kH: 0, kB: 0, damp: .53, cap: .38, rep: 5, fk: .065, fr: 2.5, fl: 1.15 } }
+```
+
+`live` overrides the physics numbers shown in the `#dev` panel (five taps on the level name): `kH` home spring, `kB`
+bridge spring, `damp` velocity damping, `cap` swing room and trace tug (x spacing), `rep` like-colour push (walls only),
+`pull`, `tug`, and for the free layout `fk` link leash, `fr` bubble push, `fl` bubble size (1 fills about 86% of the
+island with a hexagonal packing). `guard` is the crossing guard of the walled layout. A skin with a play page (`src`)
+has no `board`. The free layout is settled offline when the level opens (the island opens at rest, the grow-in plays
+towards it), kept clear of overlaps by a hard floor under the soft push, and checked on every level and screen size by
+`node tools/free_check.js` (it exits 1 if a layout has overlapping tiles, tiles off screen, hidden links, tiles under
+22 px, a slow settle, or an off-centre goal).
+
+The shell does not reach into the board. It creates it once, `FTH_ISLAND.create(S)`, passing a read-only view of the
+game (`S.view()`: level, graph, colours, chains, the trace) and the few helpers the board draws with (sound, messages,
+the tile look), and calls the interface that comes back: `build`, `configure(board, key)`, `reset`, `destroy`, `kick`,
+`pick`, `pickAll`, `stepTarget`, `ballAt`, `toScreen`, `posOf`, `dragBegin/Move/End`, `ripple`, `shake`, `popBall`,
+`paintBalls`, `drawTraced/Active/Trace`, `drawHoleFill`, `holeCeremony`, `winScene` (the last swap is under way: no hint outlines or lock badges), `dev`.
+The win scene (about 4 s: every tile lit, then try-every-element, nesting, each element across the map) is synthesised
+sound only (`sfx.js`, passed in as `S.sfx`; `tools/win_scene_check.js` plays and measures it). Chains, flips, scoring, saves and levels
+stay in the shell. `layout(grow, [w, h])` and `step(now)` build the geometry and advance the physics without a DOM
+(`create` takes `headless: true`), which is how `tools/free_check.js` tests the real code.
+
+### Islands 3D (`lab/islands3d.html`)
+
+The same island as a three.js scene, a normal skin with a play page (`src: 'lab/islands3d.html'`, `family: 'islands'`).
+It draws every level: the layout (tiles on a hexagonal lattice, float levels so no bridge runs through a tile) is
+derived from the level's own graph and stored per map in `lab/islands3d-plans.js`; `node tools/islands3d_check.js`
+checks all of them (and `--write` regenerates the file after a map changes). three.js (r128) loads from cdnjs; if
+that, or WebGL, is unavailable the page posts `{ fth: 1, type: 'error' }` and the app plays the level on the island board.
+Touch: drag a tile to trace a chain, tap a tile for its chains and press SWAP, drag empty space to turn and tilt, pinch to
+zoom; mouse: right button turns, wheel zooms.
+
+## 12. The skin's coin
+
+Every skin earns its own currency. The coin replaces the shared gold coin everywhere the shell shows coins while that skin
+is playing: the counter, the flying loot, the loot bag, the win card total, the bonus round's hidden stacks, toasts and the
+wallet screen. (The shell rewrites one `<g id="coinG">` in its defs, so there is a single source of art.)
+
+```js
+coin: { name: 'pearl', plural: 'pearls',        // singular and plural, lower case: "12 pearls", "Pearls are hidden!"
+        glyph: '🦪',                              // one emoji, for text-only places
+        value: 60,                               // worth in G, the one base unit ("gold-equivalent"): see the table below
+        pitch: 1.25,                             // optional: multiplies the coin-landing clink (0.5 to 2, default 1)
+        colors: { main: '#fdf6ff', edge: '#d9587f' },   // optional: two #hex colours that sum the coin up
+        svg: FTH_SKINS.coinArt('<circle r="9" fill="#fff"/>...') }   // size => '<svg viewBox="-13 -13 26 26" width=... height=...>...</svg>'
+```
+
+- **Art** is drawn in the box `-13 -13 26 26` (centre 0, 0), cartoon style: a dark outline of about 2 units (`#1c1640`, or the skin's
+  ink), flat fills, one highlight. `FTH_SKINS.coinArt(inner)` wraps the inner markup into the `svg(size)` function. Make the
+  shape different from the other coins (round, drop, gem, cube, shell, pencil...), not just another colour. No script, images,
+  event handlers or `id`s (an id must start with `coin-`). `tools/skin_check.js` rejects an unbalanced `<g>`, a missing size, two
+  skins with the same coin name, value or art. A skin with no `coin` gets the plain gold coin (`FTH_SKINS.coinOf(spec)`).
+- Skins that `extend` another merge `coin` field by field, so give every field again.
+- **Skin tickets.** Coins buy skin tickets (`tickets.js`; README "Coins and skin tickets"): a ticket's price is set in points and
+  shown in each coin as `ceil(points x FTH_SKINS.rate(spec))`, the rate play pays, so every coin costs the same effort.
+  `FTH_SKINS.rate(spec) = sqrt(10 / value) / 4`. A new skin is locked until a ticket unlocks it; add a `GATE`/`PRICE` step in
+  `tickets.js` for it (`node tools/tickets_check.js` fails until there is one ticket per skin other than Islands).
+- **Value and the economy.** `value` is the coin's price in G. Coins trade in the exchange (on the feature bench: `?feat=exchange`;
+  `economy.js`, opened from the wallet button beside the counter): direct markets between a few coins, a fee of 1 to 5% on each, so
+  no cycle of swaps can make money (`node tools/economy_check.js` proves it and prints every best route). Adding a skin means
+  a unique value and one or two market lines in `EDGES` and a node position in `POS` (the check fails until they exist).
+
+| coin | skin | G | why |
+|---|---|---|---|
+| ink bead | Dots | 1 | the commonest: a dot of ink |
+| pencil stub | Line Doodle | 2 | worn-down, still plentiful |
+| paint drop | Blank Doodle | 3 | cheap, but it takes a few to cover a map |
+| sugar cube | Gran's Table | 5 | a household luxury |
+| doubloon | Islands | 10 | the original game's gold: the reference coin |
+| casino chip | Bonus Swipe | 14 | a stake, worth a bit more than gold |
+| compass rose | Island Map | 20 | an explorer's prize |
+| ion orb | Ion Channels | 35 | charged, short-lived, scarce |
+| pearl | Islands Free | 60 | rare and valuable |
+| crystal shard | Islands 3D | 100 | the rarest |
+
+**Earning.** Points stay the game's score (`save.best`, proofs, stars). Coins are points turned into the skin's currency at
+`coins = points x sqrt(10 / value) / 4`, so 4 points are 1 doubloon, a level worth 800 points pays about 630 ink beads, 200 doubloons or 63
+crystal shards (rarer coins pay fewer, in G they pay more: a point is worth sqrt(value x 10) / 4 G). Replaying a beaten
+level pays a quarter. The credit goes to the wallet of the skin the level actually runs in (an island fallback pays Islands).
+
+**Wallet and save.** `save.wallet = { <skinId>: { bal, earned, f } }`: `bal` coins held, `earned` lifetime coins earned by play (an
+exchange never changes it), `f` the sub-coin remainder. It is written only through `persist()`, and `integrity.js` hashes it
+with the progress, so an offline edit shows up as an edited save. Migration (a save with no wallet): the old total of best
+points becomes the Islands balance 1:1, once. `window.FTH_WALLET` (`bal`, `earned`, `wealth`, `swap`) is the shell's wallet API.

@@ -13,6 +13,10 @@
  *      runs as a claude.ai artifact that declares the db capability and the viewer may write.
  *   3. a Google Form (set FTH_FORM below): one form response per attempt, the attempt as a JSON string in one field.
  *      Only works where the page may reach docs.google.com (e.g. the GitHub Pages copy; claude.ai artifacts block it).
+ *
+ * Related, separate from this file: integrity.js keeps an always-on, on-device integrity log and the run proofs for
+ * leaderboards (see ACCOUNTS.md). It never changes what this research log records or its consent; its signals are
+ * mirrored here (FTH_LOG.ev('integrity', ...)) only when consent is on.
  */
 (function () {
   'use strict';

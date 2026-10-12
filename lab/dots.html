@@ -329,7 +329,7 @@ const DOTS_CACHE = {"8cxvpa":[[0,0],[-1.5,-0.866],[1.5,-0.866],[0,-3.4641],[0,1.
     audio();
     const x = e.clientX, y = e.clientY;
     stopHint();
-    if (win) { if (now() - win.t0 > 900) { win = null; g.reset(); } return; }
+    if (win) { if (!LAB.embedded && now() - win.t0 > 900) { win = null; g.reset(); } return; }   // in the app the shell owns the next step
     if (onBtn(btnUndo(), x, y)) { if (g.history.length) { g.undo(); tone(520, 0.12, 0.04, 'sine', 0, 0.7); } else thud(); return; }
     if (onBtn(btnReset(), x, y)) { if (g.history.length) { g.reset(); tone(440, 0.2, 0.04, 'sine', 0, 0.5); } return; }
     const u = nearest(x, y, hitR());
@@ -596,18 +596,19 @@ const DOTS_CACHE = {"8cxvpa":[[0,0],[-1.5,-0.866],[1.5,-0.866],[0,-3.4641],[0,1.
     drawCue(t, K);
     // tiny undo / restart glyphs
     const can = g.history.length > 0 && !win;
-    cx.globalAlpha = can ? 0.6 : 0.2; cx.strokeStyle = INK; cx.lineWidth = 1.7; cx.lineJoin = 'round';
-    const bu = btnUndo(), br = btnReset();
+    const bu = btnUndo(), br = btnReset(), tc = LAB.tok('--sk-ctl'), ti = LAB.tok('--sk-ctl-ink', INK);   // the skin's control tokens (lab/core.js); none standalone
+    if (tc) for (const b of [bu, br]) { cx.globalAlpha = can ? 1 : 0.5; circle(b.x, b.y, 18); cx.fillStyle = tc; cx.fill(); cx.strokeStyle = LAB.tok('--sk-ctl-edge', ti); cx.lineWidth = 1.5; cx.stroke(); }
+    cx.globalAlpha = can ? (tc ? 0.95 : 0.6) : (tc ? 0.45 : 0.2); cx.strokeStyle = ti; cx.lineWidth = 1.7; cx.lineJoin = 'round';
     cx.beginPath(); cx.arc(bu.x, bu.y, 10, Math.PI * 1.15, Math.PI * 2.55); cx.stroke();
     cx.beginPath(); cx.moveTo(bu.x - 13.5, bu.y - 7.5); cx.lineTo(bu.x - 8.6, bu.y - 1.2); cx.lineTo(bu.x - 2.5, bu.y - 6.2); cx.stroke();
-    circle(br.x, br.y, 10); cx.stroke(); circle(br.x, br.y, 2.5); cx.fillStyle = INK; cx.fill();
+    circle(br.x, br.y, 10); cx.stroke(); circle(br.x, br.y, 2.5); cx.fillStyle = ti; cx.fill();
     cx.globalAlpha = 1;
   }
   function drawCue(t, K) {
     // one quiet line; the goal itself is drawn in the ring (the seeds)
     const pv = K && !K.web ? g.preview(K) : null;
     let msg, alpha = 0.6;
-    if (win) msg = (now() - win.t0 > 900) ? 'tap to play again' : 'filled!';
+    if (win) msg = (now() - win.t0 > 900 && !LAB.embedded) ? 'tap to play again' : 'filled!';
     else if (pv && pv.won) { msg = 'let go'; alpha = 0.85; }
     else if (K && K.web) msg = 'nothing changes';
     else if (t < note.until) msg = note.text;
@@ -623,6 +624,7 @@ const DOTS_CACHE = {"8cxvpa":[[0,0],[-1.5,-0.866],[1.5,-0.866],[0,-3.4641],[0,1.
 
   addEventListener('resize', resize);
   RM.addEventListener && RM.addEventListener('change', () => dirty());
+  document.addEventListener('sk-tokens', () => dirty());   // the app changed the skin: redraw the controls
   resize(); armHint(4000);
 })();
 </script>

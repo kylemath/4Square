@@ -23,7 +23,7 @@
   if no single swap does it, the first step of the shortest 2- or 3-swap fix; if none, a neighbour to rub out).
   Otherwise, idle 10 s: the pen that fits the most constrained blank piece bobs and the piece is circled (or a
   clashing piece is circled, with its own pen, for rubbing out).
-  Goal: every piece coloured and no clashes -> "Coloured!" sticker + confetti; tap for a fresh blank sheet.
+  Goal: every piece coloured and no clashes -> "Coloured!" sticker + confetti; tap for a fresh blank sheet (standalone only).
   Margin: undo (own history of colourings: one entry per stroke, swap or rub-out) and restart (blank sheet, undoable).
 
   The partial-colouring logic lives in this page (BD.group / BD.swapped / BD.clashes / BD.rescue / BD.hint).
@@ -57,7 +57,8 @@
   @keyframes hop { 40% { transform: translateY(-14%); } }
   @keyframes bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-12%) rotate(4deg); } }
   #tools { position: fixed; left: 6px; top: 4px; display: flex; gap: 4px; }
-  #tools button { width: 36px; height: 34px; padding: 3px; border: 0; background: none; cursor: pointer; opacity: .75; }
+  #tools button { box-sizing: border-box; width: 36px; height: 34px; padding: 3px; border: 2px solid var(--sk-ctl-edge, transparent); border-radius: 10px; background: var(--sk-ctl, none); cursor: pointer; opacity: .75; }   /* --sk-ctl*: the skin's control tokens (lab/core.js) */
+  #tools svg { stroke: var(--sk-ctl-ink, #2b2d42); }
   #tools button:active { transform: scale(.9); }
   #tools svg { width: 100%; height: 100%; display: block; }
   #stamp { position: fixed; pointer-events: none; display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -67,6 +68,7 @@
     box-shadow: 4px 5px 0 rgba(43,45,66,.85); white-space: nowrap; }
   #stamp .nx { margin-top: .5em; font-size: .45em; font-weight: 500; background: #fff59d; padding: .25em .7em;
     transform: rotate(5deg); box-shadow: 2px 3px 0 rgba(0,0,0,.15); }
+  .embed #stamp .nx { display: none; }   /* inside the app the shell owns what happens next */
   @media (prefers-reduced-motion: reduce) { .pen, .pen .cap, #stamp { transition: none; } .pen.shake, .pen.hop, .pen.bob { animation: none; } }
 </style>
 </head>
@@ -577,7 +579,7 @@ const BD = (() => {
   }
   cv.addEventListener('pointerdown', e => {
     e.preventDefault(); au(); touch();
-    if (won) { if (performance.now() - wonAt > 450) fresh(); return; }
+    if (won) { if (!LAB.embedded && performance.now() - wonAt > 450) fresh(); return; }   // in the app the shell owns the next step
     const u = pieceAt(e); if (u < 0) return;
     hoverG = null;
     if (pen < 0) { penBtns.forEach((b, k) => setTimeout(() => jolt(b, 'hop'), RM ? 0 : k * 60)); wob[u] = performance.now(); thud(); kick(); return; }
@@ -609,7 +611,7 @@ const BD = (() => {
   cv.addEventListener('pointerleave', () => { if (hoverG) { hoverG = null; kick(); } });
   document.getElementById('undo').addEventListener('pointerdown', e => {
     e.preventDefault(); au(); touch();
-    if (won) { won = false; stamp.classList.remove('on'); confetti = []; }
+    if (won) { if (LAB.embedded) return; won = false; stamp.classList.remove('on'); confetti = []; }
     if (!hist.length) { thud(); return; }
     const before = col; col = hist.pop(); const now = performance.now(); let k = 0;
     for (let i = 0; i < N; i++) if (before[i] !== col[i]) { const [x, y] = cen(i);
@@ -618,7 +620,7 @@ const BD = (() => {
   });
   document.getElementById('again').addEventListener('pointerdown', e => {
     e.preventDefault(); au(); touch();
-    if (won) { fresh(); return; }
+    if (won) { if (!LAB.embedded) fresh(); return; }
     if (col.some(c => c >= 0)) { save(); const now = performance.now();
       col.forEach((c, i) => { if (c >= 0) { const [x, y] = cen(i); anim[i] = RM ? null : { t0: now + 15 * i, x, y, R: reach(i, x, y), from: c, rub: true }; } });
       col = new Array(N).fill(-1); lastClash = 0; rub(); }
@@ -628,6 +630,7 @@ const BD = (() => {
   document.addEventListener('contextmenu', e => e.preventDefault());
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => kick());
 
+  window.PLAYLAB = { cen: i => cen(i).map(v => v / dpr), pen: i => { pen = i; syncPens(); }, get won() { return won; } };   // test hook (tools/embed_win_check.js)
   layout(); fresh();
 })();
 </script>
