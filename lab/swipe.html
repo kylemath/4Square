@@ -53,7 +53,7 @@
   .btag { background: #ffd84a; color: #4a2a00; border: 2px solid #fff; border-radius: 999px; padding: 1px 9px; font-size: .74rem; letter-spacing: .08em; box-shadow: 0 3px 0 #b06a00; white-space: nowrap; }
   #ring { flex: 1; min-width: 0; height: 30px; display: flex; align-items: center; }
   #ring svg { height: 30px; width: auto; max-width: 100%; overflow: visible; }
-  .bskip { background: rgba(18,22,70,.55); color: #fff; border: 2px solid #fff; border-radius: 999px; width: 32px; height: 28px; padding: 0; font-weight: 900; font-size: .95rem; line-height: 1; flex: none; }
+  .bskip { background: var(--sk-ctl, rgba(18,22,70,.55)); color: var(--sk-ctl-ink, #fff); border: 2px solid var(--sk-ctl-edge, #fff); border-radius: 999px; width: 32px; height: 28px; padding: 0; font-weight: 900; font-size: .95rem; line-height: 1; flex: none; }
   body.inapp .btag { letter-spacing: .04em; }   /* ?hud=full|compact: the app's bar already has the title and stars; this page shows neither */
   .bskip:disabled { opacity: .35; }
   #msg { height: 2.5em; line-height: 1.25; font-weight: 800; font-size: .86rem; display: flex; align-items: center; overflow: hidden; }
@@ -640,7 +640,7 @@ const SWIPE_CACHE = {"1spd2mn":[[1,0],[0,0],[0,-1],[2,-1],[2,0],[1,1],[0,1],[-1,
   svg.addEventListener('pointerdown', e => {
     audio(); e.preventDefault(); try { svg.setPointerCapture(e.pointerId); } catch (_) {}
     poke();
-    if (won) { doReset(); return; }
+    if (won) { if (!LAB.embedded) doReset(); return; }   // in the app the shell owns the next step
     if (busy) return;
     const p = pt(e);
     if (bub) { const i = bubAt(p); if (i >= 0) { pickBubble(i); return; } closeBubbles(); }
@@ -664,10 +664,10 @@ const SWIPE_CACHE = {"1spd2mn":[[1,0],[0,0],[0,-1],[2,-1],[2,0],[1,1],[0,1],[-1,
   };
   svg.addEventListener('pointerup', up); svg.addEventListener('pointercancel', () => { if (dr) cancelDrag(); if (bub) bub.down = false; });
   $('bUndo').onclick = () => { audio(); if (busy || won) return; cancelDrag(); closeBubbles(); g.undo(); blip(500, .08, 'triangle', .03); ringSay(); poke(); };
-  $('bReset').onclick = () => { audio(); doReset(); };
+  $('bReset').onclick = () => { audio(); if (won && LAB.embedded) return; doReset(); };
   addEventListener('resize', () => { clearTimeout(fit.t); fit.t = setTimeout(fit, 80); });
   fit(); ringSay(); poke();
-  window.SWIPE = { g, LAY, hit: (x, y) => hit({ x, y }), get P() { return P; }, get ANCH() { return ANCH; }, get dr() { return dr; }, get bub() { return bub; }, get won() { return won; } };   // test hook
+  window.SWIPE = { g, LAY, hit: (x, y) => hit({ x, y }), get P() { return P; }, get ANCH() { return ANCH; }, get dr() { return dr; }, get bub() { return bub; }, get won() { return won; }, jackpot };   // test hook
 })();
 </script>
 </body>

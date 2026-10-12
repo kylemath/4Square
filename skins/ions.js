@@ -219,6 +219,9 @@
 
   FTH_SKINS.register({
     id: 'ions', name: 'Ion Channels', ic: '⚛️', blurb: 'glowing ions in a living cell',
+    coin: { name: 'ion orb', plural: 'ion orbs', glyph: '⚛️', value: 35, pitch: 1.6,   // this skin's currency (SKIN-SPEC.md section 12)
+      colors: { main: '#5fe6ff', edge: '#ffe14d' },
+      svg: FTH_SKINS.coinArt('<g transform="rotate(-28)"><path d="M-12 0A12 4.6 0 0 1 12 0" fill="none" stroke="#ffe14d" stroke-width="1.6" stroke-linecap="round"/></g><circle r="7.6" fill="#1fb8d8" stroke="#04141a" stroke-width="2"/><circle cx="-1.2" cy="-1.2" r="4.6" fill="#7ff3ff"/><path d="M0 -3.2V3.2M-3.2 0H3.2" stroke="#04141a" stroke-width="1.7" stroke-linecap="round"/><g transform="rotate(-28)"><path d="M12 0A12 4.6 0 0 1 -12 0" fill="none" stroke="#ffe14d" stroke-width="1.6" stroke-linecap="round"/><circle cx="-7.7" cy="3.5" r="2.2" fill="#ffe14d" stroke="#04141a" stroke-width="1.2"/></g>') },
     src: 'lab/ions.html',
     hud: 'compact',
     theme: {
@@ -233,6 +236,8 @@
       '--sk-btn-shadow': '#0f6f86',
       '--sk-font': "'Space Grotesk', 'Inter', system-ui, sans-serif",
       '--sk-radius': '16px',
+      '--sk-star-on': '#5fe6ff', '--sk-star-edge': '#031014', '--sk-star-off': '#3e8c9c', '--sk-star-off-edge': '#62b4c4',
+      '--sk-ctl': 'rgba(10,44,52,.9)', '--sk-ctl-ink': '#bff3ff', '--sk-ctl-edge': 'rgba(95,230,255,.7)',
       '--sk-chip': 'linear-gradient(180deg, rgba(10,44,52,.9), rgba(4,20,25,.94))',
       '--sk-chip-ink': '#d6f6fb',
       '--sk-edge': 'rgba(95,230,255,.7)',

@@ -269,6 +269,9 @@
 
   FTH_SKINS.register({
     id: 'doodle', name: 'Line Doodle', ic: '🖍️', blurb: 'a sketchbook of felt-tip pens',
+    coin: { name: 'pencil stub', plural: 'pencil stubs', glyph: '✏️', value: 2, pitch: 0.8,   // this skin's currency (SKIN-SPEC.md section 12)
+      colors: { main: '#ffc928', edge: '#e0452f' },
+      svg: FTH_SKINS.coinArt('<g transform="rotate(-45)" stroke="#1c1640" stroke-width="1.5" stroke-linejoin="round"><rect x="-12" y="-4.6" width="4" height="9.2" rx="1.6" fill="#f28ab0"/><rect x="-8" y="-4.6" width="3" height="9.2" fill="#b9bec6"/><rect x="-5" y="-4.6" width="10.5" height="9.2" fill="#ffc928"/><path d="M5.5 -4.6L12.5 0L5.5 4.6Z" fill="#f1d3a1"/><path d="M9.6 -1.7L12.5 0L9.6 1.7Z" fill="#2d2a26" stroke="none"/><path d="M-5 0H5.5" stroke="#e0a000" stroke-width="1.2" fill="none"/></g>') },
     src: 'lab/doodle.html', waits: true, needs: ['cells'],
     hud: 'full',
     theme: {
@@ -283,6 +286,8 @@
       '--sk-btn-shadow': '#b78a00',
       '--sk-font': "'Patrick Hand', 'Fredoka', 'Comic Sans MS', 'Chalkboard SE', cursive",
       '--sk-radius': '14px',
+      '--sk-star-on': '#ffc928', '--sk-star-edge': '#2b2d42', '--sk-star-off': '#948971', '--sk-star-off-edge': '#4d4a60',
+      '--sk-ctl': '#fffcf3', '--sk-ctl-ink': '#2b2d42', '--sk-ctl-edge': '#2b2d42',
       '--sk-chip': '#fffcf3',
       '--sk-chip-ink': '#2b2d42',
       '--sk-edge': '#2b2d42',
@@ -312,8 +317,7 @@
       // chips and bars: taped labels with a hard shadow
       '.badge,.goalbar,.starbar{border:2.5px solid #2b2d42;border-radius:14px 17px 13px 16px/16px 13px 17px 14px;box-shadow:2px 3px 0 #2b2d42;font-family:var(--sk-font)}' +
       '.goalbar,.starbar{background:#fffcf3}' +
-      '.starbar .st.off path{fill:#e6dcc4;stroke:#2b2d42}' +
-      '.starbar .st path{fill:#ffc928;stroke:#2b2d42;stroke-width:2.2}' +
+      '.starbar .st path{stroke-width:2.2}' +
       '.coins{border:2.5px solid #2b2d42;border-radius:14px 18px 13px 16px/16px 13px 18px 14px;box-shadow:2px 3px 0 #2b2d42;font-family:var(--sk-font);font-size:1.1rem;padding:2px 12px 2px 4px}' +
       '.mnode .mst,.mnode .mtag{border:2px solid #2b2d42;border-radius:9px 11px 8px 10px;box-shadow:1.5px 2px 0 #2b2d42;font-family:var(--sk-font);font-size:.95rem;font-weight:700}' +
       '.mnode .mtag{background:#d9d2bd;color:#2b2d42}' +

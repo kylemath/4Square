@@ -1,7 +1,13 @@
-// Islands: the built-in board (the shell draws it). Its look is the shell's default, so the spec only names it;
-// the rich animated how-to-play, the hex bonus tiles and the sea-blue exploration map are the shell's own.
+// Islands: the built-in board (the shell draws it, board/island.js). Its look is the shell's default, so the spec only
+// names it; the rich animated how-to-play, the hex bonus tiles and the sea-blue exploration map are the shell's own.
+// Islands Free and Islands 3D (islands-free.js, islands-3d.js) extend this spec: same theme, art and map, other board.
 FTH_SKINS.register({
   id: 'islands', name: 'Islands', ic: '🏝️', blurb: 'trace chains across a cartoon island',
+  coin: { name: 'doubloon', plural: 'doubloons', glyph: '🪙', value: 10, pitch: 1,   // this skin's currency (SKIN-SPEC.md section 12)
+    colors: { main: '#ffd84a', edge: '#c27a00' },
+    svg: FTH_SKINS.coinArt('<circle cy="1.8" r="11" fill="#c27a00" stroke="#1c1640" stroke-width="2"/><circle r="11" fill="#ffd84a" stroke="#1c1640" stroke-width="2"/><circle r="7.4" fill="none" stroke="#f0a91c" stroke-width="1.8"/><path d="M0 -4.8L1.4 -1.4 4.8 0 1.4 1.4 0 4.8-1.4 1.4-4.8 0-1.4-1.4Z" fill="#fff6c8" stroke="#c27a00" stroke-width=".8"/><path d="M-6.5 -6A9 9 0 0 1 1 -9.2" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round" opacity=".85"/>') },
+  family: 'islands',                  // the title screen groups skins of one family
+  board: { free: false },             // the island board: three far regions as walls, tiles on their planar layout (SKIN-SPEC.md section 11)
   hud: 'full',
   theme: {
     '--sk-bg': 'linear-gradient(180deg, #5fd0ff 0%, #3aa6f0 48%, #2a7fdc 100%)',
@@ -15,5 +21,7 @@ FTH_SKINS.register({
     '--sk-btn-shadow': '#1c7a2e',
     '--sk-font': "system-ui, -apple-system, 'Segoe UI', sans-serif",
     '--sk-radius': '22px',
+    '--sk-ctl': '#14377a', '--sk-ctl-ink': '#ffffff', '--sk-ctl-edge': '#ffd84a',
+    '--sk-star-on': '#ffd84a', '--sk-star-edge': '#1c1640', '--sk-star-off': '#7b86c4', '--sk-star-off-edge': '#a3acdc',
   },
 });

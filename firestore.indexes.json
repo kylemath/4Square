@@ -1,0 +1,14 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "entries",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "stars", "order": "DESCENDING" },
+        { "fieldPath": "levels", "order": "DESCENDING" },
+        { "fieldPath": "points", "order": "DESCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

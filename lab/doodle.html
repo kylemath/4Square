@@ -21,7 +21,7 @@
        Once the rim is down to 3 pens (g.won()), core refuses swaps; tapping a coloured piece then makes the "?" hop.
     3. tap the blank piece with pen b: if some neighbour of the hole (g.rim) already has pen b, sparks fly on exactly
        those shared borders and the pen bounces. If none does (only when g.won() and b === g.free()), the blank piece
-       fills with b, a "Coloured!" sticker pops, confetti; tap for a fresh sheet (g.reset()).
+       fills with b, a "Coloured!" sticker pops, confetti; tap for a fresh sheet (g.reset(); standalone only: in the app the shell owns what happens after a win).
   Idle ~10 s: a faint pencil circle around a piece u of g.good()[0] and the matching pen (the pen b with
   g.chainAt(u, b) === that chain) bobs. After g.won(): the circle goes round the blank piece and g.free()'s pen bobs.
   Margin (top left): tiny undo (g.undo) and restart (g.reset).
@@ -57,7 +57,8 @@
   @keyframes hop { 40% { transform: translateY(-14%); } }
   @keyframes bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-12%) rotate(4deg); } }
   #tools { position: fixed; left: 6px; top: 4px; display: flex; gap: 4px; }
-  #tools button { width: 36px; height: 34px; padding: 3px; border: 0; background: none; cursor: pointer; opacity: .75; }
+  #tools button { box-sizing: border-box; width: 36px; height: 34px; padding: 3px; border: 2px solid var(--sk-ctl-edge, transparent); border-radius: 10px; background: var(--sk-ctl, none); cursor: pointer; opacity: .75; }   /* --sk-ctl*: the skin's control tokens (lab/core.js) */
+  #tools svg { stroke: var(--sk-ctl-ink, #2b2d42); }
   #tools button:active { transform: scale(.9); }
   #tools svg { width: 100%; height: 100%; display: block; }
   #stamp { position: fixed; pointer-events: none; display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -67,6 +68,7 @@
     box-shadow: 4px 5px 0 rgba(43,45,66,.85); white-space: nowrap; }
   #stamp .nx { margin-top: .5em; font-size: .45em; font-weight: 500; background: #fff59d; padding: .25em .7em;
     transform: rotate(5deg); box-shadow: 2px 3px 0 rgba(0,0,0,.15); }
+  .embed #stamp .nx { display: none; }   /* inside the app the shell owns what happens next */
   @media (prefers-reduced-motion: reduce) { .pen, .pen .cap, #stamp { transition: none; } .pen.shake, .pen.hop, .pen.bob { animation: none; } }
 </style>
 </head>
@@ -550,22 +552,23 @@ const DM = (() => {
   }
   cv.addEventListener('pointerdown', e => {
     e.preventDefault(); au(); touch();
-    if (won) { if (performance.now() - wonAt > 450) { g.reset(); fresh(); } return; }
+    if (won) { if (!LAB.embedded && performance.now() - wonAt > 450) { g.reset(); fresh(); } return; }   // in the app the shell owns the next step
     tap(e);
   });
   document.getElementById('undo').addEventListener('pointerdown', e => {
     e.preventDefault(); au(); touch();
-    if (won) { won = false; holeCol = -1; stamp.classList.remove('on'); confetti = []; anim[g.hole] = null; thud(); kick(); return; }
+    if (won) { if (LAB.embedded) return; won = false; holeCol = -1; stamp.classList.remove('on'); confetti = []; anim[g.hole] = null; thud(); kick(); return; }
     const before = g.col.slice(); g.undo(); const now = performance.now(); let k = 0;
     for (let i = 0; i < g.n; i++) if (before[i] !== g.col[i]) { const [x, y] = cen(i); anim[i] = RM ? null : { t0: now + 40 * k++, x, y, R: reach(i, x, y), from: before[i] }; }
     if (k) squeak(pen < 0 ? 0 : pen, 0, 0.12); else thud();
     kick();
   });
-  document.getElementById('again').addEventListener('pointerdown', e => { e.preventDefault(); au(); g.reset(); fresh(); squeak(2, 0, 0.12); });
+  document.getElementById('again').addEventListener('pointerdown', e => { e.preventDefault(); au(); if (LAB.embedded && won) return; g.reset(); fresh(); squeak(2, 0, 0.12); });
   addEventListener('resize', layout);
   document.addEventListener('contextmenu', e => e.preventDefault());
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => kick());
 
+  window.PLAYLAB = { cen: i => cen(i).map(v => v / dpr), pen: i => { pen = i; syncPens(); }, get won() { return won; } };   // test hook (tools/embed_win_check.js)
   layout(); fresh();
 })();
 </script>

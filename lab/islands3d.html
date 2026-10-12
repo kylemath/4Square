@@ -1,0 +1,684 @@
+<!doctype html>
+<!--
+  ISLANDS 3D: the Islands art as a three.js scene you can tilt and spin (lab/islands3d.html, skin "islands-3d").
+
+  What the player sees: a hexagonal island in a blue sea. Every region of the level is a chunky element tile (the game's
+  fire / water / air / earth colours, a dark plate with a neon rim and the element icon), standing on the grass or floating
+  on levels above it, joined by wooden ladder bridges. The goal is a grey "?" platform floating inside the ring of five rim
+  tiles, which float highest. Every level works: the layout is derived from the level's own graph (lab/core.js,
+  layout.js), and stored per map in islands3d-plans.js (tools/islands3d_check.js writes it); a map without a stored plan
+  is laid out live, which takes a moment.
+
+  What the player does, and how it maps onto the puzzle:
+  - Press a tile and drag along neighbouring tiles. The first two tiles fix the pair {a, b}: K = g.chainAt(u, g.col[v]).
+    From then on K lights up and pulses ahead of the finger, everything else dims; stepping back undoes a step. Let go
+    after two or more tiles, or trace the whole chain, and the whole chain swaps (g.swap(K)). A chain with K.web only
+    renames two elements: the tiles wobble and nothing changes.
+  - Tap a tile: its chains g.chainsThrough(u) light up one after another (each tap on the same tile shows the next);
+    the SWAP button under the board swaps the one lit. This is the way to swap a chain of one tile.
+  - Tap the "?" platform: a chain of g.good() lights up (a hint).
+  - Drag empty space (or drag with the right button) to turn and tilt the island; pinch or scroll to zoom; two fingers (or
+    the middle button) pan. The round button at the bottom turns the view back.
+  - Win (g.won()): the platform takes g.free() and a wave runs through the island; then LAB.done() (the app shows its win screen).
+  Undo and restart sit in the bottom corners. If WebGL or three.js is not available the page tells the app (an error message),
+  which then plays the level on the island board.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>Islands 3D</title>
+<link rel="icon" href="data:,">
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #2a9fd8; overscroll-behavior: none;
+    font-family: ui-rounded, "SF Pro Rounded", system-ui, -apple-system, "Segoe UI", sans-serif; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+  canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; touch-action: none; }
+  #ov { cursor: pointer; }
+  #cue { position: fixed; left: 50%; top: max(8px, env(safe-area-inset-top)); transform: translateX(-50%); max-width: 92vw; padding: 6px 14px; border-radius: 999px; background: rgba(14,52,110,.72); color: #fff; font-weight: 800; font-size: .85rem; text-align: center; pointer-events: none; opacity: 0; transition: opacity .25s; }
+  #cue.on { opacity: 1; }
+  .rb { position: fixed; bottom: max(14px, env(safe-area-inset-bottom)); width: 48px; height: 48px; border-radius: 16px; border: 3px solid #fff; background: rgba(18,22,70,.62); color: #fff; font-size: 1.35rem; font-weight: 900; display: grid; place-items: center; padding: 0; box-shadow: 0 4px 0 rgba(14,52,110,.45); cursor: pointer; }
+  .rb:active { transform: translateY(3px); box-shadow: 0 1px 0 rgba(14,52,110,.45); }
+  .rb[hidden] { display: none; }
+  #bUndo { left: 14px; } #bReset { right: 14px; } #bView { left: 76px; }
+  #swap { position: fixed; left: 50%; bottom: max(14px, env(safe-area-inset-bottom)); transform: translateX(-50%); min-width: 150px; height: 56px; padding: 0 22px; border: 3px solid #fff; border-radius: 20px; background: linear-gradient(180deg, #8af574, #2fbf4a); color: #fff; font: inherit; font-size: 1.2rem; font-weight: 900; letter-spacing: .03em; text-shadow: 0 2px 0 rgba(0,0,0,.22); box-shadow: 0 5px 0 #1d7a2c, 0 10px 18px rgba(0,0,0,.25); display: flex; align-items: center; justify-content: center; gap: 8px; cursor: pointer; }
+  #swap:active { transform: translateX(-50%) translateY(4px); box-shadow: 0 1px 0 #1d7a2c; }
+  #swap[hidden] { display: none; }
+  #swap small { font-size: .72rem; font-weight: 800; opacity: .9; }
+  #msg { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; padding: 24px; text-align: center; color: #fff; font-weight: 800; font-size: 1.05rem; line-height: 1.35; background: linear-gradient(180deg, #5fd0ff, #2a7fdc); }
+  #msg.on { display: flex; }
+  #msg b { display: block; font-size: 1.4rem; margin-bottom: 6px; }
+</style>
+</head>
+<body>
+<canvas id="gl" role="img" aria-label="Game board: a three-dimensional island of element tiles joined by bridges round a grey goal platform"></canvas>
+<canvas id="ov" aria-hidden="true"></canvas>
+<div id="cue" role="status"></div>
+<button class="rb" id="bUndo" aria-label="Undo">↶</button>
+<button class="rb" id="bView" aria-label="Turn the view back" hidden>⟲</button>
+<button class="rb" id="bReset" aria-label="Start over">↺</button>
+<button id="swap" hidden aria-label="Swap the lit chain"></button>
+<div id="msg" role="alert"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="../levels.js"></script>
+<script src="../layout.js"></script>
+<script src="core.js"></script>
+<script src="islands3d-plans.js"></script>
+<script>
+'use strict';
+  // <layout>  (pure: the floating-platform plan of a level; tools/islands3d_check.js runs it in node on every level)
+  // Every region is a platform (the three far regions of the island board are platforms here too). Tiles sit on a
+  // regular triangular lattice in a hexagonal arena, all one size; snapping to a lattice can make bridges cross or pass
+  // over tiles, so tiles float on levels: the level choice keeps a bridge clear of any tile it passes over or under,
+  // and keeps crossing bridges apart, while keeping as many tiles as possible on the ground. The rim floats on top.
+  const SC = 5, BEV = .05, SLAB = .3, LEVEL_DY = .72, GROUND_TOP = .85, RIM_LEVEL = 4.4;
+  const COS30 = Math.cos(Math.PI / 6), HN = [0, 1, 2, 3, 4, 5].map(k => [Math.cos(k * Math.PI / 3), Math.sin(k * Math.PI / 3)]);   // side normals of the arena
+  const yTopOf = l => GROUND_TOP + l * LEVEL_DY;
+  let SX = SC, SZ = SC;                       // the arena's half-widths: a hexagon stretched front to back for a tall screen (area kept)
+  function hexInside(p, margin) {           // push a point (world x, z) back inside the hexagon, `margin` in from the sides
+    let x = p[0] / SX, z = p[1] / SZ; const a = 1 - margin / Math.min(SX, SZ);
+    for (let pass = 0; pass < 2; pass++) HN.forEach(([nx, nz]) => { const d = x * nx + z * nz; if (d > a) { x -= (d - a) * nx; z -= (d - a) * nz; } });
+    return [x * SX, z * SZ];
+  }
+  function segDist(p, a, b) { const dx = b[0] - a[0], dz = b[1] - a[1], L2 = dx * dx + dz * dz || 1; let t = ((p[0] - a[0]) * dx + (p[1] - a[1]) * dz) / L2; t = Math.max(0, Math.min(1, t)); return [Math.hypot(a[0] + dx * t - p[0], a[1] + dz * t - p[1]), t]; }
+  function segX(a, b, c, d) {      // proper intersection of segments ab, cd: returns [t on ab, s on cd] or null
+    const r = [b[0] - a[0], b[1] - a[1]], q = [d[0] - c[0], d[1] - c[1]], den = r[0] * q[1] - r[1] * q[0]; if (Math.abs(den) < 1e-9) return null;
+    const t = ((c[0] - a[0]) * q[1] - (c[1] - a[1]) * q[0]) / den, s = ((c[0] - a[0]) * r[1] - (c[1] - a[1]) * r[0]) / den;
+    return t > .02 && t < .98 && s > .02 && s < .98 ? [t, s] : null;
+  }
+  // where the ray from a tile's centre in direction (ux, uz) leaves its regular polygon, plus a small gap
+  function edgePoint(c, Rr, v, phi, ux, uz, gap) {
+    let best = Rr;
+    for (let i = 0; i < v; i++) {
+      const a0 = phi + 2 * Math.PI * (i + .5) / v, a1 = phi + 2 * Math.PI * (i + 1.5) / v;
+      const p = [Rr * Math.cos(a0), Rr * Math.sin(a0)], q = [Rr * Math.cos(a1), Rr * Math.sin(a1)], e = [q[0] - p[0], q[1] - p[1]];
+      const den = ux * e[1] - uz * e[0]; if (Math.abs(den) < 1e-9) continue;
+      const t = (p[0] * e[1] - p[1] * e[0]) / den, w = (p[0] * uz - p[1] * ux) / den;
+      if (t > 0 && w >= -1e-6 && w <= 1 + 1e-6) best = Math.min(best, t);
+    }
+    return [c[0] + ux * (best + gap), c[1] + uz * (best + gap)];
+  }
+  function latticeLayout(X0, inner, rot, hole, Wx, Wz, margin, seed0) {
+    let s = Math.sqrt((3.464 * Wx * Wz) / (1.12 * inner.length) / (Math.sqrt(3) / 2)), rh, pts;
+    for (;;) {                                   // shrink until the lattice has room for every tile (plus a little)
+      rh = s * Math.sqrt(3) / 2; pts = [];
+      for (let j = -Math.ceil(Wz / COS30 / rh); j * rh <= Wz / COS30; j++) for (let i = -Math.ceil(Wx / s) - 1; i * s <= Wx + s; i++) {
+        const x = i * s + (Math.abs(j) % 2 ? s / 2 : 0), z = j * rh, q = hexInside([x, z], margin); if (Math.hypot(q[0] - x, q[1] - z) < 1e-9) pts.push([x, z]);
+      }
+      if (pts.length >= inner.length * 1.08 + 1) break; s *= .96;
+    }
+    const pos = new Map(), used = new Set();
+    const near = p => { let b = -1, bd = Infinity; pts.forEach((q, i) => { if (used.has(i)) return; const d = Math.hypot(q[0] - p[0], q[1] - p[1]); if (d < bd) { bd = d; b = i; } }); return b; };
+    const order = inner.slice().sort((a, b) => (a === hole ? -1 : b === hole ? 1 : Math.hypot(...X0[a]) - Math.hypot(...X0[b])));
+    order.forEach(u => { const i = near(u === hole ? [0, 0] : X0[u]); used.add(i); pos.set(u, i); });
+    const E = []; inner.forEach(u => rot[u].forEach(v => { if (v > u && u !== hole && v !== hole) E.push([u, v]); }));
+    const inc = new Map(inner.map(u => [u, []])); E.forEach((e, k) => { inc.get(e[0]).push(k); inc.get(e[1]).push(k); });
+    const P = u => pts[pos.get(u)];
+    // the cost, and its share that involves a set of tiles: link stretch, drift from the drawing, and crossing links
+    const part = us => {
+      const ks = new Set(); us.forEach(u => inc.get(u).forEach(k => ks.add(k))); let c = 0;
+      ks.forEach(k => { const [u, v] = E[k], d = Math.hypot(P(u)[0] - P(v)[0], P(u)[1] - P(v)[1]) / s; c += (d - 1) * (d - 1); });
+      us.forEach(u => { const p = P(u); c += .15 * (Math.hypot(p[0] - X0[u][0], p[1] - X0[u][1]) / s) ** 2; });
+      ks.forEach(k => { const [a, b] = E[k]; for (let j = 0; j < E.length; j++) { if (ks.has(j) && j < k) continue; const [c2, d] = E[j]; if (j === k || a === c2 || a === d || b === c2 || b === d) continue; if (segX(P(a), P(b), P(c2), P(d))) c += 1.5; } });
+      return c;
+    };
+    let seed = seed0 || 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    const movers = inner.filter(u => u !== hole);
+    for (let it = 0; it < 2500; it++) {
+      const u = movers[Math.floor(rnd() * movers.length)], old = pos.get(u);
+      if (rnd() < .5) {                         // swap with another tile
+        const w = movers[Math.floor(rnd() * movers.length)]; if (w === u) continue;
+        const ow = pos.get(w), b0 = part([u, w]); pos.set(u, ow); pos.set(w, old); if (part([u, w]) > b0) { pos.set(u, old); pos.set(w, ow); }
+      } else {                                  // move to a free lattice point nearby
+        const p = pts[old], cand = []; pts.forEach((q, i) => { if (!used.has(i) && Math.hypot(q[0] - p[0], q[1] - p[1]) < s * 2.1) cand.push(i); });
+        if (!cand.length) continue; const i = cand[Math.floor(rnd() * cand.length)], b0 = part([u]);
+        used.delete(old); used.add(i); pos.set(u, i); if (part([u]) > b0) { used.delete(i); used.add(old); pos.set(u, old); }
+      }
+    }
+    const C = []; inner.forEach(u => { C[u] = P(u).slice(); }); return { C, s };
+  }
+  function chooseLevels(inner, Cc, R, plan, ring, hole, seed0, NL0) {
+    const lvl = new Map(inner.map(u => [u, ring[u] === 1 ? RIM_LEVEL : 0])), tiles = inner.filter(u => u !== hole);
+    const top = u => yTopOf(lvl.get(u));
+    // the terms of the cost never change shape, only their heights: slopes, bridges passing over or under a tile,
+    // crossing bridges, and a small price for floating; each is listed under the tiles whose level it depends on
+    const terms = [], by = new Map(tiles.map(u => [u, []])), add = (f, us) => { const k = terms.length; terms.push(f); us.forEach(u => { if (by.has(u)) by.get(u).push(k); }); };
+    plan.forEach(B => add(() => { const slope = Math.abs(top(B.v) - top(B.u)) / Math.max(.2, B.len); return slope > .9 ? 4 * (slope - .9) : 0; }, [B.u, B.v]));
+    plan.forEach(B => tiles.forEach(w => {
+      if (w === B.u || w === B.v) return; const [d, t] = segDist(Cc[w], B.a, B.b); if (d > R[w] + .12) return;
+      add(() => { const ya = top(B.u), yb = top(B.v), hb = ya + (yb - ya) * t, yt = top(w); return hb >= yt + .3 || hb <= yt - SLAB - .3 ? 0 : 100; }, [B.u, B.v, w]);
+    }));
+    for (let i = 0; i < plan.length; i++) for (let j = i + 1; j < plan.length; j++) {
+      const A = plan[i], B = plan[j]; if (A.u === B.u || A.u === B.v || A.v === B.u || A.v === B.v) continue;
+      const x = segX(A.a, A.b, B.a, B.b); if (!x) continue;
+      add(() => { const ha = top(A.u) + (top(A.v) - top(A.u)) * x[0], hb = top(B.u) + (top(B.v) - top(B.u)) * x[1]; return Math.abs(ha - hb) < .45 ? 100 : 0; }, [A.u, A.v, B.u, B.v]);
+    }
+    tiles.forEach(u => { if (ring[u] !== 1) add(() => lvl.get(u) * 1.2, [u]); });
+    const sum = ks => { let c = 0; ks.forEach(k => { c += terms[k](); }); return c; };
+    const all = terms.map((f, k) => k); let seed = seed0 || 11; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    const movers = tiles.filter(u => ring[u] !== 1);   // the rim stays on top
+    const NL = NL0 || (tiles.length > 25 ? 4 : 3), IT = tiles.length > 25 ? 12000 : 4000;   // big maps get a fourth float level and a longer search
+    for (let it = 0; it < IT; it++) {
+      const u = movers[Math.floor(rnd() * movers.length)], old = lvl.get(u), nl = Math.floor(rnd() * NL); if (nl === old) continue;
+      const ks = by.get(u), b0 = sum(ks); lvl.set(u, nl); const d = sum(ks) - b0, T0 = 3 * (1 - it / IT) + .01;
+      if (!(d <= 0 || rnd() < Math.exp(-d / T0))) lvl.set(u, old);
+    }
+    return { lvl, violations: all.filter(k => terms[k]() >= 100).length };
+  }
+  // g: a LAB.game() (or anything with n, hole, rim, rot, centre/pos); onboard: the small hand-drawn ponds (tiles of degree 1-2);
+  // sol: a stored { C, s, lvl } for this graph (islands3d-plans.js), so the slow searches only run for a map nobody has stored yet
+  const r3 = v => Math.round(v * 1000) / 1000;
+  function plan3d(g, onboard, sol, ar) {
+    ar = ar || 1; const kA = Math.max(.55, Math.min(1, Math.sqrt(g.n / 30)));   // a small map gets a smaller island
+    SX = SC * kA / Math.sqrt(ar); SZ = SC * kA * Math.sqrt(ar);
+    const n = g.n, hole = g.hole, rot = g.rot, link = g.rim, ring = new Array(n).fill(99); ring[hole] = 0;
+    for (let q = [hole], i = 0; i < q.length; i++) rot[q[i]].forEach(w => { if (ring[w] > ring[q[i]] + 1) { ring[w] = ring[q[i]] + 1; q.push(w); } });
+    const sides = u => u === hole ? 5 : rot[u].length < (onboard ? 4 : 3) ? 4 : rot[u].length;
+    const inner = [...Array(n).keys()], squares = inner.some(u => u !== hole && Math.max(4, sides(u)) === 4);
+    // the start: rings of tiles round the goal by graph distance, in the order the map's own drawing puts them round it,
+    // evenly spaced, on hexagons that share the arena out by area (the drawing alone crowds the middle)
+    const start = () => {
+      const cen = g.centre || g.pos, th0 = u => Math.atan2(cen[u][1] - cen[hole][1], cen[u][0] - cen[hole][0]), X1 = [], rings = [], A = SC - .8;
+      inner.forEach(u => { if (u !== hole) (rings[ring[u]] = rings[ring[u]] || []).push(u); });
+      let cum = 0; X1[hole] = [0, 0];
+      rings.forEach(rg => {
+        if (!rg) return; rg.sort((x, y) => th0(x) - th0(y));
+        const m = rg.length, f = .92 * Math.sqrt((cum + m / 2) / (n - 1)); cum += m; let sx = 0, sy = 0;
+        rg.forEach((u, i) => { const d = th0(u) - 2 * Math.PI * i / m; sx += Math.cos(d); sy += Math.sin(d); });
+        const o = Math.atan2(sy, sx);     // the even spacing that best fits the drawing's angles
+        rg.forEach((u, i) => { const a = o + 2 * Math.PI * i / m; let c = 0; for (let k = 0; k < 6; k++) c = Math.max(c, Math.cos(a - k * Math.PI / 3)); const rr = f * A / c; X1[u] = [rr * Math.cos(a) * SX / SC, rr * Math.sin(a) * SZ / SC]; });
+      });
+      return X1;
+    };
+    const geom = (C, s) => {                       // tile sizes and turns, and the bridges in plan view
+      const ap = Math.min(s * (squares ? .28 : .32), .5), R = [], phi = [];
+      inner.forEach(u => {
+        const nb = u === hole ? link : rot[u], k = nb.length; R[u] = ap / Math.cos(Math.PI / Math.max(4, sides(u)));
+        const th = nb.map(w => Math.atan2(C[w][1] - C[u][1], C[w][0] - C[u][0])).sort((a, b) => a - b);
+        let sx = 0, sy = 0; th.forEach((a, i) => { const d = (a - 2 * Math.PI * i / k) * k; sx += Math.cos(d); sy += Math.sin(d); });
+        phi[u] = Math.atan2(sy, sx) / k - Math.PI / k;
+      });
+      const plan = [], seen = new Set();
+      inner.forEach(u => {
+        if (u === hole) return;
+        rot[u].forEach(v => {
+          if (v === hole) return; const key = Math.min(u, v) + ':' + Math.max(u, v); if (seen.has(key)) return; seen.add(key);
+          const dx = C[v][0] - C[u][0], dz = C[v][1] - C[u][1], l = Math.hypot(dx, dz), ux = dx / l, uz = dz / l;
+          const a = edgePoint(C[u], R[u], sides(u), phi[u], ux, uz, .05), b = edgePoint(C[v], R[v], sides(v), phi[v], -ux, -uz, .05);
+          plan.push({ u, v, a, b, len: Math.hypot(b[0] - a[0], b[1] - a[1]) });
+        });
+      });
+      return { ap, R, phi, plan };
+    };
+    let C, s, gm, lvl, violations = 0;
+    if (sol && sol.C.length === n && sol.lvl.length === n) { C = sol.C.map(c => c.slice()); s = sol.s; gm = geom(C, s); lvl = new Map(inner.map(u => [u, sol.lvl[u]])); }
+    else {
+      const X1 = start(); let best = null;
+      for (let at = 0; at < 4 && (!best || best.violations); at++) {     // another lattice, if bridges still run through tiles after the level search
+        const L = latticeLayout(X1, inner, rot, hole, SX - .7, SZ - .7, .95, 7 + 31 * at), C2 = L.C.map(c => [r3(c[0]), r3(c[1])]), s2 = r3(L.s), g2 = geom(C2, s2);
+        let r = chooseLevels(inner, C2, g2.R, g2.plan, ring, hole);
+        for (let t = 1; t < 4 && r.violations; t++) { const r2 = chooseLevels(inner, C2, g2.R, g2.plan, ring, hole, 11 + 97 * t, 4 + (t > 1)); if (r2.violations < r.violations) r = r2; }   // more searches, with more floors
+        if (!best || r.violations < best.violations) best = { C: C2, s: s2, gm: g2, lvl: r.lvl, violations: r.violations };
+      }
+      ({ C, s, gm, lvl, violations } = best);
+    }
+    return { C, R: gm.R, phi: gm.phi, ap: gm.ap, s, plan: gm.plan, lvl, violations, ring, sides, ar, sol: { C, s, lvl: inner.map(u => lvl.get(u)) } };
+  }
+  // </layout>
+
+// <gesture>  (pure: one step of the traced line; same rule as lab/dots.html)
+// path: tiles traced so far; K: the chain fixed by the first two tiles (or null); v: the tile under the finger.
+function traceStep(g, path, K, v) {
+  const last = path[path.length - 1];
+  if (v == null || v < 0 || v === last) return { type: 'none' };
+  if (path.length >= 2 && v === path[path.length - 2]) return { type: 'back' };
+  if (v === g.hole || path.includes(v)) return { type: 'none' };
+  if (!g.adj[last].includes(v)) return { type: 'bad', why: 'far' };
+  if (!K) { const K2 = g.chainAt(last, g.col[v]); return K2 ? { type: 'start', K: K2 } : { type: 'bad', why: 'none' }; }
+  if (!K.set.has(v)) return { type: 'bad', why: 'colour' };
+  return { type: 'add', full: path.length + 1 >= K.size };
+}
+// </gesture>
+
+(function () {
+  const $ = id => document.getElementById(id), Q = new URLSearchParams(location.search);
+  function fail(why) {      // no 3D here: say so, and tell the app, which plays the level on the island board instead
+    const m = $('msg'); m.innerHTML = '<div><b>Islands 3D cannot start here</b>' + String(why).replace(/</g, '&lt;') + '.<br>Switching to the island board…</div>'; m.classList.add('on');
+    if (window.LAB && LAB.embedded) parent.postMessage({ fth: 1, type: 'error', lvl: Q.get('lvl'), message: 'islands-3d: ' + why }, '*');
+    throw new Error('islands-3d: ' + why);
+  }
+  if (!window.THREE) fail('three.js did not load (offline?)');
+  try { const t = document.createElement('canvas'); if (!(t.getContext('webgl2') || t.getContext('webgl'))) throw 0; } catch (e) { fail('WebGL is not available'); }
+
+  const g = LAB.game(), n = g.n, H = g.hole, link = g.rim;
+  const GR = window.GAME.graphs[g.level.g], LAYG = window.LAYOUT && window.LAYOUT[g.level.g];
+  const ELEM = LAB.ELEM, reduce = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const now = () => performance.now();
+  const TOPC = [0xf2643f, 0x4596ee, 0xf1cf4e, 0x55b85a], SIDEC = [0xa13a24, 0x255b9e, 0xa8892a, 0x2f7a34];
+  const NEON = [0xff5a36, 0x38a0ff, 0xffd640, 0x46ff7c], ICONC = [0xd9573a, 0x4a8fd6, 0xd4b13c, 0x4fae57];
+  const cv = $('gl'), ov = $('ov'), octx = ov.getContext('2d'), V3 = (x, y, z) => new THREE.Vector3(x, y, z);
+  let R3 = null, P = null, T = [], BW = 0, BH = 0, DPR = 1, bridges = [], waves = [], shakes = new Map(), holeFill = -1, dirtyUntil = 0, raf = 0;
+  const CAM = { az: 0, el: 1.0, D: 20, D0: 20, base: 1.0, tx: 0, tz: 0 };
+
+  // ---------- sound ----------
+  let AC = null;
+  const audio = () => { try { AC = AC || new (window.AudioContext || window.webkitAudioContext)(); if (AC.state === 'suspended') AC.resume(); } catch (e) { AC = null; } };
+  function tone(f, d, v, type, when, glide) {
+    if (!AC) return;
+    try { const t = AC.currentTime + (when || 0), o = AC.createOscillator(), gn = AC.createGain(); o.type = type || 'sine'; o.frequency.setValueAtTime(f, t);
+      if (glide) o.frequency.exponentialRampToValueAtTime(f * glide, t + d);
+      gn.gain.setValueAtTime(.0001, t); gn.gain.exponentialRampToValueAtTime(v, t + .012); gn.gain.exponentialRampToValueAtTime(.0001, t + d); o.connect(gn); gn.connect(AC.destination); o.start(t); o.stop(t + d + .03); } catch (e) {}
+  }
+  const PENTA = [0, 2, 4, 7, 9], pitch = i => 392 * Math.pow(2, (PENTA[i % 5] + 12 * Math.floor(i / 5)) / 12);
+  const pluck = (f, when, vol) => { tone(f, .32, vol || .07, 'sine', when); tone(f * 2, .14, (vol || .07) * .25, 'triangle', when); };
+  const thud = () => tone(150, .16, .08, 'triangle', 0, .6);
+
+  // ---------- textures and materials ----------
+  const iconTex = [];
+  function makeIconTex(e) {
+    if (iconTex[e]) return iconTex[e];
+    const c = document.createElement('canvas'); c.width = c.height = 128; const x = c.getContext('2d');
+    x.scale(128 / 24, 128 / 24); const p = new Path2D(LAB.ICON[e]);
+    if (e === 2) { x.strokeStyle = '#fff'; x.lineWidth = 2.4; x.lineCap = 'round'; x.stroke(p); } else { x.fillStyle = '#fff'; x.fill(p); }
+    return (iconTex[e] = new THREE.CanvasTexture(c));
+  }
+  function textTex(txt) { const c = document.createElement('canvas'); c.width = c.height = 128; const x = c.getContext('2d'); x.fillStyle = '#fff'; x.font = '800 96px ui-rounded, system-ui'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(txt, 64, 70); return new THREE.CanvasTexture(c); }
+  function plankTex() {
+    const c = document.createElement('canvas'); c.width = 128; c.height = 32; const x = c.getContext('2d');
+    x.fillStyle = '#d9a66b'; x.fillRect(0, 0, 128, 32); x.fillStyle = '#9c6b3a';
+    for (let i = 0; i < 128; i += 16) x.fillRect(i, 0, 2, 32);
+    x.fillStyle = 'rgba(0,0,0,.12)'; x.fillRect(0, 0, 128, 3); x.fillRect(0, 29, 128, 3);
+    const t = new THREE.CanvasTexture(c); t.wrapS = THREE.RepeatWrapping; return t;
+  }
+  function regularShape(v, Rr, phi) {
+    const s = new THREE.Shape();
+    for (let i = 0; i < v; i++) { const a = phi + 2 * Math.PI * (i + .5) / v, x = Rr * Math.cos(a), y = -Rr * Math.sin(a); i ? s.lineTo(x, y) : s.moveTo(x, y); }
+    s.closePath(); return s;
+  }
+  const mats = e => [new THREE.MeshStandardMaterial({ color: TOPC[e], roughness: .7, flatShading: true }), new THREE.MeshStandardMaterial({ color: SIDEC[e], roughness: .9, flatShading: true })];
+  const flat = sh => { const geo = new THREE.ShapeGeometry(sh); geo.rotateX(-Math.PI / 2); return geo; };
+  const ringShape = (v, Rr, phi, r0, r1) => { const sh = regularShape(v, Rr * r1, phi); sh.holes.push(new THREE.Path(regularShape(v, Rr * r0, phi).getPoints().reverse())); return flat(sh); };
+
+  function initThree() {
+    const renderer = new THREE.WebGLRenderer({ canvas: cv, antialias: true });
+    renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    const scene = new THREE.Scene(); scene.background = new THREE.Color(0x1b678b);
+    const camera = new THREE.PerspectiveCamera(30, 1, .1, 200);
+    scene.add(new THREE.HemisphereLight(0xeaf6ff, 0x4a6a3a, .85));
+    const sun = new THREE.DirectionalLight(0xffffff, .8); sun.position.set(-6, 14, 8); sun.castShadow = true;
+    sun.shadow.mapSize.set(1024, 1024); Object.assign(sun.shadow.camera, { left: -9, right: 9, top: 9, bottom: -9, near: 1, far: 40 });
+    scene.add(sun);
+    const sea = new THREE.Mesh(new THREE.PlaneGeometry(80, 80), new THREE.MeshStandardMaterial({ color: 0x1b678b, roughness: .6, metalness: 0 }));
+    sea.rotation.x = -Math.PI / 2; sea.position.y = -.35; sea.receiveShadow = true; scene.add(sea);
+    const base = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, .5, 6), [new THREE.MeshStandardMaterial({ color: 0x9f8c59, roughness: 1 }), new THREE.MeshStandardMaterial({ color: 0x5c8845, roughness: 1 }), new THREE.MeshStandardMaterial({ color: 0x9f8c59 })]);
+    base.position.y = -.25; base.receiveShadow = true; scene.add(base);
+    const level = new THREE.Group(); scene.add(level);
+    R3 = { renderer, scene, camera, level, base, hingeGeo: new THREE.SphereGeometry(.075, 12, 10), hingeMat: new THREE.MeshStandardMaterial({ color: 0x3b3f46, metalness: .6, roughness: .35 }), ray: new THREE.Raycaster(), plank: plankTex() };
+  }
+
+  // ---------- building the island from the plan ----------
+  function ladderGeometry(len) {            // two side rails and rungs, `len` long along x, centred at the origin
+    const parts = [], box = (w, h, d, x, y, z) => { const gg = new THREE.BoxGeometry(w, h, d).toNonIndexed(); gg.translate(x, y, z); parts.push(gg); };
+    [-.13, .13].forEach(z => box(len, .045, .05, 0, .025, z));
+    const k = Math.max(2, Math.round(len / .16));
+    for (let i = 0; i < k; i++) box(.055, .03, .28, -len / 2 + (i + .5) * len / k, 0, 0);
+    const out = new THREE.BufferGeometry();
+    ['position', 'normal', 'uv'].forEach(a => {
+      const m = parts.reduce((s, gg) => s + gg.attributes[a].array.length, 0), arr = new Float32Array(m); let o = 0;
+      parts.forEach(gg => { arr.set(gg.attributes[a].array, o); o += gg.attributes[a].array.length; });
+      out.setAttribute(a, new THREE.BufferAttribute(arr, a === 'uv' ? 2 : 3));
+    });
+    parts.forEach(gg => gg.dispose()); return out;
+  }
+  function buildScene() {
+    const lv = R3.level; while (lv.children.length) lv.remove(lv.children[0]);
+    const { C, R, phi, ap, plan, lvl, sides } = P;
+    T = []; bridges = []; holeFill = -1; R3.base.scale.set((SX - .15) / COS30, 1, (SZ - .15) / COS30);
+    for (let u = 0; u < n; u++) {              // the platforms
+      if (u === H) continue;
+      const v = sides(u), l = lvl.get(u), yTop = yTopOf(l), depth = l === 0 ? yTop - BEV * 2 : SLAB, m = mats(g.col[u]);
+      const geo = new THREE.ExtrudeGeometry(regularShape(v, R[u] - BEV, phi[u]), { depth, bevelEnabled: true, bevelSize: BEV, bevelThickness: BEV, bevelSegments: 2 });
+      geo.rotateX(-Math.PI / 2); geo.translate(0, yTop - depth - BEV, 0);
+      const mesh = new THREE.Mesh(geo, m); mesh.castShadow = mesh.receiveShadow = true; mesh.userData.u = u;
+      const grp = new THREE.Group(); grp.position.set(C[u][0], 0, C[u][1]); grp.add(mesh);
+      const plate = new THREE.Mesh(flat(regularShape(v, R[u] * .68, phi[u])), new THREE.MeshStandardMaterial({ color: 0x07090d, roughness: .35, metalness: .2 }));   // black face plate with a neon ring glowing up from the gap round it
+      plate.position.y = yTop + .008; plate.userData.u = u; grp.add(plate);
+      const neon = new THREE.Mesh(ringShape(v, R[u], phi[u], .69, .77), new THREE.MeshBasicMaterial({ color: NEON[g.col[u]] })); neon.position.y = yTop + .006; grp.add(neon);
+      const glow = new THREE.Mesh(ringShape(v, R[u], phi[u], .6, .9), new THREE.MeshBasicMaterial({ color: NEON[g.col[u]], transparent: true, opacity: .35, blending: THREE.AdditiveBlending, depthWrite: false })); glow.position.y = yTop + .01; grp.add(glow);
+      const ic = new THREE.Mesh(new THREE.PlaneGeometry(ap * .9, ap * .9), new THREE.MeshBasicMaterial({ map: makeIconTex(g.col[u]), color: ICONC[g.col[u]], transparent: true, depthWrite: false }));
+      ic.rotation.x = -Math.PI / 2; ic.position.y = yTop + .016; grp.add(ic);
+      lv.add(grp);
+      T[u] = { kind: 'tile', g: grp, mesh, mats: m, icon: ic, neon, glow, light: 1, h: yTop, c: C[u], level: l, R: R[u] };
+    }
+    buildGoal(C, R);
+    plan.forEach(B => {
+      const tex = R3.plank.clone(); tex.needsUpdate = true;
+      const ya = T[B.u].h, yb = T[B.v].h, L0 = Math.hypot(B.b[0] - B.a[0], yb - ya, B.b[1] - B.a[1]) / 2;
+      const half = () => { const mm = new THREE.Mesh(ladderGeometry(L0), new THREE.MeshStandardMaterial({ map: tex, roughness: .8 })); mm.userData.L0 = L0; mm.castShadow = true; lv.add(mm); return mm; };
+      const ball = () => { const mm = new THREE.Mesh(R3.hingeGeo, R3.hingeMat); mm.castShadow = true; lv.add(mm); return mm; };
+      bridges.push(Object.assign({}, B, { h1: half(), h2: half(), k1: ball(), k2: ball(), tex }));
+    });
+    R3.top = Math.max(...T.filter(Boolean).map(t => t.h), 1);
+    placeBridges();
+  }
+  function buildGoal(C, R) {                 // the goal: a larger, still-uncoloured platform floating just below the rim
+    const lv = R3.level, c0 = C[H], rimTop = yTopOf(RIM_LEVEL), y = rimTop - .32, m = link.length;
+    const reach = Math.min(...link.map(x => Math.hypot(C[x][0] - c0[0], C[x][1] - c0[1]) - R[x]));
+    const Rg = Math.max(.35, Math.min(reach - .3, .8 * Math.min(...link.map(x => R[x]))));
+    const th = link.map(x => Math.atan2(C[x][1] - c0[1], C[x][0] - c0[0])).sort((a, b) => a - b);
+    let sx = 0, sy = 0; th.forEach((a, i) => { const d = (a - 2 * Math.PI * i / m) * m; sx += Math.cos(d); sy += Math.sin(d); });
+    const phi = m === 5 ? Math.atan2(sy, sx) / 5 - Math.PI / 5 : 0;
+    const grp = new THREE.Group(); grp.position.set(c0[0], 0, c0[1]); lv.add(grp);
+    const slabGeo = new THREE.ExtrudeGeometry(regularShape(5, Rg - .08, phi), { depth: .32, bevelEnabled: true, bevelSize: .08, bevelThickness: .08, bevelSegments: 3 });
+    slabGeo.rotateX(-Math.PI / 2); slabGeo.translate(0, y - .4, 0);
+    const mats2 = [new THREE.MeshStandardMaterial({ color: 0xb9bec7, metalness: .55, roughness: .3 }), new THREE.MeshStandardMaterial({ color: 0x7d838d, metalness: .5, roughness: .4 })];
+    const slab = new THREE.Mesh(slabGeo, mats2); slab.castShadow = slab.receiveShadow = true; slab.userData.hole = true; grp.add(slab);
+    const plate = new THREE.Mesh(flat(regularShape(5, Rg * .66, phi)), new THREE.MeshStandardMaterial({ color: 0x07090d, roughness: .3, metalness: .3 })); plate.position.y = y + .01; plate.userData.hole = true; grp.add(plate);
+    const neon = new THREE.Mesh(ringShape(5, Rg, phi, .67, .74), new THREE.MeshBasicMaterial({ color: 0xe8ecf2 })); neon.position.y = y + .008; grp.add(neon);
+    const trim = new THREE.Mesh(ringShape(5, Rg, phi, .86, .93), new THREE.MeshBasicMaterial({ color: 0xd9c27a })); trim.position.y = y + .008; grp.add(trim);   // a gilt band
+    const glow = new THREE.Mesh(ringShape(5, Rg, phi, .58, .84), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: .26, blending: THREE.AdditiveBlending, depthWrite: false })); glow.position.y = y + .012; grp.add(glow);
+    const ic = new THREE.Mesh(new THREE.PlaneGeometry(Rg * .8, Rg * .8), new THREE.MeshBasicMaterial({ map: textTex('?'), transparent: true, depthWrite: false }));
+    ic.rotation.x = -Math.PI / 2; ic.position.y = y + .02; grp.add(ic);
+    const ghost = new THREE.MeshStandardMaterial({ color: 0x9aa0a8, metalness: .4, roughness: .5, transparent: true, opacity: .75 }), skel = [];   // grey skeleton bridges down from each rim tile
+    link.forEach(x => {
+      const dx = c0[0] - C[x][0], dz = c0[1] - C[x][1], l = Math.hypot(dx, dz), ux = dx / l, uz = dz / l;
+      const a = edgePoint(C[x], R[x], P.sides(x), P.phi[x], ux, uz, .05), b = edgePoint(c0, Rg, 5, phi, -ux, -uz, .05);
+      const A = V3(a[0], rimTop - .03, a[1]), Bp = V3(b[0], y - .03, b[1]), d = Bp.clone().sub(A), len = d.length();
+      const xA = d.clone().normalize(), zA = xA.clone().cross(V3(0, 1, 0)).normalize(), yA = zA.clone().cross(xA).normalize();
+      const q = new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(xA, yA, zA)), sg = new THREE.Group();
+      sg.position.copy(A).add(Bp).multiplyScalar(.5); sg.quaternion.copy(q); lv.add(sg);
+      [-.11, .11].forEach(zo => { const r = new THREE.Mesh(new THREE.BoxGeometry(len, .035, .035), ghost); r.position.z = zo; sg.add(r); });
+      const k = Math.max(2, Math.round(len / .3)); for (let i = 0; i <= k; i++) { const r = new THREE.Mesh(new THREE.BoxGeometry(.03, .025, .24), ghost); r.position.x = -len / 2 + len * i / k; sg.add(r); }
+      const plank = new THREE.Mesh(new THREE.BoxGeometry(len, .07, .26), new THREE.MeshStandardMaterial({ map: R3.plank, color: 0xffffff, roughness: .8 })); plank.visible = false; sg.add(plank);
+      skel.push({ sg, plank, x });
+    });
+    T[H] = { kind: 'hole', g: grp, c: c0, h: y, slabMats: mats2, neon, glow, icon: ic, skel, light: 1 };
+  }
+  function setHoleFill(free) {               // the platform takes the missing element (or goes back to grey)
+    const t = T[H]; if (!t) return; holeFill = free;
+    const e = free >= 0 ? free : -1;
+    t.slabMats[0].color.setHex(e >= 0 ? TOPC[e] : 0xb9bec7); t.slabMats[0].metalness = e >= 0 ? .1 : .55; t.slabMats[1].color.setHex(e >= 0 ? SIDEC[e] : 0x7d838d);
+    t.neon.material.color.setHex(e >= 0 ? NEON[e] : 0xe8ecf2); t.glow.material.color.setHex(e >= 0 ? NEON[e] : 0xffffff); t.glow.material.opacity = e >= 0 ? .4 : .26;
+    t.icon.material.map = e >= 0 ? makeIconTex(e) : textTex('?'); t.icon.material.color.setHex(e >= 0 ? ICONC[e] : 0xffffff); t.icon.material.needsUpdate = true;
+    t.skel.forEach(k => { k.sg.children.forEach(c => { c.visible = e >= 0 ? c === k.plank : c !== k.plank; });
+      if (e >= 0) { k.plank.material.map = null; k.plank.material.color.setHex(NEON[e]); k.plank.material.emissive = new THREE.Color(NEON[e]); k.plank.material.emissiveIntensity = .5; k.plank.material.needsUpdate = true; } });
+  }
+  function placeBridges() {
+    bridges.forEach(B => {
+      const ya = T[B.u].h + T[B.u].g.position.y - .03, yb = T[B.v].h + T[B.v].g.position.y - .03;
+      const A = V3(B.a[0], ya, B.a[1]), Bp = V3(B.b[0], yb, B.b[1]), M = A.clone().add(Bp).multiplyScalar(.5), d = Bp.clone().sub(A), len = d.length();
+      const xA = d.clone().normalize(), zA = xA.clone().cross(V3(0, 1, 0)).normalize(), yA = zA.clone().cross(xA).normalize();   // right-handed; the deck stays face-up
+      const q = new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(xA, yA, zA));
+      [[B.h1, A, M], [B.h2, M, Bp]].forEach(([m, p0, p1]) => { m.position.copy(p0).add(p1).multiplyScalar(.5); m.quaternion.copy(q); m.scale.set((len / 2 + .01) / m.userData.L0, 1, 1); });
+      B.k1.position.copy(A); B.k2.position.copy(Bp); B.tex.repeat.set(Math.max(1, len), 1);
+    });
+  }
+
+  // ---------- the camera: orbit, zoom, pan ----------
+  function applyCam() {
+    const cam = R3.camera, { az, el, D } = CAM;
+    cam.position.set(CAM.tx + D * Math.cos(el) * Math.sin(az), D * Math.sin(el), CAM.tz + .35 + D * Math.cos(el) * Math.cos(az)); cam.lookAt(CAM.tx, 0, CAM.tz + .35); cam.updateMatrixWorld();
+    $('bView').hidden = !(Math.abs(Math.sin(az / 2)) > .01 || Math.abs(el - CAM.base) > .02 || Math.abs(D - CAM.D0) > .2 || Math.hypot(CAM.tx, CAM.tz) > .05);
+  }
+  function fitCamera() {
+    const cam = R3.camera; cam.aspect = BW / BH; cam.updateProjectionMatrix();
+    const tall = BH / BW > 1.3, el = tall ? 1.22 : 1.0, pts = [], top = R3.top || 4;
+    T.forEach(t => { if (!t) return; const r = (t.R || 1) + .35; [[1, 0], [-1, 0], [0, 1], [0, -1], [.7, .7], [-.7, .7], [.7, -.7], [-.7, -.7]].forEach(([dx, dz]) => [0, t.h + .3].forEach(y => pts.push(V3(t.c[0] + dx * r, y, t.c[1] + dz * r)))); });   // the tiles (and their floating heights) fill the view
+    const bottomRoom = Math.min(.5, 92 / BH * 2);       // keep the buttons clear
+    CAM.tx = CAM.tz = 0; let D = 8;
+    for (; D < 90; D += .2) {
+      cam.position.set(0, D * Math.sin(el), .35 + D * Math.cos(el)); cam.lookAt(0, 0, .35); cam.updateMatrixWorld();
+      if (pts.every(p => { const q = p.clone().project(cam); return Math.abs(q.x) < .98 && q.y < .93 && q.y > -1 + bottomRoom; })) break;
+    }
+    CAM.D = CAM.D0 = D; CAM.base = el; CAM.az = 0; CAM.el = el; applyCam();
+  }
+  function resize() {
+    BW = innerWidth; BH = innerHeight; DPR = Math.min(2, window.devicePixelRatio || 1);
+    if (!R3) return;
+    R3.renderer.setPixelRatio(DPR); R3.renderer.setSize(BW, BH, false); ov.width = Math.round(BW * DPR); ov.height = Math.round(BH * DPR);
+    if (P && arNow() !== P.ar) { start(); return; }       // turned the phone: another arena
+    if (P) { const keep = { az: CAM.az, el: CAM.el, rel: CAM.D / CAM.D0 }; fitCamera(); if (Math.abs(keep.az) > .01 || Math.abs(keep.el - CAM.base) > .02) { CAM.az = keep.az; CAM.el = keep.el; CAM.D = CAM.D0 * keep.rel; applyCam(); } }
+    dirty(300);
+  }
+
+  // ---------- projection and picking ----------
+  const proj = v => { const p = v.clone().project(R3.camera); return [(p.x + 1) / 2 * BW, (1 - p.y) / 2 * BH]; };
+  const topWorld = u => { const t = T[u]; t.g.updateMatrixWorld(); return t.g.localToWorld(V3(0, t.h, 0)); };
+  const toScreen = u => proj(topWorld(u));
+  const radiusPx = u => { const a = topWorld(u), b = a.clone().add(V3(T[u].R, 0, 0).applyQuaternion(R3.camera.quaternion)); const p = proj(a), q = proj(b); return Math.hypot(p[0] - q[0], p[1] - q[1]); };
+  const HOLE_HIT = -2;
+  function pickTile(x, y, noSlack) {         // the tile under (or just round) a point: the ray first, then the nearest tile centre on screen
+    R3.scene.updateMatrixWorld();
+    R3.ray.setFromCamera(new THREE.Vector2(x / BW * 2 - 1, -(y / BH) * 2 + 1), R3.camera);
+    for (const h of R3.ray.intersectObjects(R3.level.children, true)) { const o = h.object.userData; if (o.u !== undefined) return o.u; if (o.hole) return HOLE_HIT; }
+    if (noSlack) return -1;
+    let best = -1, bd = Infinity;
+    for (let u = 0; u < n; u++) { if (u === H || !T[u]) continue; const [px, py] = toScreen(u), d = Math.hypot(px - x, py - y); if (d < Math.max(20, radiusPx(u) * 1.25) && d < bd) { bd = d; best = u; } }
+    return best;
+  }
+
+  // ---------- state shown ----------
+  let tr = null, armed = null, win = null, swapOrigin = null, cueT = 0;
+  const cue = (t, ms) => { const c = $('cue'); clearTimeout(cueT); if (!t) { c.classList.remove('on'); return; } c.textContent = t; c.classList.add('on'); if (ms) cueT = setTimeout(() => c.classList.remove('on'), ms); };
+  const dirty = ms => { dirtyUntil = Math.max(dirtyUntil, now() + (ms || 0)); if (!raf) raf = requestAnimationFrame(frame); };
+  const edgeKey = (a, b) => Math.min(a, b) + ':' + Math.max(a, b);
+  const activeK = () => tr && tr.K ? tr.K : armed ? armed.K : null;
+  function targetLight(u, t) {
+    if (u === H) return 1;
+    if (tr && !tr.K) return u === tr.path[0] || g.adj[tr.path[0]].includes(u) ? 1 : .4;
+    const K = activeK(); if (!K) return 1;
+    if (!K.set.has(u)) return .22;
+    if (tr) { const last = tr.path[tr.path.length - 1]; return tr.path.includes(u) ? 1.5 : g.adj[last].includes(u) ? 1.35 + .35 * Math.sin(t / 160) : .95; }
+    return 1.75;
+  }
+  const _c = new THREE.Color();
+  function stepLights(t) {
+    let moving = false;
+    for (let u = 0; u < n; u++) {
+      const tt = T[u]; if (!tt || tt.kind === 'hole') continue;
+      const goal = targetLight(u, t); if (Math.abs(goal - tt.light) > .004) moving = true; tt.light += (goal - tt.light) * .35;
+      const k = Math.min(1, tt.light), hi = Math.max(0, tt.light - 1) * 4, e = g.col[u];
+      tt.mats[0].color.setHex(TOPC[e]).multiplyScalar(.18 + .82 * k); tt.mats[1].color.setHex(SIDEC[e]).multiplyScalar(.18 + .82 * k);
+      if (k < 1) {                           // grey out: towards a dull grey of the same brightness
+        [tt.mats[0], tt.mats[1]].forEach(m => { const gr = (m.color.r + m.color.g + m.color.b) / 3; m.color.lerp(_c.setRGB(gr, gr, gr), Math.min(1, (1 - k) * 1.2)); });
+      } else if (tt.light > 1) { tt.mats[0].color.multiplyScalar(1 + .45 * (tt.light - 1)); tt.mats[1].color.multiplyScalar(1 + .3 * (tt.light - 1)); }
+      tt.neon.material.color.setHex(NEON[e]).multiplyScalar(.06 + .94 * k * k).lerp(_c.setHex(0xffffff), Math.min(.6, hi));
+      tt.glow.material.color.setHex(NEON[e]); tt.glow.material.opacity = .3 * k * k + .45 * hi; tt.icon.material.opacity = .15 + .85 * k;
+      if (tt.icon.userData.e !== e) { tt.icon.userData.e = e; tt.icon.material.map = makeIconTex(e); tt.icon.material.color.setHex(ICONC[e]); tt.icon.material.needsUpdate = true; }
+    }
+    return moving;
+  }
+  function litEdges() {
+    const lit = new Map(), K = activeK(); if (!K) return lit;
+    if (tr) { for (let i = 1; i < tr.path.length; i++) lit.set(edgeKey(tr.path[i - 1], tr.path[i]), 1); }
+    else K.vs.forEach(u => g.adj[u].forEach(w => { if (K.set.has(w)) lit.set(edgeKey(u, w), 2); }));
+    return lit;
+  }
+  function stepBridges(t) {
+    const lit = litEdges(), dimAll = !!activeK();
+    bridges.forEach(B => {
+      const st = lit.get(edgeKey(B.u, B.v));
+      [[B.h1, B.u], [B.h2, B.v]].forEach(([m, w]) => {
+        const mat = m.material;
+        if (st) { const pulse = st === 2 ? 1.1 + .1 * Math.sin(t / 160) : .85; mat.color.setHex(NEON[g.col[w]]); mat.emissive.setHex(NEON[g.col[w]]); mat.emissiveIntensity = pulse; mat.map = null; }
+        else { mat.color.setHex(0xffffff).multiplyScalar(dimAll ? .22 : 1); mat.emissive.setHex(0); mat.map = B.tex; }
+        mat.needsUpdate = mat.needsUpdate || (!!st !== !!m.userData.lit); m.userData.lit = !!st;
+      });
+    });
+  }
+  function graphDist(src, maxD) {
+    const d = new Map([[src, 0]]), q = [src];
+    while (q.length) { const x = q.shift(); if (d.get(x) >= maxD) continue; g.adj[x].forEach(w => { if (w !== H && !d.has(w)) { d.set(w, d.get(x) + 1); q.push(w); } }); }
+    return d;
+  }
+  function ripple(u, amp, maxD) { if (reduce() || u < 0 || u === H || !T[u]) return; waves.push({ src: u, t0: now(), amp, dist: graphDist(u, maxD === undefined ? 4 : maxD) }); dirty(2700); }
+  function stepWaves(t) {
+    const off = new Array(n).fill(0), tx = new Array(n).fill(0), tz = new Array(n).fill(0);
+    waves = waves.filter(W => t - W.t0 < 2600);
+    waves.forEach(W => W.dist.forEach((d, w) => {
+      const s = (t - W.t0) / 1000 - d * .11; if (s <= 0) return;
+      const a = W.amp * Math.pow(.5, d), env = Math.exp(-s / .42), sn = Math.sin(s * 2 * Math.PI / .5);
+      off[w] += a * sn * env;
+      const c0 = T[W.src].c, c1 = T[w].c, dx = c1[0] - c0[0], dz = c1[1] - c0[1], l = Math.hypot(dx, dz) || 1, cs = Math.cos(s * 2 * Math.PI / .5);
+      tx[w] += a * .35 * cs * env * dz / l; tz[w] -= a * .35 * cs * env * dx / l;
+    }));
+    shakes.forEach((t0, u) => { if (t - t0 > 450) shakes.delete(u); });
+    for (let u = 0; u < n; u++) {
+      const tt = T[u]; if (!tt || tt.kind !== 'tile') continue;
+      const sk = shakes.get(u); tt.g.position.y = off[u]; tt.g.rotation.x = tx[u]; tt.g.rotation.z = tz[u];
+      tt.g.position.x = tt.c[0] + (sk ? Math.sin((t - sk) / 22) * .09 * (1 - (t - sk) / 450) : 0);
+    }
+    return waves.length > 0 || shakes.size > 0;
+  }
+  function strand(u, v, pair, w) {           // the traced link: both elements of the pair side by side
+    const a = toScreen(u), b = toScreen(v), dx = b[0] - a[0], dy = b[1] - a[1], L2 = Math.hypot(dx, dy) || 1, nx = -dy / L2 * w * .32, ny = dx / L2 * w * .32;
+    const [p, q] = g.col[u] === pair[0] ? [a, b] : [b, a], c = octx; c.lineCap = 'round';
+    c.strokeStyle = 'rgba(0,0,0,.55)'; c.lineWidth = w * 2.1; c.beginPath(); c.moveTo(...a); c.lineTo(...b); c.stroke();
+    c.lineWidth = w * .75;
+    c.strokeStyle = ELEM[pair[0]].hex; c.beginPath(); c.moveTo(p[0] + nx, p[1] + ny); c.lineTo(q[0] + nx, q[1] + ny); c.stroke();
+    c.strokeStyle = ELEM[pair[1]].hex; c.beginPath(); c.moveTo(p[0] - nx, p[1] - ny); c.lineTo(q[0] - nx, q[1] - ny); c.stroke();
+  }
+  function frame() {
+    raf = 0; if (!R3 || !P || document.hidden) return;
+    const t = now(); let busy = t < dirtyUntil;
+    busy = stepWaves(t) || busy; busy = stepLights(t) || busy; stepBridges(t); placeBridges();
+    R3.renderer.render(R3.scene, R3.camera);
+    const c = octx; c.setTransform(DPR, 0, 0, DPR, 0, 0); c.clearRect(0, 0, BW, BH);
+    if (tr) { for (let i = 1; i < tr.path.length; i++) strand(tr.path[i - 1], tr.path[i], tr.K ? tr.K.pair : [g.col[tr.path[i - 1]], g.col[tr.path[i]]], 7);
+      if (tr.fx !== undefined) { const e = toScreen(tr.path[tr.path.length - 1]); c.strokeStyle = 'rgba(255,255,255,.6)'; c.lineWidth = 4; c.lineCap = 'round'; c.setLineDash([2, 8]); c.beginPath(); c.moveTo(...e); c.lineTo(tr.fx, tr.fy); c.stroke(); c.setLineDash([]); }
+      busy = true; }
+    if (armed) { const [px, py] = toScreen(armed.u); c.strokeStyle = '#ffd666'; c.lineWidth = 3.5; c.beginPath(); c.arc(px, py, radiusPx(armed.u) * 1.05, 0, 7); c.stroke(); }
+    if (busy) raf = requestAnimationFrame(frame);
+  }
+
+  // ---------- chains: arm, trace, swap ----------
+  const NAME = ELEM.map(e => e.name);
+  function arm(u, K) {
+    armed = { u, K }; const s = $('swap'), a = K.pair[0], b = K.pair[1];
+    s.innerHTML = '<span>' + NAME[a] + ' ⇄ ' + NAME[b] + '</span><small>' + (K.web ? 'same puzzle' : K.size + (K.size === 1 ? ' tile' : ' tiles')) + '</small>'; s.hidden = false;
+    const pv = g.preview(K); cue(K.web ? 'This chain only renames two elements' : pv.won ? 'Swap it and the hole can be filled!' : 'Swap it? Or tap the tile again for its other chains', 0); dirty(300);
+  }
+  function disarm() { if (!armed) return; armed = null; $('swap').hidden = true; cue(''); dirty(300); }
+  function tapTile(u) {
+    if (u === HOLE_HIT) {                    // a hint: light up a chain that brings the goal closer
+      const good = g.good().slice().sort((a, b) => a.size - b.size)[0];
+      if (good) { arm(good.vs[0], good); ripple(good.vs[0], .12, 2); pluck(pitch(4), 0, .05); } else { disarm(); cue('No quick swap from here: try a tile', 1800); }
+      return;
+    }
+    if (u < 0) { disarm(); return; }
+    const list = g.chainsThrough(u).filter(K => !K.web || g.chainsThrough(u).length === 1).sort((a, b) => a.size - b.size);
+    if (!list.length) { shakes.set(u, now()); thud(); dirty(500); return; }
+    const i = armed && armed.u === u ? (list.findIndex(K => K.key === armed.K.key) + 1) % list.length : 0;
+    arm(u, list[i]); ripple(u, .1, 1); pluck(pitch(i * 2), 0, .05);
+  }
+  function commit(K, origin) {
+    if (!K) return;
+    disarm();
+    if (K.web) { const t = now(); K.vs.forEach(u => shakes.set(u, t)); thud(); setTimeout(thud, 120); cue('Nothing changes: that chain only renames two elements', 1800); dirty(700); return; }
+    swapOrigin = origin; g.swap(K);
+  }
+  g.on((G, info) => {
+    const t = now();
+    if (info.type === 'swap') {
+      const o = swapOrigin != null && info.chain.set.has(swapOrigin) ? swapOrigin : info.chain.vs[0];
+      ripple(o, .22, 5); info.chain.vs.forEach((u, i) => { if (i < 10) pluck(pitch(i + 2), i * .06, .04); });
+    } else { holeFill = -1; setHoleFill(-1); win = null; }
+    disarm(); tr = null;
+    if (info.type === 'swap' && g.won()) setTimeout(celebrate, reduce() ? 0 : 700);
+    else if (g.moves === 0) cue('Drag across two colours to trace a chain, or tap a tile', 4000);
+    dirty(900);
+  });
+  function celebrate() {
+    if (!g.won()) return; win = now(); setHoleFill(g.free()); ripple(link[0], .3, 6);
+    cue('The hole takes ' + NAME[g.free()] + '!', 0); [0, 2, 4, 5, 7].forEach((k, i) => pluck(pitch(k + 3), .08 * i, .06));
+    setTimeout(LAB.done, reduce() ? 300 : 2000); dirty(2800);
+  }
+
+  // ---------- input ----------
+  const ptrs = new Map(); let mode = null, pinch0 = null, tapPt = null;
+  const rect = () => ov.getBoundingClientRect();
+  ov.addEventListener('contextmenu', e => e.preventDefault());
+  ov.addEventListener('pointerdown', e => {
+    audio(); const b = rect(), x = e.clientX - b.left, y = e.clientY - b.top;
+    if (!P) return; if (win) { if (now() - win > 900) { win = null; g.reset(); } return; }
+    ov.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, { x, y });
+    if (ptrs.size >= 2) { tr = null; tapPt = null; mode = 'cam2'; const [p, q] = [...ptrs.values()]; pinch0 = { d: Math.hypot(p.x - q.x, p.y - q.y), D: CAM.D, mx: (p.x + q.x) / 2, my: (p.y + q.y) / 2 }; dirty(); return; }
+    if (e.button === 2) { mode = 'orbit'; tapPt = null; return; }
+    if (e.button === 1) { mode = 'pan'; tapPt = null; return; }
+    const u = pickTile(x, y);
+    if (u >= 0) { mode = 'trace'; tr = { path: [u], K: null, id: e.pointerId, px: x, py: y, bad: null }; tapPt = { x, y, u }; ripple(u, .08, 0); pluck(pitch(0), 0, .04); dirty(400); }
+    else { mode = 'orbit'; tapPt = { x, y, u }; }
+  });
+  ov.addEventListener('pointermove', e => {
+    const p = ptrs.get(e.pointerId); if (!p) return;
+    const b = rect(), x = e.clientX - b.left, y = e.clientY - b.top, dx = x - p.x, dy = y - p.y; p.x = x; p.y = y;
+    if (tapPt && Math.hypot(x - tapPt.x, y - tapPt.y) > 9) tapPt = null;     // moved: no longer a tap
+    if (mode === 'trace' && tr && e.pointerId === tr.id) {
+      const steps = Math.max(1, Math.ceil(Math.hypot(x - tr.px, y - tr.py) / 6));
+      for (let s = 1; s <= steps && tr; s++) { const xx = tr.px + (x - tr.px) * s / steps, yy = tr.py + (y - tr.py) * s / steps; const v = pickTile(xx, yy); if (v >= 0) trStep(v); else if (v === -1) tr.bad = null; }
+      if (tr) { tr.px = x; tr.py = y; tr.fx = x; tr.fy = y; } dirty(); return;
+    }
+    if (mode === 'orbit') { CAM.az -= dx * .008; CAM.el = Math.max(.3, Math.min(1.5, CAM.el + dy * .006)); applyCam(); dirty(); }
+    else if (mode === 'pan') panBy(dx, dy);
+    else if (mode === 'cam2' && ptrs.size >= 2 && pinch0) {
+      const [p1, q1] = [...ptrs.values()], d = Math.hypot(p1.x - q1.x, p1.y - q1.y), mx = (p1.x + q1.x) / 2, my = (p1.y + q1.y) / 2;
+      CAM.D = Math.max(CAM.D0 * .45, Math.min(CAM.D0 * 1.5, pinch0.D * pinch0.d / Math.max(20, d))); panBy(mx - pinch0.mx, my - pinch0.my); pinch0.mx = mx; pinch0.my = my; applyCam(); dirty();
+    }
+  });
+  function panBy(dx, dy) {                   // the ground moves with the finger
+    const cam = R3.camera, k = CAM.D * Math.tan(cam.fov * Math.PI / 360) * 2 / BH, ra = CAM.az;
+    const rx = Math.cos(ra), rz = -Math.sin(ra), fx = -Math.sin(ra), fz = -Math.cos(ra);   // right and forward on the ground
+    CAM.tx = Math.max(-SC, Math.min(SC, CAM.tx - (dx * rx + dy * fx / Math.max(.3, Math.sin(CAM.el)) * -1) * k)); CAM.tz = Math.max(-SC, Math.min(SC, CAM.tz - (dx * rz + dy * fz / Math.max(.3, Math.sin(CAM.el)) * -1) * k));
+    applyCam(); dirty();
+  }
+  function trStep(v) {
+    const r = traceStep(g, tr.path, tr.K, v);
+    if (r.type === 'none') return;
+    if (r.type === 'back') { tr.path.pop(); if (tr.path.length < 2) tr.K = null; tone(pitch(tr.path.length - 1), .12, .03); return; }
+    if (r.type === 'bad') { if (tr.bad === v) return; tr.bad = v; shakes.set(v, now()); thud(); dirty(500); return; }
+    if (r.type === 'start') tr.K = r.K;
+    tr.path.push(v); tr.bad = null; tapPt = null; ripple(v, .08, 0); pluck(pitch(tr.path.length - 1), 0, .05); dirty(400);
+    if (r.type === 'add' && r.full) { const t = tr; tr = null; commit(t.K, t.path[0]); }
+  }
+  const up = e => {
+    const p = ptrs.get(e.pointerId); ptrs.delete(e.pointerId); if (!p) return;
+    if (mode === 'trace' && tr && e.pointerId === tr.id) {
+      const t = tr; tr = null;
+      if (t.path.length >= 2) commit(t.K, t.path[0]); else if (tapPt && e.type === 'pointerup') tapTile(t.path[0]); else dirty();
+    } else if (mode === 'orbit' && tapPt && e.type === 'pointerup') tapTile(tapPt.u === HOLE_HIT ? HOLE_HIT : -1);
+    if (!ptrs.size) { mode = null; tapPt = null; pinch0 = null; } else if (ptrs.size === 1 && mode === 'cam2') { mode = 'orbit'; tapPt = null; pinch0 = null; }
+    dirty();
+  };
+  ov.addEventListener('pointerup', up); ov.addEventListener('pointercancel', e => { if (tr && e.pointerId === tr.id) tr = null; up(e); });
+  ov.addEventListener('wheel', e => { e.preventDefault(); CAM.D = Math.max(CAM.D0 * .45, Math.min(CAM.D0 * 1.5, CAM.D * Math.exp(e.deltaY * .0012))); applyCam(); dirty(); }, { passive: false });
+  addEventListener('keydown', e => {
+    const k = { ArrowLeft: [-.12, 0], ArrowRight: [.12, 0], ArrowUp: [0, -.08], ArrowDown: [0, .08] }[e.key];
+    if (k) { CAM.az += k[0]; CAM.el = Math.max(.3, Math.min(1.5, CAM.el + k[1])); applyCam(); dirty(); e.preventDefault(); }
+    else if (e.key === 'Escape') { disarm(); tr = null; dirty(); }
+  });
+  $('swap').onclick = e => { audio(); if (armed) commit(armed.K, armed.u); };
+  $('bUndo').onclick = () => { audio(); if (g.history.length) { g.undo(); tone(520, .12, .04, 'sine', 0, .7); } else thud(); };
+  $('bReset').onclick = () => { audio(); if (g.history.length) { g.reset(); tone(440, .2, .04, 'sine', 0, .5); } };
+  $('bView').onclick = () => { const a0 = CAM.az, e0 = CAM.el, d0 = CAM.D, x0 = CAM.tx, z0 = CAM.tz, t0 = now(); (function step() { const k = Math.min(1, (now() - t0) / 350), s = 1 - Math.pow(1 - k, 3);
+    CAM.az = a0 * (1 - s); CAM.el = e0 + (CAM.base - e0) * s; CAM.D = d0 + (CAM.D0 - d0) * s; CAM.tx = x0 * (1 - s); CAM.tz = z0 * (1 - s); applyCam(); dirty(); if (k < 1) requestAnimationFrame(step); })(); };
+  addEventListener('resize', resize);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) dirty(500); });
+
+  // ---------- start ----------
+  try { initThree(); } catch (e) { fail('WebGL could not start (' + e.message + ')'); }
+  resize();
+  const arNow = () => innerHeight / innerWidth > 1.3 ? 1.55 : 1;      // a tall screen gets a hexagon stretched front to back
+  function start() {
+    const ar = arNow(), st = window.ISLANDS3D_PLANS && ISLANDS3D_PLANS[g.level.g], sol = st && LAYG && st.sig === LAYG.sig && st[ar > 1 ? 't' : 'w'] || null;
+    P = plan3d(g, !!GR.onboard, sol, ar); if (P.violations) console.warn('islands-3d: ' + P.violations + ' bridge clearance conflicts');
+    buildScene(); fitCamera();
+    if (g.won()) setHoleFill(g.free());
+    cue('Drag across two colours to trace a chain, or tap a tile', 4500); dirty(1500);
+    if (window.__i3dTest) window.__i3dTest.P = P;
+  }
+  window.__i3d = { g, get P() { return P; }, T: () => T, toScreen, pickTile, CAM, applyCam, tapTile, setHoleFill, trStep: v => trStep(v), get tr() { return tr; }, get armed() { return armed; } };   // test hook
+  { const st = window.ISLANDS3D_PLANS && ISLANDS3D_PLANS[g.level.g]; if (st && LAYG && st.sig === LAYG.sig) start(); else { cue('Building the island…'); setTimeout(start, 30); } }
+})();
+</script>
+</body>
+</html>

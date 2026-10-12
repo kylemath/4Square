@@ -312,6 +312,9 @@
   };
   FTH_SKINS.register({
     id: 'tables', name: 'Gran\'s Table', ic: '👵', blurb: 'a wedding, a feud, one seat',
+    coin: { name: 'sugar cube', plural: 'sugar cubes', glyph: '🍬', value: 5, pitch: 0.7,   // this skin's currency (SKIN-SPEC.md section 12)
+      colors: { main: '#fffdf5', edge: '#d7c9b5' },
+      svg: FTH_SKINS.coinArt('<path d="M0 -11.6L10.4 -5.8V5.8L0 11.6L-10.4 5.8V-5.8Z" fill="#e4d8c4"/><path d="M0 -11.6L10.4 -5.8L0 0L-10.4 -5.8Z" fill="#fffdf5"/><path d="M-10.4 -5.8L0 0V11.6L-10.4 5.8Z" fill="#efe5d3"/><path d="M0 0L10.4 -5.8V5.8L0 11.6Z" fill="#d9ccb6"/><path d="M-10.4 -5.8L0 0L10.4 -5.8M0 0V11.6" fill="none" stroke="#1c1640" stroke-width="1.1" stroke-linejoin="round"/><path d="M0 -11.6L10.4 -5.8V5.8L0 11.6L-10.4 5.8V-5.8Z" fill="none" stroke="#1c1640" stroke-width="2" stroke-linejoin="round"/><circle cx="-3" cy="-5.6" r=".9" fill="#d7c9b5"/><circle cx="3.2" cy="-4.4" r=".7" fill="#d7c9b5"/><circle cx="-6" cy="3" r=".8" fill="#fff"/>') },
     src: 'lab/tables.html', needs: ['cells'],
     hud: 'compact',
     theme: {
@@ -332,6 +335,8 @@
       '--sk-coin': '#f3d78a',
       '--sk-font': "'Playfair Display', Georgia, 'Times New Roman', serif",
       '--sk-radius': '16px',
+      '--sk-star-on': '#e0a93a', '--sk-star-edge': '#7a5406', '--sk-star-off': '#9a8a78', '--sk-star-off-edge': '#6e5a46',
+      '--sk-ctl': '#fbf5ea', '--sk-ctl-ink': '#2a1840', '--sk-ctl-edge': '#d9a441',
     },
     // place cards: cream chips, a double gold ring (outline 1px, inset 2px gap inside the 1px border), warm shadows
     css: '.tl .hl{opacity:0;transition:opacity .15s}.tl.lit .hl{opacity:.9}.tl.lit .hx{stroke-width:3.4}' +

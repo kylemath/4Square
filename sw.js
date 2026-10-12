@@ -1,12 +1,14 @@
 // Service worker for the installable 4square app: works offline after the first visit.
 // The game's own files: network first (a page, its levels and its skins always match), the cache when offline.
-// Google Fonts: cache first.
+// Google Fonts and the pinned three.js (Islands 3D): cache first.
 // Bump VERSION to drop old caches.
-const VERSION = 'fth-v9';
+const VERSION = 'fth-v11';
 const CORE = ['./', 'index.html', 'levels.js', 'layout.js', 'telemetry.js', 'manifest.webmanifest',
   'lab/core.js', 'lab/dots.html', 'lab/doodle.html', 'lab/blank.html',
   'skins/registry.js', 'skins/islands.js', 'skins/dots.js', 'skins/doodle.js', 'skins/blank.js',
   'skins/map.js', 'skins/swipe.js', 'skins/ions.js', 'skins/tables.js', 'lab/map.html', 'lab/swipe.html', 'lab/ions.html', 'lab/tables.html',
+  'board/island.js', 'sfx.js', 'skins/islands-free.js', 'skins/islands-3d.js', 'lab/islands3d.html', 'lab/islands3d-plans.js',
+  'economy.js', 'verify.js', 'integrity.js', 'account-config.js', 'account.js', 'leaderboard.js',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png'];
 
 self.addEventListener('install', e => {
@@ -20,7 +22,7 @@ self.addEventListener('fetch', e => {
   const req = e.request;
   if (req.method !== 'GET') return;
   const url = new URL(req.url), own = url.origin === location.origin;
-  if (!own && !/fonts\.(googleapis|gstatic)\.com$/.test(url.hostname)) return;
+  if (!own && !(/fonts\.(googleapis|gstatic)\.com$/.test(url.hostname) || /^cdnjs\.cloudflare\.com$/.test(url.hostname) && /three\.js\/r128\//.test(url.pathname))) return;
   if (own) {                                   // the game's own files: always the fresh copy online (pages, levels and
     e.respondWith(fetch(req, { cache: 'no-cache' }).then(r => {   // skins must match; revalidated with the server, so
                                                                   // no stale HTTP-cache copy), the cached one only offline

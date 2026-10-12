@@ -1,0 +1,64 @@
+// Firestore security rules for 4square accounts + leaderboards. Deploy: `firebase deploy --only firestore:rules`
+// (ACCOUNTS.md). Collections:
+//   players/{uid}                       { nick, linked, createdAt, v }                 owner read/write/delete
+//   boards/{skin}/entries/{uid}         one best-per-skin entry per player; PUBLIC read, owner write
+//   runs/{uid}_{levelId}_{skinId}       full replayable proof of the best run on that level + skin; owner read/write
+// What these rules enforce: signed in (anonymous counts), only your own docs, field types and bounds, numbers that
+// never go down, numbers bounded by what the level set allows, at most one write per doc per 5 seconds, delete only
+// your own. What they CANNOT check: that a proof really replays (that is done by verify.js in every reader and by
+// tools/verify_runs.js for you; see ACCOUNTS.md "What this does not stop"). Keep MAX_LEVELS >= the number of levels.
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{db}/documents {
+    function signedIn() { return request.auth != null; }
+    function mine(uid) { return signedIn() && request.auth.uid == uid; }
+    function num(v, lo, hi) { return v is int && v >= lo && v <= hi; }
+    function str(v, lo, hi) { return v is string && v.size() >= lo && v.size() <= hi; }
+    function slow(oldDoc, newField) { return request.time > oldDoc.data[newField] + duration.value(5, 's'); }
+
+    match /players/{uid} {
+      allow read: if mine(uid);
+      allow create, update: if mine(uid)
+        && request.resource.data.keys().hasOnly(['nick', 'linked', 'createdAt', 'v'])
+        && str(request.resource.data.nick, 3, 16) && request.resource.data.linked is bool;
+      allow delete: if mine(uid);
+    }
+
+    match /boards/{skin}/entries/{uid} {
+      function entryOk(d) {
+        return skin.matches('[a-z0-9-]{2,24}')
+          && d.keys().hasOnly(['nick', 'stars', 'levels', 'pars', 'points', 'updatedAt', 'v', 'app', 'pr', 'int'])
+          && str(d.nick, 3, 16) && num(d.levels, 1, 64) && num(d.stars, 1, 3 * d.levels) && num(d.pars, 0, d.levels)
+          && num(d.points, 0, 6000 * d.levels)
+          && d.pr is map && d.pr.size() == d.levels && d.int is map
+          && d.updatedAt == request.time;
+      }
+      allow read: if true;
+      allow create: if mine(uid) && entryOk(request.resource.data);
+      allow update: if mine(uid) && entryOk(request.resource.data)
+        && request.resource.data.stars >= resource.data.stars
+        && request.resource.data.levels >= resource.data.levels
+        && request.resource.data.pars >= resource.data.pars
+        && request.resource.data.points >= resource.data.points
+        && slow(resource, 'updatedAt');
+      allow delete: if mine(uid);
+    }
+
+    match /runs/{runId} {
+      function runOk(d) {
+        return d.keys().hasOnly(['v', 'uid', 'lvl', 'skin', 'app', 'cnt', 'hints', 't0', 'ms', 'wall', 'claim', 'ops', 'fin', 'fp', 'int', 'at'])
+          && runId == d.uid + '_' + d.lvl + '_' + d.skin
+          && str(d.lvl, 2, 40) && d.skin.matches('[a-z0-9-]{2,24}') && d.cnt in ['all', 'net']
+          && num(d.hints, 0, 1000) && num(d.ms, 0, 21600000)
+          && d.claim.keys().hasOnly(['stars', 'moves', 'pts']) && num(d.claim.stars, 1, 3) && num(d.claim.moves, 0, 600) && num(d.claim.pts, 0, 6000)
+          && d.ops is list && d.ops.size() >= 1 && d.ops.size() <= 600 && str(d.fin, 1, 200) && str(d.fp, 1, 24)
+          && d.int is list && d.int.size() <= 60 && d.at == request.time;
+      }
+      allow read: if signedIn() && resource.data.uid == request.auth.uid;
+      allow create: if mine(request.resource.data.uid) && runOk(request.resource.data);
+      allow update: if mine(request.resource.data.uid) && runOk(request.resource.data)
+        && request.resource.data.claim.stars >= resource.data.claim.stars && slow(resource, 'at');
+      allow delete: if signedIn() && resource.data.uid == request.auth.uid;
+    }
+  }
+}
