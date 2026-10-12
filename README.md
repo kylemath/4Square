@@ -15,11 +15,22 @@ The levels come from real research data: maps from an exhaustive census of spher
 ([site](https://kylemath.github.io/GraphColourDeductiveSolver/)). The Four Colour Theorem is already proved; this
 game explores the Kempe-swap dynamics behind Kempe's 1879 attempt and Heawood's 1890 objection.
 
-**Game styles (skins).** The same levels play in four styles, chosen on the title screen: Islands, Dots, Line Doodle
-and Blank Doodle. Each skin restyles the whole game, not just the board: theme, HUD level (full, compact, minimal),
-title art, how-to-play pages, bonus-round tiles and the look of the exploration map, which every skin charts as you
-swap. The contract is in [SKIN-SPEC.md](SKIN-SPEC.md); a skin is `skins/<id>.js` plus an optional play page
-`lab/<id>.html`, checked with `node tools/skin_check.js`. `lab/Families.html` shows the experimental styles side by side.
+**Game styles (skins).** The same levels play in ten styles, chosen on the title screen: the Islands family (Islands,
+Islands Free, Islands 3D), Dots, Line Doodle, Blank Doodle, Island Map, Bonus Swipe, Ion Channels and Gran's Table.
+Each skin restyles the whole game, not just the board: theme, HUD level (full, compact, minimal), title art,
+how-to-play pages, bonus-round tiles and the look of the exploration map, which every skin charts as you swap.
+Islands and Islands Free are two layouts of one board renderer (`board/island.js`: walls, or no walls with tiles that
+settle like soft bubbles; `node tools/free_check.js` checks the free layout on every level); Islands 3D is a three.js
+scene (`lab/islands3d.html`, `node tools/islands3d_check.js`). The contract is in [SKIN-SPEC.md](SKIN-SPEC.md); a skin
+is `skins/<id>.js` plus an optional play page `lab/<id>.html`, checked with `node tools/skin_check.js`.
+`lab/Families.html` shows the experimental styles side by side.
+
+**Coins.** Each skin earns its own currency (ink beads, doubloons, pearls, crystal shards...) worth between 1 and 100 G, and
+the wallet button opens a graph of direct markets between them where coins convert along the cheapest route (`economy.js`,
+`node tools/economy_check.js` proves there is no arbitrage; `node tools/coins_check.js` plays it headlessly). SKIN-SPEC.md section 12.
+
+Accounts, per-skin leaderboards and the cheat-evidence log are described in [ACCOUNTS.md](ACCOUNTS.md); they work locally
+with no setup and go online once `account-config.js` is filled in.
 
 Research logging is off unless the player agrees on the title screen, and it stays on the device unless an upload
 form is configured in `telemetry.js` (none is).

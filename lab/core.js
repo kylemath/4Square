@@ -33,6 +33,8 @@
  * posted to the parent window as { fth: 1, type: 'ready'|'swap'|'undo'|'reset'|'done', id, moves, won, free, col }.
  * A skin calls LAB.done() when its own win celebration is over (the app then shows its win screen); the app can send
  * { fth: 1, cmd: 'undo'|'reset' }. A skin needs nothing else to run inside the app.
+ * After a win an embedded page must not restart itself (the app owns what happens next): guard any tap-to-restart with
+ * if (!LAB.embedded). LAB.done() posts once per win. The app also posts { cmd: 'tokens', vars } (its --sk-* theme): see LAB.tok().
  *
  * A chain is a "web" when it is the only {a, b} chain on the map: swapping it just renames two elements everywhere,
  * so it never changes anything. LAB.ELEM gives names, colours and icons for the 4 elements.
@@ -111,7 +113,7 @@
     if (EMBED) {
       const post = type => parent.postMessage({ fth: 1, type, id: L.id, num: String(L.num), moves: g.moves, won: g.won(), free: g.free(), col: g.col.slice() }, '*');
       g.post = post; LAST = g;
-      g.on((_, info) => post(info.type));
+      g.on((_, info) => { g.doneSent = false; post(info.type); });
       addEventListener('message', e => { const d = e.data; if (!d || !d.fth || e.source !== parent) return; if (d.cmd === 'undo') g.undo(); else if (d.cmd === 'reset') g.reset(); });
       post('ready');
     }
@@ -122,8 +124,26 @@
   // a skin that throws (for example on a map it cannot draw) tells the app, which falls back to its own board
   if (EMBED) addEventListener('error', e => /ResizeObserver/.test(e.message) ? 0 : parent.postMessage({ fth: 1, type: 'error', lvl: new URLSearchParams(location.search).get('lvl'), message: String(e.message) }, '*'));
   let LAST = null;
-  const done = () => { if (LAST && LAST.won()) LAST.post('done'); };
+  // posted once per win: a repeat call (or a second timer) is ignored until the game changes again
+  const done = () => { if (LAST && LAST.won() && !LAST.doneSent) { LAST.doneSent = true; LAST.post('done'); } };
   // a skin with its own goal (Blank Doodle: colour every piece) says it is finished; moves = its swap count
   const finish = moves => { if (EMBED && LAST) parent.postMessage({ fth: 1, type: 'done', id: LAST.level.id, num: String(LAST.level.num), moves: moves || 0, won: true, own: true }, '*'); };
-  window.LAB = { game, ELEM, ICON, embedded: EMBED, done, finish };
+  // Skin tokens in the frame: the app passes its --sk-* tokens (SKIN-SPEC 3b) so a page's own controls (undo, restart,
+  // hints...) can wear the skin: use var(--sk-ctl, <your colour>) in CSS or LAB.tok('--sk-ctl', '<your colour>') in canvas
+  // code. Standalone nothing is set, so every fallback applies. Kept in sync when the skin changes (event 'sk-tokens').
+  const TOKEN_NAMES = ['--sk-ctl', '--sk-ctl-ink', '--sk-ctl-edge', '--sk-accent', '--sk-ink', '--sk-font', '--sk-chip', '--sk-chip-ink', '--sk-edge', '--sk-btn2', '--sk-btn2-ink'];
+  let TOK = {};
+  const setTokens = vars => {
+    TOK = {}; for (const k of Object.keys(vars || {})) if (/^--sk-[a-z0-9-]+$/.test(k) && typeof vars[k] === 'string' && vars[k].trim() && !/[{};<]/.test(vars[k])) TOK[k] = vars[k].trim();
+    let st = document.getElementById('sk-tokens'); if (!st) { st = document.createElement('style'); st.id = 'sk-tokens'; document.head.appendChild(st); }
+    st.textContent = ':root{' + Object.keys(TOK).map(k => k + ':' + TOK[k]).join(';') + '}';
+    document.dispatchEvent(new CustomEvent('sk-tokens'));
+  };
+  if (EMBED) {
+    document.documentElement.classList.add('embed');
+    try { const cs = parent.getComputedStyle(parent.document.body), v = {}; TOKEN_NAMES.forEach(k => { v[k] = cs.getPropertyValue(k); }); setTokens(v); } catch (e) { /* cross-origin: the app posts them instead */ }
+    addEventListener('message', e => { const d = e.data; if (d && d.fth && d.cmd === 'tokens' && e.source === parent) setTokens(d.vars); });
+  }
+  const tok = (name, fallback) => TOK[name] || fallback;
+  window.LAB = { game, ELEM, ICON, embedded: EMBED, done, finish, last: () => LAST, tokens: () => Object.assign({}, TOK), tok, TOKEN_NAMES };
 })();

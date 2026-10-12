@@ -33,7 +33,7 @@
   const rimPos = (cx, cy, R) => Array.from({ length: 5 }, (_, i) => { const a = -Math.PI / 2 + i * 2 * Math.PI / 5; return [cx + Math.cos(a) * R, cy + Math.sin(a) * R]; });
   const goldHex = (cx, cy, R, pulse) => '<g' + (pulse ? ' class="gh"' : '') + ' transform="translate(' + cx + ' ' + cy + ')"><polygon points="' + hexP(R * 1.1) + '" fill="none" stroke="' + GOLD + '" stroke-width="3" stroke-linejoin="round" opacity=".55"/>' +
     '<polygon points="' + hexP(R) + '" fill="' + GOLD2 + '" stroke="' + EDGE + '" stroke-width="3" stroke-linejoin="round" transform="translate(0 3)"/><polygon points="' + hexP(R) + '" fill="' + GOLD + '" stroke="' + EDGE + '" stroke-width="3" stroke-linejoin="round"/>' +
-    '<polygon points="' + hexP(R * .72) + '" fill="none" stroke="' + CREAM + '" stroke-width="2.4" stroke-linejoin="round"/>' + coin(0, 0, R / 15) + '</g>';
+    '<polygon points="' + hexP(R * .72) + '" fill="none" stroke="' + CREAM + '" stroke-width="2.4" stroke-linejoin="round"/>' + '</g>';
   const glowLine = (d, col) => '<path d="' + d + '" fill="none" stroke="' + col + '" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" opacity=".28"/><path d="' + d + '" fill="none" stroke="#fff" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="1 7"/>';
   const finger = (x, y) => '<g transform="translate(' + x + ' ' + y + ')"><path d="M0 0 C-3 -8 -3 -18 2 -22 C6 -20 6 -12 5 -6 L14 -4 C20 -2 18 8 12 12 L2 16 C-4 14 -4 6 0 0Z" fill="#ffe0bd" stroke="' + EDGE + '" stroke-width="2" stroke-linejoin="round"/></g>';
   const GH = '.gh{animation:gp 1.4s ease-in-out infinite alternate}@keyframes gp{from{opacity:.75}to{opacity:1}}';
@@ -90,6 +90,9 @@
 
   FTH_SKINS.register({
     id: 'swipe', name: 'Bonus Swipe', ic: '🎰', blurb: 'swipe two kinds, hit the jackpot',
+    coin: { name: 'casino chip', plural: 'casino chips', glyph: '🎰', value: 14, pitch: 1.35,   // this skin's currency (SKIN-SPEC.md section 12)
+      colors: { main: '#d62839', edge: '#ffffff' },
+      svg: FTH_SKINS.coinArt('<circle r="11.6" fill="#d62839" stroke="#1c1640" stroke-width="2"/><circle r="9.2" fill="none" stroke="#fff" stroke-width="3.2" stroke-dasharray="3.6 3.63"/><circle r="6.2" fill="#a51a2a" stroke="#fff" stroke-width="1.3"/><path d="M0 -3.8L2.8 0 0 3.8-2.8 0Z" fill="#ffe46b" stroke="#1c1640" stroke-width="1" stroke-linejoin="round"/>') },
     src: 'lab/swipe.html', hud: 'compact',
     theme: {
       '--sk-bg': 'radial-gradient(120% 80% at 50% 0%, #6a4cf0 0%, #3a28b0 50%, #1b1360 100%), #1b1360',
@@ -103,6 +106,8 @@
       '--sk-btn-shadow': GOLD2,
       '--sk-font': "'Lilita One', 'Fredoka', 'Baloo 2', ui-rounded, system-ui, sans-serif",
       '--sk-radius': '20px',
+      '--sk-star-on': '#ffd84a', '--sk-star-edge': '#1d1562', '--sk-star-off': '#7f72d6', '--sk-star-off-edge': '#a99cf0',
+      '--sk-ctl': '#2c2088', '--sk-ctl-ink': '#ffe9a6', '--sk-ctl-edge': '#ffd84a',
       '--sk-chip': 'linear-gradient(180deg, #2c2088, #1d1562)',
       '--sk-chip-ink': '#f1edff',
       '--sk-edge': GOLD,

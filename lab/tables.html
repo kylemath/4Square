@@ -39,8 +39,8 @@
     font-family: Nunito, 'Avenir Next', 'Trebuchet MS', system-ui, sans-serif; }
   .serif { font-family: 'Playfair Display', Georgia, 'Times New Roman', serif; }
   #ui { position: fixed; right: 6px; top: 6px; display: flex; flex-direction: column; gap: 6px; z-index: 2; }
-  #ui button { width: 30px; height: 30px; border-radius: 50%; border: 2px solid #b48a2c; background: #fbf3e2; color: #5b3a4f;
-    font: 700 16px/1 system-ui, sans-serif; padding: 0; cursor: pointer; box-shadow: 0 2px 0 #b48a2c; }
+  #ui button { width: 30px; height: 30px; border-radius: 50%; border: 2px solid var(--sk-ctl-edge, #b48a2c); background: var(--sk-ctl, #fbf3e2); color: var(--sk-ctl-ink, #5b3a4f);
+    font: 700 16px/1 system-ui, sans-serif; padding: 0; cursor: pointer; box-shadow: 0 2px 0 var(--sk-ctl-edge, #b48a2c); }
   #ui button:active { transform: translateY(2px); box-shadow: none; }
   .gst { cursor: grab; }
   .mo, .mg, .brow, .gst .ring, .gst .halo { display: none; }
@@ -661,7 +661,7 @@
       burst(t.cx, t.cy - t.Rt * .3, 60, [TABLE[F].hem, '#ffffff', '#ffd84a', '#f6b6c1', '#9b7fc2']);
       A.forEach(a => { if (a) a.g.classList.add('party'); });
       setTimeout(() => sfx.clink(), 450);
-      setTimeout(() => { setMsg(IN_APP ? 'A toast to Gran!' : 'A toast to Gran! Tap to plan another'); busy = false; G.remove(); }, 1900);
+      setTimeout(() => { setMsg(IN_APP || LAB.embedded ? 'A toast to Gran!' : 'A toast to Gran! Tap to plan another'); busy = false; G.remove(); }, 1900);
       setTimeout(LAB.done, 2200);
     };
   }
@@ -699,7 +699,7 @@
   svg.addEventListener('pointerdown', e => {
     if (!ac) { try { ac = new (window.AudioContext || window.webkitAudioContext)(); } catch (_) { ac = null; } }
     else if (ac.state === 'suspended') ac.resume();
-    if (won && !busy) { restart(); return; }
+    if (won && !busy) { if (!LAB.embedded) restart(); return; }   // in the app the shell owns the next step
     if (busy) return;
     const [x, y] = pt(e), u = guestAt(x, y);
     if (u == null) {
@@ -745,7 +745,8 @@
   svg.addEventListener('pointercancel', e => release(e, true));
 
   document.getElementById('undo').onclick = () => { if (!busy && !won) g.undo(); };
-  document.getElementById('again').onclick = () => { if (!busy || won) restart(); };
+  document.getElementById('again').onclick = () => { if (won && LAB.embedded) return; if (!busy || won) restart(); };
+  window.PLAYLAB = { win, get won() { return won; } };   // test hook (tools/embed_win_check.js)
 
   let rt = 0;
   addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(drawStatic, 60); });

@@ -24,7 +24,7 @@
   B just moves (single-region chain), so every chain is reachable by moving any one of its members. If K.web is true
   (chambers A and B would exchange all their ions, which changes nothing) g.swap is NOT called: the channel opens, both
   chambers surge towards it, and the system relaxes back to the same equilibrium. Undo (g.undo) and restart (g.reset)
-  are the two small glass buttons; after a win, a tap restarts.
+  are the two small glass buttons; after a win, a tap restarts (standalone only).
 -->
 <html lang="en">
 <head>
@@ -38,8 +38,8 @@
     -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
   canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; cursor: grab; }
   #ui { position: fixed; right: 6px; top: 6px; display: flex; flex-direction: column; gap: 6px; z-index: 2; }
-  #ui button { width: 30px; height: 30px; border-radius: 50%; border: 1px solid rgba(160, 220, 255, .35);
-    background: rgba(20, 40, 60, .55); color: #bfe8ff; font: 700 15px/1 system-ui, sans-serif; padding: 0; cursor: pointer;
+  #ui button { width: 30px; height: 30px; border-radius: 50%; border: 1px solid var(--sk-ctl-edge, rgba(160, 220, 255, .35));
+    background: var(--sk-ctl, rgba(20, 40, 60, .55)); color: var(--sk-ctl-ink, #bfe8ff); font: 700 15px/1 system-ui, sans-serif; padding: 0; cursor: pointer;
     box-shadow: 0 0 10px rgba(90, 200, 255, .18), inset 0 0 6px rgba(160, 230, 255, .15); }
   #ui button:active { transform: scale(.92); }
 </style>
@@ -485,7 +485,7 @@
     const x0 = mol.hx + mol.hR * 3.1, x1 = L.W - 44, w = x1 - x0;
     if (w > 60) {
       let l1, l2;
-      if (won) { l1 = mol.phase === 'docked' ? 'Signal received' : 'A channel opens…'; l2 = mol.phase === 'docked' && !busy ? 'tap to play again' : ''; }
+      if (won) { l1 = mol.phase === 'docked' ? 'Signal received' : 'A channel opens…'; l2 = mol.phase === 'docked' && !busy && !LAB.embedded ? 'tap to play again' : ''; }
       else { l1 = 'Free a chamber for the signal'; l2 = g.goal >= NC - 1 ? 'none of its ' + NR + ' ✦ ions may be inside' : 'the ' + NR + ' ✦ ions may use only ' + g.goal + ' chambers'; }
       let f1 = Math.max(10, Math.min(20, gh * .17)); ctx.font = `700 ${f1}px ${FONT}`;
       while (f1 > 9 && ctx.measureText(l1).width > w) { f1 -= .5; ctx.font = `700 ${f1}px ${FONT}`; }
@@ -636,7 +636,7 @@
   cv.addEventListener('pointerdown', e => {
     if (!ac) { try { ac = new (window.AudioContext || window.webkitAudioContext)(); } catch (_) { ac = null; } }
     else if (ac.state === 'suspended') ac.resume();
-    if (won && !busy) { restart(); return; }
+    if (won && !busy) { if (!LAB.embedded) restart(); return; }   // in the app the shell owns the next step
     if (busy || won) return;
     const [x, y] = pt(e), u = ionAt(x, y);
     if (u == null) {
@@ -679,7 +679,8 @@
   cv.addEventListener('pointercancel', e => release(e, true));
 
   document.getElementById('undo').onclick = () => { if (!busy && !won) g.undo(); };
-  document.getElementById('again').onclick = () => { if (!busy || won) restart(); };
+  document.getElementById('again').onclick = () => { if (won && LAB.embedded) return; if (!busy || won) restart(); };
+  window.PLAYLAB = { win, get won() { return won; } };   // test hook (tools/embed_win_check.js)
 
   let rt = 0;
   addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(relayout, 80); });

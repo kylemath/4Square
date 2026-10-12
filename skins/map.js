@@ -265,6 +265,9 @@
 
   FTH_SKINS.register({
     id: 'map', name: 'Island Map', ic: '🗺️', blurb: 'drag across a border',
+    coin: { name: 'compass rose', plural: 'compass roses', glyph: '🧭', value: 20, pitch: 1.1,   // this skin's currency (SKIN-SPEC.md section 12)
+      colors: { main: '#f3e3b3', edge: '#2c4f7a' },
+      svg: FTH_SKINS.coinArt('<circle r="11.6" fill="#f3e3b3" stroke="#1c1640" stroke-width="2"/><circle r="8.8" fill="none" stroke="#a9833a" stroke-width="1" stroke-dasharray="1.4 1.6"/><path d="M0 -10.2L2.5 -2.5 10.2 0 2.5 2.5 0 10.2 -2.5 2.5 -10.2 0 -2.5 -2.5Z" fill="#2c4f7a" stroke="#1c1640" stroke-width="1.2" stroke-linejoin="round"/><path d="M0 -10.2L2.5 -2.5H-2.5Z" fill="#e0452f"/><circle r="1.7" fill="#f3e3b3" stroke="#1c1640" stroke-width="1"/>') },
     src: 'lab/map.html', needs: ['cells'],
     hud: 'compact',
     theme: {
@@ -279,6 +282,8 @@
       '--sk-btn-shadow': INK,
       '--sk-font': "'Fredoka', ui-rounded, 'SF Pro Rounded', system-ui, sans-serif",
       '--sk-radius': '20px',
+      '--sk-star-on': '#ffd84a', '--sk-star-edge': '#1c1640', '--sk-star-off': '#9a7a4c', '--sk-star-off-edge': '#7a4a24',
+      '--sk-ctl': '#f3e3b8', '--sk-ctl-ink': '#1c1640', '--sk-ctl-edge': '#1c1640',
       '--sk-chip': PAPER,
       '--sk-chip-ink': INK,
       '--sk-edge': INK,
@@ -298,7 +303,6 @@
       '.badge,.goalbar,.starbar,.coins,.mnode .mst,.mnode .mtag,.say .msg,.htnum,.htskip{font-family:var(--sk-font)}',
       // chips and bars: pill ends, parchment fill, navy edge, gold keyline
       '.badge,.goalbar,.starbar{border-width:2.5px;border-radius:999px;box-shadow:inset 0 0 0 3px rgba(255,246,214,.55),0 3px 0 ' + INK + '}',
-      '.starbar .st.off path{fill:#e2d3a6;stroke:' + BR + '}',
       '.coins{border:2.5px solid ' + INK + ';color:' + INK + ';box-shadow:inset 0 0 0 3px rgba(255,255,255,.45),0 3px 0 ' + INK + '}',
       '.mnode .mst{border-width:2px;border-radius:999px;box-shadow:0 2px 0 ' + INK + '}',
       '.mnode .mtag{border-width:2px;border-radius:999px;box-shadow:0 2px 0 ' + INK + '}',
@@ -325,7 +329,6 @@
       '#briefGo{background:linear-gradient(180deg,#ffe680,' + GOLD + ');color:' + INK + ';border:2.5px solid ' + INK + ';border-radius:16px;text-shadow:none;box-shadow:inset 0 0 0 4px rgba(255,246,214,.45),inset 0 3px 0 rgba(255,255,255,.5),0 3px 0 ' + INK + '}',
       '#briefGo:active{transform:translateY(3px);box-shadow:inset 0 0 0 4px rgba(255,246,214,.35),0 0 0 ' + INK + '}',
       // star slots under markers: brown-navy so empty stars read on parchment
-      '.mnode .mst i{color:rgba(122,74,36,.5)}',
     ].join(''),
     fonts: ['https://fonts.googleapis.com/css2?family=Fredoka:wght@500;700&display=swap'],
     title: { svg: titleSvg },

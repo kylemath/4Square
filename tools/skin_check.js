@@ -6,7 +6,10 @@ const ctx = { window: {}, console }; ctx.window.window = ctx.window; vm.createCo
 vm.runInContext(fs.readFileSync(path.join(D, 'registry.js'), 'utf8'), ctx);
 ctx.FTH_SKINS = ctx.window.FTH_SKINS;
 const want = process.argv.slice(2);
-const files = fs.readdirSync(D).filter(f => f.endsWith('.js') && f !== 'registry.js' && (!want.length || want.includes(f.replace(/\.js$/, ''))));
+const read = f => fs.readFileSync(path.join(D, f), 'utf8');
+const files = fs.readdirSync(D).filter(f => f.endsWith('.js') && f !== 'registry.js' && (!want.length || want.includes(f.replace(/\.js$/, ''))))
+  .sort((x, y) => /FTH_SKINS\.extend\(/.test(read(x)) - /FTH_SKINS\.extend\(/.test(read(y)));   // skins that extend another load after it
+if (want.length && files.some(f => /FTH_SKINS\.extend\('([\w-]+)'/.test(read(f)))) fs.readdirSync(D).filter(f => f.endsWith('.js') && f !== 'registry.js' && !files.includes(f) && !/FTH_SKINS\.extend\(/.test(read(f))).forEach(f => files.unshift(f));
 let bad = 0; const fail = (id, m) => { bad++; console.log('  FAIL ' + id + ': ' + m); };
 for (const f of files) {
   try { vm.runInContext(fs.readFileSync(path.join(D, f), 'utf8'), ctx, { filename: f }); }
@@ -19,12 +22,50 @@ const svgOk = (s, where, id) => {
   const open = (s.match(/<g[\s>]/g) || []).length, close = (s.match(/<\/g>/g) || []).length;
   if (open !== close) fail(id, where + ': unbalanced <g> (' + open + ' open, ' + close + ' close)');
 };
+const names = {}; for (const s of ctx.window.FTH_SKINS.list) for (const k of ['id', 'name', 'ic']) { const key = k + ':' + s[k]; if (names[key]) fail(s.id, k + ' ' + s[k] + ' is also used by ' + names[key]); names[key] = s.id; }
 for (const s of ctx.window.FTH_SKINS.list) {
   const id = s.id; console.log(id + ' (' + s.name + ')');
   if (!s.ic) fail(id, 'missing ic');
+  if (s.id !== undefined && !fs.existsSync(path.join(D, s.id + '.js'))) fail(id, 'skins/' + s.id + '.js must be named after the id');
+  if (s.look && !ctx.window.FTH_SKINS.list.some(k => k.id === s.look)) fail(id, 'look ' + s.look + ' is not a registered skin');
+  if (s.board) {                                     // the island board's layout and physics (section 11)
+    const B = s.board, LK = ['kH', 'kB', 'damp', 'cap', 'rep', 'pull', 'tug', 'fk', 'fr', 'fl'];
+    if (s.src) fail(id, 'board only applies to skins without a play page (src)');
+    for (const k of Object.keys(B)) if (!['free', 'guard', 'live'].includes(k)) fail(id, 'board.' + k + ' unknown (free, guard, live)');
+    for (const k of Object.keys(B.live || {})) if (!LK.includes(k) || typeof B.live[k] !== 'number') fail(id, 'board.live.' + k + ' must be a number named one of ' + LK.join(' '));
+  }
+  if (s.family && !ctx.window.FTH_SKINS.list.some(k => k !== s && k.family === s.family)) console.log('  note: family ' + s.family + ' has one member, so it is not grouped');
   if (s.hud && !['full', 'compact', 'minimal'].includes(s.hud)) fail(id, 'hud must be full | compact | minimal');
   if (s.src && !fs.existsSync(path.join(__dirname, '..', s.src))) fail(id, 'src ' + s.src + ' not found');
   for (const k of Object.keys(s.theme || {})) if (!/^--sk-[a-z0-9-]+$/.test(k)) fail(id, 'theme key ' + k + ' is not --sk-*');
+  // chrome tokens that must be solid colours (SKIN-SPEC 3b): the play page's controls (skins with a page) and the stars (contrast: tools/contrast_check.js)
+  const SOLID = /^(#[0-9a-f]{3,8}|rgba?\([^()]*\))$/i;
+  for (const k of (s.src ? ['--sk-ctl', '--sk-ctl-ink', '--sk-ctl-edge'] : []).concat(['--sk-star-on', '--sk-star-edge', '--sk-star-off', '--sk-star-off-edge'])) {
+    const v = (s.theme || {})[k]; if (!v) fail(id, 'theme needs ' + k + ' (SKIN-SPEC 3b)'); else if (!SOLID.test(v.trim())) fail(id, k + ' must be one solid colour, got ' + v);
+  }
+  {                                                  // the skin's currency (SKIN-SPEC.md section 12); absent: the shell uses the plain gold coin
+    const C = s.coin;
+    if (!C) console.log('  note: no coin, the plain gold coin is used');
+    else {
+      for (const k of ['name', 'plural', 'glyph']) if (typeof C[k] !== 'string' || !C[k].trim()) fail(id, 'coin.' + k + ' must be a non-empty string');
+      if (typeof C.value !== 'number' || !(C.value > 0)) fail(id, 'coin.value must be a number > 0 (base units, G)');
+      if (C.pitch !== undefined && !(typeof C.pitch === 'number' && C.pitch >= .5 && C.pitch <= 2)) fail(id, 'coin.pitch must be 0.5 to 2');
+      for (const k of ['main', 'edge']) if (C.colors && !/^#[0-9a-f]{3,8}$/i.test((C.colors || {})[k] || '')) fail(id, 'coin.colors.' + k + ' must be a #hex colour');
+      let a; try { a = C.svg(26); } catch (x) { fail(id, 'coin.svg throws: ' + x.message); }
+      if (typeof C.svg !== 'function') fail(id, 'coin.svg must be a function (size) -> svg string');
+      else if (typeof a === 'string') {
+        if (!/^\s*<svg[\s>]/.test(a) || !/viewBox="-13 -13 26 26"/.test(a)) fail(id, 'coin.svg must be an <svg> with viewBox="-13 -13 26 26"');
+        if (/<script|<image|href="https?:|\bon\w+=/i.test(a)) fail(id, 'coin.svg: no script, images or handlers');
+        if (/\bid="(?!coin-)/.test(a)) fail(id, 'coin.svg: ids must start with coin-');
+        const o = (a.match(/<g[\s>]/g) || []).length, c = (a.match(/<\/g>/g) || []).length; if (o !== c) fail(id, 'coin.svg: unbalanced <g>');
+        if (!/<svg[^>]*width="26"/.test(a) || !/width="40"/.test(C.svg(40))) fail(id, 'coin.svg(size) must size the svg');
+        if ((a.match(/<(path|circle|rect|polygon|ellipse|line|polyline)\b/g) || []).length < 3) fail(id, 'coin.svg looks empty');
+      } else fail(id, 'coin.svg must return a string');
+      const same = ctx.window.FTH_SKINS.list.filter(k => k !== s && k.coin && (k.coin.name === C.name || k.coin.value === C.value || k.coin.svg(26) === a));
+      if (same.length) fail(id, 'coin must differ from ' + same.map(k => k.id).join(', ') + ' (name, value and art are unique per skin)');
+      console.log('  coin: ' + C.name + ', ' + C.value + ' G');
+    }
+  }
   if (s.title && s.title.svg) svgOk(s.title.svg, 'title.svg', id);
   if (s.intro) {
     if (!Array.isArray(s.intro) || s.intro.length < 3 || s.intro.length > 5) fail(id, 'intro must have 3-5 pages');
