@@ -46,7 +46,9 @@
   const canon = o => JSON.stringify(Object.keys(o || {}).sort().map(k => [k, o[k]]));
   // the wallet (save.wallet, per-skin coin balances) is sealed with the progress; a save with no wallet hashes as before
   const wcanon = w => JSON.stringify(Object.keys(w).sort().map(k => [k, w[k].bal, w[k].earned, w[k].f || 0]));
-  const digest = save => V ? V.h53(canon(save.byId) + (save.wallet ? '|w' + wcanon(save.wallet) : ''), 7) : '';
+  // owned skins and skin tickets (save.skins, tickets.js) are sealed too, so a hand unlock shows up as an edited save
+  const scanon = k => JSON.stringify([(k.own || []).slice().sort(), k.tickets | 0, k.bought | 0]);
+  const digest = save => V ? V.h53(canon(save.byId) + (save.wallet ? '|w' + wcanon(save.wallet) : '') + (save.skins ? '|s' + scanon(save.skins) : ''), 7) : '';
   const link = (prev, n, dg) => V ? V.h53(secret() + '|' + prev + '|' + n + '|' + dg, 11) : '';
   function seal(key, save) {
     if (!V) return;
