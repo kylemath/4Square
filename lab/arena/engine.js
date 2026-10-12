@@ -19,6 +19,10 @@
  *   ARENA.Pretrainer(trainer, cfg)      objectives (a) distance, (b) good swap, (c) masked colour, (d) chain sizes
  *   ARENA.Testbench(GAME, keys, opt)    held-out evaluation: optimal-move agreement + greedy rollouts
  *   ARENA.modelToJSON / modelFromJSON   the 'mazearena-model-1' file format
+ *   Round 2: arch.kind = 'rec' is the TABULA-RASA track (raw colours + hole flag, weight-tied recurrent message
+ *   passing iterated T times, value and "click a region, pick a colour" heads; see its section below); the GNN
+ *   above is the PRIORS track. stateSpace (every colouring of a map, exact distances), Tri (splices: flip / insert /
+ *   remove away from the hole), mirrorGraph, hardness, and testbench metrics agree4, deepStarts, extra (hard pool).
  *
  * Map-independent encoding. Colours are symmetric, so each region's colour is given RELATIVE to the rim. In an unfilled
  * state the rim (link, cyclic order) shows the pattern D x D y z: one colour D twice (at rim positions i and i+2,
@@ -276,6 +280,7 @@
   // enc = { G, col, n, X, glob, rimOrd (5 regions, relative rim order), hole, moves: [{K, feat (CF)}], chains, rel, ref }
   function encode(G, col, opt) {
     opt = opt || {};
+    if (opt.kind === 'rec') return encodeRaw(G, col, opt);
     const n = G.n, hole = G.hole, X = new Float32Array(n * F), { rel, ref } = relClasses(G, col);
     const chains = chainsOf(G, col), at = new Int32Array(n * 4).fill(-1);
     chains.forEach((K, i) => { for (const u of K.vs) at[u * 4 + (col[u] === K.a ? K.b : K.a)] = i; });
@@ -313,12 +318,14 @@
 
   // ---------------------------------------------------------------- the network
   function archDefaults(a) {
+    if (a && a.kind === 'rec') return recDefaults(a);
     a = Object.assign({ H: 16, K: 3, H1: 0, Hp: 0, chainFeats: true }, a || {});
     a.H = a.H | 0; a.K = a.K | 0; a.H1 = a.H1 || 2 * a.H; a.Hp = a.Hp || a.H; a.F = F; a.GD = GD; a.CF = CF;
-    a.readout = 'mean,max,rim5,hole,glob'; a.heads = ['value', 'dist', 'policy', 'colour', 'chain']; a.feat = 'v1';
+    a.kind = 'gnn'; a.readout = 'mean,max,rim5,hole,glob'; a.heads = ['value', 'dist', 'policy', 'colour', 'chain']; a.feat = 'v1';
     return a;
   }
   function shapesOf(a) {
+    if (a.kind === 'rec') return recShapes(a);
     const H = a.H, R = 8 * H + GD, S = [['Win', H, F], ['bin', H, 1]];
     for (let k = 1; k <= a.K; k++) S.push(['Ws' + k, H, H], ['Wn' + k, H, H], ['b' + k, H, 1]);
     S.push(['W1', a.H1, R], ['b1', a.H1, 1], ['wv', 1, a.H1], ['bv', 1, 1], ['wd', 1, a.H1], ['bd', 1, 1],
@@ -335,7 +342,8 @@
       if (c === 1 || nm[0] === 'b') return;   // biases start at 0
       let fan = c; if (nm[0] === 'W' && (nm[1] === 's' || nm[1] === 'n')) fan = 2 * c;
       let lim = Math.sqrt(6 / fan);
-      if (nm === 'wv' || nm === 'wd' || nm === 'wp2' || nm === 'Wc' || nm === 'Wch') lim = 0.1 / Math.sqrt(c);
+      if (nm === 'wv' || nm === 'wd' || nm === 'wp2' || nm === 'Wc' || nm === 'Wch' || nm === 'Wo') lim = 0.1 / Math.sqrt(c);
+      if (a.kind === 'rec' && (nm === 'Ws' || nm === 'Wn')) lim = 1.56 / Math.sqrt(2 * c);   // spectral radius ~0.9: stable when iterated
       const o = off[nm]; for (let i = 0; i < r * c; i++) net.params[o + i] = (R() * 2 - 1) * lim;
     });
     return net;
@@ -375,6 +383,7 @@
   }
   // forward pass. need: { policy, nodes }. Returns { v, d, logits (if policy), colL/chP (if nodes) } (views into ws).
   function netForward(net, enc, need, params) {
+    if (net.arch.kind === 'rec') return recForward(net, enc, need, params);
     need = need || {};
     const P = params || net.params, a = net.arch, H = a.H, n = enc.n, G = enc.G, m = need.policy ? enc.moves.length : 0;
     const w = workspace(net, n, m), Hs = w.Hs, Ms = w.Ms, off = net.off;
@@ -429,6 +438,7 @@
   // backward for the last forward. g = { v, d, logits (array m or null), colL (n*4 or null), chP (n*8 or null) };
   // accumulates into grad (same layout as params)
   function netBackward(net, out, g, grad) {
+    if (net.arch.kind === 'rec') return recBackward(net, out, g, grad);
     const P = net.params, a = net.arch, H = a.H, enc = out.enc, n = enc.n, G = enc.G, w = net.ws, off = net.off, HK = w.Hs[a.K];
     const RD = 8 * H + GD, dZ = w.dZ, dH = w.dH;
     for (let i = 0; i < a.H1; i++) dZ[i] = 0;
@@ -523,14 +533,294 @@
     return nrm;
   }
 
+  // ---------------------------------------------------------------- the tabula-rasa recurrent net (arch.kind = 'rec')
+  // Inputs per region: RAW colour one-hot (4) and the hole flag (1); nothing else (no degree, rim index, chain or
+  // rim-relative features). Colour symmetry is learned from colour-permutation augmentation (opt.perm).
+  //   e = Wx x;  h_0 = tanh(e + b0);  h_t = tanh(Ws h_{t-1} + Wn (sum of neighbours' h_{t-1}) / 6 + e + b), t = 1..T
+  // one weight-tied layer iterated T times with the input injected every iteration ("deep thinking" style), so T can be
+  // raised at test time. Readout [mean, max, the marked hole's h_T] -> MLP -> value. Policy head: for every region u a
+  // logit per colour b ("click region u, pick colour b"): relu(Wq [h_T(u), z] + bq) -> Wo -> 4 logits; the rules turn
+  // (u, b) into the Kempe swap of the {col(u), b} chain through u (illegal when that chain is a web or b = col(u)).
+  const FR = 5;
+  function recDefaults(a) {
+    a = Object.assign({ H: 32, T: 16, H1: 0, Hq: 0, holeRead: true }, a || {});
+    a.kind = 'rec'; a.H = a.H | 0; a.T = a.T | 0; a.H1 = a.H1 || 2 * a.H; a.Hq = a.Hq || a.H; a.F = FR; a.holeRead = a.holeRead !== false;
+    a.readout = 'mean,max' + (a.holeRead ? ',hole' : ''); a.heads = ['value', 'policy(u,b)']; a.feat = 'raw1'; a.chainFeats = false;
+    return a;
+  }
+  function recShapes(a) {
+    const H = a.H, R = (a.holeRead ? 3 : 2) * H;
+    return [['Wx', H, FR], ['b0', H, 1], ['Ws', H, H], ['Wn', H, H], ['b', H, 1], ['W1', a.H1, R], ['b1', a.H1, 1], ['wv', 1, a.H1], ['bv', 1, 1],
+      ['Wq', a.Hq, H + a.H1], ['bq', a.Hq, 1], ['Wo', 4, a.Hq], ['bo', 4, 1]];
+  }
+  // enc for the rec net: { G, col, n, hole, X (n x 5), perm, moves/chains/at unless opt.noMoves }
+  function encodeRaw(G, col, opt) {
+    const n = G.n, X = new Float32Array(n * FR), perm = opt.perm || null;
+    for (let u = 0; u < n; u++) { if (u === G.hole) X[u * FR + 4] = 1; else X[u * FR + (perm ? perm[col[u]] : col[u])] = 1; }
+    const enc = { G, col, n, hole: G.hole, X, perm, kind: 'rec' };
+    if (!opt.noMoves) {
+      const chains = chainsOf(G, col), at = new Int32Array(n * 4).fill(-1), moves = [];
+      chains.forEach((K, i) => { for (const u of K.vs) at[u * 4 + (col[u] === K.a ? K.b : K.a)] = i; });
+      chains.forEach(K => { if (!K.web) moves.push({ K }); });
+      enc.chains = chains; enc.at = at; enc.moves = moves;
+    }
+    return enc;
+  }
+  // (region u, colour slot k) -> move index (or -1). Slots are in the net's colour frame (after perm).
+  function actionTable(enc) {
+    const n = enc.n, tab = new Int32Array(n * 4).fill(-1), mi = new Int32Array(enc.chains.length).fill(-1), perm = enc.perm;
+    let k = 0; enc.chains.forEach((K, i) => { if (!K.web) mi[i] = k++; });
+    for (let u = 0; u < n; u++) { if (u === enc.hole) continue; for (let b = 0; b < 4; b++) { const ci = enc.at[u * 4 + b]; if (ci >= 0 && mi[ci] >= 0) tab[u * 4 + (perm ? perm[b] : b)] = mi[ci]; } }
+    return tab;
+  }
+  // listwise policy loss over legal clicks: -log P(a good click) = LSE(legal) - LSE(good); returns { loss, grad (n*4) }
+  function policyLoss(logits, tab, goodMove, n) {
+    const g = new Float32Array(n * 4); let mxL = -Infinity, mxG = -Infinity, any = false;
+    for (let k = 0; k < n * 4; k++) { if (tab[k] < 0) continue; mxL = Math.max(mxL, logits[k]); if (goodMove[tab[k]]) { mxG = Math.max(mxG, logits[k]); any = true; } }
+    if (!any) return { loss: 0, grad: g };
+    let sL = 0, sG = 0;
+    for (let k = 0; k < n * 4; k++) { if (tab[k] < 0) continue; sL += Math.exp(logits[k] - mxL); if (goodMove[tab[k]]) sG += Math.exp(logits[k] - mxG); }
+    for (let k = 0; k < n * 4; k++) { if (tab[k] < 0) continue; g[k] = Math.exp(logits[k] - mxL) / sL - (goodMove[tab[k]] ? Math.exp(logits[k] - mxG) / sG : 0); }
+    return { loss: (mxL + Math.log(sL)) - (mxG + Math.log(sG)), grad: g };
+  }
+  // a second handle on the same weights with its own workspace (two forwards kept for a ranking loss)
+  const netShare = net => Object.assign({}, net, { ws: null, wsr: null });
+  function recWorkspace(net, n, T) {
+    let w = net.wsr; const a = net.arch, H = a.H, AT = net.AT;
+    if (w && w.n >= n && w.T >= T) return w;
+    n = Math.max(n, w ? w.n : 0, 40); T = Math.max(T, w ? w.T : 0, a.T);
+    w = { n, T, Hs: [], Ms: [], E: new AT(n * H), cur: new AT(n * H), nxt: new AT(n * H), dM: new AT(n * H), dE: new AT(n * H), R: new AT(3 * H), dR: new AT(3 * H),
+      zpre: new AT(a.H1), Z: new AT(a.H1), dZ: new AT(a.H1), arg: new Int32Array(H), qin: new AT(n * (H + a.H1)), qpre: new AT(n * a.Hq), logit: new AT(n * 4), dq: new AT(a.Hq), dqin: new AT(H + a.H1) };
+    for (let t = 0; t <= T; t++) { w.Hs.push(new AT(n * H)); if (t < T) w.Ms.push(new AT(n * H)); }
+    net.wsr = w; return w;
+  }
+  function recForward(net, enc, need, params) {
+    need = need || {};
+    const P = params || net.params, a = net.arch, H = a.H, T = need.T || a.T, n = enc.n, G = enc.G, off = net.off, w = recWorkspace(net, n, T);
+    const E = w.E, Hs = w.Hs, Ms = w.Ms, X = enc.X;
+    for (let u = 0; u < n; u++) for (let i = 0; i < H; i++) {   // e = Wx x (x is one-hot: one or two nonzeros)
+      let s = 0; const xo = u * FR, wo = off.Wx + i * FR; for (let j = 0; j < FR; j++) if (X[xo + j]) s += P[wo + j] * X[xo + j];
+      E[u * H + i] = s; Hs[0][u * H + i] = Math.tanh(s + P[off.b0 + i]);
+    }
+    const sc = 1 / 6;
+    for (let t = 1; t <= T; t++) {
+      const Hp = Hs[t - 1], M = Ms[t - 1], Hn = Hs[t];
+      for (let u = 0; u < n; u++) {
+        const mo = u * H; for (let j = 0; j < H; j++) M[mo + j] = 0;
+        for (let q = G.adjStart[u], e = G.adjStart[u + 1]; q < e; q++) { const wo = G.adjList[q] * H; for (let j = 0; j < H; j++) M[mo + j] += Hp[wo + j]; }
+        for (let j = 0; j < H; j++) M[mo + j] *= sc;
+      }
+      for (let u = 0; u < n; u++) {
+        const o = u * H;
+        for (let i = 0; i < H; i++) {
+          let s0 = E[o + i] + P[off.b + i], s1 = 0, s2 = 0, s3 = 0; const ws = off.Ws + i * H, wn = off.Wn + i * H;
+          let j = 0;
+          for (; j + 3 < H; j += 4) {
+            s0 += P[ws + j] * Hp[o + j] + P[wn + j] * M[o + j]; s1 += P[ws + j + 1] * Hp[o + j + 1] + P[wn + j + 1] * M[o + j + 1];
+            s2 += P[ws + j + 2] * Hp[o + j + 2] + P[wn + j + 2] * M[o + j + 2]; s3 += P[ws + j + 3] * Hp[o + j + 3] + P[wn + j + 3] * M[o + j + 3];
+          }
+          for (; j < H; j++) s0 += P[ws + j] * Hp[o + j] + P[wn + j] * M[o + j];
+          Hn[o + i] = Math.tanh(s0 + s1 + s2 + s3);
+        }
+      }
+    }
+    const HT = Hs[T], R = w.R, RD = (a.holeRead ? 3 : 2) * H;
+    for (let j = 0; j < H; j++) { let s = 0, mx = -Infinity, am = 0; for (let u = 0; u < n; u++) { const x = HT[u * H + j]; s += x; if (x > mx) { mx = x; am = u; } } R[j] = s / n; R[H + j] = mx; w.arg[j] = am; }
+    if (a.holeRead) { const o = enc.hole * H; for (let j = 0; j < H; j++) R[2 * H + j] = HT[o + j]; }
+    let v = P[off.bv];
+    for (let i = 0; i < a.H1; i++) {
+      let s = P[off.b1 + i]; const wo = off.W1 + i * RD; for (let j = 0; j < RD; j++) s += P[wo + j] * R[j];
+      w.zpre[i] = s; w.Z[i] = s > 0 ? s : 0; v += P[off.wv + i] * w.Z[i];
+    }
+    const out = { v, n, enc, T, rec: true };
+    if (need.policy) {
+      const QI = H + a.H1;
+      for (let u = 0; u < n; u++) {
+        const qo = u * QI; for (let j = 0; j < H; j++) w.qin[qo + j] = HT[u * H + j]; for (let j = 0; j < a.H1; j++) w.qin[qo + H + j] = w.Z[j];
+        for (let i = 0; i < a.Hq; i++) { let s = P[off.bq + i]; const wo = off.Wq + i * QI; for (let j = 0; j < QI; j++) s += P[wo + j] * w.qin[qo + j]; w.qpre[u * a.Hq + i] = s; }
+        for (let b = 0; b < 4; b++) { let s = P[off.bo + b]; const wo = off.Wo + b * a.Hq; for (let i = 0; i < a.Hq; i++) { const q = w.qpre[u * a.Hq + i]; if (q > 0) s += P[wo + i] * q; } w.logit[u * 4 + b] = s; }
+      }
+      out.logits = w.logit; out.policy = true;
+    }
+    return out;
+  }
+  function recBackward(net, out, g, grad) {
+    const P = net.params, a = net.arch, H = a.H, T = out.T, enc = out.enc, n = enc.n, G = enc.G, w = net.wsr, off = net.off, HT = w.Hs[T];
+    const RD = (a.holeRead ? 3 : 2) * H, dZ = w.dZ, cur = w.cur;
+    for (let i = 0; i < a.H1; i++) dZ[i] = 0;
+    for (let i = 0; i < n * H; i++) cur[i] = 0;
+    const gv = g.v || 0;
+    if (gv) { grad[off.bv] += gv; for (let i = 0; i < a.H1; i++) { grad[off.wv + i] += gv * w.Z[i]; dZ[i] += gv * P[off.wv + i]; } }
+    if (g.logits && out.policy) {
+      const QI = H + a.H1, dq = w.dq, dqin = w.dqin;
+      for (let u = 0; u < n; u++) {
+        let any = false; for (let b = 0; b < 4; b++) if (g.logits[u * 4 + b]) any = true; if (!any) continue;
+        for (let i = 0; i < a.Hq; i++) dq[i] = 0;
+        for (let b = 0; b < 4; b++) {
+          const gl = g.logits[u * 4 + b]; if (!gl) continue; grad[off.bo + b] += gl; const wo = off.Wo + b * a.Hq;
+          for (let i = 0; i < a.Hq; i++) { const q = w.qpre[u * a.Hq + i]; if (q > 0) { grad[wo + i] += gl * q; dq[i] += gl * P[wo + i]; } }
+        }
+        for (let j = 0; j < QI; j++) dqin[j] = 0;
+        const qo = u * QI;
+        for (let i = 0; i < a.Hq; i++) {
+          if (w.qpre[u * a.Hq + i] <= 0 || !dq[i]) continue; const d = dq[i], wo = off.Wq + i * QI; grad[off.bq + i] += d;
+          for (let j = 0; j < QI; j++) { grad[wo + j] += d * w.qin[qo + j]; dqin[j] += d * P[wo + j]; }
+        }
+        for (let j = 0; j < H; j++) cur[u * H + j] += dqin[j];
+        for (let j = 0; j < a.H1; j++) dZ[j] += dqin[H + j];
+      }
+    }
+    const dR = w.dR; for (let j = 0; j < RD; j++) dR[j] = 0;
+    for (let i = 0; i < a.H1; i++) {
+      if (w.zpre[i] <= 0 || !dZ[i]) continue; const dz = dZ[i], wo = off.W1 + i * RD; grad[off.b1 + i] += dz;
+      for (let j = 0; j < RD; j++) { grad[wo + j] += dz * w.R[j]; dR[j] += dz * P[wo + j]; }
+    }
+    for (let j = 0; j < H; j++) { const gm = dR[j] / n; for (let u = 0; u < n; u++) cur[u * H + j] += gm; cur[w.arg[j] * H + j] += dR[H + j]; }
+    if (a.holeRead) { const o = enc.hole * H; for (let j = 0; j < H; j++) cur[o + j] += dR[2 * H + j]; }
+    const dE = w.dE; for (let i = 0; i < n * H; i++) dE[i] = 0;
+    let dh = cur, nx = w.nxt; const dM = w.dM, sc = 1 / 6;
+    for (let t = T; t >= 1; t--) {
+      const Ht = w.Hs[t], Hp = w.Hs[t - 1], M = w.Ms[t - 1];
+      for (let i = 0; i < n * H; i++) { dh[i] *= 1 - Ht[i] * Ht[i]; dE[i] += dh[i]; nx[i] = 0; dM[i] = 0; }
+      for (let i = 0; i < H; i++) {   // weight gradients: one output row at a time (inner loop writes one row)
+        const ws = off.Ws + i * H, wn = off.Wn + i * H; let gb = 0;
+        for (let u = 0; u < n; u++) {
+          const da = dh[u * H + i]; if (!da) continue; gb += da; const o = u * H;
+          for (let j = 0; j < H; j++) { grad[ws + j] += da * Hp[o + j]; grad[wn + j] += da * M[o + j]; }
+        }
+        grad[off.b + i] += gb;
+      }
+      for (let u = 0; u < n; u++) {   // input gradients: nx = da Ws, dM = da Wn
+        const o = u * H;
+        for (let i = 0; i < H; i++) {
+          const da = dh[o + i]; if (!da) continue; const ws = off.Ws + i * H, wn = off.Wn + i * H;
+          for (let j = 0; j < H; j++) { nx[o + j] += da * P[ws + j]; dM[o + j] += da * P[wn + j]; }
+        }
+      }
+      for (let u = 0; u < n; u++) { const o = u * H; for (let q = G.adjStart[u], e = G.adjStart[u + 1]; q < e; q++) { const wo = G.adjList[q] * H; for (let j = 0; j < H; j++) nx[wo + j] += dM[o + j] * sc; } }
+      const tmp = dh; dh = nx; nx = tmp;
+    }
+    const H0 = w.Hs[0], X = enc.X;
+    for (let u = 0; u < n; u++) for (let i = 0; i < H; i++) {
+      const o = u * H + i, da = dh[o] * (1 - H0[o] * H0[o]); grad[off.b0 + i] += da; const de = dE[o] + da;
+      if (!de) continue; const xo = u * FR, wo = off.Wx + i * FR; for (let j = 0; j < FR; j++) if (X[xo + j]) grad[wo + j] += de * X[xo + j];
+    }
+  }
+
+  // ---------------------------------------------------------------- whole state spaces, splices, hardness
+  // every proper 4-colouring of G minus the hole up to renaming (each once: a colour may be used only after all lower
+  // ones, in a BFS order from the rim), as Int8Arrays; null if more than cap
+  function allColourings(G, cap) {
+    cap = cap || 200000;
+    const n = G.n, hole = G.hole, order = [], seen = new Uint8Array(n); seen[hole] = 1;
+    const q = [G.rim[0]]; seen[G.rim[0]] = 1;
+    for (let i = 0; i < q.length; i++) { const u = q[i]; order.push(u); for (let e = G.adjStart[u]; e < G.adjStart[u + 1]; e++) { const w = G.adjList[e]; if (!seen[w]) { seen[w] = 1; q.push(w); } } }
+    const col = new Int8Array(n).fill(-1), out = []; let over = false;
+    const rec = (i, mx) => {
+      if (over) return;
+      if (i === order.length) { out.push(col.slice()); if (out.length > cap) over = true; return; }
+      const u = order[i], lim = Math.min(3, mx + 1);
+      for (let c = 0; c <= lim; c++) {
+        let ok = true; for (let e = G.adjStart[u]; e < G.adjStart[u + 1]; e++) if (col[G.adjList[e]] === c) { ok = false; break; }
+        if (!ok) continue; col[u] = c; rec(i + 1, Math.max(mx, c)); col[u] = -1;
+      }
+    };
+    rec(0, -1);
+    return over ? null : out;
+  }
+  // the whole state space: { keys, cols, won, dist (Int16Array, -1 = no fill reachable) for every colouring,
+  // unfilled (indices), hist {d: count} over unfilled states, unreachable }; afterstate distances on demand
+  function stateSpace(G, cap) {
+    const cols = allColourings(G, cap); if (!cols) return null;
+    const N = cols.length, keys = new Array(N), idx = new Map(), wonA = new Uint8Array(N);
+    for (let i = 0; i < N; i++) { keys[i] = canon(G, cols[i]); idx.set(keys[i], i); wonA[i] = won(G, cols[i]) ? 1 : 0; }
+    const nbr = new Array(N), dist = new Int16Array(N).fill(-1), q = [];
+    for (let i = 0; i < N; i++) {
+      if (wonA[i]) { dist[i] = 0; q.push(i); nbr[i] = []; continue; }
+      nbr[i] = movesOf(G, cols[i]).map(K => idx.get(canon(G, flip(cols[i], K))));
+    }
+    const back = Array.from({ length: N }, () => []);   // swaps are involutions, so the swap graph is undirected
+    for (let i = 0; i < N; i++) if (!wonA[i]) for (const j of nbr[i]) back[j].push(i);
+    for (let h = 0; h < q.length; h++) { const i = q[h]; for (const j of back[i]) if (dist[j] < 0 && !wonA[j]) { dist[j] = dist[i] + 1; q.push(j); } }
+    const hist = {}, unfilled = []; let unreachable = 0;
+    for (let i = 0; i < N; i++) { if (wonA[i]) continue; unfilled.push(i); if (dist[i] < 0) unreachable++; else hist[dist[i]] = (hist[dist[i]] || 0) + 1; }
+    return { N, keys, cols, idx, won: wonA, dist, nbr, unfilled, hist, unreachable };
+  }
+  // a hardness score from the depth histogram: states 3+ swaps from a fill, each level deeper weighted 8x, divided by
+  // the square root of (unfilled states / 1000) so a big map with many shallow-ish states does not win on size alone
+  function hardness(hist) {
+    let s = 0, maxD = 0, tot = 0; for (const d in hist) { const k = +d; tot += hist[d]; if (k > maxD) maxD = k; if (k >= 3) s += hist[d] * Math.pow(8, k - 3); }
+    return { score: +(s / Math.sqrt(Math.max(1, tot) / 1000)).toFixed(2), maxD };
+  }
+  const graphSpec = G => ({ key: G.key, name: G.name, n: G.n, hole: G.hole, link: Array.from(G.rim), edges: G.edges, rot: G.rot });
+  // mirror image: every rotation reversed, the rim's cyclic order reversed (same adjacency, same labels)
+  function mirrorGraph(G) {
+    return makeGraph({ key: G.key + '~m', name: G.name + ' (mirror)', n: G.n, hole: G.hole, link: Array.from(G.rim).reverse(), edges: G.edges, rot: G.rot ? G.rot.map(r => r.slice().reverse()) : null, dist: G.dist, distMap: G.distMap });
+  }
+  // a triangulation under edits (rotation system: nxt[a].get(b) = c is the face (a, b, c)); the hole keeps its 5 edges
+  function Tri(G) {
+    const nxt = []; for (let v = 0; v < G.n; v++) { const m = new Map(), r = G.rot[v]; for (let i = 0; i < r.length; i++) m.set(r[i], r[(i + 1) % r.length]); nxt.push(m); }
+    this.nxt = nxt; this.hole = G.hole; this.alive = new Uint8Array(G.n).fill(1); this.key = G.key; this.name = G.name;
+  }
+  Tri.prototype.addF = function (a, b, c) { const x = this.nxt; x[a].set(b, c); x[b].set(c, a); x[c].set(a, b); };
+  Tri.prototype.delF = function (a, b, c) { const x = this.nxt; x[a].delete(b); x[b].delete(c); x[c].delete(a); };
+  Tri.prototype.nearHole = function (v) { return v === this.hole || this.nxt[this.hole].has(v); };
+  Tri.prototype.rotOf = function (v) { const m = this.nxt[v], f = m.keys().next().value, out = [f]; let u = m.get(f); while (u !== f && out.length <= m.size) { out.push(u); u = m.get(u); } return out; };
+  // an edge flip away from the hole (neither end nor either opposite corner is the hole)
+  Tri.prototype.flip = function (a, b) {
+    const x = this.nxt; if (a === this.hole || b === this.hole || !x[a].has(b)) return false;
+    const c = x[a].get(b), d = x[b].get(a);
+    if (c === this.hole || d === this.hole || c === d || x[c].has(d) || x[a].size <= 3 || x[b].size <= 3) return false;
+    this.delF(a, b, c); this.delF(b, a, d); this.addF(c, a, d); this.addF(d, b, c); return true;
+  };
+  // insert a new vertex into the face (a, b, nxt[a][b]) when the hole is not a corner of it
+  Tri.prototype.insert = function (a, b) {
+    const x = this.nxt, c = x[a].get(b); if (c === undefined || a === this.hole || b === this.hole || c === this.hole) return false;
+    const v = x.length; x.push(new Map()); this.alive = Uint8Array.from([...this.alive, 1]);
+    this.delF(a, b, c); this.addF(a, b, v); this.addF(b, c, v); this.addF(c, a, v); return true;
+  };
+  // remove a degree-3 or degree-4 vertex not next to the hole, retriangulating its link (diag 0: w0-w2, 1: w1-w3)
+  Tri.prototype.remove = function (v, diag) {
+    const x = this.nxt; if (!this.alive[v] || this.nearHole(v)) return false;
+    const deg = x[v].size; if (deg !== 3 && deg !== 4) return false;
+    const w = this.rotOf(v);
+    if (deg === 3) { if (w.some(u => x[u].size <= 3)) return false; for (let i = 0; i < 3; i++) this.delF(v, w[i], w[(i + 1) % 3]); this.addF(w[0], w[1], w[2]); }
+    else {
+      const s = diag ? 1 : 0, p = w[s], r = w[s + 2], o1 = w[s + 1], o2 = w[(s + 3) % 4];
+      if (x[p].has(r) || x[o1].size <= 3 || x[o2].size <= 3) return false;
+      for (let i = 0; i < 4; i++) this.delF(v, w[i], w[(i + 1) % 4]);
+      this.addF(p, o1, r); this.addF(p, r, o2);
+    }
+    this.alive[v] = 0; return true;
+  };
+  Tri.prototype.toGraph = function (key) {
+    const ids = [], map = new Int32Array(this.nxt.length).fill(-1);
+    for (let v = 0; v < this.nxt.length; v++) if (this.alive[v]) { map[v] = ids.length; ids.push(v); }
+    const rot = ids.map(v => this.rotOf(v).map(u => map[u])), n = ids.length, hole = map[this.hole];
+    const edges = []; for (let u = 0; u < n; u++) for (const w of rot[u]) if (u < w) edges.push([u, w]);
+    return makeGraph({ key: key || this.key, name: this.name, n, hole, link: rot[hole], edges, rot });
+  };
+  // one random splice (flip / insert / remove), up to `tries` attempts; returns the op name or null
+  function spliceRandom(tri, R, tries) {
+    for (let t = 0; t < (tries || 40); t++) {
+      const live = []; for (let v = 0; v < tri.nxt.length; v++) if (tri.alive[v] && v !== tri.hole) live.push(v);
+      const a = R.pick(live), nb = [...tri.nxt[a].keys()], b = R.pick(nb), op = R();
+      if (op < 0.6) { if (tri.flip(a, b)) return 'flip'; }
+      else if (op < 0.8) { if (live.length < 44 && tri.insert(a, b)) return 'insert'; }
+      else { if (live.length > 14 && tri.remove(a, R() < 0.5 ? 1 : 0)) return 'remove'; }
+    }
+    return null;
+  }
+
   // ---------------------------------------------------------------- agents
   // score every move of state s by -1 + gamma V(after) (V = 0 at a fill). Returns { enc, scores, afters, wins }.
   function scoreMoves(net, G, col, gamma, params, encOpt) {
     const enc = encode(G, col, encOpt), m = enc.moves.length, scores = new Float32Array(m), afters = new Array(m), wins = new Uint8Array(m);
+    const after = encOpt && encOpt.kind === 'rec' ? Object.assign({}, encOpt, { noMoves: true }) : encOpt;
     for (let i = 0; i < m; i++) {
       const c = flip(col, enc.moves[i].K); afters[i] = c;
       if (won(G, c)) { scores[i] = -1; wins[i] = 1; }
-      else scores[i] = -1 + gamma * netValue(net, encode(G, c, encOpt), params);
+      else scores[i] = -1 + gamma * netValue(net, encode(G, c, after), params);
     }
     return { enc, scores, afters, wins };
   }
@@ -538,7 +828,11 @@
   // policy-head scores (one forward pass): logits
   function policyScores(net, G, col, encOpt) {
     const enc = encode(G, col, encOpt), out = netForward(net, enc, { policy: true });
-    const scores = Float32Array.from(out.logits.subarray(0, enc.moves.length));
+    let scores;
+    if (net.arch.kind === 'rec') {   // a move scores the best (region, colour) click that triggers it
+      scores = new Float32Array(enc.moves.length).fill(-Infinity); const tab = actionTable(enc);
+      for (let k = 0; k < tab.length; k++) { const mi = tab[k]; if (mi >= 0 && out.logits[k] > scores[mi]) scores[mi] = out.logits[k]; }
+    } else scores = Float32Array.from(out.logits.subarray(0, enc.moves.length));
     const afters = enc.moves.map(mv => flip(col, mv.K)), wins = Uint8Array.from(afters.map(c => won(G, c) ? 1 : 0));
     return { enc, scores, afters, wins };
   }
@@ -680,6 +974,7 @@
   // self-supervised objectives (c) masked colour and (d) chain sizes on one state: one corrupted forward with
   // k regions' colours hidden and every chain feature dropped. Returns the loss (already weighted) and adds gradients.
   function auxSSL(T, G, col, weight, grad, wc, wdd, R) {
+    if (T.net.arch.kind === 'rec') return 0;   // the self-supervised heads belong to the priors GNN
     R = R || T.R; wc = wc == null ? 1 : wc; wdd = wdd == null ? 1 : wdd;
     const n = G.n, mask = new Uint8Array(n), cand = []; for (let u = 0; u < n; u++) if (u !== G.hole) cand.push(u);
     const k = Math.max(1, Math.round(0.15 * cand.length)); shuffle(cand, R); for (let i = 0; i < k; i++) mask[cand[i]] = 1;
@@ -818,13 +1113,14 @@
   function Testbench(GAME, keys, opt) {
     opt = Object.assign({ maxDeep: 40, maxHard: 60, maxEasy: 20, rollouts: 12, capMul: 3 }, opt || {});
     const TB = this; TB.opt = opt; TB.maps = [];
-    keys.forEach(key => {
-      const env = makeEnv(GAME, key); if (!env) return;
+    const envs = keys.map(key => makeEnv(GAME, key)).concat(opt.extra || []);   // extra: [{ key, G (with dist), starts: [], census: [] }]
+    envs.forEach(env => {
+      if (!env) return; const key = env.key;
       const R = rng(hashStr('tb:' + key)), deep = [], hard = [], easy = [];
       env.census.forEach(k => { const d = env.G.dist[k]; (d >= 3 ? deep : d === 2 ? hard : easy).push(k); });
       shuffle(deep, R); shuffle(hard, R); shuffle(easy, R);
       const pick = deep.slice(0, opt.maxDeep).concat(hard.slice(0, opt.maxHard), easy.slice(0, opt.maxEasy)).map(k => ({ col: decodeCanon(env.G, k), d: env.G.dist[k] }));
-      const starts = env.starts.map(c => ({ col: c, d: distOf(env.G, c), level: true }));
+      const starts = env.starts.map((c, i) => ({ col: c, d: distOf(env.G, c), level: true, id: env.levels && env.levels[i] ? env.levels[i].id : null }));
       const pool = shuffle(env.census.slice(), R).slice(0, opt.rollouts);
       pool.forEach(k => starts.push({ col: decodeCanon(env.G, k), d: env.G.dist[k], level: false }));
       TB.maps.push({ key, env, G: env.G, samples: pick, starts });
@@ -835,12 +1131,13 @@
     const TB = this, res = {};
     for (const M of TB.maps) {
       if (keys && keys.indexOf(M.key) < 0) continue;
-      const G = M.G; let a1 = 0, n1 = 0, a2 = 0, n2 = 0, a3 = 0, n3 = 0;
+      const G = M.G; let a1 = 0, n1 = 0, a2 = 0, n2 = 0, a3 = 0, n3 = 0, a4 = 0, n4 = 0; const levels = {};
       for (const s of M.samples) {
         const mv = movesOf(G, s.col), i = agent(G, s.col);
         const ok = i >= 0 && distOf(G, flip(s.col, mv[i])) === s.d - 1;
         if (s.d >= 2) { n2++; a2 += ok; } else { n1++; a1 += ok; }
         if (s.d >= 3) { n3++; a3 += ok; }
+        if (s.d >= 4) { n4++; a4 += ok; }
       }
       let succ = 0, ratio = 0, nr = 0, lvlOk = 0, lvlN = 0;
       for (const st of M.starts) {
@@ -848,27 +1145,36 @@
         const cap = TB.opt.capMul * st.d; let c = st.col, k = 0, ok = false;
         while (k < cap) { const mv = movesOf(G, c), i = agent(G, c); if (i < 0) break; c = flip(c, mv[i]); k++; if (won(G, c)) { ok = true; break; } }
         nr++; if (ok) { succ++; ratio += k / st.d; }
+        if (st.id) levels[st.id] = { par: st.d, steps: ok ? k : null };
         if (st.level) { lvlN++; lvlOk += ok; }
       }
-      res[M.key] = { agree2: n2 ? a2 / n2 : null, n2, agree3: n3 ? a3 / n3 : null, n3, agree1: n1 ? a1 / n1 : null, n1, agreeAll: (n1 + n2) ? (a1 + a2) / (n1 + n2) : null,
+      res[M.key] = { agree2: n2 ? a2 / n2 : null, n2, agree3: n3 ? a3 / n3 : null, n3, agree4: n4 ? a4 / n4 : null, n4, levels, agree1: n1 ? a1 / n1 : null, n1, agreeAll: (n1 + n2) ? (a1 + a2) / (n1 + n2) : null,
         success: nr ? succ / nr : null, stepsRatio: succ ? ratio / succ : null, levelSuccess: lvlN ? lvlOk / lvlN : null, rollouts: nr };
     }
     return res;
   };
   // averages over a key set (maps with no d >= 2 states do not count toward agree2; agree3 pools the d >= 3 states)
   function aggregate(perMap, keys) {
-    const o = { agree2: 0, agree3: 0, agreeAll: 0, success: 0, stepsRatio: 0, levelSuccess: 0, maps: 0 }; let n2 = 0, nr = 0, nl = 0, ns = 0, s3 = 0, c3 = 0;
+    const o = { agree2: 0, agree3: 0, agree4: 0, agreeAll: 0, success: 0, stepsRatio: 0, levelSuccess: 0, maps: 0 }; let n2 = 0, nr = 0, nl = 0, ns = 0, s3 = 0, c3 = 0, s4 = 0, c4 = 0;
     keys.forEach(k => { const r = perMap[k]; if (!r) return; o.maps++;
       if (r.agree2 != null) { o.agree2 += r.agree2; n2++; }
       if (r.agree3 != null) { s3 += r.agree3 * r.n3; c3 += r.n3; }
+      if (r.agree4 != null) { s4 += r.agree4 * r.n4; c4 += r.n4; }
       if (r.agreeAll != null) o.agreeAll += r.agreeAll;
       if (r.success != null) { o.success += r.success; nr++; }
       if (r.stepsRatio != null) { o.stepsRatio += r.stepsRatio; ns++; }
       if (r.levelSuccess != null) { o.levelSuccess += r.levelSuccess; nl++; } });
-    o.agree2 = n2 ? o.agree2 / n2 : null; o.agree3 = c3 ? s3 / c3 : null; o.n3 = c3; o.agreeAll = o.maps ? o.agreeAll / o.maps : null; o.success = nr ? o.success / nr : null;
+    o.agree2 = n2 ? o.agree2 / n2 : null; o.agree3 = c3 ? s3 / c3 : null; o.n3 = c3; o.agree4 = c4 ? s4 / c4 : null; o.n4 = c4; o.agreeAll = o.maps ? o.agreeAll / o.maps : null; o.success = nr ? o.success / nr : null;
     o.stepsRatio = ns ? o.stepsRatio / ns : null; o.levelSuccess = nl ? o.levelSuccess / nl : null;
-    for (const k in o) if (typeof o[k] === 'number' && k !== 'maps' && k !== 'n3') o[k] = +o[k].toFixed(4);
+    for (const k in o) if (typeof o[k] === 'number' && k !== 'maps' && k !== 'n3' && k !== 'n4') o[k] = +o[k].toFixed(4);
     return o;
+  }
+  // deep level starts: filled within 1x and 3x par (greedy), from Testbench.run results
+  const DEEP_STARTS = ['six-ring-trap', 'second-pit', 'deepest-pit', 'depth-5'];
+  function deepStarts(perMap, ids) {
+    ids = ids || DEEP_STARTS; const o = { ids, within1: 0, within3: 0, n: 0, detail: {} };
+    for (const k in perMap) { const L = perMap[k].levels || {}; for (const id of ids) if (L[id]) { const r = L[id]; o.n++; o.detail[id] = r.steps; if (r.steps != null && r.steps <= r.par) o.within1++; if (r.steps != null && r.steps <= 3 * r.par) o.within3++; } }
+    o.within1 = o.n ? +(o.within1 / o.n).toFixed(4) : null; o.within3 = o.n ? +(o.within3 / o.n).toFixed(4) : null; return o;
   }
   // a greedy agent from a network (value = afterstate argmax, policy = chain-head argmax)
   function netAgent(net, mode, gamma) {
@@ -940,7 +1246,8 @@
     meta = meta || {};
     const f32 = Float32Array.from(net.params), a = net.arch;
     return Object.assign({ format: 'mazearena-model-1', name: meta.name || 'model', date: meta.date || new Date().toISOString(),
-      arch: { H: a.H, K: a.K, H1: a.H1, Hp: a.Hp, F: a.F, GD: a.GD, CF: a.CF, chainFeats: a.chainFeats, readout: a.readout, heads: a.heads, feat: a.feat },
+      arch: a.kind === 'rec' ? { kind: 'rec', H: a.H, T: a.T, H1: a.H1, Hq: a.Hq, F: a.F, holeRead: a.holeRead, readout: a.readout, heads: a.heads, feat: a.feat, track: 'tabula rasa' }
+        : { kind: 'gnn', H: a.H, K: a.K, H1: a.H1, Hp: a.Hp, F: a.F, GD: a.GD, CF: a.CF, chainFeats: a.chainFeats, readout: a.readout, heads: a.heads, feat: a.feat, track: 'priors' },
       paramCount: net.size, rl: meta.rl || null, training: meta.training || null, metrics: meta.metrics || null },
       meta.extra || {}, { weights: { dtype: 'float32', shapes: net.shapes.map(([nm, r, c]) => [nm, r, c]), b64: b64FromBytes(new Uint8Array(f32.buffer)) } });
   }
@@ -955,7 +1262,8 @@
 
   const ARENA = { rng, hashStr, shuffle, now, makeGraph, graphFromLevels, levelMaps, PAIRS, rimCount, won, canon, decodeCanon, chainsOf, movesOf, flip,
     distOf, exactDistances, generateGraph, checkTriangulation, randomBlocked, relClasses, encode, F, GD, CF, archDefaults, shapesOf, netCreate,
-    paramCount, netForward, netBackward, netValue, adamCreate, adamStep, scoreMoves, policyScores, argmax, baselines, rlDefaults, makeEnv,
+    paramCount, netForward, recDefaults, recShapes, encodeRaw, actionTable, policyLoss, netShare, DEEP_STARTS, deepStarts,
+    allColourings, stateSpace, Tri, mirrorGraph, spliceRandom, hardness, graphSpec, netBackward, netValue, adamCreate, adamStep, scoreMoves, policyScores, argmax, baselines, rlDefaults, makeEnv,
     envStart, Trainer, auxSSL, pretrainDefaults, Pretrainer, Testbench, aggregate, netAgent, stateGraph, layoutStateGraph, modelToJSON, modelFromJSON };
   if (typeof module !== 'undefined' && module.exports) module.exports = ARENA;
   root.ARENA = ARENA;

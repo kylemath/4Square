@@ -33,7 +33,10 @@ Candy-Crush gesture of swapping two neighbouring candies into the Kempe chain th
 in a Web Worker, and scores it on held-out maps: does it pick a swap that lowers the exact distance to a fill (from
 the census) on maps it never trained on? Models are plain JSON with their settings and metrics, ranked on a
 leaderboard (committed ones in `lab/arena/models/`, made by `node tools/arena_train.js`; tests in
-`node tools/arena_check.js`). Pretraining on random generated maps and what scaling it up would take:
+`node tools/arena_check.js`). Two tracks: *tabula rasa* nets (a weight-tied recurrent message-passing net that sees only
+the map, raw colours and the hole) and *priors* nets (given hand-made chain features). Hard training data (every
+census state, splice variants and evolved trap maps with exact distances) comes from `node tools/arena_hardgen.js`
+and 4-core training from `node tools/arena_scale.js`. Results, and what scaling up would take:
 [lab/arena/PRETRAINING.md](lab/arena/PRETRAINING.md).
 
 Research logging is off unless the player agrees on the title screen, and it stays on the device unless an upload

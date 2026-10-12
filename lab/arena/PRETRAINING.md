@@ -107,3 +107,114 @@ input unchanged (tested). After pretraining the value head starts as minus the d
 7. **Evaluation.** Score every checkpoint with the same held-out testbench (`ARENA.Testbench`, all 16 four-colour level
    maps, census labels) and report agree2, agree3 and success against the random, hand-rule and two-ply rows in
    `models/index.json`.
+
+## Round 2: a hard data pool, a tabula-rasa track, one hour on 4 cores
+
+**Tracks.** The round-1 nets are now the *priors* track: they are given rim-relative colours, degree, rim position
+and per-chain features (which is most of the Kempe-chain reasoning, built in). The main track of round 2 is *tabula
+rasa*: inputs are the adjacency, RAW colour one-hots and the hole flag, nothing else. Colour symmetry is not built
+in: training applies a random colour permutation to every sample. The rules (which swaps are legal, when the hole
+fills) stay with the environment, as chess rules do in AlphaZero. The net (`arch.kind = 'rec'` in `engine.js`) is
+one weight-tied message-passing layer iterated T times with the input injected every iteration ("deep thinking"
+style): h_t = tanh(Ws h + Wn Σ neighbours / 6 + Wx x + b). Chains can be 30 regions long, so depth comes from T
+rather than from features. Two agents share it: the afterstate value (uses the simulator to look one swap ahead),
+and a "click a region, pick a colour" policy head that needs no simulator (the env turns the click into the swap).
+
+**Data (`node tools/arena_hardgen.js`, 4 worker threads, 12 min + 6 min writing).** Every state of every census map
+(whole state spaces by enumeration; they equal the census exactly), 106 single-splice variants of the training maps,
+and an evolutionary hardness search: 3,371 maps evaluated in total; parents mutated by 1-3 splices; score = Σ over
+states with d ≥ 3 of 8^(d-3), divided by √(unfilled states / 1000); 1,615 distinct maps with deep states, the
+hardest 160 kept. 20% of the splice/evolved maps are held out as the *hard pool* test set. These maps descend from
+training maps, so the hard pool tests near-distribution generalisation; the census test maps are the
+out-of-distribution test. The census test maps and anything derived from them are never used for training. The small
+triangulations of GraphColourDeductiveSolver (n ≤ 11, 1,587 graph/hole pairs) were checked and are at most 2 swaps
+deep, so they were not used. Mirrors are applied at sampling time and not stored. For the tabula-rasa net a mirror
+is the same input (no orientation anywhere); rim rotations and vertex relabelling are no-ops for both tracks.
+
+| unfilled states by depth d | 1 | 2 | 3 | 4 | 5 | 6 |
+|---|---|---|---|---|---|---|
+| round 1 (census of the 9 training maps) | 11,468 | 3,028 | 49 | 5 | 3 | 1 |
+| round 2 pool, all states (222 training maps) | 3,178,156 | 1,390,696 | 130,336 | 502 | 21 | 7 |
+| round 2 training records (d = 1 and 2 capped per map) | 262,028 | 261,562 | 130,336 | 502 | 21 | 7 |
+| round 2 hard pool (53 held-out maps), all states | 784,776 | 346,203 | 30,941 | 63 | 6 | 2 |
+
+The search found many states 3 swaps deep (2,660× round 1) but few deeper ones (d ≥ 4: 530 vs 9). Its best
+depth-4-rich map has 3,563 states at d = 3 and 85 at d = 4 (n = 42). Depth 5-6 states still come only from r178 and its
+close variants: deep traps are rare even among hard maps.
+
+**Training (`node tools/arena_scale.js`).** The labels are exact, so the main lever is supervised distillation rather
+than RL. Per sample (deep states oversampled 15/35/30/20% for d = 1/2/3/4+) the losses are:
+- value regression on −d(s);
+- for one good and one bad swap, regression of both afterstates plus a logistic ranking loss (good above bad);
+- (tabula rasa) −log P(good click) over all legal (region, colour) clicks.
+
+RL fine-tuning was not run. With exact labels for every state, TD targets are noisier versions of the same labels,
+and at about 80 samples/s for the recurrent net an RL phase would have cost more than it could add. The training is
+synchronous data parallelism with `worker_threads`: weights in one SharedArrayBuffer read directly by the workers,
+one gradient slot per worker in another, and the main thread sums the slots and applies AdamW. Recurrent nets train
+with T drawn from [T/2, T] per sample.
+
+| throughput (samples/s; one sample = 1-3 forward+backward passes) | 1 worker | 2 workers | 4 workers |
+|---|---|---|---|
+| tabula rasa rec H32 T16 | 48 | 92 | 156 (3.2×) |
+| priors GNN H16 K3 | 701 | – | 2,080 (3.0×) |
+
+Encoding is not the bottleneck. Building the raw input plus the move list (chain extraction) takes about 11 µs, against
+about 8 ms for a forward+backward pass at H32 T16, so caching feature tensors would save under 1%. Unrolling the
+recurrent loops gave no measurable gain.
+
+**The one-hour run.** Three models ran concurrently on the 4 cores:
+- tabula rasa rec H32 T16, 2 workers: 306k samples;
+- tabula rasa rec H16 T24, 1 worker: 371k samples;
+- priors GNN H16 K3, 1 worker: 2.49M samples.
+
+Learning curves:
+- The tabula-rasa value loss fell from 1.10 to 0.42 in the first 5 minutes and then only to 0.31 by minute 60.
+- The tabula-rasa ranking loss stayed near 1.8 (2.13 = no discrimination); the policy loss went from 0.92 to 0.80.
+- The priors GNN reached value loss 0.036 and ranking loss 0.66.
+- A sanity check confirms the tabula-rasa pipeline can learn: the same net reaches 100% on tidy-trap (48 states)
+  after about 50k samples. On 222 maps it needs far more data and compute than an hour of CPU gives.
+
+| model (track) | params | held-out agree2 / agree3 / agree4+ (49 and 9 states) | hard pool agree2 / agree3 | deep starts within par | success |
+|---|---|---|---|---|---|
+| priors-gnn-h16-k3-pool (priors, hard-pool distillation) | 7,759 | 99.0 / 89.8 / 66.7 | **98.7 / 97.4** | 3/4 | 98.9 |
+| mid-rl (priors, round 1 RL) | 7,759 | 99.2 / 91.8 / 66.7 | 86.3 / 73.2 | 2/4 | 97.8 |
+| nano-rl (priors, round 1 RL) | 679 | 99.0 / 89.8 / 66.7 | 84.9 / 70.6 | 3/4 | 98.9 |
+| colours-only-pretrained (priors without chain features) | 30,383 | 92.5 / 81.6 / 55.6 | 80.7 / 74.8 | 3/4 | 96.7 |
+| tr-rec-h32-t16 click policy (tabula rasa, no simulator) | 11,781 | 77.8 / **85.7** / 66.7 | 64.9 / 68.3 | 0/4 | 36.3 |
+| tr-rec-h32-t16 afterstate value (tabula rasa) | 11,781 | 67.6 / 67.3 / 55.6 | 57.2 / 62.4 | 1/4 | 92.3 |
+| tr-rec-h16-t24 click policy (tabula rasa) | 3,077 | 72.3 / 77.5 / 66.7 | 67.0 / 72.9 | 0/4 | 28.6 |
+| two-ply count (search baseline) | 0 | 97.5 / 81.6 / 66.7 | 76.0 / 53.9 | 0/4 | 100 |
+| hand rule | 0 | 68.3 / 71.4 / 55.6 | 65.3 / 67.0 | 1/4 | 96.7 |
+| random | 0 | 62.5 / 63.3 / 66.7 | 52.8 / 57.2 | 0/4 | 68.1 |
+
+Deep starts are six-ring-trap (par 4), second-pit (par 5), deepest-pit (par 6) and depth-5 (par 5). The last two are
+on r178, a training map, so they are not held out. Within 3× par is too loose to separate anything (random gets 3/4),
+so the table shows within par. agree4+ rests on 9 states, so differences there are noise.
+
+**Iterations at test time** (train T, test 2T):
+
+| model | T | value agree3 test / hard | policy agree3 test / hard |
+|---|---|---|---|
+| tr-rec-h32-t16 | 16 | 67.3 / 62.4 | 85.7 / 68.3 |
+| tr-rec-h32-t16 | 32 | 75.5 / 62.7 | 85.7 / 68.3 |
+| tr-rec-h16-t24 | 24 | 51.0 / 66.3 | 77.5 / 72.9 |
+| tr-rec-h16-t24 | 48 | 51.0 / 66.3 | 77.5 / 73.2 |
+
+The tanh recurrence is stable at 2T: nothing degrades and the value agent gains a little, but extra iterations do not
+create skill the net has not learned.
+
+**What this says.**
+- **Hard-pool distillation is the round's clear win for the priors track.** Held-out hard-pool agree3 rose from
+  about 73% for every round-1 model to 97.4%. Two-ply search scores 53.9% there, below random: the evolved maps are
+  traps for greedy lookahead. Its census test scores did not move (agree3 89.8%).
+- **Tabula rasa learns something real but far less in an hour.** The click policy picks a distance-lowering swap on
+  85.7% of the held-out census d ≥ 3 states, above the two-ply search (81.6%) and random (63.3%). But its agree2
+  (77.8%) is far below two-ply (97.5%), and it is weaker on the hard pool (68%, roughly the hand rule).
+- **The tabula-rasa value head barely beats random** (ranking loss never moved); the policy head is the one that learned.
+- **The click policy fails on rollouts** because it does not always take an available fill (36% success), while the
+  value agent fills whenever it can (92%).
+- **Honest reading.** Without the built-in chain features, an hour of 4-core CPU (300-370k samples) is far from
+  enough. The trap17 sanity run suggests the architecture can learn this, but sample needs scale with the number of
+  distinct maps. The bitter-lesson path is the PyTorch/JAX port above, with this pool generator as the data source and
+  10^8-10^9 samples.

@@ -27,6 +27,13 @@
   (localStorage, at most 16). Ranked by held-out agree2, then held-out success, then fewer parameters. Model files are
   plain JSON ('mazearena-model-1': date, architecture, RL and training settings, metrics, base64 float32 weights).
 
+  Round 2: two tracks, labelled on the leaderboard. TABULA RASA nets (arena/engine.js arch.kind 'rec') see only the
+  map, raw colours and the hole; a weight-tied recurrent message-passing layer iterated T times; an afterstate value
+  and a "click a region, pick a colour" head. PRIORS nets are the round-1 GNN with hand-made chain features. Extra
+  leaderboard columns: agree4+, the hard held-out pool (evolved trap maps from tools/arena_hardgen.js) and deep level
+  starts; rank by any of them. Data options here: mirror images and single-splice variants of the training maps; the
+  big pool and the one-hour 4-core runs are headless (tools/arena_scale.js).
+
   Controls: Start / Pause / Reset, speed (slow: watch every step; fast; turbo: fewer screen updates), Save to the
   leaderboard (runs the full testbench), Pretrain (objectives on random maps generated in the worker, then RL), Size
   sweep (several H x K for the same budget, each to the leaderboard), Watch (a saved model plays greedily, no
@@ -67,6 +74,10 @@
   .bd { padding: 2px 10px 10px; }
   .row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 4px 0; }
   .row label { color: var(--dim); }
+  body.rec .gnnOnly, body:not(.rec) .recOnly { display: none; }
+  .trk { font-size: 10px; padding: 0 4px; border-radius: 4px; margin-left: 4px; font-style: normal; font-weight: 700; }
+  .trk.tr { background: rgba(95,211,141,.18); color: var(--good); } .trk.pr { background: rgba(199,146,234,.18); color: #c792ea; }
+  .lbopts { display: flex; gap: 6px; align-items: center; color: var(--dim); font-size: 12px; }
   .row.btns { justify-content: flex-start; flex-wrap: wrap; }
   .note { color: var(--dim); font-size: 11.5px; margin: 6px 0 2px; }
   .pc { color: var(--acc); font-weight: 700; }
@@ -155,12 +166,20 @@
       <div id="lvlList"></div>
       <p class="note">Held-out = test levels whose map is not in training (a level on a training map is struck through).</p>
     </div></details>
+    <details class="box"><summary>Data <small>augmentation</small></summary><div class="bd">
+      <div class="row"><label for="mirror">Mirror images</label><select id="mirror"><option value="0">off</option><option value="1" selected>half the training mice</option></select></div>
+      <div class="row"><label for="splices">Splice variants</label><input type="number" id="splices" min="0" max="40" value="0"></div>
+      <p class="note">Mirror: the rim's cyclic order reversed, same labels (a different input for the priors GNN, the same input for the tabula-rasa net). Splice variants: single edge flips / vertex insertions / removals of the training maps that keep states 3+ swaps deep, each with its whole state space, walked by 2 unseen mice that start in the deepest states. The big hard pool (thousands of evolved maps) is built by tools/arena_hardgen.js for headless training. Applies on Reset.</p>
+    </div></details>
     <details class="box" open><summary>Network <small>params <span class="pc" id="pcount">–</span></small></summary><div class="bd">
+      <div class="row"><label for="kind">Track</label><select id="kind"><option value="rec">tabula rasa: recurrent net</option><option value="gnn" selected>priors: chain-feature GNN</option></select></div>
       <div class="row"><label for="H">Width H</label><select id="H"><option>4</option><option>8</option><option selected>16</option><option>24</option><option>32</option><option>48</option><option>64</option></select></div>
-      <div class="row"><label for="K">Message rounds K</label><select id="K"><option>1</option><option>2</option><option selected>3</option><option>4</option><option>5</option><option>6</option></select></div>
-      <div class="row"><label for="feats">Inputs</label><select id="feats"><option value="1" selected>colours + chain features</option><option value="0">colours only</option></select></div>
+      <div class="row recOnly"><label for="T">Iterations T</label><select id="T"><option>4</option><option selected>8</option><option>12</option><option>16</option><option>24</option><option>32</option></select></div>
+      <div class="row gnnOnly"><label for="K">Message rounds K</label><select id="K"><option>1</option><option>2</option><option selected>3</option><option>4</option><option>5</option><option>6</option></select></div>
+      <div class="row gnnOnly"><label for="feats">Inputs</label><select id="feats"><option value="1" selected>colours + chain features</option><option value="0">colours only</option></select></div>
       <div class="row"><label for="seed">Seed</label><input type="number" id="seed" value="1"></div>
-      <p class="note">GNN: h' = relu(Ws h + Wn mean(nbrs) + b), K rounds; readout mean, max, 5 rim and hole embeddings; MLP 2H; heads value, distance, swap policy, masked colour, chains. Applies on Reset.</p>
+      <p class="note gnnOnly">Priors GNN: rim-relative colours, degree, rim position and per-chain features in; h' = relu(Ws h + Wn mean(nbrs) + b), K rounds; readout mean, max, 5 rim and hole embeddings. Applies on Reset.</p>
+      <p class="note recOnly">Tabula rasa: raw colour one-hots and the hole flag only (colour symmetry learned from random colour permutations); one weight-tied layer h = tanh(Ws h + Wn Σnbrs/6 + Wx x + b) iterated T times; heads: afterstate value and "click a region, pick a colour". Slow in a browser tab: the strong ones are trained with tools/arena_scale.js. Applies on Reset.</p>
     </div></details>
     <details class="box"><summary>RL <small>afterstate TD, live</small></summary><div class="bd">
       <div class="row"><label for="lr">Learning rate</label><input type="number" id="lr" step="0.0001" value="0.001"></div>
@@ -189,7 +208,7 @@
       <div class="row btns"><button id="bPre">Pretrain, then RL</button></div>
     </div></details>
     <details class="box"><summary>Size sweep <small>params vs agreement</small></summary><div class="bd">
-      <div class="row"><label for="swCfg">H×K list</label><input type="text" id="swCfg" value="4x2 8x2 16x2 16x3 32x3" style="width:150px"></div>
+      <div class="row"><label for="swCfg">H×K list (H×T)</label><input type="text" id="swCfg" value="4x2 8x2 16x2 16x3 32x3" style="width:150px"></div>
       <div class="row"><label for="swEp">Episodes each</label><input type="number" id="swEp" value="2500"></div>
       <p class="note">Same maps, RL settings and seed for every size; each result is saved to the leaderboard (see the size chart).</p>
       <div class="row btns"><button id="bSweep">Run sweep</button><button id="bStopSweep" disabled>Stop</button></div>
@@ -208,14 +227,16 @@
     <div class="chart"><h3>Train success <small>episodes that fill, last 300</small></h3><canvas id="cSucc"></canvas></div>
     <div class="chart"><h3>TD loss <small>Huber, log scale</small></h3><canvas id="cLoss"></canvas></div>
     <div class="chart"><h3>Network size <small>held-out agree2 vs params</small></h3><canvas id="cSize"></canvas>
-      <div class="legend"><span><i style="background:var(--acc)"></i>colours + chains</span><span><i style="background:#c792ea"></i>colours only</span><span><i style="background:#5fd38d"></i>pretrained</span></div></div>
+      <div class="legend"><span><i style="background:var(--acc)"></i>colours + chains</span><span><i style="background:#c792ea"></i>colours only</span><span><i style="background:#5fd38d"></i>pretrained</span><span><i style="background:#4fb3ff"></i>tabula rasa</span></div></div>
   </section>
 
   <section id="board">
-    <div class="boardHead"><h2>Leaderboard <small style="color:var(--dim);font-weight:500">testbench: held-out maps, ranked by agree2</small></h2>
+    <div class="boardHead"><h2>Leaderboard <small style="color:var(--dim);font-weight:500">testbench: held-out maps and deep states</small></h2>
+      <span class="lbopts"><label for="lbTrack">track</label><select id="lbTrack"><option value="all">all</option><option value="tabula rasa">tabula rasa</option><option value="priors">priors</option></select>
+        <label for="lbRank">rank by</label><select id="lbRank"><option value="agree2">held-out agree2</option><option value="agree3">held-out agree3</option><option value="hard">hard pool</option><option value="deep">deep starts</option></select></span>
       <button id="bImport">Import JSON</button><input type="file" id="fImport" accept=".json,application/json" hidden></div>
-    <div class="tblWrap"><table class="lb"><thead><tr><th>#</th><th>model</th><th>held-out agree2</th><th>agree3</th><th>success</th><th>train agree2</th><th>params</th><th>arch</th><th>training</th></tr></thead><tbody id="lbBody"></tbody></table></div>
-    <p class="note">agree2: share of states 2+ swaps from a fill (sampled from each map's census) where the model's top swap lowers the exact distance by one; agree3: the same on 3+ (pooled); success: greedy rollouts from level starts and random states that fill within 3× the exact distance. Held-out maps are the model's own test split (default: c30, p32r11, p34r28, c60, six, trap17, r210).</p>
+    <div class="tblWrap"><table class="lb"><thead><tr><th>#</th><th>model</th><th title="census test maps, states 2+ swaps out">held-out agree2</th><th title="census test maps, 3+ swaps out (pooled)">agree3</th><th title="census test maps, 4+ swaps out (pooled; few states)">agree4+</th><th title="held-out evolved hard maps, states 3+ swaps out">hard pool</th><th title="six-ring-trap, second-pit, deepest-pit, depth-5 starts filled within 3x par (1x par in brackets)">deep starts</th><th>success</th><th>train agree2</th><th>params</th><th>arch</th><th>training</th></tr></thead><tbody id="lbBody"></tbody></table></div>
+    <p class="note">Two tracks: <b>tabula rasa</b> nets see only the map's adjacency, raw colours and the hole (the rules still say which swaps are legal); <b>priors</b> nets get hand-made rim-relative colours and per-chain features. agree2 / agree3 / agree4+: share of census states 2+ / 3+ / 4+ swaps from a fill on the held-out maps (c30, p32r11, p34r28, c60, six, trap17, r210) where the model's top swap lowers the exact distance by one (agree3 and agree4+ pool the states: 49 and 9 of them). Hard pool: the same on states 3+ deep of held-out evolved maps from tools/arena_hardgen.js (headless only). Deep starts: the six-ring-trap, second-pit, deepest-pit and depth-5 level starts filled greedily within 3× par (within par in brackets; deepest-pit and depth-5 are on a training map). Success: greedy rollouts within 3× the exact distance.</p>
   </section>
 </div>
 <div id="err"></div>
@@ -273,7 +294,7 @@
     const S = split(), w = $('pW').value.trim().split(/[\s,]+/).map(Number);
     return {
       trainLevels: S.trainLevels, testLevels: S.testLevels, panels: num('panels'), mice: Math.max(1, Math.min(32, num('mice') | 0)), rotateEvery: num('rotate'),
-      arch: { H: num('H'), K: num('K'), chainFeats: $('feats').value === '1' }, seed: num('seed'), evalEvery: Math.max(50, num('evalEvery')),
+      arch: archCfg(), seed: num('seed'), evalEvery: Math.max(50, num('evalEvery')), mirror: $('mirror').value === '1', splices: Math.max(0, Math.min(40, num('splices') | 0)),
       rl: rlCfg(), pre: { steps: num('pSteps'), batch: num('pBatch'), source: $('pSource').value, nMin: 12, nMax: num('pN0'), nMaxEnd: num('pN1'), exactMax: 26, wA: w[0] || 0, wB: w[1] || 0, wC: w[2] || 0, wD: w[3] || 0 },
     };
   }
@@ -282,11 +303,14 @@
       targetSync: num('targetSync'), nstep: num('nstep'), backup: $('backup').value, auxWeight: num('aux'), episodeCap: num('cap'), updateEvery: num('updateEvery'),
       explore: $('explore').value, temp: num('temp'), startMix: num('startMix') };
   }
+  function archCfg() { return $('kind').value === 'rec' ? { kind: 'rec', H: num('H'), T: num('T') } : { H: num('H'), K: num('K'), chainFeats: $('feats').value === '1' }; }
   function updateParamCount() {
-    const a = A.archDefaults({ H: num('H'), K: num('K') }); let s = 0; A.shapesOf(a).forEach(([, r, c]) => { s += r * c; });
+    const a = A.archDefaults(archCfg()); let s = 0; A.shapesOf(a).forEach(([, r, c]) => { s += r * c; });
     $('pcount').textContent = s.toLocaleString();
+    const rec = $('kind').value === 'rec'; document.body.classList.toggle('rec', rec); $('bPre').disabled = rec;
+    $('bPre').title = rec ? 'Pretraining objectives belong to the priors GNN; train tabula-rasa nets with tools/arena_scale.js' : '';
   }
-  const UI_IDS = ['panels', 'mice', 'rotate', 'heat', 'preset', 'H', 'K', 'feats', 'seed', 'lr', 'gamma', 'explore', 'epsStart', 'epsEnd', 'epsDecay', 'temp', 'nstep', 'backup', 'batch', 'updateEvery', 'replay', 'targetSync', 'aux', 'cap', 'startMix', 'evalEvery', 'pSteps', 'pBatch', 'pSource', 'pN0', 'pN1', 'pW', 'swCfg', 'swEp', 'speed'];
+  const UI_IDS = ['panels', 'mice', 'rotate', 'heat', 'preset', 'kind', 'T', 'mirror', 'splices', 'H', 'K', 'feats', 'seed', 'lr', 'gamma', 'explore', 'epsStart', 'epsEnd', 'epsDecay', 'temp', 'nstep', 'backup', 'batch', 'updateEvery', 'replay', 'targetSync', 'aux', 'cap', 'startMix', 'evalEvery', 'pSteps', 'pBatch', 'pSource', 'pN0', 'pN1', 'pW', 'swCfg', 'swEp', 'speed'];
   function saveUI() { const o = { sel }; UI_IDS.forEach(id => { o[id] = $(id).value; }); lsSet(LS_UI, o); }
   function loadUI() { const o = lsGet(LS_UI, null); if (!o) return false; UI_IDS.forEach(id => { if (o[id] != null) $(id).value = o[id]; }); if (o.sel) Object.assign(sel, o.sel); return !!o.sel; }
 
@@ -420,42 +444,48 @@
     [0.5, 0.75, 1].forEach(v => { const y = toY(v); c.beginPath(); c.moveTo(L, y); c.lineTo(w - R, y); c.stroke(); c.fillText(Math.round(v * 100) + '%', 2, y + 3); });
     for (let e = Math.ceil(Math.log10(pmin)); e <= Math.floor(Math.log10(pmax)); e++) { const x = toX(Math.pow(10, e)), t = (e >= 3 ? Math.pow(10, e - 3) + 'k' : String(Math.pow(10, e))) + (e === Math.floor(Math.log10(pmax)) ? ' params' : ''); c.fillText(t, Math.min(x - 6, w - R - c.measureText(t).width), h - 2); }
     if (baselines && baselines.twoply) { const y = toY(baselines.twoply.test.agree2); c.setLineDash([3, 3]); c.strokeStyle = '#aaa'; c.beginPath(); c.moveTo(L, y); c.lineTo(w - R, y); c.stroke(); c.setLineDash([]); }
-    ms.forEach(m => { const x = toX(m.params), y = toY(m.test.agree2); c.fillStyle = m.pre ? '#5fd38d' : m.cf === false ? '#c792ea' : '#ffcf5a'; c.beginPath(); c.arc(x, y, m.cur ? 4.5 : 3.2, 0, 7); c.fill(); });
+    ms.forEach(m => { const x = toX(m.params), y = toY(m.test.agree2); c.fillStyle = m.kind === 'rec' ? '#4fb3ff' : m.pre ? '#5fd38d' : m.cf === false ? '#c792ea' : '#ffcf5a'; c.beginPath(); c.arc(x, y, m.cur ? 4.5 : 3.2, 0, 7); c.fill(); });
   }
 
   // ---------------------------------------------------------------- leaderboard
   let committed = [], local = lsGet(LS_MODELS, []), hidden = lsGet(LS_HIDE, []);
-  const summary = (M, src, file) => ({ name: M.name, date: M.date, params: M.paramCount, H: M.arch.H, K: M.arch.K, cf: M.arch.chainFeats, pre: !!(M.training && M.training.pretrain),
-    test: M.metrics && M.metrics.test, train: M.metrics && M.metrics.train, rl: M.rl, training: M.training, src, file, json: src === 'local' ? M : null, id: src + ':' + (file || M.date + M.name) });
-  function boardRows() {
-    const rows = committed.concat(local.map(M => summary(M, 'local'))).filter(r => hidden.indexOf(r.id) < 0);
+  const trackOf = arch => arch.kind === 'rec' ? 'tabula rasa' : 'priors';
+  const summary = (M, src, file) => ({ name: M.name, date: M.date, params: M.paramCount, kind: M.arch.kind || 'gnn', H: M.arch.H, K: M.arch.K, T: M.arch.T, cf: M.arch.chainFeats, track: trackOf(M.arch), pre: !!(M.training && M.training.pretrain),
+    test: M.metrics && M.metrics.test, train: M.metrics && M.metrics.train, hardpool: M.metrics && M.metrics.hardpool, deepStarts: M.metrics && M.metrics.deepStarts,
+    rl: M.rl, training: M.training, src, file, json: src === 'local' ? M : null, id: src + ':' + (file || M.date + M.name) });
+  const rankKey = r => { const k = $('lbRank').value; return k === 'agree3' ? r.test && r.test.agree3 : k === 'hard' ? r.hardpool && r.hardpool.agree3 : k === 'deep' ? r.deepStarts && r.deepStarts.within3 : r.test && r.test.agree2; };
+  function boardRows(all) {
+    const tf = $('lbTrack').value;
+    const rows = committed.concat(local.map(M => summary(M, 'local'))).filter(r => hidden.indexOf(r.id) < 0 && (all || tf === 'all' || r.track === tf));
     rows.forEach(r => { r.cur = curName && r.name === curName; });
-    rows.sort((a, b) => ((b.test && b.test.agree2) || 0) - ((a.test && a.test.agree2) || 0) || ((b.test && b.test.success) || 0) - ((a.test && a.test.success) || 0) || a.params - b.params);
+    rows.sort((a, b) => (rankKey(b) || 0) - (rankKey(a) || 0) || ((b.test && b.test.agree2) || 0) - ((a.test && a.test.agree2) || 0) || ((b.test && b.test.success) || 0) - ((a.test && a.test.success) || 0) || a.params - b.params);
     return rows;
   }
+  const deepTxt = d => d && d.n ? `${pct(d.within3)} <small style="color:var(--dim)">(${pct(d.within1)})</small>` : '–';
   const bar = v => v == null ? '' : `<span class="bar"><i style="width:${Math.round(100 * v)}%"></i></span>`;
   function renderBoard() {
     const rows = boardRows(), body = $('lbBody'); let h = '';
     rows.forEach((r, i) => {
       const rl = r.rl || {}, tr = r.training || {}, pre = tr.pretrain;
-      const trainTxt = (tr.episodes || 0).toLocaleString() + ' RL episodes' + (pre ? ' + pretrain on ' + (pre.graphs || 0).toLocaleString() + ' random maps' : '') +
-        (r.rl ? `<br><small>lr ${rl.lr} γ ${rl.gamma} n ${rl.nstep} ε ${rl.epsStart}→${rl.epsEnd}/${rl.epsDecay} batch ${rl.batch}${rl.auxWeight ? ' aux ' + rl.auxWeight : ''}${tr.wallSeconds ? ' · ' + Math.round(tr.wallSeconds) + ' s' : ''}</small>` : '');
-      h += `<tr class="${r.cur ? 'cur' : ''}"><td class="k">${i + 1}</td><td class="nm"><b>${esc(r.name)}<span class="src">${r.src}</span></b><small>${(r.date || '').slice(0, 16).replace('T', ' ')}</small>` +
+      const trainTxt = tr.samples ? (tr.samples.toLocaleString() + ' pool samples (exact-distance distillation)' + (tr.wallSeconds ? ' · ' + Math.round(tr.wallSeconds / 60) + ' min, ' + tr.workers + ' workers' : '')) :
+        (tr.episodes || 0).toLocaleString() + ' RL episodes' + (pre ? ' + pretrain on ' + (pre.graphs || 0).toLocaleString() + ' random maps' : '') +
+        (r.rl && r.rl.lr != null ? `<br><small>lr ${rl.lr} γ ${rl.gamma} n ${rl.nstep} ε ${rl.epsStart}→${rl.epsEnd}/${rl.epsDecay} batch ${rl.batch}${rl.auxWeight ? ' aux ' + rl.auxWeight : ''}${tr.wallSeconds ? ' · ' + Math.round(tr.wallSeconds) + ' s' : ''}</small>` : '');
+      h += `<tr class="${r.cur ? 'cur' : ''}"><td class="k">${i + 1}</td><td class="nm"><b>${esc(r.name)}<span class="trk ${r.track === 'tabula rasa' ? 'tr' : 'pr'}">${r.track}</span><span class="src">${r.src}</span></b><small>${(r.date || '').slice(0, 16).replace('T', ' ')}</small>` +
         `<div class="acts"><button data-a="watch" data-i="${r.id}" title="Play greedily in the panels, no training">Watch</button><button data-a="load" data-i="${r.id}" title="Use as the current network (Start keeps training it)">Load</button><button data-a="export" data-i="${r.id}" title="Download the model JSON">Export</button><button data-a="del" data-i="${r.id}" title="${r.src === 'local' ? 'Delete from this browser' : 'Hide in this browser'}" aria-label="Delete">✕</button></div></td>` +
-        `<td><b>${pct(r.test && r.test.agree2)}</b>${bar(r.test && r.test.agree2)}</td><td>${pct(r.test && r.test.agree3)}</td><td>${pct(r.test && r.test.success)}</td><td>${pct(r.train && r.train.agree2)}</td>` +
-        `<td>${(r.params || 0).toLocaleString()}</td><td>H${r.H}·K${r.K}<br><small>${r.cf === false ? 'colours only' : 'colours+chains'}</small></td><td class="tr">${trainTxt}</td></tr>`;
+        `<td><b>${pct(r.test && r.test.agree2)}</b>${bar(r.test && r.test.agree2)}</td><td>${pct(r.test && r.test.agree3)}</td><td>${pct(r.test && r.test.agree4)}</td><td>${pct(r.hardpool && r.hardpool.agree3)}</td><td>${deepTxt(r.deepStarts)}</td><td>${pct(r.test && r.test.success)}</td><td>${pct(r.train && r.train.agree2)}</td>` +
+        `<td>${(r.params || 0).toLocaleString()}</td><td>${r.kind === 'rec' ? 'rec H' + r.H + '·T' + r.T + '<br><small>raw colours + hole</small>' : 'GNN H' + r.H + '·K' + r.K + '<br><small>' + (r.cf === false ? 'rim-relative colours' : 'colours+chains') + '</small>'}</td><td class="tr">${trainTxt}</td></tr>`;
     });
     if (baselines) [['twoply', 'two-ply count (search, no learning)'], ['hand', 'hand rule: fill now, else a rim chain'], ['random', 'random swap']].forEach(([k, label]) => {
       const b = baselines[k]; if (!b) return;
-      h += `<tr class="base"><td></td><td class="nm"><b>${label}</b><small>baseline</small></td><td>${pct(b.test.agree2)}${bar(b.test.agree2)}</td><td>${pct(b.test.agree3)}</td><td>${pct(b.test.success)}</td><td>${pct(b.train.agree2)}</td><td>0</td><td>–</td><td>–</td></tr>`;
+      h += `<tr class="base"><td></td><td class="nm"><b>${label}</b><small>baseline</small></td><td>${pct(b.test.agree2)}${bar(b.test.agree2)}</td><td>${pct(b.test.agree3)}</td><td>${pct(b.test.agree4)}</td><td>${pct(b.hardpool && b.hardpool.agree3)}</td><td>${deepTxt(b.deepStarts)}</td><td>${pct(b.test.success)}</td><td>${pct(b.train.agree2)}</td><td>0</td><td>–</td><td>–</td></tr>`;
     });
-    body.innerHTML = h || '<tr><td colspan="9" class="note">no models yet</td></tr>';
+    body.innerHTML = h || '<tr><td colspan="12" class="note">no models yet</td></tr>';
     body.querySelectorAll('button').forEach(b => b.onclick = () => rowAction(b.dataset.a, b.dataset.i));
     drawSize();
   }
   const esc = s => String(s).replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[ch]);
   async function modelOf(id) {
-    const r = boardRows().find(x => x.id === id) || committed.find(x => x.id === id); if (!r) return null;
+    const r = boardRows(true).find(x => x.id === id) || committed.find(x => x.id === id); if (!r) return null;
     if (r.json) return r.json;
     const res = await fetch('arena/models/' + r.file); if (!res.ok) throw new Error('fetch ' + r.file + ': ' + res.status);
     r.json = await res.json(); return r.json;
@@ -470,7 +500,7 @@
       const M = await modelOf(id); if (!M) return;
       if (a === 'export') { const blob = new Blob([JSON.stringify(M)], { type: 'application/json' }), u = URL.createObjectURL(blob), l = document.createElement('a'); l.href = u; l.download = M.name.replace(/[^\w.-]+/g, '_') + '.json'; document.body.appendChild(l); l.click(); l.remove(); setTimeout(() => URL.revokeObjectURL(u), 2000); return; }
       curName = M.name; series = []; drawCharts();
-      $('H').value = M.arch.H; $('K').value = M.arch.K; $('feats').value = M.arch.chainFeats === false ? '0' : '1'; updateParamCount();
+      $('kind').value = M.arch.kind === 'rec' ? 'rec' : 'gnn'; $('H').value = M.arch.H; if (M.arch.kind === 'rec') $('T').value = M.arch.T; else { $('K').value = M.arch.K; $('feats').value = M.arch.chainFeats === false ? '0' : '1'; } updateParamCount();
       W.postMessage({ type: a, model: M, cfg: cfg() });
       renderBoard();
     } catch (e) { showErr(String(e)); }
@@ -481,6 +511,7 @@
     while (!lsSet(LS_MODELS, local) && local.length > 1) local.shift();
     renderBoard();
   }
+  $('lbTrack').onchange = renderBoard; $('lbRank').onchange = renderBoard;
   $('bImport').onclick = () => $('fImport').click();
   $('fImport').onchange = async () => {
     for (const f of $('fImport').files) { try { const M = JSON.parse(await f.text()); A.modelFromJSON(M); storeLocal(M); } catch (e) { showErr('import ' + f.name + ': ' + e.message); } }
@@ -489,7 +520,7 @@
   fetch('arena/models/index.json').then(r => r.ok ? r.json() : null).then(ix => {
     if (!ix) return;
     baselines = ix.baselines || null;
-    committed = (ix.models || []).map(m => ({ name: m.name, date: m.date, params: m.paramCount, H: m.arch.H, K: m.arch.K, cf: m.arch.chainFeats, pre: m.pretrain, test: m.test, train: m.train,
+    committed = (ix.models || []).map(m => ({ name: m.name, date: m.date, params: m.paramCount, kind: m.arch.kind || 'gnn', H: m.arch.H, K: m.arch.K, T: m.arch.T, cf: m.arch.chainFeats, track: trackOf(m.arch), pre: m.pretrain, test: m.test, train: m.train, hardpool: m.hardpool, deepStarts: m.deepStarts,
       rl: m.rl || null, training: m.training || null, src: 'committed', file: m.file, json: null, id: 'committed:' + m.file }));
     // the index carries summaries; fetch each model's settings lazily for the training column
     committed.forEach(r => fetch('arena/models/' + r.file).then(x => x.json()).then(M => { r.json = M; r.rl = M.rl; r.training = M.training; renderBoard(); }).catch(() => {}));
@@ -549,10 +580,10 @@
   $('speed').onchange = () => { W.postMessage({ type: 'speed', speed: $('speed').value }); saveUI(); };
   $('heat').onchange = () => { W.postMessage({ type: 'heat', mode: $('heat').value }); PAN.forEach(p => { p.heat = null; drawStatic(p); }); saveUI(); };
   ['panels', 'mice', 'rotate'].forEach(id => $(id).onchange = () => { W.postMessage({ type: 'reshape', cfg: cfg() }); saveUI(); });
-  ['H', 'K'].forEach(id => $(id).addEventListener('change', updateParamCount));
+  ['H', 'K', 'T', 'kind', 'feats'].forEach(id => $(id).addEventListener('change', updateParamCount));
   ['lr', 'gamma', 'explore', 'epsStart', 'epsEnd', 'epsDecay', 'temp', 'nstep', 'backup', 'batch', 'updateEvery', 'targetSync', 'aux', 'cap', 'startMix', 'evalEvery'].forEach(id =>
     $(id).addEventListener('change', () => { W.postMessage({ type: 'rl', rl: rlCfg(), evalEvery: num('evalEvery') }); saveUI(); }));
-  ['H', 'K', 'feats', 'seed', 'replay', 'pSteps', 'pBatch', 'pSource', 'pN0', 'pN1', 'pW', 'swCfg', 'swEp'].forEach(id => $(id).addEventListener('change', saveUI));
+  ['H', 'K', 'T', 'kind', 'mirror', 'splices', 'feats', 'seed', 'replay', 'pSteps', 'pBatch', 'pSource', 'pN0', 'pN1', 'pW', 'swCfg', 'swEp'].forEach(id => $(id).addEventListener('change', saveUI));
   $('preset').onchange = () => { applyPreset($('preset').value); saveUI(); };
   $('bPre').onclick = () => { series = []; curName = null; drawCharts(); const c = cfg(); W.postMessage({ type: 'pretrain', cfg: c, pre: c.pre }); };
   $('bSweep').onclick = () => {

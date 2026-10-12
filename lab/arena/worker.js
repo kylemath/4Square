@@ -22,7 +22,7 @@ const post = (type, data, tr) => self.postMessage(Object.assign({ type }, data |
 
 let cfg = null, T = null, P = null, panels = [], running = false, phase = 'idle', speed = 'fast', heatMode = 'value';
 let quick = null, full = null, nextEval = 0, lastPost = 0, lastHeat = 0, heatPanel = 0, sweep = null, watchName = null;
-let stepsAtLast = 0, tAtLast = 0, sps = 0, chartPts = 0, preTarget = 0;
+let wsteps = 0, stepsAtLast = 0, tAtLast = 0, sps = 0, chartPts = 0, preTarget = 0;
 const mazeCache = new Map();
 
 function mazeFor(levelId) {
@@ -56,7 +56,8 @@ function setPanelLevel(p) {
   const M = mazeFor(p.id); p.M = M; p.visits = new Uint32Array(M.SG.nodes.length); p.heated = false; p.eps = 0; p.hist = [];
   const learn = p.tag === 'train' && phase !== 'watch';
   p.mice = [];
-  for (let m = 0; m < cfg.mice; m++) p.mice.push({ env: M.env, col: null, learn, greedy: !learn, room: -1, prev: -1,
+  if (!M.mirrorEnv) M.mirrorEnv = Object.assign({}, M.env, { G: A.mirrorGraph(M.env.G) });
+  for (let m = 0; m < cfg.mice; m++) p.mice.push({ env: learn && cfg.mirror && m % 2 ? M.mirrorEnv : M.env, col: null, learn, greedy: !learn, room: -1, prev: -1,
     startFn: R => (R() < cfg.rl.startMix || !M.rooms.length ? M.start.slice() : M.SG.nodes[M.rooms[R.int(M.rooms.length)]].c.slice()) });
 }
 function panelInfo(p) {
@@ -65,6 +66,22 @@ function panelInfo(p) {
   const won = new Uint8Array(N), dist = new Int8Array(N); SG.nodes.forEach((v, i) => { won[i] = v.won ? 1 : 0; dist[i] = v.won ? 0 : v.dist == null ? -1 : v.dist; });
   const L = p.M.L;
   return { i: p.i, tag: p.tag, id: L.id, num: String(L.num), par: L.par, map: L.g, name: GAME.graphs[L.g].name, rooms: N, whole: SG.whole, pos: p.M.pos, edges: E, won, dist };
+}
+// splice variants of the training maps (single flip / insert / remove away from the hole) that keep states 3+ deep,
+// each with its whole state space; walked by hidden mice that start in the deepest states
+let hidden = [];
+function buildSplices() {
+  hidden = []; if (!cfg.splices || phase === 'watch') return;
+  const R = A.rng(cfg.seed * 31 + 7), keys = splitKeys(cfg).trainMaps.filter(k => GAME.graphs[k].n >= 18); if (!keys.length) return;
+  let tries = 0;
+  while (hidden.length < 2 * cfg.splices && tries++ < cfg.splices * 12) {
+    const tri = new A.Tri(A.graphFromLevels(GAME, R.pick(keys))); if (!A.spliceRandom(tri, R)) continue;
+    const G = tri.toGraph('splice' + tries); if (A.checkTriangulation(G)) continue;
+    const S = A.stateSpace(G, 60000); if (!S || A.hardness(S.hist).maxD < 3) continue;
+    const dist = {}, deep = []; for (const i of S.unfilled) if (S.dist[i] > 0) { dist[S.keys[i]] = S.dist[i]; if (S.dist[i] >= 3) deep.push(S.keys[i]); }
+    G.dist = dist; const env = { G, key: G.key, name: 'splice', levels: [], starts: [], census: Object.keys(dist) };
+    for (let k = 0; k < 2; k++) hidden.push({ env, col: null, learn: true, greedy: false, startFn: r => A.decodeCanon(G, r() < 0.7 ? r.pick(deep) : r.pick(env.census)) });
+  }
 }
 function newTrainer(c, net) {
   const T2 = new A.Trainer({ arch: c.arch, rl: c.rl, seed: c.seed, net });
@@ -83,20 +100,21 @@ function fullEval(net, mode, gamma) {
   if (!full) full = new A.Testbench(GAME, ALLKEYS, { maxDeep: 40, maxHard: 60, maxEasy: 20, rollouts: 12 });
   const { trainMaps, testMaps } = splitKeys(cfg), perMap = full.run(A.netAgent(net, mode || 'value', gamma));
   const rnd = {}; for (const k in perMap) { rnd[k] = {}; for (const f in perMap[k]) { const v = perMap[k][f]; rnd[k][f] = typeof v === 'number' ? +v.toFixed(4) : v; } }
-  return { train: A.aggregate(perMap, trainMaps), test: A.aggregate(perMap, testMaps), perMap: rnd, bench: 'full-v1' };
+  return { train: A.aggregate(perMap, trainMaps), test: A.aggregate(perMap, testMaps), deepStarts: A.deepStarts(perMap), perMap: rnd, bench: 'full-v2 (no hard pool in the browser)' };
 }
 function reset(c) {
   cfg = c; phase = 'idle'; running = false; sweep = null; watchName = null; P = null;
   T = newTrainer(cfg); nextEval = cfg.evalEvery; chartPts = 0; T.wall = 0;
-  setupBench(); buildPanels(); postTick(true);
+  setupBench(); buildPanels(); buildSplices(); postTick(true);
   const sk = splitKeys(cfg);
-  post('status', { text: 'new network: ' + sk.trainMaps.length + ' training maps, ' + sk.testMaps.length + ' held-out maps, ' + panels.length + ' panels x ' + cfg.mice + ' mice' });
+  post('status', { text: 'new ' + (T.net.arch.kind === 'rec' ? 'tabula-rasa' : 'priors') + ' network: ' + sk.trainMaps.length + ' training maps, ' + sk.testMaps.length + ' held-out maps, ' + panels.length + ' panels x ' + cfg.mice + ' mice' + (hidden.length ? ', ' + hidden.length / 2 + ' splice variants (' + hidden.length + ' hidden mice)' : '') });
 }
 
 // ---- the loop
 function stepMice(rounds) {
+  if (phase === 'train') for (let r = 0; r < rounds; r++) for (const m of hidden) { T.actorStep(m); if (T.steps % T.rl.updateEvery === 0) T.learn(); }
   for (let r = 0; r < rounds; r++) for (const p of panels) for (const m of p.mice) {
-    const ev = T.actorStep(m);
+    const ev = T.actorStep(m); if (!m.learn) wsteps++;
     if (m.learn && T.steps % T.rl.updateEvery === 0 && phase === 'train') T.learn();
     const idx = p.M.SG.idx.get(A.canon(p.M.env.G, ev.to));
     m.prev = m.room; m.room = ev.ended ? -2 : idx === undefined ? -1 : idx;   // -2: just ended (a fill or the cap)
@@ -133,7 +151,8 @@ function heatOf(p) {
 }
 function postTick(force) {
   const t = A.now();
-  if (t - tAtLast > 500) { sps = (T.steps - stepsAtLast) / ((t - tAtLast) / 1000); stepsAtLast = T.steps; tAtLast = t; }
+  const stepsNow = phase === 'watch' ? wsteps : T.steps;   // watch mode: no learning mice, count the greedy ones
+  if (t - tAtLast > 500) { sps = Math.max(0, stepsNow - stepsAtLast) / ((t - tAtLast) / 1000); stepsAtLast = stepsNow; tAtLast = t; }
   const mice = panels.map(p => { const a = new Int16Array(p.mice.length * 3); p.mice.forEach((m, k) => { a[3 * k] = m.room; a[3 * k + 1] = m.prev; a[3 * k + 2] = m.fill == null ? -1 : m.fill; }); return a; });
   const pstats = panels.map(p => ({ eps: p.eps, succ: p.hist.length ? p.hist.reduce((x, y) => x + y, 0) / p.hist.length : null }));
   let heat = null;
@@ -144,7 +163,7 @@ function postTick(force) {
   }
   const pre = P ? { step: P.step, target: preTarget, graphs: P.graphs, samples: P.samples, loss: P.loss, n: P.nRange(), gps: P.graphs / Math.max(0.01, P.wall) } : null;
   post('tick', { mice, pstats, heat, phase, running, watchName, sweep: sweep ? { i: sweep.i, n: sweep.configs.length, label: sweep.label } : null, pre,
-    stats: { episodes: T.episodes, steps: T.steps, updates: T.updates, loss: T.loss, aux: T.auxLoss, eps: T.eps(), sps, params: T.net.size, replay: T.replay.length, wall: T.wall } });
+    stats: { episodes: phase === 'watch' ? panels.reduce((a, p) => a + p.eps, 0) : T.episodes, steps: phase === 'watch' ? wsteps : T.steps, updates: T.updates, loss: T.loss, aux: T.auxLoss, eps: T.eps(), sps, params: T.net.size, replay: T.replay.length, wall: T.wall } });
   lastPost = t;
 }
 function pump() {
@@ -208,10 +227,10 @@ function sweepNext() {
   sweep.i++;
   if (sweep.i >= sweep.configs.length) { post('status', { text: 'size sweep done: ' + sweep.configs.length + ' models on the leaderboard' }); sweep = null; running = false; phase = 'idle'; postTick(true); return; }
   const [H, K] = sweep.configs[sweep.i]; sweep.label = H + 'x' + K;
-  cfg.arch = Object.assign({}, cfg.arch, { H, K, H1: 0, Hp: 0 });
+  cfg.arch = cfg.arch.kind === 'rec' ? { kind: 'rec', H, T: K } : Object.assign({}, cfg.arch, { H, K, H1: 0, Hp: 0 });
   T = newTrainer(cfg); nextEval = cfg.evalEvery; phase = 'train';
   panels.forEach(p => { setPanelLevel(p); });
-  post('status', { text: 'size sweep ' + (sweep.i + 1) + '/' + sweep.configs.length + ': H=' + H + ' K=' + K + ' (' + T.net.size + ' params), ' + sweep.episodes + ' episodes' });
+  post('status', { text: 'size sweep ' + (sweep.i + 1) + '/' + sweep.configs.length + ': H=' + H + (cfg.arch.kind === 'rec' ? ' T=' : ' K=') + K + ' (' + T.net.size + ' params), ' + sweep.episodes + ' episodes' });
 }
 
 self.onmessage = e => {
@@ -231,7 +250,8 @@ self.onmessage = e => {
     else if (d.type === 'stopSweep') { sweep = null; running = false; phase = 'idle'; postTick(true); }
     else if (d.type === 'watch' || d.type === 'load') {
       const net = A.modelFromJSON(d.model);
-      cfg = d.cfg; cfg.arch = Object.assign({}, cfg.arch, { H: net.arch.H, K: net.arch.K, H1: net.arch.H1, Hp: net.arch.Hp, chainFeats: net.arch.chainFeats });
+      cfg = d.cfg; cfg.arch = net.arch.kind === 'rec' ? { kind: 'rec', H: net.arch.H, T: net.arch.T, H1: net.arch.H1, Hq: net.arch.Hq, holeRead: net.arch.holeRead }
+        : Object.assign({}, cfg.arch, { kind: 'gnn', H: net.arch.H, K: net.arch.K, H1: net.arch.H1, Hp: net.arch.Hp, chainFeats: net.arch.chainFeats });
       if (d.model.rl && d.model.rl.gamma != null) cfg.rl.gamma = d.model.rl.gamma;
       sweep = null; P = null; running = false;
       T = newTrainer(cfg, net); T.wall = 0; nextEval = cfg.evalEvery; T.pretrain = d.model.training && d.model.training.pretrain || null;
