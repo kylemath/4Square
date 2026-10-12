@@ -41,6 +41,9 @@
 <h2>Round 2: hiding the maths (no hole, no ring, no colours to explain)</h2>
 <div class="row" id="rowC"></div>
 
+<h2>Round 4: further abstraction (the swap graph, words, candy)</h2>
+<div class="row" id="rowD"></div>
+
 <script>
   const lvl = new URLSearchParams(location.search).get('lvl') || '4';
   const A = [
@@ -85,7 +88,13 @@
     ['Petting Zoo', 'swipe animals between four pens', 'zoo.html?lvl=' + lvl],
     ['Paint Trail', 'steer a trail through the noise to claim a zone', 'trail.html?lvl=' + lvl],
   ];
-  row('rowA', A); row('rowB', B); row('rowC', C);
+  const D = [
+    ['Rim Word', 'word ladder: one tile flip = one swap, real words are exactly the fills', 'rimword.html?lvl=' + lvl],
+    ['Lab Maze', '3/4 view rat maze of the swap graph: collect coins, then find the cheese', 'maze.html?lvl=' + lvl],
+    ['Candy Kempe', 'swap two neighbouring candies; the chain ripples; crush at the hole', 'crush.html?lvl=' + lvl],
+    ['Maze Arena', 'research: deep RL mice in many swap mazes, held-out testbench, leaderboard', 'MazeArena.html'],
+  ];
+  row('rowA', A); row('rowB', B); row('rowC', C); row('rowD', D);
   // every same-origin frame shares one thread, so a dozen running games slow each other down: while one tile is
   // maximised the others are unloaded, and they come back when it is restored
   function focusOnly(keep) {

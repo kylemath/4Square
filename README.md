@@ -21,6 +21,24 @@ title art, how-to-play pages, bonus-round tiles and the look of the exploration 
 swap. The contract is in [SKIN-SPEC.md](SKIN-SPEC.md); a skin is `skins/<id>.js` plus an optional play page
 `lab/<id>.html`, checked with `node tools/skin_check.js`. `lab/Families.html` shows the experimental styles side by side.
 
+**Further abstractions (lab only).** Three pages go one layer further from the map:
+[Rim Word](lab/rimword.html) labels every state within par swaps with a five-letter string so that each swap flips
+one tile and the fillable states are exactly the real words (labels from `node tools/word_graph.js`, which writes
+`lab/rimword-data.js`); [Lab Maze](lab/maze.html) draws the swap graph itself as a rat maze in a 3/4 view (collect a
+coin in every room, then find the cheese; `node tools/maze_check.js`); [Candy Kempe](lab/crush.html) turns the
+Candy-Crush gesture of swapping two neighbouring candies into the Kempe chain that runs through them.
+
+**Maze Arena (lab research page).** [Maze Arena](lab/MazeArena.html) trains one map-independent graph neural network
+(afterstate TD learning, hand-written backward pass, `lab/arena/engine.js`) with mice in up to 25 swap mazes at once,
+in a Web Worker, and scores it on held-out maps: does it pick a swap that lowers the exact distance to a fill (from
+the census) on maps it never trained on? Models are plain JSON with their settings and metrics, ranked on a
+leaderboard (committed ones in `lab/arena/models/`, made by `node tools/arena_train.js`; tests in
+`node tools/arena_check.js`). Two tracks: *tabula rasa* nets (a weight-tied recurrent message-passing net that sees only
+the map, raw colours and the hole) and *priors* nets (given hand-made chain features). Hard training data (every
+census state, splice variants and evolved trap maps with exact distances) comes from `node tools/arena_hardgen.js`
+and 4-core training from `node tools/arena_scale.js`. Results, and what scaling up would take:
+[lab/arena/PRETRAINING.md](lab/arena/PRETRAINING.md).
+
 Research logging is off unless the player agrees on the title screen, and it stays on the device unless an upload
 form is configured in `telemetry.js` (none is).
 

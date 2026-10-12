@@ -278,7 +278,7 @@
     intro: [
       { title: 'The signal needs a chamber', text: 'The signal is repelled by 5 marked ions. They sit in all four chambers, so it has nowhere to land.', svg: p1 },
       { title: 'Chambers and repulsion', text: 'Every ion lives in one chamber. Ions that repel each other can never share one.', svg: p3 },
-      { title: 'Move a chain', text: 'Move one ion to another chamber and every linked ion that repels it follows, trading places.', svg: p4 },
+      { title: 'Move a chain', text: 'Hold an ion over another chamber: the ions it repels there, and the ones they repel, link up into a chain. Let go and the whole chain flips and trades places.', svg: p4 },
       { title: 'Locks', text: 'If a chain holds two marked ions it is locked: it only rocks, nothing moves.', svg: p5 },
       { title: 'Free a chamber', text: 'When one chamber holds no marked ions, a channel opens and the signal docks.', svg: p6 },
     ],

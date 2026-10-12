@@ -1,0 +1,252 @@
+<!doctype html>
+<!--
+  RIM WORD (lab front end: the puzzle as a word ladder, the map never shown until you win)
+
+  What the player sees: five wooden letter tiles spelling a non-word, a flip counter against the level's par, and a
+  ladder of the words so far. Tap a tile: the letters it can flip to right now pop up above it; pick one and the tile
+  flips. A tile with nothing to offer is pinned. Every flip can be flipped back (a Kempe swap undoes itself), so you
+  can wander freely; spell a real word and you win, with stars for doing it in par; then the map
+  underneath is revealed, with the swaps you made.
+
+  Mapping (every flip is exactly one g.swap(K)):
+    the five-letter string        = the current colouring, up to renaming the elements (core.js canon)
+    one tile flip                 = one Kempe swap (a non-web chain); the letters a tile offers are the swaps that
+                                    change that letter; a pinned tile has none
+    a real English word           = a fill (the rim down to three elements); every other state is a word-like
+                                    non-word, and a state two or more swaps from a fill is never one letter from any
+                                    common word, so the letters give no false scent
+    par                           = the fewest swaps to a fill. The words are charted for every state within R swaps
+                                    of the start (R = par + 1 where the search found labels, else par); at a state R
+                                    swaps out the page says the chart ends there and only the charted flips show
+  The labels come from tools/word_graph.js (lab/rimword-data.js), which searches for strings with those properties.
+  The page keeps a LAB.game() instance in step (each flip finds the chain whose swap gives the next colouring), so it
+  embeds and reports like every other front end.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>Rim Word</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,800&family=Nunito:wght@600;800&display=swap" rel="stylesheet">
+<style>
+  :root { --bg: #f3ead8; --ink: #3a2a1a; --dim: #8a7458; --wood: #e9c58f; --wood2: #d7a964; --edge: #a8763a; --pin: #b9ab95;
+    --good: #2f8f4e; --bad: #b5452f; --card: #fffaf0; --line: #e0d2b8; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); font: 600 15px/1.35 Nunito, system-ui, sans-serif;
+    -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
+  body { background: radial-gradient(120% 80% at 50% 0%, #fbf5e9 0%, var(--bg) 60%, #e8dcc3 100%) fixed; overflow-x: hidden; }
+  main { max-width: 560px; margin: 0 auto; padding: 12px 16px 28px; min-height: 100%; display: flex; flex-direction: column; }
+  header { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  header h1 { flex: 1; margin: 0; font: 800 1.15rem/1.1 Fraunces, Georgia, serif; letter-spacing: .01em; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  header h1 small { display: block; font: 600 .74rem Nunito, sans-serif; color: var(--dim); letter-spacing: .02em; }
+  select, button { font: inherit; color: var(--ink); }
+  select { order: 5; flex: 1 1 100%; min-width: 0; background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 5px 6px; }
+  .icon { width: 36px; height: 36px; border-radius: 10px; border: 1px solid var(--line); background: var(--card); cursor: pointer; font-size: 17px; line-height: 1; }
+  .icon:active { transform: translateY(1px); }
+  .icon:disabled { opacity: .35; cursor: default; }
+  #budget { margin: 18px 0 4px; display: flex; justify-content: center; align-items: baseline; gap: 10px; font-variant-numeric: tabular-nums; }
+  #budget b { font: 800 1.5rem Fraunces, Georgia, serif; }
+  #budget span { color: var(--dim); font-size: .86rem; }
+  #budget .stars { letter-spacing: .1em; color: var(--wood2); font-size: 1rem; }
+  #cue.edge { color: var(--bad); }
+  #cue { text-align: center; color: var(--dim); font-size: .86rem; min-height: 1.3em; }
+  #board { position: relative; margin: 22px auto 10px; display: flex; gap: clamp(6px, 2.4vw, 12px); justify-content: center; }
+  .tile { position: relative; width: clamp(52px, 16.5vw, 82px); aspect-ratio: 1; perspective: 400px; cursor: pointer; }
+  .face { position: absolute; inset: 0; border-radius: 12px; display: grid; place-items: center;
+    background: linear-gradient(160deg, #f7dcae 0%, var(--wood) 45%, var(--wood2) 100%);
+    box-shadow: inset 0 2px 0 #fff5dd, inset 0 -5px 0 var(--edge), 0 6px 10px #6b4a2033;
+    font: 800 clamp(30px, 10vw, 48px)/1 Fraunces, Georgia, serif; text-transform: uppercase; color: #3b2612;
+    transition: transform .32s cubic-bezier(.3, 1.4, .5, 1), filter .2s; transform-style: preserve-3d; }
+  .tile.flip .face { animation: flip .42s ease-in-out; }
+  @keyframes flip { 0% { transform: rotateX(0); } 50% { transform: rotateX(90deg); filter: brightness(1.25); } 100% { transform: rotateX(0); } }
+  .tile.open .face { transform: translateY(-4px); box-shadow: inset 0 2px 0 #fff5dd, inset 0 -5px 0 var(--edge), 0 0 0 3px #3a2a1a, 0 10px 16px #6b4a2044; }
+  .tile.pinned .face { background: linear-gradient(160deg, #e7dccb, var(--pin)); box-shadow: inset 0 2px 0 #f6efe3, inset 0 -5px 0 #8f8270, 0 3px 6px #0002; color: #5d5243; cursor: default; }
+  .tile.pinned::after { content: ''; position: absolute; top: 6px; left: 7px; width: 7px; height: 7px; border-radius: 50%; background: #7a6d5b; box-shadow: inset 0 -1px 0 #0004; }
+  .tile .n { position: absolute; right: 6px; bottom: 7px; font: 800 .62rem Nunito, sans-serif; color: #6b4a20aa; }
+  #tray { min-height: clamp(58px, 16vw, 74px); display: flex; align-items: center; justify-content: center; gap: 8px; flex-wrap: wrap; margin: 4px 0 0; }
+  #tray .arrow { font: 800 1.1rem Fraunces, Georgia, serif; color: var(--dim); letter-spacing: .1em; text-transform: uppercase; }
+  .opt { width: clamp(42px, 13vw, 60px); aspect-ratio: 1; border-radius: 10px; border: 0; cursor: pointer;
+    background: linear-gradient(160deg, #fff7e6, #f0d6a8); box-shadow: inset 0 -4px 0 #c99a55, 0 4px 8px #0002;
+    font: 800 clamp(22px, 7vw, 32px)/1 Fraunces, Georgia, serif; text-transform: uppercase; color: #5b3a16; animation: pop .18s ease-out both; }
+  .opt:hover { filter: brightness(1.05); }
+  @keyframes pop { from { transform: translateY(10px) scale(.6); opacity: 0; } }
+  #ladder { margin: 14px auto 0; width: 100%; max-width: 360px; background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 10px 12px; }
+  #ladder h2 { margin: 0 0 6px; font: 800 .72rem Nunito, sans-serif; color: var(--dim); text-transform: uppercase; letter-spacing: .12em; }
+  #ladder ol { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 3px; }
+  #ladder li { display: flex; align-items: center; gap: 8px; font: 700 1.02rem/1.25 Fraunces, Georgia, serif; letter-spacing: .14em; text-transform: uppercase; }
+  #ladder li em { font-style: normal; }
+  #ladder li span { font: 700 .7rem Nunito, sans-serif; color: var(--dim); letter-spacing: 0; width: 1.4em; text-align: right; }
+  #ladder li b.ch { color: var(--bad); text-decoration: underline 2px; text-underline-offset: 3px; }
+  #ladder li.win { color: var(--good); }
+  #ladder li.win b.ch { color: var(--good); }
+  #reveal { display: none; margin: 14px auto 0; width: 100%; max-width: 420px; background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 10px 12px; }
+  #reveal.on { display: block; }
+  #reveal p { margin: 0 0 6px; font-size: .86rem; color: var(--dim); }
+  #reveal canvas { width: 100%; aspect-ratio: 1; display: block; }
+  #win { position: fixed; inset: 0; display: none; place-items: center; background: #3a2a1a55; z-index: 9; padding: 16px; }
+  #win.on { display: grid; }
+  #win div { background: var(--card); border-radius: 18px; padding: 18px 20px; text-align: center; max-width: 340px; box-shadow: 0 20px 40px #0004; }
+  #win h3 { margin: 0 0 4px; font: 800 1.9rem Fraunces, Georgia, serif; text-transform: uppercase; letter-spacing: .1em; color: var(--good); }
+  #win p { margin: 4px 0 12px; color: var(--dim); }
+  #win button { border: 0; border-radius: 12px; padding: 9px 16px; margin: 0 4px; background: #3a2a1a; color: #fff; font-weight: 800; cursor: pointer; }
+  #win button.alt { background: var(--line); color: var(--ink); }
+  .help { margin: 16px auto 0; max-width: 380px; color: var(--dim); font-size: .82rem; text-align: center; }
+  @media (prefers-reduced-motion: reduce) { .tile.flip .face, .opt { animation: none; } .face { transition: none; } }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1 id="title">Rim Word<small id="sub">turn it into a word</small></h1>
+    <select id="lvl" aria-label="Level"></select>
+    <button class="icon" id="undo" aria-label="Undo" title="Undo">&#8630;</button>
+    <button class="icon" id="again" aria-label="Start over" title="Start over">&#8634;</button>
+  </header>
+  <div id="budget" aria-live="polite"></div>
+  <div id="cue">Tap a tile to see what it can become.</div>
+  <div id="board" role="group" aria-label="Letter tiles"></div>
+  <div id="tray" aria-live="polite"></div>
+  <section id="ladder"><h2>Your ladder</h2><ol id="steps"></ol></section>
+  <section id="reveal"><p id="revealNote">The map underneath. Each flip was one Kempe swap.</p><canvas id="map" width="600" height="600"></canvas></section>
+  <p class="help">Every tile flip is a swap in a hidden map colouring. Real words are exactly the colourings where the hole can be filled. A tile only offers the letters a swap would give it, and every flip can be flipped back.</p>
+</main>
+<div id="win" role="dialog" aria-live="polite"><div><h3 id="winWord"></h3><p id="winNote"></p><button id="winMap">See the map</button><button class="alt" id="winAgain">Play again</button></div></div>
+<script src="../levels.js"></script>
+<script src="core.js"></script>
+<script src="rimword-data.js"></script>
+<script>
+(function () {
+  'use strict';
+  const RW = window.RIMWORD || {}, $ = id => document.getElementById(id);
+  const ids = window.GAME.levels.filter(l => RW[l.id]).map(l => l.id);
+  const q = new URLSearchParams(location.search), want = q.get('lvl');
+  const pickId = () => { const L = want && window.GAME.levels.find(l => l.id === want || String(l.num) === want); return L && RW[L.id] ? L.id : (RW['kempes-double'] ? 'kempes-double' : ids[0]); };
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let D, nb, g, path, open = -1, done = false;
+
+  ids.forEach(id => { const L = window.GAME.levels.find(l => l.id === id); const o = document.createElement('option'); o.value = id; o.textContent = L.num + ' ' + L.title + ' (' + RW[id].par + ')'; $('lvl').appendChild(o); });
+  $('lvl').onchange = () => { const u = new URL(location.href); u.searchParams.set('lvl', $('lvl').value); history.replaceState(null, '', u); load($('lvl').value); };
+
+  function load(id) {
+    D = RW[id]; $('lvl').value = id;
+    nb = Array.from({ length: D.w.length }, () => []);
+    D.e.forEach(([a, b]) => { nb[a].push(b); nb[b].push(a); });
+    g = LAB.game(id);
+    if (g.canon() !== D.col[0].replace('.', '')) console.warn('rimword: start state does not match the level');
+    const L = g.level; $('title').firstChild.textContent = L.title + ' ';
+    $('sub').textContent = 'Level ' + L.num + ' · par ' + D.par + ' flip' + (D.par > 1 ? 's' : '');
+    path = [0]; open = -1; done = false; $('win').classList.remove('on'); $('reveal').classList.remove('on');
+    render();
+  }
+  const cur = () => path[path.length - 1];
+  const flips = () => path.length - 1;
+  const R = () => D.R || D.par;
+  const atEdge = () => !done && D.d[cur()] >= R();   // charted no further: only the flips back inward exist here
+  const stars = n => n <= D.par ? 3 : n <= D.par + 2 ? 2 : 1;
+  // the moves on tile i: neighbours of the current state whose string differs there
+  function options(i) {
+    if (done) return [];
+    const s = D.w[cur()];
+    return nb[cur()].filter(j => D.w[j][i] !== s[i]).map(j => ({ j, ch: D.w[j][i] })).sort((a, b) => a.ch < b.ch ? -1 : 1);
+  }
+  function render(flipAt) {
+    const s = D.w[cur()];
+    const n = flips(), st = stars(Math.max(n, 1));
+    $('budget').innerHTML = '<b>' + n + '</b><span>flip' + (n === 1 ? '' : 's') + ' · par ' + D.par + '</span><span class="stars" aria-label="' + st + ' stars if you find a word now">' + '★'.repeat(st) + '☆'.repeat(3 - st) + '</span>';
+    const B = $('board'); B.innerHTML = '';
+    for (let i = 0; i < 5; i++) {
+      const t = document.createElement('div'), opts = options(i);
+      t.className = 'tile' + (opts.length ? '' : ' pinned') + (i === open ? ' open' : '') + (i === flipAt && !reduce ? ' flip' : '');
+      t.setAttribute('role', 'button'); t.setAttribute('aria-label', 'Tile ' + (i + 1) + ': ' + s[i].toUpperCase() + (opts.length ? ', ' + opts.length + ' options' : ', pinned'));
+      t.tabIndex = opts.length ? 0 : -1;
+      t.innerHTML = '<div class="face">' + s[i] + '</div>' + (opts.length ? '<span class="n">' + opts.length + '</span>' : '');
+      t.onclick = () => { if (!opts.length) return; open = open === i ? -1 : i; render(); };
+      t.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); t.onclick(e); } };
+      B.appendChild(t);
+    }
+    // the open tile's letters, in a tray under the board
+    const T = $('tray'); T.innerHTML = '';
+    if (open >= 0 && options(open).length) {
+      const a = document.createElement('span'); a.className = 'arrow'; a.textContent = s[open] + ' \u2192'; T.appendChild(a);
+      options(open).forEach(o => { const b = document.createElement('button'); b.className = 'opt'; b.textContent = o.ch; b.setAttribute('aria-label', 'Flip tile ' + (open + 1) + ' to ' + o.ch.toUpperCase()); const i = open; b.onclick = e => { e.stopPropagation(); go(o.j, i); }; T.appendChild(b); });
+    }
+    $('cue').classList.toggle('edge', atEdge());
+    $('cue').textContent = done ? 'A word! The hole can be filled.' : atEdge() ? 'The words are charted only this far. Flip back to explore elsewhere.' :
+      open >= 0 ? 'Pick a letter for this tile.' : 'Tap a tile to see what it can become.';
+    const ol = $('steps'); ol.innerHTML = '';
+    const from = Math.max(0, path.length - 12);
+    if (from) { const li = document.createElement('li'); li.innerHTML = '<span></span><em>\u2026</em>'; ol.appendChild(li); }
+    path.forEach((p, k) => { if (k < from) return;
+      const li = document.createElement('li'), w = D.w[p], prev = k ? D.w[path[k - 1]] : null;
+      li.innerHTML = '<span>' + (k || '') + '</span><em>' + [...w].map((c, i) => prev && prev[i] !== c ? '<b class="ch">' + c + '</b>' : c).join('') + '</em>';
+      if (D.won[p]) li.className = 'win'; ol.appendChild(li);
+    });
+    $('undo').disabled = path.length < 2;
+  }
+  // keep the real game in step: the chain whose swap gives the next colouring
+  function sync(j) {
+    const target = D.col[j].replace('.', '');
+    const K = g.chains.find(K => !K.web && canonAfter(K) === target);
+    if (K) g.swap(K); else console.warn('rimword: no chain leads to state', j);
+  }
+  function canonAfter(K) {
+    const c = g.col.slice(); K.set.forEach(u => { c[u] = c[u] === K.pair[0] ? K.pair[1] : K.pair[0]; });
+    const mp = {}; let k = 0, s = ''; for (let u = 0; u < g.n; u++) { if (u === g.hole) continue; if (!(c[u] in mp)) mp[c[u]] = k++; s += mp[c[u]]; } return s;
+  }
+  function go(j, i) {
+    sync(j); path.push(j); open = -1;
+    if (D.won[j]) done = true;
+    render(i); chime(D.won[j]);
+    if (done) setTimeout(win, reduce ? 50 : 650);
+  }
+  function win() {
+    $('winWord').textContent = D.w[cur()];
+    const L = g.level; $('winNote').textContent = '★'.repeat(stars(flips())) + ' Spelled in ' + flips() + ' flip' + (flips() > 1 ? 's' : '') + ' (par ' + D.par + '). Under the tiles, the hole now takes ' + LAB.ELEM[g.free()].name + '.';
+    $('win').classList.add('on');
+    if (LAB.embedded) setTimeout(() => LAB.done(), 1800);
+  }
+  $('winMap').onclick = () => { $('win').classList.remove('on'); showMap(); };
+  $('winAgain').onclick = () => load(D === RW[$('lvl').value] ? $('lvl').value : ids[0]);
+  $('undo').onclick = () => { if (path.length < 2) return; path.pop(); g.undo(); done = false; open = -1; $('reveal').classList.remove('on'); render(); };
+  $('again').onclick = () => { load($('lvl').value); };
+  document.addEventListener('click', e => { if (open >= 0 && !e.target.closest('.tile') && !e.target.closest('#tray')) { open = -1; render(); } });
+  addEventListener('keydown', e => { if ((e.ctrlKey || e.metaKey) && e.key === 'z') { e.preventDefault(); $('undo').onclick(); } if (e.key === 'Escape' && open >= 0) { open = -1; render(); } });
+
+  // ---- the reveal: the map under the word, with the regions each flip changed
+  function showMap() {
+    $('reveal').classList.add('on');
+    const cv = $('map'), x = cv.getContext('2d'), W = cv.width, P = g.pos;
+    let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity; P.forEach(([a, b]) => { x0 = Math.min(x0, a); x1 = Math.max(x1, a); y0 = Math.min(y0, b); y1 = Math.max(y1, b); });
+    const sc = (W - 60) / Math.max(x1 - x0, y1 - y0), px = u => 30 + (P[u][0] - x0) * sc, py = u => 30 + (P[u][1] - y0) * sc;
+    x.clearRect(0, 0, W, W);
+    x.lineWidth = 2; x.strokeStyle = '#d8c7a6';
+    g.edges.forEach(([a, b]) => { x.beginPath(); x.moveTo(px(a), py(a)); x.lineTo(px(b), py(b)); x.stroke(); });
+    const touched = new Set();
+    g.history.forEach((h, k) => { const next = k + 1 < g.history.length ? g.history[k + 1] : g.col; h.forEach((c, u) => { if (u !== g.hole && c !== next[u]) touched.add(u); }); });
+    for (let u = 0; u < g.n; u++) {
+      const r = u === g.hole ? 16 : g.rim.includes(u) ? 13 : 10;
+      x.beginPath(); x.arc(px(u), py(u), r, 0, 7);
+      if (u === g.hole) { const f = g.free(); x.fillStyle = f >= 0 ? LAB.ELEM[f].hex : '#fff'; x.fill(); x.lineWidth = 3; x.strokeStyle = '#3a2a1a'; x.stroke(); continue; }
+      x.fillStyle = LAB.ELEM[g.col[u]].hex; x.fill();
+      x.lineWidth = touched.has(u) ? 4 : 1.5; x.strokeStyle = touched.has(u) ? '#3a2a1a' : '#00000055'; x.stroke();
+    }
+    $('revealNote').textContent = 'The map underneath: the big dot is the hole, now filled; outlined regions changed element during your ' + (path.length - 1) + ' swap' + (path.length > 2 ? 's' : '') + '.';
+    $('reveal').scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'nearest' });
+  }
+
+  // ---- sound (after the first gesture)
+  let AC = null;
+  function chime(big) {
+    try {
+      AC = AC || new (window.AudioContext || window.webkitAudioContext)();
+      const notes = big ? [523, 659, 784, 1047] : [392 + 30 * (path.length - 1)];
+      notes.forEach((f, k) => { const o = AC.createOscillator(), gn = AC.createGain(), t = AC.currentTime + k * 0.09; o.type = 'triangle'; o.frequency.value = f; gn.gain.setValueAtTime(0.0001, t); gn.gain.exponentialRampToValueAtTime(0.12, t + 0.02); gn.gain.exponentialRampToValueAtTime(0.0001, t + 0.3); o.connect(gn).connect(AC.destination); o.start(t); o.stop(t + 0.32); });
+    } catch (_) {}
+  }
+  window.RIMWORD_PAGE = { load, go, options, state: () => ({ path: path.slice(), word: D.w[cur()], done, canon: g.canon(), col: D.col[cur()] }) };
+  load(pickId());
+})();
+</script>
+</body>
+</html>

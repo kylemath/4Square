@@ -50,6 +50,8 @@
 <div class="row" id="rowD"></div>
 <h2>In a league of its own</h2>
 <div class="row" id="rowE"></div>
+<h2>The swap graph itself: the map hidden, only the states</h2>
+<div class="row" id="rowF"></div>
 
 <script>
   // the map every game plays: picked at the top, remembered in this browser; changing it rebuilds every tile
@@ -97,6 +99,7 @@
       ['Fill the Hole', 'the current game, walled', [['Game', '../index.html?lab=' + lvl + '&walls=1']]],
       ['Dots', 'one-finger chaining', [['Dots', 'dots.html?lvl=' + lvl], ['Spheres', 'spheres.html?lvl=' + lvl]]],
       ['Pills', 'flip a capsule, its pair-mates flip in a chain', [['Pills', 'pills.html?lvl=' + lvl]]],
+      ['Candy Kempe', 'swap two neighbouring candies, the chain ripples', [['Candy', 'crush.html?lvl=' + lvl]]],
       ['Bonus Swipe', 'the bonus round on the real puzzle', [['Swipe', 'swipe.html?lvl=' + lvl]]],
     ];
   const B = [
@@ -114,7 +117,12 @@
       ['Line Doodle', 'colour the blank map yourself; swaps unstick you', [['Blank map', 'blank.html?lvl=' + lvl], ['Lines', 'lines.html']]],
       ['Doodle Map', 'the same sketchbook, on our puzzle: colour the blank piece', [['Doodle', 'doodle.html?lvl=' + lvl]]],
     ];
-    row('rowA', A); row('rowB', B); row('rowC', C); row('rowD', D); row('rowE', E);
+    const F = [
+      ['Rim Word', 'one tile flip = one swap; real words are the fills', [['Words', 'rimword.html?lvl=' + lvl]]],
+      ['Lab Maze', 'rooms are colourings, doors are swaps: coins, then cheese', [['Maze', 'maze.html?lvl=' + lvl]]],
+      ['Maze Arena', 'a GNN trained by RL on many mazes, tested on held-out maps', [['Arena', 'MazeArena.html']]],
+    ];
+    row('rowA', A); row('rowB', B); row('rowC', C); row('rowD', D); row('rowE', E); row('rowF', F);
   }
   LEVELS.forEach(([l, name, note]) => {
     const b = document.createElement('button'); b.dataset.l = l;

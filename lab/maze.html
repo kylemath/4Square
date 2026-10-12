@@ -1,0 +1,1306 @@
+<!doctype html>
+<!--
+  THE LAB MAZE (lab front end: the pure state graph, walked by a lab rat)
+
+  What the player sees: a scientist's rat maze on a black lab bench, seen in a 3/4 view from someone leaning over it.
+  A plywood base board holds dozens of little walled rooms (acrylic walls with visible height and soft shadows),
+  joined by narrow corridors. A desk lamp, a clipboard and a pencil sit on the bench. A white lab rat sits in one room.
+  Tap a door of its room (or the room behind it, or swipe / press an arrow key that way) and the rat scurries down the
+  corridor to the next room. With the lab lights off you only see the rooms the rat has already been in, plus the
+  doors of the room it is in now; switch the lights on to see the whole maze.
+
+  Every room has a stable identity so it can be learned like a real place: a strip of five floor tiles (the five rim
+  elements of that state, in rim order, in the LAB.ELEM colours), a wall tint and one object (plant, flask, books,
+  mug, cactus, globe, duck, test tubes, clock, microscope), all chosen from the state itself. Rooms where the hole
+  can be filled are goal rooms: a glowing pad on the floor, and the cheese sits on one of them.
+
+  Two modes (the chip at the top left):
+    Coins            Pac-Man: a coin in every room of the maze (goal rooms too), and a cheese bonus in every goal room:
+                     10 + 10 x (best possible steps) - 5 x (extra steps taken), at least 10. Then the scientist's
+                     gloved hand lifts the rat out and drops it into another room (one it has seen, or any room with
+                     the lights on) for a new run, so the way to a fill gets learned from many starting points. The bar
+                     shows coins banked, coins left, steps this run and the best possible from where the run began
+                     (the true distance to a fill, a BFS in the maze with goal rooms terminal).
+    Find the cheese  the cheese waits in a goal room exactly n steps from the start (n = the level's par; "Farther"
+                     picks a deeper goal room if the maze has one). Its glow shows through the dark, the way does not.
+                     Score: steps against the shortest route, stars as in the main game (par, par + 2).
+  Rooms the rat has seen stay mapped (per level, in localStorage), so the coin round teaches the layout and the
+  cheese round tests it. "Forget map and memory" in the mode menu clears it.
+
+  The rat's memory (the route button on the right rail, M): every room remembers the fewest steps to a fill the player
+  has actually found from it, over corridors actually walked: a Bellman fixed point (backwards BFS from the fills
+  reached, won rooms terminal) over walked edges only, saved with the map. Shown as a gold number on the floor and a
+  gold arrow at the door that leads that way.
+
+  The self-training rat (the curve button, T): tabular Q-learning over rooms x doors. Reward -1 per corridor, a fill ends
+  the episode, Q starts at 0 (optimistic), epsilon 0.2, alpha 0.5, episodes from random rooms that can reach a fill. A
+  ghost rat walks the episodes (speed: slow, fast, max). The panel shows episodes and the share of rooms whose greedy
+  door is a shortest-route door (one that lowers the true distance to a fill by one); arrows are blue when right,
+  orange when not yet. It learns every room in a few hundred to a few thousand episodes (tidy-trap ~500, kempes-double
+  ~1,000-1,700, deepest-pit ~2,000-4,300). But a table only memorises this one maze. The interesting question for the proof is
+  whether a policy over FEATURES of the colouring (rim pattern, chain counts, locks, which chains touch the rim) can
+  learn the same moves and carry them over to other maps; that is not built here.
+
+  Mapping (faithful: the maze IS the puzzle's state graph):
+    room                  = a legal colouring of the map up to renaming the elements (core.js canon), reachable
+                            from the level start. Room 0 (the nest) is the level's start.
+    door + corridor       = a Kempe swap of a non-web chain between the two colourings (swapping a chain twice
+                            undoes it, so every corridor runs both ways). Web chains only rename, so they are not doors.
+    goal room / cheese    = a won colouring (the rim uses <= 3 elements). The game never continues from a won
+                            colouring, so goal rooms are dead ends: the rat only steps in and out (coins mode), or
+                            stops there for good (the cheese).
+    floor tiles           = the rim's five elements in that colouring (a won room shows only three).
+    walking a corridor    = one g.swap(K): the page finds the chain K in g.chains whose swap leads to the target
+                            room's colouring, so the hidden LAB.game() instance always holds the rat's room
+                            (g.canon() === room key). Undo walks back along the last corridor (g.undo()).
+                            Stepping into a goal room that is not the cheese does NOT touch g (the rat backs out,
+                            the state never changes), so the app only ever sees a win at the cheese.
+    "peek"                = a small inset with the actual map (g.pos, g.edges) in the current colouring, drawn in
+                            the room's own tile colours.
+  The maze is the state graph computed here from levels.js: a BFS from the start over Kempe swaps, not expanding
+  won states. Small levels (<= 160 states, e.g. tidy-trap, round-and-round, archipelago, first-flip, spark) are
+  shown whole; bigger ones are cut at radius par + 2 and at most 300 rooms (all edges between the kept rooms stay).
+
+  Layout: a seeded force-directed layout of the state graph (BFS depth rings as the start, deterministic per level)
+  is snapped onto a grid (start room at the centre cell, nearest free cell, then local moves and swaps that shorten
+  the corridors). Corridors run through the streets between rooms: door -> street lane -> cross street lane -> door
+  (an L through the streets), each street segment on its own lane where possible. Where two corridors cross, the one
+  running east-west is drawn as a raised bridge over the other.
+
+  Controls: tap a door / corridor / neighbouring room; keys 1-9 walk the numbered doors (clockwise from the top);
+  an arrow key or swipe takes the only door within 60 degrees of that way, or, if there are several, highlights the
+  nearest one, the same direction again cycles through them, Enter / Space / a tap walks the highlighted door;
+  drag to pan, pinch or wheel to zoom, 0 or a double tap to recentre; U / Backspace undo, R restart, L lights,
+  P peek. Embedding: ?embed=1 starts in cheese mode at par and calls LAB.done() after the celebration.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>Lab Maze</title>
+<style>
+  :root { --ink: #f3ead8; --chip: rgba(28, 24, 20, .82); --line: rgba(255, 236, 200, .22); --acc: #ffd36a; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #15171b; touch-action: none;
+    -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent;
+    font: 600 13px/1.2 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; color: var(--ink); }
+  canvas#cv { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; outline: none; }
+  #hud { position: fixed; left: 0; right: 0; top: 0; display: flex; align-items: center; gap: 5px;
+    padding: max(6px, env(safe-area-inset-top)) 8px 6px; box-sizing: border-box; z-index: 3; pointer-events: none; }
+  #hud > * { pointer-events: auto; }
+  .chip, .btn { height: 32px; border-radius: 10px; border: 1px solid var(--line); background: var(--chip); color: var(--ink);
+    font: inherit; box-shadow: 0 2px 6px rgba(0,0,0,.35); cursor: pointer; display: inline-flex; align-items: center;
+    justify-content: center; gap: 5px; padding: 0 9px; box-sizing: border-box; -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
+  .btn { width: 34px; padding: 0; flex: none; }
+  .btn svg, .chip svg { width: 18px; height: 18px; flex: none; }
+  .btn.on { background: #f7d77a; color: #2a1d08; border-color: #f7d77a; }
+  .btn:active, .chip:active { transform: translateY(1px); }
+  .btn:disabled { opacity: .4; }
+  #mode { flex: none; font-weight: 800; }
+  #mode .car { opacity: .7; font-size: 10px; }
+  #stat { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; padding: 0 4px; white-space: nowrap;
+    overflow: hidden; text-shadow: 0 1px 2px #000; font-variant-numeric: tabular-nums; }
+  #stat svg { width: 16px; height: 16px; flex: none; }
+  #stat b { color: var(--acc); }
+  #stat .dim { opacity: .75; font-weight: 600; }
+  #rail { position: fixed; right: 8px; top: calc(max(6px, env(safe-area-inset-top)) + 40px); display: flex; flex-direction: column; gap: 6px; z-index: 3; }
+  #stat .sm { font-size: 11px; font-weight: 600; opacity: .8; margin-left: -2px; }
+  #trainBox { position: fixed; left: 50%; transform: translateX(-50%); bottom: max(10px, env(safe-area-inset-bottom)); z-index: 4; display: none;
+    width: min(420px, calc(100vw - 24px)); box-sizing: border-box; padding: 9px 12px; border-radius: 12px; background: rgba(16, 30, 38, .92);
+    border: 1px solid rgba(63, 208, 234, .45); color: #dff6fb; box-shadow: 0 6px 18px rgba(0,0,0,.45); font-variant-numeric: tabular-nums; }
+  #trainBox.on { display: block; }
+  #trainBox b { color: #3fd0ea; }
+  #trainBox .bar { height: 5px; border-radius: 3px; background: rgba(255,255,255,.12); margin: 6px 0 2px; overflow: hidden; }
+  #trainBox .bar i { display: block; height: 100%; background: linear-gradient(90deg, #ff7a59, #3fd0ea); }
+  #trainBox .row { display: flex; gap: 8px; justify-content: flex-end; margin-top: 6px; }
+  #trainBox button { height: 30px; padding: 0 12px; border-radius: 8px; border: 1px solid rgba(63,208,234,.5); background: rgba(63,208,234,.12); color: #dff6fb; font: 700 13px system-ui, sans-serif; cursor: pointer; }
+  #trainBox.on ~ #toast { bottom: calc(max(10px, env(safe-area-inset-bottom)) + 110px); }
+  #trainBox.on ~ #peekBox { display: none; }
+  #menu { position: fixed; top: 46px; left: 8px; z-index: 4; display: none; flex-direction: column; gap: 4px; padding: 6px;
+    background: rgba(30, 26, 22, .96); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,.5); min-width: 220px; }
+  #menu.on { display: flex; }
+  #menu button { text-align: left; background: none; border: 0; color: var(--ink); font: inherit; padding: 8px 10px; border-radius: 8px; cursor: pointer; }
+  #menu button small { display: block; font-weight: 500; opacity: .65; margin-top: 2px; }
+  #menu button:hover, #menu button.cur { background: rgba(255, 220, 140, .14); }
+  #menu button:disabled { opacity: .4; cursor: default; }
+  #menu hr { border: 0; border-top: 1px solid var(--line); margin: 2px 4px; width: auto; }
+  #peekBox { position: fixed; left: 8px; bottom: max(8px, env(safe-area-inset-bottom)); z-index: 3; width: 128px; height: 140px;
+    background: rgba(250, 246, 236, .95); border-radius: 10px; box-shadow: 0 4px 14px rgba(0,0,0,.5); display: none; color: #4a3d2a;
+    border: 1px solid #c9b996; }
+  #peekBox.on { display: block; }
+  #peekBox canvas { width: 128px; height: 124px; display: block; }
+  #peekBox div { font: 700 10px/14px system-ui, sans-serif; text-align: center; letter-spacing: .06em; text-transform: uppercase; }
+  #toast { position: fixed; left: 50%; bottom: max(14px, env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 3;
+    max-width: calc(100vw - 32px); padding: 8px 14px; border-radius: 12px; background: rgba(24, 20, 16, .88); color: var(--ink);
+    border: 1px solid var(--line); text-align: center; opacity: 0; transition: opacity .3s; pointer-events: none; box-sizing: border-box; }
+  #toast.on { opacity: 1; }
+  #peekBox.on ~ #toast { left: calc(50% + 68px); max-width: calc(100vw - 160px); }
+  #card { position: fixed; inset: 0; z-index: 5; display: none; align-items: flex-end; justify-content: center; padding-bottom: max(18px, env(safe-area-inset-bottom));
+    box-sizing: border-box; background: linear-gradient(transparent 55%, rgba(8, 8, 12, .45)); }
+  #card.on { display: flex; }
+  #card .in { width: min(320px, calc(100vw - 32px)); background: #fbf6ea; color: #3a2e1c; border-radius: 16px; padding: 18px 18px 14px;
+    box-shadow: 0 16px 40px rgba(0,0,0,.5); text-align: center; border: 2px solid #e2cf9f; box-sizing: border-box;
+    background-image: repeating-linear-gradient(#fbf6ea 0 21px, #d7e6f2 21px 22px); }
+  #card h2 { margin: 0 0 6px; font-size: 22px; color: #3a2e1c; }
+  #card p { margin: 4px 0; font-weight: 600; }
+  #card .stars { font-size: 30px; letter-spacing: 4px; color: #e7a91c; margin: 4px 0; }
+  #card .stars i { color: #d8ccb2; font-style: normal; }
+  #card .row { display: flex; gap: 8px; justify-content: center; margin-top: 12px; flex-wrap: wrap; }
+  #card button { height: 38px; padding: 0 16px; border-radius: 10px; border: 0; font: 800 14px system-ui, sans-serif; cursor: pointer;
+    background: #3f7d3a; color: #fff; box-shadow: 0 3px 0 #24501f; }
+  #card button.alt { background: #e6dcc4; color: #3a2e1c; box-shadow: 0 3px 0 #bba980; }
+  @media (max-width: 440px) { #stat .dim { display: none; } }
+  @media (min-width: 700px) and (min-height: 560px) { #peekBox { width: 190px; height: 200px; } #peekBox canvas { width: 190px; height: 184px; } }
+  @media (max-width: 380px) { .btn { width: 31px; } .chip { padding: 0 7px; } #hud { gap: 4px; padding-left: 6px; padding-right: 6px; } }
+</style>
+</head>
+<body>
+<canvas id="cv" tabindex="0" aria-label="Rat maze. Arrow keys walk the rat."></canvas>
+<div id="hud">
+  <button class="chip" id="mode" aria-haspopup="true" title="Game mode"><span id="modeTxt">Coins</span><span class="car">&#9660;</span></button>
+  <div id="stat" aria-live="polite"></div>
+  <button class="btn" id="undo" title="Walk back (U)" aria-label="Undo">&#8630;</button>
+  <button class="btn" id="again" title="Start over (R)" aria-label="Start over">&#8634;</button>
+</div>
+<div id="rail">
+  <button class="btn" id="lights" title="Lab lights (L)" aria-label="Lights" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3z"/></svg></button>
+  <button class="btn" id="peek" title="Peek at the map (P)" aria-label="Peek" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="7" r="2.2"/><circle cx="18" cy="6" r="2.2"/><circle cx="12" cy="17" r="2.2"/><path d="M8 7.5l7.9-1.2M7.2 9l3.8 6M16.9 8l-3.8 7"/></svg></button>
+  <button class="btn" id="memory" title="The rat's memory: learned steps to a fill (M)" aria-label="Memory" aria-pressed="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19c3 0 3-6 7-6s3-6 7-6"/><path d="M15 4h4v4"/><circle cx="4.5" cy="19" r="1.5" fill="currentColor"/></svg></button>
+  <button class="btn" id="train" title="Train a rat by Q-learning (T)" aria-label="Train" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 20h18"/><path d="M4 17c3-1 4-9 7-9s3 5 5 5 3-6 4-8"/></svg></button>
+</div>
+<div id="trainBox"><div id="trainTxt"></div><div class="row"><button id="tSpeed">Slow</button><button id="tStop">Stop</button></div></div>
+<div id="menu" role="menu">
+  <button id="mCoins" role="menuitem">Coins<small>Visit every room, grab every coin</small></button>
+  <button id="mCheese" role="menuitem">Find the cheese<small>Shortest route to the cheese</small></button>
+  <button id="mFar" role="menuitem">Farther cheese<small></small></button>
+  <hr>
+  <button id="mForget" role="menuitem">Forget map and memory<small>Lights out on every room you have seen</small></button>
+</div>
+<div id="peekBox"><canvas id="pk" width="380" height="368"></canvas><div>the map now</div></div>
+<div id="toast"></div>
+<div id="card"><div class="in"><h2 id="cardH"></h2><div class="stars" id="cardS"></div><p id="cardP"></p><div class="row" id="cardB"></div></div></div>
+<script src="../levels.js"></script>
+<script src="core.js"></script>
+<script>
+(function () {
+  'use strict';
+  /*PURE*/
+  function hashStr(s) { let h = 2166136261 >>> 0; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; } return h >>> 0; }
+  function rng(seed) { let a = seed >>> 0; return () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ t >>> 15, t | 1); t ^= t + Math.imul(t ^ t >>> 7, t | 61); return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+
+  // ---- the state graph: canonical colourings reachable from the start by non-web Kempe swaps ----
+  function stateGraph(GAME, L, opt) {
+    opt = opt || {};
+    const Gr = GAME.graphs[L.g], n = Gr.n, hole = Gr.hole, rim = Gr.link.slice(), NC = Gr.ncol || 4, goal = Gr.goal || 3;
+    const adj = Array.from({ length: n }, () => []);
+    Gr.edges.forEach(([a, b]) => { adj[a].push(b); adj[b].push(a); });
+    const canon = c => { const mp = {}; let s = '', k = 0; for (let u = 0; u < n; u++) { if (u === hole) continue; if (!(c[u] in mp)) mp[c[u]] = k++; s += mp[c[u]]; } return s; };
+    const isWon = c => new Set(rim.map(x => c[x])).size <= goal;
+    function chainsOf(c) {
+      const out = [];
+      for (let a = 0; a < NC; a++) for (let b = a + 1; b < NC; b++) {
+        const seen = new Uint8Array(n), mine = [];
+        for (let s = 0; s < n; s++) {
+          if (s === hole || seen[s] || (c[s] !== a && c[s] !== b)) continue;
+          const vs = [s]; seen[s] = 1;
+          for (let i = 0; i < vs.length; i++) for (const w of adj[vs[i]]) if (w !== hole && !seen[w] && (c[w] === a || c[w] === b)) { seen[w] = 1; vs.push(w); }
+          mine.push(vs);
+        }
+        if (mine.length > 1) mine.forEach(vs => out.push({ a, b, vs }));   // exactly one component = a web: only renames
+      }
+      return out;
+    }
+    const flip = (c, K) => { const d = c.slice(); K.vs.forEach(u => { d[u] = d[u] === K.a ? K.b : K.a; }); return d; };
+    const start = L.start.slice(); start[hole] = -1;
+    function bfs(R, cap) {
+      const nodes = [], idx = new Map(); let truncated = false;
+      const add = (c, d) => { const key = canon(c); idx.set(key, nodes.length); nodes.push({ key, c, d, won: isWon(c) }); };
+      add(start, 0);
+      for (let qi = 0; qi < nodes.length; qi++) {
+        const N = nodes[qi]; if (N.won || N.d >= R) continue;
+        for (const K of chainsOf(N.c)) {
+          const d = flip(N.c, K), key = canon(d);
+          if (idx.has(key)) continue;
+          if (nodes.length >= cap) { truncated = true; continue; }
+          add(d, N.d + 1);
+        }
+      }
+      return { nodes, idx, truncated };
+    }
+    const WHOLE = opt.whole || 160, CAP = opt.cap || 300, R0 = opt.R != null ? opt.R : L.par + 2;
+    let res = bfs(Infinity, WHOLE), whole = !res.truncated;
+    if (!whole) res = bfs(R0, CAP);
+    const { nodes, idx } = res, edges = [], nb = nodes.map(() => []), seen = new Set();
+    nodes.forEach((N, i) => {   // the induced subgraph: every swap between two kept rooms is a corridor
+      N.rimCols = rim.map(x => N.c[x]);
+      if (N.won) return;
+      for (const K of chainsOf(N.c)) {
+        const j = idx.get(canon(flip(N.c, K)));
+        if (j === undefined || j === i) continue;
+        const pk = i < j ? i + ',' + j : j + ',' + i;
+        if (seen.has(pk)) continue;
+        seen.add(pk); nb[i].push({ to: j, e: edges.length }); nb[j].push({ to: i, e: edges.length }); edges.push([i, j]);
+      }
+    });
+    return { n, hole, rim, NC, goal, adj, nodes, idx, edges, nb, whole, R: whole ? null : R0, canon, chainsOf, flip, isWon };
+  }
+
+  // ---- layout: force-directed, snapped to a grid, then polished by local moves ----
+  function layoutMaze(SG, seed, init) {
+    const N = SG.nodes.length, nb = SG.nb, R = rng(seed);
+    let px = new Float64Array(N), py = new Float64Array(N), ang = new Float64Array(N);
+    const byD = {}; SG.nodes.forEach((v, i) => { (byD[v.d] = byD[v.d] || []).push(i); });
+    for (let i = 1; i < N; i++) {
+      const d = SG.nodes[i].d, par = nb[i].map(x => x.to).filter(j => SG.nodes[j].d === d - 1).sort((a, b) => a - b)[0];
+      if (d === 1 || par === undefined || par === 0) { const k = byD[d].indexOf(i); ang[i] = 2 * Math.PI * (k + R() * 0.5) / byD[d].length; }
+      else ang[i] = ang[par] + (R() - 0.5) * 2.2 / d;
+      px[i] = Math.cos(ang[i]) * d; py[i] = Math.sin(ang[i]) * d;
+    }
+    const fx = new Float64Array(N), fy = new Float64Array(N), IT = init ? 0 : N > 200 ? 220 : 300;
+    if (init) { const P = init(SG, seed); px = P.x; py = P.y; const x0 = px[0], y0 = py[0]; for (let i = 0; i < N; i++) { px[i] -= x0; py[i] -= y0; } }
+    for (let it = 0; it < IT; it++) {
+      const temp = 0.5 * (1 - it / IT) + 0.02;
+      fx.fill(0); fy.fill(0);
+      for (let i = 0; i < N; i++) for (let j = i + 1; j < N; j++) {
+        let dx = px[i] - px[j], dy = py[i] - py[j], d2 = dx * dx + dy * dy;
+        if (d2 < 1e-6) { dx = (R() - 0.5) * 0.01; dy = (R() - 0.5) * 0.01; d2 = 1e-4; }
+        if (d2 > 36) continue;
+        const f = 1 / d2; fx[i] += dx * f; fy[i] += dy * f; fx[j] -= dx * f; fy[j] -= dy * f;
+      }
+      SG.edges.forEach(([a, b]) => { const dx = px[a] - px[b], dy = py[a] - py[b], d = Math.sqrt(dx * dx + dy * dy) || 1e-3, f = d * 0.9; fx[a] -= dx / d * f; fy[a] -= dy / d * f; fx[b] += dx / d * f; fy[b] += dy / d * f; });
+      for (let i = 0; i < N; i++) { fx[i] -= px[i] * 0.03; fy[i] -= py[i] * 0.03; }
+      for (let i = 1; i < N; i++) { const l = Math.hypot(fx[i], fy[i]) || 1, s = Math.min(l, temp) / l; px[i] += fx[i] * s; py[i] += fy[i] * s; }
+      px[0] = py[0] = 0;   // the nest stays in the middle
+    }
+    let tot = 0; SG.edges.forEach(([a, b]) => { tot += Math.hypot(px[a] - px[b], py[a] - py[b]); });
+    const sc = SG.edges.length ? 1.45 / (tot / SG.edges.length) : 1;
+    const cell = new Array(N), occ = new Map(), K = (x, y) => x + ',' + y;
+    const order = [...Array(N).keys()].sort((a, b) => (a === 0 ? -1 : b === 0 ? 1 : Math.hypot(px[a], py[a]) - Math.hypot(px[b], py[b])));
+    for (const i of order) {
+      const tx = px[i] * sc, ty = py[i] * sc, cx = Math.round(tx), cy = Math.round(ty);
+      for (let r = 0; r < 60; r++) {
+        let best = null, bd = Infinity;
+        for (let x = cx - r; x <= cx + r; x++) for (let y = cy - r; y <= cy + r; y++) {
+          if (Math.max(Math.abs(x - cx), Math.abs(y - cy)) !== r || occ.has(K(x, y))) continue;
+          const d = Math.hypot(x - tx, y - ty); if (d < bd) { bd = d; best = [x, y]; }
+        }
+        if (best) { cell[i] = best; occ.set(K(best[0], best[1]), i); break; }
+      }
+    }
+    const ec = (p, q) => { const m = Math.abs(p[0] - q[0]) + Math.abs(p[1] - q[1]); return m === 1 ? 1 : m + 1.6 + (p[0] === q[0] || p[1] === q[1] ? 0.6 : 0); };
+    const cost = v => { let s = 0.04 * Math.max(Math.abs(cell[v][0]), Math.abs(cell[v][1])); for (const { to } of nb[v]) s += ec(cell[v], cell[to]); return s; };
+    for (let pass = 0; pass < 10; pass++) {
+      let moved = 0;
+      for (let v = 1; v < N; v++) {
+        const cand = new Map(), push = (x, y) => cand.set(K(x, y), [x, y]);
+        for (const { to } of nb[v]) { const [x, y] = cell[to]; push(x + 1, y); push(x - 1, y); push(x, y + 1); push(x, y - 1); }
+        const [vx, vy] = cell[v]; for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) if (dx || dy) push(vx + dx, vy + dy);
+        for (const [, c] of cand) {
+          const w = occ.get(K(c[0], c[1]));
+          if (w === 0 || w === v) continue;
+          const old = cell[v];
+          if (w === undefined) {
+            const before = cost(v); cell[v] = c; const after = cost(v);
+            if (after < before - 1e-9) { occ.delete(K(old[0], old[1])); occ.set(K(c[0], c[1]), v); moved++; } else cell[v] = old;
+          } else {
+            const before = cost(v) + cost(w); cell[v] = c; cell[w] = old; const after = cost(v) + cost(w);
+            if (after < before - 1e-9) { occ.set(K(c[0], c[1]), v); occ.set(K(old[0], old[1]), w); moved++; } else { cell[w] = c; cell[v] = old; }
+          }
+        }
+      }
+      if (!moved) break;
+    }
+    return cell;
+  }
+
+  // ---- corridors: door -> street lane -> cross-street lane -> door ----
+  const RH = 0.25, SIDE_N = 0, SIDE_E = 1, SIDE_S = 2, SIDE_W = 3;
+  function routeMaze(SG, cell) {
+    const N = SG.nodes.length, load = cell.map(() => [0, 0, 0, 0]), sgn = v => v > 0 ? 1 : v < 0 ? -1 : 0;
+    const order = SG.edges.map((e, i) => i).sort((p, q) => {
+      const m = i => { const [a, b] = SG.edges[i]; return Math.abs(cell[a][0] - cell[b][0]) + Math.abs(cell[a][1] - cell[b][1]); };
+      return m(p) - m(q) || p - q;
+    });
+    const R = new Array(SG.edges.length);
+    for (const ei of order) {
+      let [a, b] = SG.edges[ei];
+      if (SG.nodes[b].d < SG.nodes[a].d) [a, b] = [b, a];   // a: the end nearer the nest
+      const A = cell[a], B = cell[b], dx = B[0] - A[0], dy = B[1] - A[1];
+      let r;
+      if (Math.abs(dx) + Math.abs(dy) === 1) {
+        r = dx ? { kind: 'adjH', sx: dx, sy: 0, sideA: dx > 0 ? SIDE_E : SIDE_W, sideB: dx > 0 ? SIDE_W : SIDE_E }
+               : { kind: 'adjV', sx: 0, sy: dy, sideA: dy > 0 ? SIDE_S : SIDE_N, sideB: dy > 0 ? SIDE_N : SIDE_S };
+      } else {
+        // O1: leave a through N/S, along the horizontal street, down the street beside b, in through b's W/E side
+        const sy1 = sgn(dy) || (load[a][SIDE_N] <= load[a][SIDE_S] ? -1 : 1), sx1 = sgn(dx) || (load[b][SIDE_W] <= load[b][SIDE_E] ? 1 : -1);
+        const o1 = { kind: 'O1', sx: sx1, sy: sy1, sideA: sy1 < 0 ? SIDE_N : SIDE_S, sideB: sx1 > 0 ? SIDE_W : SIDE_E };
+        // O2: leave a through W/E, along the vertical street, along the street beside b, in through b's N/S side
+        const sx2 = sgn(dx) || (load[a][SIDE_W] <= load[a][SIDE_E] ? -1 : 1), sy2 = sgn(dy) || (load[b][SIDE_N] <= load[b][SIDE_S] ? 1 : -1);
+        const o2 = { kind: 'O2', sx: sx2, sy: sy2, sideA: sx2 > 0 ? SIDE_E : SIDE_W, sideB: sy2 > 0 ? SIDE_N : SIDE_S };
+        const sc = o => Math.max(load[a][o.sideA], load[b][o.sideB]) * 10 + load[a][o.sideA] + load[b][o.sideB];
+        const pref = Math.abs(dx) >= Math.abs(dy) ? o2 : o1;   // the nest-side door faces the main direction
+        r = sc(o1) < sc(o2) ? o1 : sc(o2) < sc(o1) ? o2 : pref;
+      }
+      r.a = a; r.b = b; r.e = ei;
+      load[a][r.sideA]++; load[b][r.sideB]++;
+      R[ei] = r;
+    }
+    // door offsets along each side, sorted by where the far room lies
+    const doors = cell.map(() => [[], [], [], []]);
+    R.forEach(r => { doors[r.a][r.sideA].push({ r, end: 'a', other: r.b }); doors[r.b][r.sideB].push({ r, end: 'b', other: r.a }); });
+    for (let v = 0; v < N; v++) for (let s = 0; s < 4; s++) {
+      const L = doors[v][s]; if (!L.length) continue;
+      const ax = s === SIDE_N || s === SIDE_S ? 0 : 1;
+      L.sort((p, q) => (cell[p.other][ax] - cell[q.other][ax]) || (cell[p.other][1 - ax] - cell[q.other][1 - ax]) * (s === SIDE_N || s === SIDE_W ? 1 : -1));
+      const k = L.length, sp = Math.min(0.11, 0.38 / k);
+      L.forEach((d, i) => { const off = (i - (k - 1) / 2) * sp; if (d.end === 'a') d.r.offA = off; else d.r.offB = off; });
+    }
+    // lanes
+    const reg = new Map(), LANES = [0.08, 0.16, 0, -0.08, -0.16];
+    function lane(key, lo, hi, pref) {
+      const list = reg.get(key) || []; reg.set(key, list);
+      const cands = pref ? LANES.map(l => l * pref) : [0, 0.08, -0.08, 0.16, -0.16];
+      let best = cands[0], bc = Infinity;
+      for (const l of cands) {
+        let c = 0; for (const it of list) if (Math.abs(it.l - l) < 1e-6 && it.lo < hi + 0.12 && lo < it.hi + 0.12) c++;
+        if (c < bc) { bc = c; best = l; } if (!c) break;
+      }
+      list.push({ lo, hi, l: best }); return best;
+    }
+    const hk = y => 'h' + Math.round(y * 2), vk = x => 'v' + Math.round(x * 2);
+    R.forEach(r => {
+      const A = cell[r.a], B = cell[r.b], oa = r.offA, ob = r.offB;
+      let pts;
+      if (r.kind === 'adjH') {
+        const y0 = A[1] + oa, y1 = B[1] + ob, xs = A[0] + r.sx * 0.5;
+        pts = [[A[0] + r.sx * RH, y0]];
+        if (Math.abs(y0 - y1) > 1e-9) { const l = lane(vk(xs), Math.min(y0, y1), Math.max(y0, y1), 0); pts.push([xs + l, y0], [xs + l, y1]); }
+        pts.push([B[0] - r.sx * RH, y1]);
+      } else if (r.kind === 'adjV') {
+        const x0 = A[0] + oa, x1 = B[0] + ob, ys = A[1] + r.sy * 0.5;
+        pts = [[x0, A[1] + r.sy * RH]];
+        if (Math.abs(x0 - x1) > 1e-9) { const l = lane(hk(ys), Math.min(x0, x1), Math.max(x0, x1), 0); pts.push([x0, ys + l], [x1, ys + l]); }
+        pts.push([x1, B[1] - r.sy * RH]);
+      } else if (r.kind === 'O1') {
+        const ys = A[1] + r.sy * 0.5, xs = B[0] - r.sx * 0.5, x0 = A[0] + oa, y1 = B[1] + ob;
+        const lh = lane(hk(ys), Math.min(x0, xs) - 0.15, Math.max(x0, xs) + 0.15, -r.sy);
+        const lv = lane(vk(xs), Math.min(ys, y1) - 0.15, Math.max(ys, y1) + 0.15, r.sx);
+        pts = [[x0, A[1] + r.sy * RH], [x0, ys + lh], [xs + lv, ys + lh], [xs + lv, y1], [B[0] - r.sx * RH, y1]];
+      } else {
+        const xs = A[0] + r.sx * 0.5, ys = B[1] - r.sy * 0.5, y0 = A[1] + oa, x1 = B[0] + ob;
+        const lv = lane(vk(xs), Math.min(y0, ys) - 0.15, Math.max(y0, ys) + 0.15, -r.sx);
+        const lh = lane(hk(ys), Math.min(xs, x1) - 0.15, Math.max(xs, x1) + 0.15, r.sy);
+        pts = [[A[0] + r.sx * RH, y0], [xs + lv, y0], [xs + lv, ys + lh], [x1, ys + lh], [x1, B[1] - r.sy * RH]];
+      }
+      // drop zero-length and collinear points
+      const P = [];
+      for (const p of pts) { const q = P[P.length - 1]; if (q && Math.abs(q[0] - p[0]) < 1e-9 && Math.abs(q[1] - p[1]) < 1e-9) continue; P.push(p); }
+      for (let i = P.length - 2; i > 0; i--) { const [p, q, s] = [P[i - 1], P[i], P[i + 1]]; if ((Math.abs(p[0] - q[0]) < 1e-9 && Math.abs(q[0] - s[0]) < 1e-9) || (Math.abs(p[1] - q[1]) < 1e-9 && Math.abs(q[1] - s[1]) < 1e-9)) P.splice(i, 1); }
+      r.pts = P;
+    });
+    // crossings: the east-west piece is the bridge
+    const segs = [];
+    R.forEach(r => { for (let i = 1; i < r.pts.length; i++) { const p = r.pts[i - 1], q = r.pts[i]; segs.push({ e: r.e, h: Math.abs(p[1] - q[1]) < 1e-9, x0: Math.min(p[0], q[0]), x1: Math.max(p[0], q[0]), y0: Math.min(p[1], q[1]), y1: Math.max(p[1], q[1]) }); } });
+    const H = segs.filter(s => s.h), V = segs.filter(s => !s.h), cross = [];
+    for (const h of H) for (const v of V) {
+      if (h.e === v.e) continue;
+      if (v.x0 > h.x0 + 0.02 && v.x0 < h.x1 - 0.02 && h.y0 > v.y0 + 0.02 && h.y0 < v.y1 - 0.02) cross.push({ x: v.x0, y: h.y0, over: h.e, under: v.e });
+    }
+    return { routes: R, doors, cross, segs };
+  }
+
+  function buildMaze(GAME, L, opt) {
+    const SG = stateGraph(GAME, L, opt);
+    const cell = layoutMaze(SG, hashStr('maze:' + L.id));
+    const RT = routeMaze(SG, cell);
+    return { SG, cell, ...RT };
+  }
+  // ---- true distance to a fill from every room (won rooms are terminal: paths only run through unwon rooms) ----
+  function fillDist(SG) {
+    const N = SG.nodes.length, D = new Array(N).fill(Infinity), q = [];
+    SG.nodes.forEach((v, i) => { if (v.won) { D[i] = 0; q.push(i); } });
+    for (let i = 0; i < q.length; i++) for (const { to } of SG.nb[q[i]]) if (!SG.nodes[to].won && D[to] === Infinity) { D[to] = D[q[i]] + 1; q.push(to); }
+    return D;
+  }
+  // ---- a self-training rat: tabular Q-learning over rooms x doors ----
+  // reward -1 per corridor, a fill ends the episode (value 0), Q starts at 0 (optimistic, so untried doors get tried),
+  // epsilon-greedy, episodes start in random rooms that can reach a fill. At convergence Q(v, door) = -(1 + D(next)).
+  function qTrainer(SG, D, seed, opt) {
+    opt = opt || {};
+    const N = SG.nodes.length, R = rng(seed), nb = SG.nb, won = SG.nodes.map(v => v.won);
+    const Q = nb.map(l => new Float64Array(l.length)), seen = new Uint32Array(N);
+    const starts = []; for (let i = 0; i < N; i++) if (!won[i] && D[i] < Infinity && nb[i].length) starts.push(i);
+    const T = { Q, seen, starts, D, episodes: 0, steps: 0, eps: opt.eps != null ? opt.eps : 0.2, alpha: opt.alpha != null ? opt.alpha : 0.5, cap: opt.cap || 4 * N, v: -1, len: 0 };
+    function greedy(v, rand) {
+      const q = Q[v]; let best = -Infinity, c = [];
+      for (let k = 0; k < q.length; k++) { if (q[k] > best + 1e-9) { best = q[k]; c = [k]; } else if (q[k] > best - 1e-9) c.push(k); }
+      return rand ? c[Math.floor(R() * c.length)] : c[0];
+    }
+    const vmax = t => { const q = Q[t]; let m = -Infinity; for (let k = 0; k < q.length; k++) if (q[k] > m) m = q[k]; return q.length ? m : 0; };
+    T.greedy = v => greedy(v, false);
+    T.value = v => won[v] ? 0 : -vmax(v);   // learned steps to a fill
+    T.step = () => {
+      if (T.v < 0) { if (!starts.length) return null; T.v = starts[Math.floor(R() * starts.length)]; T.len = 0; }
+      const v = T.v; seen[v]++;
+      const k = R() < T.eps ? Math.floor(R() * nb[v].length) : greedy(v, true), t = nb[v][k].to;
+      const target = -1 + (won[t] ? 0 : vmax(t));
+      Q[v][k] += T.alpha * (target - Q[v][k]); T.steps++; T.len++;
+      const ev = { v, t, e: nb[v][k].e, end: false };
+      if (won[t] || T.len >= T.cap) { T.episodes++; T.v = -1; ev.end = true; } else T.v = t;
+      return ev;
+    };
+    T.episode = () => { let ev; do { ev = T.step(); } while (ev && !ev.end); };
+    T.correct = v => { if (won[v] || !seen[v] || !nb[v].length) return false; return D[nb[v][greedy(v, false)].to] === D[v] - 1; };
+    T.match = () => { let ok = 0; for (const v of starts) if (T.correct(v)) ok++; return starts.length ? ok / starts.length : 1; };
+    return T;
+  }
+  /*END PURE*/
+  if (typeof document === 'undefined') { module.exports = { stateGraph, layoutMaze, routeMaze, buildMaze, fillDist, qTrainer, hashStr, RH }; return; }
+
+  // ======================================================================= the page
+  const g = LAB.game();
+  const L = g.level, ELEM = LAB.ELEM;
+  const QS = new URLSearchParams(location.search), HUD = QS.get('hud'), IN_APP = !!LAB.embedded || HUD === 'full' || HUD === 'compact';
+  const RM = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
+  const M = buildMaze(window.GAME, L, {});
+  const SG = M.SG, NODES = SG.nodes, NN = NODES.length, cell = M.cell, routes = M.routes;
+  const $ = id => document.getElementById(id);
+  const cv = $('cv'), ctx = cv.getContext('2d');
+  const now = () => performance.now(), clamp = (v, a, b) => Math.max(a, Math.min(b, v)), ease = t => t < .5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+
+  // room identity
+  const TINTS = [   // acrylic wall tints: top, face
+    ['#cfe8f4', '#8fb9cf'], ['#f6d9a6', '#c99a55'], ['#cdeccc', '#88b98a'], ['#f3c9cf', '#c48a95'], ['#ddd3f0', '#a092c4'], ['#e9e3d6', '#b4a88f'],
+  ];
+  const OBJ = ['plant', 'flask', 'books', 'mug', 'cactus', 'globe', 'duck', 'tubes', 'clock', 'scope'];
+  const ROOM = NODES.map((v, i) => { const h = hashStr(v.key + '|' + L.id); return { tint: TINTS[h % TINTS.length], obj: OBJ[(h >>> 4) % OBJ.length], side: (h >>> 9) & 1, hue: (h >>> 11) % 4 }; });
+
+  // persistent map memory: rooms seen, corridors walked, fills reached
+  const SKEY = 'fth-maze-v1-' + L.id;
+  const edgeOf = new Map(); SG.edges.forEach(([a, b], e) => { edgeOf.set(a + ',' + b, e); edgeOf.set(b + ',' + a, e); });
+  let mapped = new Set([0]), walked = new Set(), found = new Set(), savedMode = null, memView = 'mine';
+  try {
+    const s = JSON.parse(localStorage.getItem(SKEY) || 'null');
+    if (s) {
+      const ix = k => SG.idx.get(k);
+      (s.m || []).forEach(k => { const i = ix(k); if (i !== undefined) mapped.add(i); });
+      (s.w || []).forEach(([ka, kb]) => { const e = edgeOf.get(ix(ka) + ',' + ix(kb)); if (e !== undefined) walked.add(e); });
+      (s.f || []).forEach(k => { const i = ix(k); if (i !== undefined && NODES[i].won) found.add(i); });
+      savedMode = s.mode; if (s.v === 'off' || s.v === 'mine') memView = s.v;
+    }
+  } catch (_) {}
+  function save() {
+    try { localStorage.setItem(SKEY, JSON.stringify({ m: [...mapped].map(i => NODES[i].key), w: [...walked].map(e => SG.edges[e].map(i => NODES[i].key)), f: [...found].map(i => NODES[i].key), mode, v: memView === 'rat' ? 'mine' : memView })); } catch (_) {}
+  }
+  // the rat's memory: fewest steps to a fill it has actually found, over corridors it has actually walked
+  // (a Bellman / backwards-BFS fixed point over walked edges, sources = fills reached; won rooms are terminal)
+  const DF = fillDist(SG);
+  let mem = new Array(NN).fill(Infinity), memDoor = new Array(NN).fill(-1);
+  function recomputeMem() {
+    mem = new Array(NN).fill(Infinity); memDoor = new Array(NN).fill(-1);
+    const adjW = NODES.map(() => []); walked.forEach(e => { const [a, b] = SG.edges[e]; adjW[a].push([b, e]); adjW[b].push([a, e]); });
+    const q = [...found]; q.forEach(i => { mem[i] = 0; });
+    for (let h = 0; h < q.length; h++) { const u = q[h]; for (const [w, e] of adjW[u]) if (!NODES[w].won && mem[w] === Infinity) { mem[w] = mem[u] + 1; memDoor[w] = e; q.push(w); } }
+  }
+  recomputeMem();
+  // the BFS tree from the nest (through unwon rooms): how the hidden game is moved to a room the rat is dropped into
+  const tpar = new Array(NN).fill(-1);
+  for (let v = 1; v < NN; v++) for (const { to } of SG.nb[v]) if (!NODES[to].won && NODES[to].d === NODES[v].d - 1) { tpar[v] = to; break; }
+
+  // game state
+  const wonDepths = [...new Set(NODES.filter(v => v.won).map(v => v.d))].sort((a, b) => a - b);
+  let mode = IN_APP ? 'cheese' : (savedMode === 'cheese' ? 'cheese' : 'coins');
+  let cheeseN = wonDepths.includes(L.par) ? L.par : wonDepths[0], cheese = -1;
+  let cur = 0, path = [], steps = 0, coins = new Set([0]), finished = false, lights = false, peek = false;
+  let bank = 0, runStart = 0, runSteps = 0, runs = 0, hand = null, cyc = null, floaters = [];
+  let trainer = null, training = false, tSpeed = 0, ghost = null, tDoneAt = 0;
+  let anim = null, rat = { x: cell[0][0], y: cell[0][1] + 0.05, a: Math.PI / 2, t: 0 }, sel = -1, bounces = [];
+  const cam = { x: 0, y: 0, z: 80, free: false };
+  let W = 0, H = 0, DPR = 1, TOP = 44, zBase = 80;
+  function pickCheese() {
+    const c = NODES.map((v, i) => i).filter(i => NODES[i].won && NODES[i].d === cheeseN);
+    c.sort((p, q) => hashStr(NODES[p].key + 'cheese') - hashStr(NODES[q].key + 'cheese'));
+    cheese = c.length ? c[0] : -1;
+  }
+  pickCheese();
+
+  // ---------------------------------------------------------------- keeping LAB.game in sync
+  function chainTo(j) {
+    const want = NODES[j].key;
+    for (const K of g.chains) { if (K.web) continue; if (SG.canon(g.preview(K).col) === want) return K; }
+    return null;
+  }
+  function syncTo(j) {   // put the hidden game into room j: back to the start, then down the BFS tree
+    g.reset(); const P = []; for (let x = j; x > 0; x = tpar[x]) P.unshift(x);
+    for (const x of P) { const K = chainTo(x); if (!K) { console.error('maze: cannot reach', NODES[x].key); return; } g.swap(K); }
+  }
+  function permToRoom() { const rep = NODES[cur].c, p = [0, 1, 2, 3]; for (let u = 0; u < g.n; u++) if (u !== g.hole) p[g.col[u]] = rep[u]; return p; }
+
+  // ---------------------------------------------------------------- geometry helpers
+  const REST = 0.05;   // where the rat sits in a room: a little in front of the floor tiles
+  const doorPt = (r, end) => r.pts[end === 'a' ? 0 : r.pts.length - 1];
+  function walkPts(r, from) {   // centre of from -> doors -> centre of the other room
+    const P = r.pts.slice(); if (from !== r.a) P.reverse();
+    const to = from === r.a ? r.b : r.a;
+    return [[cell[from][0], cell[from][1] + REST], ...P, [cell[to][0], cell[to][1] + REST]];
+  }
+  function polyLen(P) { let s = 0; for (let i = 1; i < P.length; i++) s += Math.hypot(P[i][0] - P[i - 1][0], P[i][1] - P[i - 1][1]); return s; }
+  function polyAt(P, d) {
+    for (let i = 1; i < P.length; i++) {
+      const l = Math.hypot(P[i][0] - P[i - 1][0], P[i][1] - P[i - 1][1]);
+      if (d <= l || i === P.length - 1) { const t = l ? clamp(d / l, 0, 1) : 1; return { x: P[i - 1][0] + (P[i][0] - P[i - 1][0]) * t, y: P[i - 1][1] + (P[i][1] - P[i - 1][1]) * t, a: Math.atan2(P[i][1] - P[i - 1][1], P[i][0] - P[i - 1][0]) }; }
+      d -= l;
+    }
+    return { x: P[0][0], y: P[0][1], a: 0 };
+  }
+  function polyCut(P, d) { const out = [P[0]]; for (let i = 1; i < P.length; i++) { const l = Math.hypot(P[i][0] - P[i - 1][0], P[i][1] - P[i - 1][1]); if (d >= l) { out.push(P[i]); d -= l; } else { const t = d / l; out.push([P[i - 1][0] + (P[i][0] - P[i - 1][0]) * t, P[i - 1][1] + (P[i][1] - P[i - 1][1]) * t]); break; } } return out; }
+  function segDist(px, py, a, b) { const dx = b[0] - a[0], dy = b[1] - a[1], l2 = dx * dx + dy * dy || 1e-9; const t = clamp(((px - a[0]) * dx + (py - a[1]) * dy) / l2, 0, 1); return Math.hypot(px - a[0] - t * dx, py - a[1] - t * dy); }
+  const incident = v => SG.nb[v].map(({ to, e }) => ({ to, e, r: routes[e] }));
+
+  // ---------------------------------------------------------------- projection (3/4 view)
+  const KY = 0.8, HK = 0.75;
+  const SX = x => (x - cam.x) * cam.z + W / 2;
+  const SY = (y, h) => (y - cam.y) * cam.z * KY + TOP + (H - TOP) / 2 - (h || 0) * cam.z * HK;
+  const toWorld = (px, py) => ({ x: (px - W / 2) / cam.z + cam.x, y: (py - TOP - (H - TOP) / 2) / (cam.z * KY) + cam.y });
+
+  // ---------------------------------------------------------------- bounds of the board
+  let BX0 = Infinity, BX1 = -Infinity, BY0 = Infinity, BY1 = -Infinity;
+  cell.forEach(([x, y]) => { BX0 = Math.min(BX0, x); BX1 = Math.max(BX1, x); BY0 = Math.min(BY0, y); BY1 = Math.max(BY1, y); });
+  BX0 -= 0.9; BX1 += 0.9; BY0 -= 0.9; BY1 += 0.9;
+
+  // ---------------------------------------------------------------- visibility
+  const isLit = i => lights || mapped.has(i) || (mode === 'cheese' && i === cheese);
+  const corrKnown = r => lights || (mapped.has(r.a) && mapped.has(r.b)) || (anim && anim.r === r);
+
+  // ---------------------------------------------------------------- drawing
+  function poly(P, h) { ctx.beginPath(); P.forEach((p, i) => { const x = SX(p[0]), y = SY(p[1], h); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }); }
+  function box(x0, y0, x1, y1, h, top, face) {   // a wall piece: front face + top
+    const a = SX(x0), b = SX(x1), yb = SY(y1, 0), yt = SY(y1, h), yt0 = SY(y0, h);
+    ctx.fillStyle = face; ctx.fillRect(a, yt, b - a, yb - yt);
+    ctx.fillStyle = top; ctx.fillRect(a, yt0, b - a, yt - yt0);
+  }
+  const CW = 0.05, CT = 0.014, CH = 0.04, WT = 0.03, WH = 0.14, DW = 0.036;
+  function corridorStroke(P, alpha, glow, lift) {
+    const z = cam.z, h0 = lift || 0, wAll = (CW + CT * 2) * z;
+    ctx.save(); ctx.globalAlpha = alpha; ctx.lineJoin = 'miter'; ctx.lineCap = 'butt';
+    ctx.lineWidth = wAll + (h0 ? 0.03 * z : 0);
+    ctx.strokeStyle = h0 ? 'rgba(60,40,20,.22)' : 'rgba(70,45,20,.18)'; ctx.save(); ctx.translate(0.015 * z, (0.025 + h0) * z); poly(P, 0); ctx.stroke(); ctx.restore();
+    ctx.lineWidth = wAll + 2; ctx.strokeStyle = 'rgba(70,80,90,.55)'; poly(P, h0 + CH * 0.5); ctx.stroke();
+    ctx.lineWidth = wAll; ctx.strokeStyle = glow ? '#fff4cc' : '#f4f8fa'; poly(P, h0 + CH * 0.5); ctx.stroke();
+    ctx.lineWidth = CW * z; ctx.strokeStyle = glow ? '#f6dc95' : '#f1e2bf'; poly(P, h0 + CH * 0.2); ctx.stroke();
+    ctx.restore();
+  }
+  function bridge(c, alpha) {   // the east-west corridor hops over the other one
+    const r = routes[c.over], P = r.pts; let seg = null;
+    for (let i = 1; i < P.length; i++) if (Math.abs(P[i][1] - c.y) < 1e-9 && Math.abs(P[i - 1][1] - c.y) < 1e-9) seg = [P[i - 1], P[i]];
+    if (!seg) return;
+    const s = 0.07, x0 = Math.max(Math.min(seg[0][0], seg[1][0]), c.x - s), x1 = Math.min(Math.max(seg[0][0], seg[1][0]), c.x + s);
+    corridorStroke([[x0, c.y], [x1, c.y]], alpha, false, 0.02);
+  }
+  function wallPieces(lo, hi, gaps) { const out = []; let s = lo; gaps.sort((a, b) => a - b).forEach(g0 => { if (g0 - DW > s) out.push([s, g0 - DW]); s = Math.max(s, g0 + DW); }); if (hi > s) out.push([s, hi]); return out; }
+  function roomFloor(i, alpha) {
+    const [cx, cy] = cell[i], z = cam.z, v = NODES[i];
+    ctx.save(); ctx.globalAlpha = alpha;
+    ctx.fillStyle = 'rgba(60,40,20,.28)'; ctx.fillRect(SX(cx - RH) + 0.05 * z, SY(cy - RH) + 0.06 * z, 2 * RH * z, 2 * RH * z * KY);
+    // floor: pale plywood with faint boards
+    const fx = SX(cx - RH), fy = SY(cy - RH), fw = 2 * RH * z, fh = 2 * RH * z * KY;
+    ctx.fillStyle = v.won ? '#efe6c8' : '#f2e3c2'; ctx.fillRect(fx, fy, fw, fh);
+    ctx.strokeStyle = 'rgba(160,120,70,.18)'; ctx.lineWidth = 1; ctx.beginPath();
+    for (let k = 1; k < 4; k++) { const yy = fy + fh * k / 4; ctx.moveTo(fx, yy); ctx.lineTo(fx + fw, yy); } ctx.stroke();
+    // mosaic: the rim's five elements in rim order
+    const ts = 0.06, my = cy - RH + WT + 0.03;
+    for (let k = 0; k < v.rimCols.length; k++) {
+      const tx = cx + (k - (v.rimCols.length - 1) / 2) * (ts + 0.008) - ts / 2;
+      ctx.fillStyle = 'rgba(70,50,30,.5)'; ctx.fillRect(SX(tx) - 1, SY(my) - 1, ts * z + 2, ts * z * KY + 2);
+      ctx.fillStyle = ELEM[v.rimCols[k]].hex; ctx.fillRect(SX(tx), SY(my), ts * z, ts * z * KY);
+      ctx.fillStyle = 'rgba(255,255,255,.28)'; ctx.fillRect(SX(tx), SY(my), ts * z, ts * z * KY * 0.35);
+    }
+    if (i === 0) {   // the nest: a straw mat
+      ctx.fillStyle = 'rgba(214,170,80,.55)'; ctx.beginPath(); ctx.ellipse(SX(cx), SY(cy + 0.06), 0.15 * z, 0.1 * z * KY, 0, 0, 7); ctx.fill();
+      ctx.strokeStyle = 'rgba(150,105,40,.6)'; ctx.lineWidth = Math.max(1, z * .01); ctx.beginPath();
+      for (let k = 0; k < 7; k++) { const a = k * 0.9; ctx.moveTo(SX(cx + Math.cos(a) * .12), SY(cy + .06 + Math.sin(a) * .07)); ctx.lineTo(SX(cx + Math.cos(a + 2.4) * .09), SY(cy + .06 + Math.sin(a + 2.4) * .06)); } ctx.stroke();
+    }
+    if (v.won) {   // goal pad
+      const t = now() / 600, pul = RM ? 0.5 : 0.5 + 0.5 * Math.sin(t);
+      const isC = mode === 'cheese' && i === cheese;
+      ctx.fillStyle = isC ? `rgba(255,214,90,${0.35 + 0.25 * pul})` : `rgba(92,214,120,${0.25 + 0.2 * pul})`;
+      ctx.beginPath(); ctx.ellipse(SX(cx), SY(cy + 0.05), 0.15 * z, 0.115 * z * KY, 0, 0, 7); ctx.fill();
+      ctx.strokeStyle = isC ? '#d9a21c' : '#3c9a52'; ctx.lineWidth = Math.max(1.2, z * 0.014); ctx.setLineDash([z * 0.03, z * 0.025]);
+      ctx.beginPath(); ctx.ellipse(SX(cx), SY(cy + 0.05), 0.13 * z, 0.095 * z * KY, 0, 0, 7); ctx.stroke(); ctx.setLineDash([]);
+    }
+    ctx.restore();
+  }
+  function roomWalls(i, alpha, back) {
+    const [cx, cy] = cell[i], D = M.doors[i], tn = ROOM[i].tint;
+    const offs = s => D[s].map(d => d.end === 'a' ? d.r.offA : d.r.offB);
+    ctx.save(); ctx.globalAlpha = alpha;
+    if (back) {
+      wallPieces(-RH, RH, offs(SIDE_N)).forEach(([p, q]) => box(cx + p, cy - RH, cx + q, cy - RH + WT, WH, tn[0], tn[1]));
+      wallPieces(-RH, RH, offs(SIDE_W)).forEach(([p, q]) => box(cx - RH, cy + p, cx - RH + WT, cy + q, WH, tn[0], tn[1]));
+      wallPieces(-RH, RH, offs(SIDE_E)).forEach(([p, q]) => box(cx + RH - WT, cy + p, cx + RH, cy + q, WH, tn[0], tn[1]));
+    } else {
+      wallPieces(-RH, RH, offs(SIDE_S)).forEach(([p, q]) => box(cx + p, cy + RH - WT, cx + q, cy + RH, WH, tn[0], tn[1]));
+      // a bright edge on the acrylic
+      ctx.strokeStyle = 'rgba(255,255,255,.55)'; ctx.lineWidth = 1;
+      ctx.strokeRect(SX(cx - RH) + .5, SY(cy - RH, WH) + .5, 2 * RH * cam.z - 1, (2 * RH) * cam.z * KY - 1);
+    }
+    ctx.restore();
+  }
+  function doorGlows(i) {   // the open doors of the rat's room
+    const t = now() / 400, z = cam.z;
+    incident(i).forEach(({ e, r }) => {
+      const p = doorPt(r, r.a === i ? 'a' : 'b'), pul = RM ? .7 : .55 + .45 * Math.sin(t + e);
+      const sel1 = sel === e;
+      ctx.fillStyle = sel1 ? `rgba(255,120,60,${.6 + .3 * pul})` : `rgba(255,214,90,${.35 + .4 * pul})`;
+      ctx.beginPath(); ctx.ellipse(SX(p[0]), SY(p[1], 0.02), (sel1 ? 0.07 : 0.055) * z, (sel1 ? 0.07 : 0.055) * z * KY, 0, 0, 7); ctx.fill();
+    });
+  }
+
+  // little objects: (x, y) = screen point of the base, s = px per world unit
+  function drawObj(kind, x, y, s, hue) {
+    const c = ctx, k = s * 0.14;
+    c.save(); c.translate(x, y); c.scale(k, k); c.lineWidth = 0.06; c.strokeStyle = 'rgba(40,30,20,.7)'; c.lineJoin = 'round';
+    c.fillStyle = 'rgba(40,30,20,.25)'; c.beginPath(); c.ellipse(.12, .05, .5, .18, 0, 0, 7); c.fill();
+    const HUE = ['#e2574c', '#3f86d6', '#e0b33a', '#4ea65a'][hue];
+    switch (kind) {
+      case 'plant':
+        c.fillStyle = '#c96a3c'; c.beginPath(); c.moveTo(-.32, -.5); c.lineTo(.32, -.5); c.lineTo(.24, 0); c.lineTo(-.24, 0); c.closePath(); c.fill(); c.stroke();
+        c.fillStyle = '#3f9a4a'; [[-.3, -1.05, -.6], [.3, -1.05, .6], [0, -1.25, 0], [-.18, -.8, -1.1], [.2, -.8, 1.1]].forEach(([lx, ly, a]) => { c.beginPath(); c.ellipse(lx, ly, .16, .38, a, 0, 7); c.fill(); c.stroke(); });
+        break;
+      case 'flask':
+        c.fillStyle = 'rgba(220,240,250,.8)'; c.beginPath(); c.moveTo(-.12, -1.2); c.lineTo(.12, -1.2); c.lineTo(.12, -.75); c.lineTo(.42, -.05); c.lineTo(-.42, -.05); c.lineTo(-.12, -.75); c.closePath(); c.fill(); c.stroke();
+        c.fillStyle = HUE; c.beginPath(); c.moveTo(-.28, -.38); c.lineTo(.28, -.38); c.lineTo(.4, -.08); c.lineTo(-.4, -.08); c.closePath(); c.fill();
+        break;
+      case 'books':
+        ['#a5402f', '#2f5f8f', '#c99a2e'].forEach((col, j) => { c.fillStyle = col; c.fillRect(-.4 + j * .04, -.25 - j * .25, .8 - j * .1, .24); c.strokeRect(-.4 + j * .04, -.25 - j * .25, .8 - j * .1, .24); });
+        break;
+      case 'mug':
+        c.fillStyle = HUE; c.fillRect(-.28, -.62, .56, .62); c.strokeRect(-.28, -.62, .56, .62);
+        c.beginPath(); c.arc(.32, -.32, .16, -1.4, 1.4); c.stroke();
+        c.fillStyle = '#6b4024'; c.beginPath(); c.ellipse(0, -.62, .28, .08, 0, 0, 7); c.fill();
+        break;
+      case 'cactus':
+        c.fillStyle = '#d58a52'; c.fillRect(-.26, -.32, .52, .32); c.strokeRect(-.26, -.32, .52, .32);
+        c.fillStyle = '#5aa35a'; c.beginPath(); c.roundRect ? c.roundRect(-.13, -1.2, .26, .9, .13) : c.rect(-.13, -1.2, .26, .9); c.fill(); c.stroke();
+        c.beginPath(); c.roundRect ? c.roundRect(.1, -.95, .25, .12, .06) : c.rect(.1, -.95, .25, .12); c.fill();
+        c.beginPath(); c.roundRect ? c.roundRect(.23, -1.12, .12, .28, .06) : c.rect(.23, -1.12, .12, .28); c.fill(); c.stroke();
+        break;
+      case 'globe':
+        c.fillStyle = '#7b5a3a'; c.fillRect(-.25, -.1, .5, .1); c.fillRect(-.04, -.35, .08, .3);
+        c.fillStyle = '#4f9ad6'; c.beginPath(); c.arc(0, -.75, .4, 0, 7); c.fill(); c.stroke();
+        c.fillStyle = '#5fb35f'; c.beginPath(); c.ellipse(-.1, -.85, .15, .1, .5, 0, 7); c.ellipse(.15, -.62, .12, .08, -.4, 0, 7); c.fill();
+        break;
+      case 'duck':
+        c.fillStyle = '#f6d23c'; c.beginPath(); c.ellipse(0, -.28, .38, .26, 0, 0, 7); c.fill(); c.stroke();
+        c.beginPath(); c.arc(.18, -.68, .2, 0, 7); c.fill(); c.stroke();
+        c.fillStyle = '#ef8a2c'; c.beginPath(); c.moveTo(.36, -.7); c.lineTo(.56, -.64); c.lineTo(.36, -.6); c.fill();
+        c.fillStyle = '#222'; c.beginPath(); c.arc(.22, -.74, .04, 0, 7); c.fill();
+        break;
+      case 'tubes':
+        c.fillStyle = '#9b7c55'; c.fillRect(-.45, -.35, .9, .14); c.strokeRect(-.45, -.35, .9, .14);
+        [-.28, 0, .28].forEach((tx, j) => { c.fillStyle = 'rgba(225,240,250,.85)'; c.fillRect(tx - .08, -.95, .16, .85); c.strokeRect(tx - .08, -.95, .16, .85); c.fillStyle = ['#e2574c', '#3f86d6', '#4ea65a'][(j + hue) % 3]; c.fillRect(tx - .07, -.5, .14, .38); });
+        break;
+      case 'clock':
+        c.fillStyle = HUE; c.beginPath(); c.arc(0, -.55, .42, 0, 7); c.fill(); c.stroke();
+        c.fillStyle = '#fffaf0'; c.beginPath(); c.arc(0, -.55, .32, 0, 7); c.fill();
+        c.beginPath(); c.moveTo(0, -.55); c.lineTo(0, -.78); c.moveTo(0, -.55); c.lineTo(.16, -.5); c.stroke();
+        break;
+      case 'scope':
+        c.fillStyle = '#4a5560'; c.fillRect(-.35, -.12, .7, .12); c.fillRect(-.25, -.95, .12, .85);
+        c.save(); c.translate(.05, -.75); c.rotate(.5); c.fillStyle = '#c8d0d8'; c.fillRect(-.09, -.45, .18, .6); c.strokeRect(-.09, -.45, .18, .6); c.restore();
+        c.fillStyle = '#7a8692'; c.fillRect(-.12, -.42, .45, .08);
+        break;
+    }
+    c.restore();
+  }
+  function drawCoin(x, y, s, t) {
+    const b = RM ? 0 : Math.sin(t / 300 + x * 0.05) * 0.02 * s, w = RM ? 1 : Math.abs(Math.cos(t / 700 + y * 0.03)) * 0.7 + 0.3;
+    ctx.fillStyle = 'rgba(60,40,10,.25)'; ctx.beginPath(); ctx.ellipse(x, y, 0.06 * s, 0.025 * s, 0, 0, 7); ctx.fill();
+    ctx.fillStyle = '#e3a514'; ctx.beginPath(); ctx.ellipse(x, y - 0.11 * s + b, 0.065 * s * w, 0.065 * s, 0, 0, 7); ctx.fill();
+    ctx.fillStyle = '#ffd95a'; ctx.beginPath(); ctx.ellipse(x - 0.008 * s, y - 0.115 * s + b, 0.05 * s * w, 0.05 * s, 0, 0, 7); ctx.fill();
+    ctx.fillStyle = '#fff3b8'; ctx.fillRect(x - 0.01 * s * w, y - 0.14 * s + b, 0.012 * s * w, 0.035 * s);
+  }
+  function drawCheese(x, y, s, t) {
+    const b = RM ? 0 : Math.sin(t / 350) * 0.012 * s;
+    ctx.save(); ctx.translate(x, y + b);
+    ctx.fillStyle = 'rgba(60,40,10,.3)'; ctx.beginPath(); ctx.ellipse(0.01 * s, 0, 0.13 * s, 0.04 * s, 0, 0, 7); ctx.fill();
+    ctx.lineJoin = 'round'; ctx.strokeStyle = '#a8740c'; ctx.lineWidth = Math.max(1, s * 0.008);
+    ctx.fillStyle = '#e9b52a'; ctx.beginPath(); ctx.moveTo(-0.12 * s, -0.01 * s); ctx.lineTo(0.12 * s, -0.01 * s); ctx.lineTo(0.12 * s, -0.08 * s); ctx.lineTo(-0.12 * s, -0.08 * s); ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#ffd659'; ctx.beginPath(); ctx.moveTo(-0.12 * s, -0.08 * s); ctx.lineTo(0.12 * s, -0.08 * s); ctx.lineTo(0.06 * s, -0.17 * s); ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#d39a1a'; [[-0.07, -0.045, .018], [0.02, -0.05, .014], [0.08, -0.035, .012]].forEach(([hx, hy, r]) => { ctx.beginPath(); ctx.arc(hx * s, hy * s, r * s, 0, 7); ctx.fill(); });
+    ctx.restore();
+  }
+  function drawRat(x, y, a, s, t, moving) {
+    const k = s * 0.0105, wob = moving && !RM ? Math.sin(t / 45) : 0;
+    ctx.save(); ctx.translate(x, y); ctx.scale(1, KY); ctx.rotate(a); ctx.scale(k, k);
+    ctx.fillStyle = 'rgba(30,20,10,.3)'; ctx.beginPath(); ctx.ellipse(-1, 3, 11, 7, 0, 0, 7); ctx.fill();
+    ctx.strokeStyle = '#e7a3a7'; ctx.lineWidth = 1.6; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(-9, 0); ctx.bezierCurveTo(-15, 2 + wob * 3, -19, -4 - wob * 3, -24, -2); ctx.stroke();
+    ctx.fillStyle = '#f7f4ef'; ctx.strokeStyle = '#8e8a84'; ctx.lineWidth = .8;
+    ctx.beginPath(); ctx.ellipse(-1, 0, 10, 6.5, 0, 0, 7); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(6, -4.5); ctx.quadraticCurveTo(15, 0, 6, 4.5); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(10, 0, 5.5, 4, 0, 0, 7); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#f1b5ba'; ctx.beginPath(); ctx.arc(7, -4.2, 2.6, 0, 7); ctx.arc(7, 4.2, 2.6, 0, 7); ctx.fill();
+    ctx.fillStyle = '#e88a95'; ctx.beginPath(); ctx.arc(15.4, 0, 1.4, 0, 7); ctx.fill();
+    ctx.fillStyle = '#c0323f'; ctx.beginPath(); ctx.arc(11.5, -2.1, 1, 0, 7); ctx.arc(11.5, 2.1, 1, 0, 7); ctx.fill();
+    ctx.strokeStyle = 'rgba(80,70,60,.6)'; ctx.lineWidth = .4; ctx.beginPath(); ctx.moveTo(14, -1); ctx.lineTo(18, -4); ctx.moveTo(14, 1); ctx.lineTo(18, 4); ctx.moveTo(14, 0); ctx.lineTo(19, 0); ctx.stroke();
+    ctx.restore();
+  }
+  function drawBench(t) {
+    const z = cam.z;
+    // black epoxy lab bench
+    ctx.fillStyle = lights ? '#2a2d33' : '#16181c'; ctx.fillRect(0, 0, W, H);
+    // the base board
+    const x0 = SX(BX0), x1 = SX(BX1), y0 = SY(BY0), y1 = SY(BY1), th = 0.12 * z * HK;
+    ctx.fillStyle = 'rgba(0,0,0,.45)'; ctx.fillRect(x0 + 0.1 * z, y0 + 0.12 * z, x1 - x0, y1 - y0 + th);
+    ctx.fillStyle = '#a07c4c'; ctx.fillRect(x0, y1 - th * 0.01, x1 - x0, th);
+    const gr = ctx.createLinearGradient(x0, y0, x1, y1); gr.addColorStop(0, lights ? '#dcbf8e' : '#b99b6c'); gr.addColorStop(1, lights ? '#cfae78' : '#a98b5e');
+    ctx.fillStyle = gr; ctx.fillRect(x0, y0 - th, x1 - x0, y1 - y0);
+    ctx.strokeStyle = 'rgba(120,85,40,.12)'; ctx.lineWidth = 1; ctx.beginPath();
+    for (let yy = BY0; yy < BY1; yy += 0.5) { const sy = SY(yy) - th; if (sy < -10 || sy > H + 10) continue; ctx.moveTo(x0, sy); ctx.lineTo(x1, sy); } ctx.stroke();
+    // grid pencil marks (the lab's own room numbers would go here)
+    // clipboard on the bench, top-right of the board
+    const cx = SX(BX1 + 0.55), cy = SY(BY0 + 0.7);
+    if (cx < W + 2 * z && cy < H + 2 * z) {
+      ctx.save(); ctx.translate(cx, cy); ctx.rotate(0.12);
+      ctx.fillStyle = 'rgba(0,0,0,.4)'; ctx.fillRect(-0.32 * z + 6, -0.42 * z + 8, 0.64 * z, 0.84 * z * KY);
+      ctx.fillStyle = '#8a5a2b'; ctx.fillRect(-0.32 * z, -0.42 * z, 0.64 * z, 0.84 * z * KY);
+      ctx.fillStyle = '#f8f5ec'; ctx.fillRect(-0.27 * z, -0.34 * z, 0.54 * z, 0.74 * z * KY);
+      ctx.fillStyle = '#b9bec4'; ctx.fillRect(-0.12 * z, -0.46 * z, 0.24 * z, 0.08 * z);
+      ctx.strokeStyle = '#9db7d6'; ctx.lineWidth = 1; ctx.beginPath(); for (let k = 0; k < 7; k++) { const yy = -0.24 * z + k * 0.07 * z * KY; ctx.moveTo(-0.24 * z, yy); ctx.lineTo(0.24 * z, yy); } ctx.stroke();
+      ctx.fillStyle = '#3a4a6a'; ctx.font = `700 ${Math.max(7, 0.06 * z)}px system-ui`; ctx.fillText('MAZE ' + L.num, -0.22 * z, -0.26 * z);
+      ctx.strokeStyle = '#c0392b'; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(-0.2 * z, -0.1 * z); ctx.lineTo(-0.05 * z, 0); ctx.lineTo(0.1 * z, -0.12 * z); ctx.lineTo(0.2 * z, 0.05 * z); ctx.stroke();
+      ctx.restore();
+      // pencil
+      ctx.save(); ctx.translate(SX(BX1 + 0.3), SY(BY0 + 1.55)); ctx.rotate(-0.5);
+      ctx.fillStyle = '#f2c230'; ctx.fillRect(0, 0, 0.5 * z, 0.035 * z); ctx.fillStyle = '#f0d8b0'; ctx.beginPath(); ctx.moveTo(0.5 * z, 0); ctx.lineTo(0.58 * z, 0.0175 * z); ctx.lineTo(0.5 * z, 0.035 * z); ctx.fill();
+      ctx.fillStyle = '#e88'; ctx.fillRect(-0.04 * z, 0, 0.04 * z, 0.035 * z); ctx.restore();
+    }
+    // desk lamp, top-left of the board
+    const lx = SX(BX0 - 0.35), ly = SY(BY0 + 0.2);
+    ctx.save();
+    ctx.fillStyle = 'rgba(0,0,0,.45)'; ctx.beginPath(); ctx.ellipse(lx + 6, ly + 6, 0.2 * z, 0.08 * z, 0, 0, 7); ctx.fill();
+    ctx.fillStyle = '#2e5e74'; ctx.beginPath(); ctx.ellipse(lx, ly, 0.18 * z, 0.07 * z, 0, 0, 7); ctx.fill();
+    ctx.strokeStyle = '#2e5e74'; ctx.lineWidth = 0.035 * z; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(lx, ly); ctx.lineTo(lx + 0.1 * z, ly - 0.55 * z); ctx.lineTo(lx + 0.45 * z, ly - 0.75 * z); ctx.stroke();
+    ctx.fillStyle = '#3b7a96'; ctx.beginPath(); ctx.moveTo(lx + 0.38 * z, ly - 0.85 * z); ctx.lineTo(lx + 0.62 * z, ly - 0.72 * z); ctx.lineTo(lx + 0.58 * z, ly - 0.52 * z); ctx.lineTo(lx + 0.3 * z, ly - 0.6 * z); ctx.closePath(); ctx.fill();
+    if (lights) { ctx.fillStyle = 'rgba(255,240,180,.9)'; ctx.beginPath(); ctx.ellipse(lx + 0.45 * z, ly - 0.57 * z, 0.08 * z, 0.04 * z, 0.3, 0, 7); ctx.fill(); }
+    ctx.restore();
+  }
+  // ---------------------------------------------------------------- the self-training rat
+  let gstep = null, lastEval = 0;
+  function trainTick(t) {
+    if (!training || !trainer) return;
+    if (tSpeed === 0) {   // slow: one corridor at a time, the ghost rat walks it
+      if (gstep && t - gstep.t0 < gstep.dur) { const q = polyAt(gstep.pts, gstep.len * clamp((t - gstep.t0) / gstep.dur, 0, 1)); ghost = { x: q.x, y: q.y, a: q.a }; return; }
+      const ev = trainer.step(); if (!ev) return stopTraining();
+      if (ev.end) checkLearned();
+      const pts = walkPts(routes[ev.e], ev.v); gstep = { pts, len: polyLen(pts), t0: t, dur: RM ? 60 : 260 };
+    } else {             // fast: a few episodes per frame; max: as many as fit in a few milliseconds
+      const t1 = performance.now() + 7, e0 = trainer.episodes; let ev = null;
+      while (training && (tSpeed === 2 ? performance.now() < t1 : trainer.episodes < e0 + 2 && performance.now() < t1)) {
+        ev = trainer.step(); if (!ev) return stopTraining();
+        if (ev.end && trainer.episodes % (tSpeed === 2 ? 20 : 1) === 0) checkLearned();
+      }
+      if (ev) { const c = cell[ev.end ? ev.t : trainer.v < 0 ? ev.t : trainer.v]; ghost = { x: c[0], y: c[1] + REST, a: (ghost && ghost.a || 0) + 0.3 }; }
+    }
+    if (t - lastEval > 120) { lastEval = t; trainReadout(); }
+  }
+  function checkLearned() { if (!tDoneAt && trainer.match() === 1) { tDoneAt = trainer.episodes; stopTraining(true); } }
+  function trainReadout() {
+    if (!trainer) return;
+    const m = trainer.match(), ok = Math.round(m * trainer.starts.length);
+    const pct = (m * 100).toFixed(m === 1 ? 0 : 1);
+    $('trainTxt').innerHTML = (tDoneAt ? `<b>Learned.</b> After ${tDoneAt.toLocaleString()} episodes the rat's best door is a shortest-route door in <b>every</b> room (${ok}/${trainer.starts.length}). It memorised a table: no rule that carries over to another map.`
+      : `${training ? 'Training' : 'Paused'}: <b>${trainer.episodes.toLocaleString()}</b> episodes, ${trainer.steps.toLocaleString()} corridors. Its best door is a shortest-route door in <b>${pct}%</b> of rooms (${ok}/${trainer.starts.length}).`)
+      + `<div class="bar"><i style="width:${(m * 100).toFixed(1)}%"></i></div>`;
+    $('tStop').textContent = tDoneAt ? 'Close' : training ? 'Stop' : 'Go on';
+    $('tSpeed').textContent = 'Speed: ' + ['slow', 'fast', 'max'][tSpeed];
+  }
+  function startTraining() {
+    if (!trainer || tDoneAt) { trainer = qTrainer(SG, DF, (Math.random() * 4294967296) >>> 0); tDoneAt = 0; }
+    training = true; memView = 'rat'; gstep = null;
+    if (!lights) { lights = true; }
+    if (!cam.free) recentreOverview();
+    $('trainBox').classList.add('on'); trainReadout(); hud();
+    toast('A second rat learns by trial and error (Q-learning). Arrows: its best door; blue = a shortest route, orange = not yet.', 3200);
+  }
+  function stopTraining(done) { training = false; ghost = null; gstep = null; trainReadout(); hud(); if (done) toast('Every room learned.', 1600); }
+
+  function draw() {
+    const t = now();
+    trainTick(t);
+    // camera
+    if (!cam.free) { const k = RM ? 1 : 0.14; cam.x += (rat.x - cam.x) * k; cam.y += (rat.y - cam.y) * k; }
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    drawBench(t);
+    const z = cam.z, pad = 1.2, wx0 = cam.x - W / 2 / z - pad, wx1 = cam.x + W / 2 / z + pad, wy0 = cam.y - (H / 2) / (z * KY) - pad - 0.3, wy1 = cam.y + (H / 2) / (z * KY) + pad + 0.3;
+    const inView = (x, y) => x > wx0 && x < wx1 && y > wy0 && y < wy1;
+    const routeInView = r => { const A = cell[r.a], B = cell[r.b]; return Math.max(A[0], B[0]) > wx0 && Math.min(A[0], B[0]) < wx1 && Math.max(A[1], B[1]) > wy0 && Math.min(A[1], B[1]) < wy1; };
+    // corridors
+    for (const r of routes) {
+      if (!routeInView(r)) continue;
+      if (corrKnown(r)) { corridorStroke(r.pts, lights && !(mapped.has(r.a) || mapped.has(r.b)) ? 0.75 : 1, false); continue; }
+      [r.a, r.b].forEach(v => {
+        if (!mapped.has(v)) return;
+        const P = v === r.a ? r.pts : r.pts.slice().reverse(), isCur = v === cur && !anim && !finished;
+        const len = polyLen(P), d = Math.min(len, isCur ? 0.42 : 0.2);
+        corridorStroke(polyCut(P, d), isCur ? 0.95 : 0.5, isCur);
+        if (isCur) corridorStroke(polyCut(P, Math.min(len, d + 0.14)).slice(-2), 0.35, true);
+      });
+    }
+    if (z >= 30) for (const c of M.cross) { const r = routes[c.over], u = routes[c.under]; if (!inView(c.x, c.y)) continue; if (corrKnown(r) && corrKnown(u)) bridge(c, 1); }
+    // rooms, back to front
+    const vis = [];
+    for (let i = 0; i < NN; i++) if (isLit(i) && inView(cell[i][0], cell[i][1])) vis.push(i);
+    vis.sort((p, q) => cell[p][1] - cell[q][1] || cell[p][0] - cell[q][0]);
+    for (const i of vis) {
+      const a = mapped.has(i) ? 1 : 0.82, [cx, cy] = cell[i];
+      roomFloor(i, a);
+      roomWalls(i, a, true);
+      if (i === cur && !anim && !finished) doorGlows(i);
+      ctx.save(); ctx.globalAlpha = a;
+      const rm = ROOM[i], ox = cx + (rm.side ? 0.15 : -0.15), oy = cy + 0.14;
+      if (z >= 30) drawObj(rm.obj, SX(ox), SY(oy), z, rm.hue);
+      if (mode === 'coins' && !coins.has(i)) drawCoin(SX(cx), SY(cy + 0.08), z, t);
+      if (mode === 'cheese' && i === cheese) { const ate = finished && cur === cheese; drawCheese(SX(cx + (ate ? 0.12 : 0)), SY(cy + (ate ? 0.12 : 0.06)), z * (ate ? 0.75 : 1), t); }
+      ctx.restore();
+      roomWalls(i, a, false);
+      if (memView !== 'off') memoryMark(i, z);
+      if (i === cur && !anim && !finished && z >= 40) doorNumbers(i, z);
+    }
+    // unknown cheese room glow in the dark
+    if (mode === 'cheese' && cheese >= 0 && !lights && !mapped.has(cheese)) {
+      const [cx, cy] = cell[cheese], gx = SX(cx), gy = SY(cy), r = 0.9 * z;
+      const gr = ctx.createRadialGradient(gx, gy, 0, gx, gy, r); gr.addColorStop(0, 'rgba(255,214,90,.35)'); gr.addColorStop(1, 'rgba(255,214,90,0)');
+      ctx.fillStyle = gr; ctx.fillRect(gx - r, gy - r, 2 * r, 2 * r);
+    }
+    // the rat
+    let moving = false;
+    if (anim && anim.kind === 'hand') {
+      const p = clamp((t - anim.t0) / anim.dur, 0, 1), { A, B } = anim;
+      const ph = (a, b) => clamp((p - a) / (b - a), 0, 1);
+      const down = ph(0, .22), mv = ease(ph(.32, .78)), drop = ph(.78, .88), up = ph(.9, 1);
+      rat.x = A[0] + (B[0] - A[0]) * mv; rat.y = A[1] + (B[1] - A[1]) * mv;
+      rat.lift = p < .32 ? 0 : p < .78 ? 0.25 + 0.55 * Math.sin(Math.PI * mv) : 0.25 * (1 - drop);
+      hand = { x: rat.x, y: rat.y, lift: p < .22 ? rat.lift + 0.12 + 2.5 * (1 - down) : p < .9 ? rat.lift + 0.12 : 0.12 + 2.5 * up, grip: p > .26 && p < .86 };
+      moving = p > .3 && p < .8;
+      if (p >= 1) finishAnim();
+    } else if (anim) {
+      const p = clamp((t - anim.t0) / anim.dur, 0, 1), d = (anim.back ? (p < .5 ? p * 2 : 2 - p * 2) : RM ? p : ease(p)) * anim.len;
+      const q = polyAt(anim.pts, Math.min(d, anim.len - 1e-6));
+      rat.x = q.x; rat.y = q.y; rat.a = anim.back && p >= .5 ? q.a + Math.PI : q.a; moving = true;
+      if (p >= 1) finishAnim();
+    }
+    if (rat.lift) { ctx.fillStyle = 'rgba(20,12,4,.25)'; ctx.beginPath(); ctx.ellipse(SX(rat.x), SY(rat.y), 0.12 * z, 0.05 * z, 0, 0, 7); ctx.fill(); }
+    if (ghost && training) drawGhost(t, z);
+    drawRat(SX(rat.x), SY(rat.y, 0.02 + (rat.lift || 0)), rat.a + (rat.lift ? Math.sin(t / 160) * 0.25 : 0), z, t, moving);
+    if (hand) drawHand(SX(hand.x), SY(hand.y, hand.lift), z, hand.grip);
+    drawFloaters(t);
+    // lab lights off: darkness except round the rat
+    if (!lights) {
+      const gx = SX(rat.x), gy = SY(rat.y), r0 = 0.8 * z, r1 = Math.max(3.2 * z, Math.min(W, H) * 0.7);
+      const gr = ctx.createRadialGradient(gx, gy, r0, gx, gy, r1); gr.addColorStop(0, 'rgba(10,12,22,.08)'); gr.addColorStop(1, 'rgba(10,12,22,.66)');
+      ctx.fillStyle = gr; ctx.fillRect(0, 0, W, H);
+    }
+    if (mode === 'cheese' && cheese >= 0 && !(finished && cur === cheese)) cheeseCompass(t);
+    drawFx(t);
+    requestAnimationFrame(draw);
+  }
+
+  // ---------------------------------------------------------------- memory, door numbers, the hand, the training ghost
+  function doorOrder(i) {   // the room's doors clockwise from straight up: the numbers 1-9
+    return incident(i).map(x => { const d = doorDir(i, x.r); let a = Math.atan2(d[0], -d[1]); if (a < -1e-9) a += 2 * Math.PI; return { ...x, ang: a, d }; }).sort((p, q) => p.ang - q.ang);
+  }
+  function arrowTo(i, e, col, z, w) {
+    const r = routes[e], p0 = doorPt(r, r.a === i ? 'a' : 'b'), [cx, cy] = cell[i], far = z < 70;   // zoomed out: a longer, bolder arrow
+    const ux = p0[0] - cx, uy = p0[1] - cy, ul = Math.hypot(ux, uy) || 1, p = far ? [p0[0] + ux / ul * 0.14, p0[1] + uy / ul * 0.14] : p0, f0 = far ? 0 : 0.25;
+    const x0 = SX(cx + ux * f0), y0 = SY(cy + uy * f0 + 0.02, 0.02), x1 = SX(p[0]), y1 = SY(p[1], 0.02);
+    const a = Math.atan2(y1 - y0, x1 - x0), hl = Math.max(7, 0.06 * z);
+    ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = w; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1 - Math.cos(a) * hl * 0.6, y1 - Math.sin(a) * hl * 0.6); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x1 - Math.cos(a - 0.5) * hl, y1 - Math.sin(a - 0.5) * hl); ctx.lineTo(x1 - Math.cos(a + 0.5) * hl, y1 - Math.sin(a + 0.5) * hl); ctx.closePath(); ctx.fill();
+  }
+  function memoryMark(i, z) {
+    if (NODES[i].won) return;
+    let n, e, col;
+    if (memView === 'mine') { if (mem[i] === Infinity) return; n = mem[i]; e = memDoor[i]; col = '#ffc93c'; }
+    else { if (!trainer || !trainer.seen[i] || !SG.nb[i].length) return; e = SG.nb[i][trainer.greedy(i)].e; n = Math.max(0, Math.round(trainer.value(i))); col = trainer.correct(i) ? '#3fd0ea' : '#ff7a59'; }
+    ctx.save();
+    ctx.globalAlpha = 0.95;
+    if (z < 70) arrowTo(i, e, 'rgba(10,20,30,.55)', z, Math.max(2.6, 0.022 * z) + 2);
+    arrowTo(i, e, col, z, Math.max(2.6, 0.022 * z));
+    if (z >= 30) {
+      const [cx, cy] = cell[i], bx = SX(cx + (ROOM[i].side ? -0.14 : 0.14)), by = SY(cy + 0.12, 0.05), rr = 0.06 * z;
+      ctx.globalAlpha = 1; ctx.fillStyle = 'rgba(24,22,30,.78)'; ctx.strokeStyle = col; ctx.lineWidth = Math.max(1.2, 0.012 * z);
+      ctx.beginPath(); ctx.ellipse(bx, by, rr, rr * 0.85, 0, 0, 7); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = col; ctx.font = `800 ${Math.round(0.07 * z)}px system-ui, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(String(n), bx, by + 0.5);
+    }
+    ctx.restore();
+  }
+  function doorNumbers(i, z) {
+    const D = doorOrder(i); if (D.length < 2) return;
+    ctx.save(); ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.font = `800 ${Math.max(9, Math.round(0.055 * z))}px system-ui, sans-serif`;
+    D.slice(0, 9).forEach((x, k) => {
+      const p = doorPt(x.r, x.r.a === i ? 'a' : 'b'), l = Math.hypot(...x.d) || 1, ox = p[0] + x.d[0] / l * 0.085, oy = p[1] + x.d[1] / l * 0.085;
+      const px = SX(ox), py = SY(oy, 0.12), rr = Math.max(7, 0.042 * z), on = sel === x.e;
+      ctx.fillStyle = on ? '#ff7a3c' : 'rgba(26,22,18,.86)'; ctx.strokeStyle = on ? '#fff' : '#ffd36a'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(px, py, rr, 0, 7); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#fff'; ctx.fillText(String(k + 1), px, py + 0.5);
+    });
+    ctx.restore();
+  }
+  function drawHand(x, y, z, grip) {   // a blue nitrile glove coming down from above, white lab-coat sleeve
+    const s = z / 100;
+    ctx.save(); ctx.translate(x, y);
+    ctx.fillStyle = '#f4f4f0'; ctx.strokeStyle = 'rgba(60,60,70,.5)'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(-16 * s, -30 * s); ctx.lineTo(-22 * s, -y - 20); ctx.lineTo(22 * s, -y - 20); ctx.lineTo(16 * s, -30 * s); ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#6fa6dc'; ctx.strokeStyle = '#2f5f93';
+    ctx.beginPath(); ctx.ellipse(0, -22 * s, 15 * s, 13 * s, 0, 0, 7); ctx.fill(); ctx.stroke();   // back of the hand
+    const f = grip ? 0 : 5 * s;
+    [[-10, -1], [-3.5, 0], [3.5, 0], [10, -1]].forEach(([fx2, fy]) => { ctx.beginPath(); ctx.ellipse((fx2 * s) * (grip ? 0.8 : 1), (fy - 8) * s + f * 0.3, 3.4 * s, 9 * s, fx2 * 0.02, 0, 7); ctx.fill(); ctx.stroke(); });
+    ctx.beginPath(); ctx.ellipse(-15 * s - f, -16 * s, 4 * s, 8 * s, 0.7, 0, 7); ctx.fill(); ctx.stroke();   // thumb
+    ctx.fillStyle = '#8fbbe6'; ctx.fillRect(-16 * s, -36 * s, 32 * s, 5 * s);   // cuff
+    ctx.restore();
+  }
+  function drawGhost(t, z) {
+    ctx.save(); ctx.globalAlpha = 0.7;
+    const gx = SX(ghost.x), gy = SY(ghost.y, 0.02);
+    const gr = ctx.createRadialGradient(gx, gy, 0, gx, gy, 0.22 * z); gr.addColorStop(0, 'rgba(63,208,234,.55)'); gr.addColorStop(1, 'rgba(63,208,234,0)');
+    ctx.fillStyle = gr; ctx.fillRect(gx - 0.22 * z, gy - 0.22 * z, 0.44 * z, 0.44 * z);
+    drawRat(gx, gy, ghost.a, z * 0.85, t, true);
+    ctx.restore();
+  }
+  function floater(text, col) { floaters.push({ text, col, x: rat.x, y: rat.y, t0: now() }); }
+  function drawFloaters(t) {
+    floaters = floaters.filter(f => t - f.t0 < 1600);
+    floaters.forEach(f => {
+      const p = (t - f.t0) / 1600; ctx.save(); ctx.globalAlpha = 1 - p * p;
+      ctx.font = `900 ${Math.round(Math.max(18, 0.2 * cam.z))}px system-ui, sans-serif`; ctx.textAlign = 'center';
+      ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(40,24,6,.85)'; ctx.fillStyle = f.col;
+      const x = SX(f.x), y = SY(f.y, 0.4 + (RM ? 0 : p * 0.6));
+      ctx.strokeText(f.text, x, y); ctx.fillText(f.text, x, y); ctx.restore();
+    });
+  }
+
+  // the cheese is off screen: a badge on the screen edge points at it
+  function cheeseCompass(t) {
+    const [cx, cy] = cell[cheese], px = SX(cx), py = SY(cy), m = 30, x0 = m, x1 = W - m, y0 = TOP + m, y1 = H - m;
+    if (px > x0 && px < x1 && py > y0 && py < y1) return;
+    const ox = W / 2, oy = TOP + (H - TOP) / 2, dx = px - ox, dy = py - oy;
+    const k = Math.min(dx > 0 ? (x1 - ox) / dx : dx < 0 ? (x0 - ox) / dx : Infinity, dy > 0 ? (y1 - oy) / dy : dy < 0 ? (y0 - oy) / dy : Infinity);
+    const bx = ox + dx * k, by = oy + dy * k, a = Math.atan2(dy, dx), pul = RM ? 0 : Math.sin(t / 300) * 2;
+    ctx.save(); ctx.translate(bx, by);
+    ctx.fillStyle = 'rgba(255,214,90,.25)'; ctx.beginPath(); ctx.arc(0, 0, 22 + pul, 0, 7); ctx.fill();
+    ctx.save(); ctx.rotate(a); ctx.fillStyle = '#ffd36a'; ctx.beginPath(); ctx.moveTo(25 + pul, 0); ctx.lineTo(15, -7); ctx.lineTo(15, 7); ctx.closePath(); ctx.fill(); ctx.restore();
+    ctx.fillStyle = 'rgba(28,24,20,.9)'; ctx.strokeStyle = '#ffd36a'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(0, 0, 16, 0, 7); ctx.fill(); ctx.stroke();
+    drawCheese(0, 8, 85, 0);
+    ctx.restore();
+  }
+
+  // ---------------------------------------------------------------- confetti
+  let fx = [];
+  function burst(x, y, n) { if (RM) return; for (let k = 0; k < n; k++) { const a = Math.random() * 6.283, v = 2 + Math.random() * 6; fx.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 5, c: ['#ffd36a', '#ef5a3c', '#3d8fe8', '#4caf50', '#fff'][k % 5], r: Math.random() * 6.283, life: 1 }); } }
+  function drawFx() { if (!fx.length) return; fx = fx.filter(p => p.life > 0); fx.forEach(p => { p.x += p.vx; p.y += p.vy; p.vy += 0.25; p.r += 0.2; p.life -= 0.012; ctx.save(); ctx.globalAlpha = Math.min(1, p.life * 2); ctx.translate(p.x, p.y); ctx.rotate(p.r); ctx.fillStyle = p.c; ctx.fillRect(-4, -2, 8, 4); ctx.restore(); }); }
+
+  // ---------------------------------------------------------------- HUD
+  const ICO = {
+    coin: '<svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="8" fill="#e3a514"/><circle cx="9.4" cy="9.6" r="6.2" fill="#ffd95a"/><rect x="8.6" y="5.5" width="1.6" height="8" fill="#fff3b8"/></svg>',
+    cheese: '<svg viewBox="0 0 20 20"><path d="M2 14h16v-5H2z" fill="#e9b52a" stroke="#a8740c"/><path d="M2 9h16L13 3z" fill="#ffd659" stroke="#a8740c" stroke-linejoin="round"/><circle cx="6" cy="11.5" r="1.4" fill="#d39a1a"/><circle cx="12.5" cy="12" r="1" fill="#d39a1a"/></svg>',
+    feet: '<svg viewBox="0 0 20 20" fill="#f1b5ba"><ellipse cx="6" cy="12" rx="2.6" ry="3.4"/><ellipse cx="13" cy="7" rx="2.6" ry="3.4"/><circle cx="4" cy="7.4" r="1"/><circle cx="6.6" cy="7" r="1"/><circle cx="11" cy="2.6" r="1"/><circle cx="13.6" cy="2.2" r="1"/></svg>',
+  };
+  function hud() {
+    $('modeTxt').textContent = mode === 'coins' ? 'Coins' : 'Cheese';
+    let s;
+    if (mode === 'coins') s = `${ICO.coin}<b>${bank}</b><span class="sm">${NN - coins.size} left</span>${ICO.feet}<b>${runSteps}</b><span class="sm">best ${DF[runStart] === Infinity ? '-' : DF[runStart]}</span>`;
+    else s = `${ICO.cheese}<b>${cheese < 0 ? '-' : cheeseN}</b><span class="dim">away</span>${ICO.feet}<b>${steps}</b><span class="dim">steps</span>`;
+    $('stat').innerHTML = s;
+    $('lights').classList.toggle('on', lights); $('lights').setAttribute('aria-pressed', lights);
+    $('peek').classList.toggle('on', peek); $('peek').setAttribute('aria-pressed', peek);
+    $('memory').classList.toggle('on', memView !== 'off'); $('memory').setAttribute('aria-pressed', memView !== 'off');
+    $('memory').style.color = memView === 'rat' ? '#12424d' : ''; $('memory').style.background = memView === 'rat' ? '#3fd0ea' : '';
+    $('train').classList.toggle('on', training); $('train').setAttribute('aria-pressed', training);
+    $('undo').disabled = !path.length || finished;
+    $('peekBox').classList.toggle('on', peek);
+    if (peek) drawPeek();
+  }
+  let toastT = 0;
+  function toast(msg, ms) { const el = $('toast'); el.textContent = msg; el.classList.add('on'); clearTimeout(toastT); toastT = setTimeout(() => el.classList.remove('on'), ms || 2200); }
+  function drawPeek() {
+    const c = $('pk'), x = c.getContext('2d'), Wp = c.width, Hp = c.height, P = g.pos, perm = permToRoom();
+    x.clearRect(0, 0, Wp, Hp);
+    let a0 = Infinity, a1 = -Infinity, b0 = Infinity, b1 = -Infinity; P.forEach(([px, py]) => { a0 = Math.min(a0, px); a1 = Math.max(a1, px); b0 = Math.min(b0, py); b1 = Math.max(b1, py); });
+    const s = Math.min((Wp - 30) / (a1 - a0 || 1), (Hp - 30) / (b1 - b0 || 1)), ox = Wp / 2 - (a0 + a1) / 2 * s, oy = Hp / 2 - (b0 + b1) / 2 * s;
+    const X = u => ox + P[u][0] * s, Y = u => oy + P[u][1] * s, rim = new Set(g.rim), k = Wp / 256;
+    x.strokeStyle = 'rgba(90,70,40,.45)'; x.lineWidth = 2 * k; x.beginPath(); g.edges.forEach(([u, v]) => { x.moveTo(X(u), Y(u)); x.lineTo(X(v), Y(v)); }); x.stroke();
+    const r = (g.n > 26 ? 6 : 8) * k;
+    for (let u = 0; u < g.n; u++) {
+      if (u === g.hole) { x.setLineDash([3 * k, 3 * k]); x.strokeStyle = '#5a4a32'; x.lineWidth = 2 * k; x.fillStyle = '#fffaf0'; x.beginPath(); x.arc(X(u), Y(u), r + 2, 0, 7); x.fill(); x.stroke(); x.setLineDash([]); continue; }
+      x.fillStyle = ELEM[perm[g.col[u]]].hex; x.strokeStyle = rim.has(u) ? '#2a2016' : 'rgba(40,30,20,.5)'; x.lineWidth = (rim.has(u) ? 3 : 1.2) * k;
+      x.beginPath(); x.arc(X(u), Y(u), r, 0, 7); x.fill(); x.stroke();
+    }
+  }
+
+  // ---------------------------------------------------------------- moves
+  function walkDur(len) { return RM ? 120 : clamp(len * 260, 380, 1500); }
+  function startAnim(r, from, back, done) {
+    const pts = walkPts(r, from), len = polyLen(pts);
+    const end = back ? pts[0] : pts[pts.length - 1];
+    anim = { r, pts, len, back, t0: now(), dur: back ? walkDur(len * 0.55) * 2 : walkDur(len), done: () => { rat.x = end[0]; rat.y = end[1]; done(); } };
+  }
+  function startHand(from, to, done) {   // the scientist's gloved hand lifts the rat out and drops it elsewhere
+    const A = [cell[from][0], cell[from][1] + REST], B = [cell[to][0], cell[to][1] + REST];
+    const len = Math.hypot(B[0] - A[0], B[1] - A[1]);
+    anim = { kind: 'hand', A, B, t0: now(), dur: RM ? 200 : clamp(1500 + len * 120, 1600, 3200), done: () => { rat.x = B[0]; rat.y = B[1]; rat.lift = 0; hand = null; done(); } };
+  }
+  function finishAnim() { if (anim) { const f = anim.done; anim = null; f(); } }
+  function walk(e) {
+    if (anim || finished || e < 0) return;
+    const r = routes[e]; if (r.a !== cur && r.b !== cur) return;
+    const j = r.a === cur ? r.b : r.a, v = NODES[j];
+    sel = -1; cyc = null; cam.free = false;
+    if (v.won && mode === 'coins') {
+      // a fill: the cheese bonus, then the scientist's hand moves the rat to another room for a new run
+      steps++; runSteps++; walked.add(e); found.add(j); mapped.add(j);
+      const from = cur;
+      startAnim(r, from, false, () => {
+        if (!coins.has(j)) { coins.add(j); bank++; }
+        const best = DF[runStart], bonus = Math.max(10, 10 + 10 * best - 5 * (runSteps - best));
+        bank += bonus; runs++;
+        recomputeMem(); save();
+        floater('+' + bonus, '#ffd36a'); burst(SX(rat.x), SY(rat.y), 40);
+        toast(`Filled! ${runSteps} step${runSteps === 1 ? '' : 's'} this run, best possible ${best}. Cheese bonus +${bonus}.`, 2600);
+        hud();
+        if (window.__mazeNoDrop) { cur = from; rat.x = cell[from][0]; rat.y = cell[from][1] + REST; return; }   // test hook: no drop, the rat stays put (g never left this room)
+        dropRat(j);
+      });
+      hud(); return;
+    }
+    if (v.won && !(mode === 'cheese' && j === cheese)) {
+      // cheese mode, a fill without the cheese: the rat pops in and backs out; the puzzle state never changes
+      steps += 2;
+      startAnim(r, cur, true, () => { mapped.add(j); found.add(j); walked.add(e); recomputeMem(); toast('The hole is filled here, but no cheese.'); save(); hud(); });
+      hud(); return;
+    }
+    const K = chainTo(j);
+    if (!K) { console.error('maze: no chain from', NODES[cur].key, 'to', v.key); return; }
+    const from = cur;
+    g.swap(K);
+    path.push({ e, from, to: j });
+    steps++; runSteps++; walked.add(e);
+    startAnim(r, from, false, () => {
+      cur = j; mapped.add(j); if (mode === 'coins' && !coins.has(j)) { coins.add(j); bank++; }
+      if (mode === 'cheese' && j === cheese) found.add(j);
+      recomputeMem(); save(); hud();
+      if (mode === 'cheese' && j === cheese) win(); else checkCoins();
+    });
+    hud();
+  }
+  function dropRat(fillRoom) {   // pick a room, lift the rat out of the fill and drop it there
+    let pool = [];
+    for (let i = 0; i < NN; i++) if ((lights || mapped.has(i)) && !NODES[i].won && DF[i] < Infinity && i !== runStart) pool.push(i);
+    if (!pool.length) pool = [0];
+    const to = pool[Math.floor(Math.random() * pool.length)];
+    startHand(fillRoom, to, () => {
+      cur = to; syncTo(to); path = []; runStart = to; runSteps = 0;
+      mapped.add(to); if (!coins.has(to)) { coins.add(to); bank++; }
+      save(); hud();
+      toast(`New run from here: the best route to a fill is ${DF[to]} step${DF[to] === 1 ? '' : 's'}.`, 2400);
+      checkCoins();
+    });
+  }
+  function undo() {
+    if (anim || finished) return;
+    if (!path.length) { toast(runStart ? 'This is where the hand dropped the rat.' : 'Back at the nest.'); return; }
+    const last = path.pop();
+    g.undo();
+    steps += mode === 'coins' ? 1 : -1; if (mode === 'coins') runSteps++;
+    sel = -1; cyc = null; cam.free = false;
+    startAnim(routes[last.e], last.to, false, () => { cur = last.from; hud(); });
+    hud();
+  }
+  function restart(silent) {
+    anim = null; hand = null; finished = false; path = []; steps = 0; cur = 0; coins = new Set([0]); sel = -1; cyc = null; cam.free = false;
+    bank = 0; runStart = 0; runSteps = 0; runs = 0;
+    g.reset(); rat.x = cell[0][0]; rat.y = cell[0][1] + REST; rat.a = Math.PI / 2; rat.lift = 0;
+    $('card').classList.remove('on'); fx = [];
+    hud();
+    if (!silent) toast(mode === 'coins' ? `Grab the coins. A filled room pays a cheese bonus, bigger for a shorter route.` : cheese < 0 ? 'No cheese in this maze.' : `The cheese is ${cheeseN} rooms away. Shortest route wins.`);
+  }
+  function setMode(m) { mode = m; save(); closeMenu(); restart(); }
+  function checkCoins() {
+    if (mode !== 'coins' || coins.size < NN || finished || window.__mazeNoEnd) return;
+    finished = true; hud(); burst(W / 2, H / 2, 90);
+    card('All ' + NN + ' coins!', '', `You explored the whole maze in ${steps} steps and banked ${bank} coins over ${runs} fill${runs === 1 ? '' : 's'}. Now find the cheese.`,
+      [['Find the cheese', () => setMode('cheese')], ['Again', () => restart(), true]]);
+  }
+  function win() {
+    finished = true; hud();
+    const n = cheeseN, st = steps <= n ? 3 : steps <= n + 2 ? 2 : 1;
+    burst(SX(rat.x), SY(rat.y), 120);
+    const stars = '★'.repeat(st) + '<i>' + '★'.repeat(3 - st) + '</i>';
+    const deeper = wonDepths.find(d => d > cheeseN);
+    const btns = [['Again', () => restart()]];
+    if (deeper !== undefined && !IN_APP) btns.push(['Farther', () => farther(), true]);
+    setTimeout(() => card('Cheese!', IN_APP ? '' : stars, `${steps} step${steps === 1 ? '' : 's'}; the shortest route is ${n}.` + (st === 3 ? ' Perfect run.' : ''), IN_APP ? [] : btns), RM ? 100 : 700);
+    if (LAB.embedded) setTimeout(LAB.done, 2200);
+  }
+  function farther() {
+    const deeper = wonDepths.find(d => d > cheeseN);
+    cheeseN = deeper !== undefined ? deeper : wonDepths[0];
+    pickCheese(); mode = 'cheese'; save(); closeMenu(); restart();
+  }
+  function card(h, stars, p, btns) {
+    $('cardH').textContent = h; $('cardS').innerHTML = stars; $('cardS').style.display = stars ? '' : 'none'; $('cardP').textContent = p;
+    const B = $('cardB'); B.innerHTML = '';
+    btns.forEach(([t, fn, alt]) => { const b = document.createElement('button'); b.textContent = t; if (alt) b.className = 'alt'; b.onclick = fn; B.appendChild(b); });
+    $('card').classList.add('on');
+  }
+
+  // ---------------------------------------------------------------- input
+  function doorDir(i, r) { const p = doorPt(r, r.a === i ? 'a' : 'b'); return [p[0] - cell[i][0], p[1] - cell[i][1]]; }
+  // arrows / swipes with many doors: the doors within 60 degrees of that direction, nearest angle first;
+  // one door: walk it; several: the first press highlights, the same direction again cycles, Enter / Space / tap walks
+  function doorsInDir(dx, dy) {
+    const l = Math.hypot(dx, dy) || 1, ux = dx / l, uy = dy / l;
+    return doorOrder(cur).map(x => { const m = Math.hypot(...x.d) || 1; return { e: x.e, n: x, c: (x.d[0] * ux + x.d[1] * uy) / m }; })
+      .filter(x => x.c >= Math.cos(Math.PI / 3) - 1e-9).sort((p, q) => q.c - p.c);
+  }
+  function dirPress(name, dx, dy) {
+    if (anim || finished) return;
+    const L2 = doorsInDir(dx, dy);
+    if (!L2.length) { sel = -1; cyc = null; toast('No door that way.', 900); return; }
+    if (L2.length === 1) { walk(L2[0].e); return; }
+    let k = 0;
+    if (cyc && cyc.dir === name && cyc.at === cur) k = (L2.findIndex(x => x.e === sel) + 1) % L2.length;
+    cyc = { dir: name, at: cur }; sel = L2[k].e;
+    const num = doorOrder(cur).findIndex(x => x.e === sel) + 1;
+    toast(`Door ${num} (${k + 1} of ${L2.length} that way): press ${name} again for the next, Enter or tap to walk.`, 1800);
+  }
+  function hitEdge(px, py) {
+    const w = toWorld(px, py), tol = Math.max(0.1, 16 / cam.z);
+    let best = -1, bd = tol;
+    for (const { e, r, to } of incident(cur)) {
+      const P = walkPts(r, cur).slice(1);
+      const known = corrKnown(r);
+      const Q = known ? P : polyCut(P, 0.5);
+      for (let k = 1; k < Q.length; k++) { const d = segDist(w.x, w.y, Q[k - 1], Q[k]); if (d < bd) { bd = d; best = e; } }
+      if (isLit(to) && Math.abs(w.x - cell[to][0]) < RH + 0.05 && Math.abs(w.y - cell[to][1]) < RH + 0.05) { best = e; bd = 0; }
+    }
+    return best;
+  }
+  const ptrs = new Map(); let gest = null, lastTap = 0;
+  cv.addEventListener('pointerdown', ev => {
+    cv.focus({ preventScroll: true }); closeMenu();
+    cv.setPointerCapture(ev.pointerId);
+    ptrs.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
+    if (ptrs.size === 1) gest = { x0: ev.clientX, y0: ev.clientY, t0: now(), cx: cam.x, cy: cam.y, moved: false, pinch: false };
+    else if (ptrs.size === 2) { const [a, b] = [...ptrs.values()]; gest = { pinch: true, d0: Math.hypot(a.x - b.x, a.y - b.y), z0: cam.z, moved: true }; }
+  });
+  cv.addEventListener('pointermove', ev => {
+    if (!ptrs.has(ev.pointerId) || !gest) return;
+    ptrs.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
+    if (gest.pinch && ptrs.size >= 2) { const [a, b] = [...ptrs.values()]; cam.z = clamp(gest.z0 * Math.hypot(a.x - b.x, a.y - b.y) / (gest.d0 || 1), 12, 220); return; }
+    if (gest.pinch) return;
+    const dx = ev.clientX - gest.x0, dy = ev.clientY - gest.y0;
+    if (!gest.moved && Math.hypot(dx, dy) > 8) gest.moved = true;
+    if (gest.moved) { cam.free = true; cam.x = gest.cx - dx / cam.z; cam.y = gest.cy - dy / (cam.z * KY); }
+  });
+  function endPtr(ev) {
+    if (!ptrs.has(ev.pointerId)) return;
+    ptrs.delete(ev.pointerId);
+    if (!gest || ptrs.size) return;
+    const G = gest; gest = null;
+    if (G.pinch) return;
+    const dx = ev.clientX - G.x0, dy = ev.clientY - G.y0, dt = now() - G.t0, dist = Math.hypot(dx, dy);
+    if (G.moved && dt < 280 && dist > 30) {   // a flick: walk that way, undo the pan
+      cam.x = G.cx; cam.y = G.cy; cam.free = false;
+      const nm = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : (dy > 0 ? 'down' : 'up');
+      dirPress(nm, dx / dist, dy / dist / KY); return;
+    }
+    if (G.moved) return;
+    const e = hitEdge(ev.clientX, ev.clientY);
+    if (e >= 0) { walk(e); return; }
+    if (now() - lastTap < 320) { recentre(); lastTap = 0; return; }
+    lastTap = now();
+  }
+  cv.addEventListener('pointerup', endPtr);
+  cv.addEventListener('pointercancel', ev => { ptrs.delete(ev.pointerId); gest = null; });
+  cv.addEventListener('wheel', ev => { ev.preventDefault(); cam.z = clamp(cam.z * Math.exp(-ev.deltaY * 0.0015), 12, 220); }, { passive: false });
+  function recentre() {   // toggles between the rat's close-up and the whole board
+    if (Math.abs(cam.z - zBase) > 1 || cam.free) { cam.free = false; cam.z = zBase; return; }
+    recentreOverview();
+  }
+  function recentreOverview() {
+    cam.free = true; cam.z = clamp(Math.min((W - 20) / (BX1 - BX0 + 1.2), (H - TOP - 20) / ((BY1 - BY0 + 1.4) * KY)), 12, zBase);
+    cam.x = (BX0 + BX1) / 2 + 0.2; cam.y = (BY0 + BY1) / 2 - 0.2;
+  }
+  addEventListener('keydown', ev => {
+    if (ev.target && ev.target.tagName === 'BUTTON' && (ev.key === 'Enter' || ev.key === ' ')) return;
+    const k = ev.key, dirs = { ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0], w: [0, -1], s: [0, 1], a: [-1, 0], d: [1, 0] };
+    if ($('card').classList.contains('on')) { if (k === 'Enter') { const b = $('cardB').querySelector('button'); if (b) b.click(); } return; }
+    if (dirs[k]) { ev.preventDefault(); const nm = { ArrowUp: 'up', w: 'up', ArrowDown: 'down', s: 'down', ArrowLeft: 'left', a: 'left', ArrowRight: 'right', d: 'right' }[k]; dirPress(nm, ...dirs[k]); return; }
+    if (/^[1-9]$/.test(k)) { const D = doorOrder(cur), x = D[+k - 1]; if (x) walk(x.e); else toast('This room has ' + D.length + ' doors.', 900); return; }
+    if (k === 'Escape') { sel = -1; cyc = null; return; }
+    if (k === 'Tab') { ev.preventDefault(); const L2 = incident(cur); if (!L2.length) return; const i = L2.findIndex(x => x.e === sel); sel = L2[(i + (ev.shiftKey ? L2.length - 1 : 1)) % L2.length].e; return; }
+    if ((k === 'Enter' || k === ' ') && sel >= 0) { ev.preventDefault(); walk(sel); return; }
+    if (k === 'u' || k === 'z' || k === 'Backspace') { ev.preventDefault(); undo(); }
+    else if (k === 'r') restart();
+    else if (k === 'l') toggleLights();
+    else if (k === 'p') togglePeek();
+    else if (k === 'm') toggleMemory();
+    else if (k === 't') (training ? stopTraining() : startTraining());
+    else if (k === '0') recentre();
+    else if (k === '+' || k === '=') cam.z = clamp(cam.z * 1.2, 24, 200);
+    else if (k === '-') cam.z = clamp(cam.z / 1.2, 24, 200);
+  });
+  function toggleLights() { lights = !lights; hud(); toast(lights ? 'Lab lights on: the whole maze.' : 'Lights off: only rooms you have seen.', 1400); }
+  function togglePeek() { peek = !peek; hud(); }
+  function toggleMemory() {
+    const order = trainer ? ['mine', 'rat', 'off'] : ['mine', 'off'];
+    memView = order[(order.indexOf(memView) + 1) % order.length]; save(); hud();
+    toast(memView === 'off' ? 'Memory hidden.' : memView === 'mine' ? 'Your rat\'s memory: steps to a fill it has found, and the door it took.' : 'The trained rat\'s table: its best door and learned steps (blue = a shortest route).', 2200);
+  }
+  const stopP = el => el.addEventListener('pointerdown', ev => ev.stopPropagation());
+  ['lights', 'peek', 'undo', 'again', 'mode', 'memory', 'train', 'tSpeed', 'tStop'].forEach(id => stopP($(id)));
+  $('memory').onclick = toggleMemory;
+  $('train').onclick = () => (training ? stopTraining() : startTraining());
+  $('tSpeed').onclick = () => { tSpeed = (tSpeed + 1) % 3; gstep = null; trainReadout(); };
+  $('tStop').onclick = () => { if (tDoneAt) { $('trainBox').classList.remove('on'); cam.free = false; cam.z = zBase; return; } training ? stopTraining() : startTraining(); };
+  $('lights').onclick = toggleLights; $('peek').onclick = togglePeek; $('undo').onclick = undo; $('again').onclick = () => { closeMenu(); restart(); };
+  function closeMenu() { $('menu').classList.remove('on'); }
+  $('mode').onclick = () => {
+    const m = $('menu'); if (m.classList.contains('on')) return closeMenu();
+    $('mCoins').classList.toggle('cur', mode === 'coins'); $('mCheese').classList.toggle('cur', mode === 'cheese');
+    const deeper = wonDepths.find(d => d > cheeseN);
+    $('mFar').disabled = IN_APP || deeper === undefined;
+    $('mFar').querySelector('small').textContent = deeper !== undefined ? `Cheese ${deeper} rooms from the nest` : 'No deeper goal room in this maze';
+    $('mCheese').querySelector('small').textContent = `Cheese ${cheeseN} rooms from the nest`;
+    m.classList.add('on');
+  };
+  $('mCoins').onclick = () => setMode('coins');
+  $('mCheese').onclick = () => setMode('cheese');
+  $('mFar').onclick = farther;
+  $('mForget').onclick = () => { mapped = new Set([0]); [...path.map(p => p.to), cur].forEach(i => mapped.add(i)); walked = new Set(); found = new Set(); recomputeMem(); save(); closeMenu(); hud(); toast('Map and memory forgotten.'); };
+
+  // ---------------------------------------------------------------- size
+  function resize() {
+    DPR = Math.min(2, window.devicePixelRatio || 1); W = innerWidth; H = innerHeight;
+    cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR);
+    TOP = 44; zBase = clamp(Math.min(W / 3.4, (H - TOP) / 4.6), 64, 170); cam.z = zBase;
+  }
+  addEventListener('resize', resize);
+  resize();
+  cam.x = rat.x; cam.y = rat.y;
+  restart(true);
+  toast((mode === 'coins' ? `Lab rat, ${NN} rooms; every corridor is one swap. Coins everywhere, a cheese bonus in every filled room. ` : `The cheese is ${cheeseN} rooms away. `)
+    + 'Tap a door, swipe or use the arrows (again: the next door that way, Enter walks), or keys 1-9.', 5200);
+  window.__maze = {
+    g, M, state: () => ({ cur, key: NODES[cur].key, gcanon: g.canon(), steps, mode, cheese, cheeseN, finished, anim: !!anim, coins: coins.size, mapped: mapped.size, path: path.length }),
+    walk, undo, restart, setMode, farther, startTraining, stopTraining, toggleMemory, dirPress, doorOrder: () => doorOrder(cur).map(x => ({ e: x.e, to: x.to })),
+    doorsInDir: (dx, dy) => doorsInDir(dx, dy).map(x => x.e), trainer: () => trainer, run: () => ({ bank, runStart, runSteps, runs, best: DF[runStart], memKnown: mem.filter(x => x < Infinity).length, sel, memView, training, tDoneAt }), DF, setSpeed: v => { tSpeed = v; }, incident: () => incident(cur).map(x => ({ e: x.e, to: x.to })), toggleLights, togglePeek,
+    finishAnim, NODES, routes, dbg: () => ({ cam, rat, cell: cell[cur] }), proj: (x, y) => [SX(x), SY(y)], cell,
+  };
+  requestAnimationFrame(draw);
+})();
+</script>
+</body>
+</html>

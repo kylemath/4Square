@@ -17,14 +17,45 @@
   channel opens from the receptor into it, the signal travels down and docks with a bioluminescent pulse.
 
   The move (one gesture = exactly one g.swap(K), or nothing): drag/flick ion u from chamber A into chamber B (or tap u,
-  then tap chamber B). K = g.chainAt(u, B), the {A, B} chain through u. A channel opens between A and B; u streams
-  through it, the ions in B that repel u are pushed out through the same channel into A, the ions in A that repel those
-  are pushed into B, and so on: the members of K cross one BFS layer at a time (from u), each changing colour and shape
-  as it passes the middle of the channel, then they settle back into Brownian jitter. A lone ion that repels nobody in
-  B just moves (single-region chain), so every chain is reachable by moving any one of its members. If K.web is true
-  (chambers A and B would exchange all their ions, which changes nothing) g.swap is NOT called: the channel opens, both
-  chambers surge towards it, and the system relaxes back to the same equilibrium. Undo (g.undo) and restart (g.reset)
-  are the two small glass buttons; after a win, a tap restarts.
+  then tap chamber B). K = g.chainAt(u, B), the {A, B} chain through u.
+
+  Attraction and repulsion (round 4: the chain made physical). While you hold u over chamber B, K "links up": its
+  members are pulled out of their Brownian drift by spring-dampers along the map edges inside K (only edges with both
+  ends in K), zipping up one BFS layer at a time from u. They bulge out of their membranes (which become a weak elastic
+  tether) and form a glowing snake of alternating colours, A B A B ... (a tree in general; every bond joins an A ion to
+  a B ion). Bonds are underdamped springs: they overshoot, sag into a curve when slack and thin out when stretched;
+  members also repel each other a little so the tree spreads out. Ions that are NOT in K but are map neighbours of a
+  member are repelled (a small push and faint dashed field lines ending in a shield arc), and they never join: you can
+  see where the snake is closed off (a neighbour in a third or fourth chamber pushes back but stays out). If K holds two
+  or more of the starred rim ions (K.rimHits >= 2), the bonds of the tree that join them glow gold, so you see both
+  arms of the signal flip together (a "lock"). Without a hover (holding u in its own chamber) the old field lines from u
+  to every ion it repels are shown instead.
+
+  The shape (round 5: topology at a glance). chainShape() studies H, the map edges between members of K: its cycle count
+  E - V + 1, a short cycle basis (the shortest cycle through each loop edge, kept when independent over GF(2)), and
+  its tails (what peels away leaf by leaf before only loops remain). H is bipartite (two alternating kinds), so every
+  loop has even length. A stress layout of H (classical-MDS start, then stress majorization on graph distances) gives
+  every member a target point; while the snake is linked these targets are hung from the held ion, swung round
+  (12 rotations x 2 reflections) to fit the cell around the finger with the least movement, and pull the members
+  with target springs on top of the bond springs. So a path lies as a LINE, a tree as a branched line, one cycle as a
+  RING, a cycle with tails as a "6", two cycles as an "8" (two rings sharing a member or an edge, or joined by a bar),
+  more as beaded rings. Every basis loop gets a faint tinted fill, and a caption names the shape: "line of 5",
+  "ring of 6", "6: ring of 4 + tail of 3", "8: rings of 4 and 6", "3 rings of 6, 6, 8" (plus the lock or web note).
+
+  The chameleon flip: on release g.swap(K) is called at once (so the embed report is immediate) and the colour change
+  runs down the snake like a wave over chameleon skin: from u outward along the bonds, BFS layer by layer, each ion's
+  new colour and shape wiping across it in the direction the wave arrived from, with a bright front travelling along
+  every bond. When the wave has reached the tips the snake folds
+  and pairs off: a maximum matching of H (augmenting paths) pulls each matched pair into a tight two-ion domino (one
+  of each kind, drawn in a dark capsule), the other bonds let go, and any member left unmatched gets a dashed ring. It
+  holds for about 0.6 s with a caption ("3 pairs + 1 left over", or "4 pairs, even") and the count of each kind
+  ("4 Amber · 3 Tide"), so odd and even chains read at a glance. Only then do the bonds relax (their rest length grows, their strength fades)
+  and the members drift home to their new chambers, pulled in by their membranes. A lone ion that repels nobody in B
+  just flips and moves (single-region chain), so every chain is reachable by moving any one of its members. If K.web is
+  true (chambers A and B would exchange all their ions, which changes nothing) g.swap is NOT called: the snake forms
+  (dimmer bonds), then sags under its own weight and falls back into the same equilibrium. With prefers-reduced-motion
+  the snake forms at once, the flip is instant (no wave) and the dominoes appear without folding. Undo (g.undo) and
+  restart (g.reset) are the two small glass buttons; they stream wrong-chambered ions home through membrane channels. After a win, a tap restarts.
 -->
 <html lang="en">
 <head>
@@ -131,7 +162,111 @@
     return best;
   }
 
-  window.IONS = { KIND, layoutCell, pores, cascade, moveFor, chamberFor };
+  // the shape of a chain. H = the map edges between members of K (vs[0] is the ion that was moved). Returns the cycle
+  // count (E - V + 1), a short cycle basis (every cycle has even length: H is bipartite), the tails (what is left
+  // after peeling leaves until only loops remain), a kind (line, tree, ring, six, eight, beads), a caption, a maximum
+  // matching (the dominoes) and a stress layout in units of one bond.
+  function chainShape(vs, pairs) {
+    const n = vs.length, idx = new Map(vs.map((v, i) => [v, i])), nb = Array.from({ length: n }, () => []);
+    const E = pairs.map(([a, b]) => [idx.get(a), idx.get(b)]);
+    E.forEach(([a, b], k) => { nb[a].push([b, k]); nb[b].push([a, k]); });
+    let comps = 0; const seen = new Array(n).fill(false);
+    for (let s = 0; s < n; s++) { if (seen[s]) continue; comps++; seen[s] = true; const st = [s]; while (st.length) { const v = st.pop(); for (const [w] of nb[v]) if (!seen[w]) { seen[w] = true; st.push(w); } } }
+    const cyc = E.length - n + comps, deg0 = nb.map(x => x.length);
+    // peel leaves: what remains is the 2-core (the loops and the bars between them); the rest are tails
+    const deg = deg0.slice(), gone = new Array(n).fill(false), q = [];
+    deg.forEach((d, i) => { if (d <= 1) q.push(i); });
+    while (q.length) { const v = q.pop(); if (gone[v]) continue; gone[v] = true; for (const [w] of nb[v]) if (!gone[w] && --deg[w] <= 1) q.push(w); }
+    const tails = [];
+    if (cyc > 0) {
+      const tseen = new Array(n).fill(false);
+      for (let s = 0; s < n; s++) {
+        if (!gone[s] || tseen[s]) continue;
+        let c = 0; const st = [s]; tseen[s] = true;
+        while (st.length) { const v = st.pop(); c++; for (const [w] of nb[v]) if (gone[w] && !tseen[w]) { tseen[w] = true; st.push(w); } }
+        tails.push(c);
+      }
+      tails.sort((a, b) => b - a);
+    }
+    // a short cycle basis: for every loop edge, the shortest cycle through it; keep the independent ones (over GF(2)),
+    // shortest first
+    const cand = [], keys = new Set();
+    E.forEach(([a, b], k) => {
+      if (gone[a] || gone[b]) return;
+      const prev = new Map([[a, -1]]), pe = new Map(); let fr = [a];
+      while (fr.length && !prev.has(b)) {
+        const nx = [];
+        for (const v of fr) for (const [w, kk] of nb[v]) if (kk !== k && !gone[w] && !prev.has(w)) { prev.set(w, v); pe.set(w, kk); nx.push(w); }
+        fr = nx;
+      }
+      if (!prev.has(b)) return;
+      const cv = [], es = [k]; let x = b;
+      while (x !== a) { cv.push(x); es.push(pe.get(x)); x = prev.get(x); }
+      cv.push(a);
+      let mask = 0n; es.forEach(e => { mask |= 1n << BigInt(e); });
+      const key = mask.toString(36); if (keys.has(key)) return; keys.add(key);
+      cand.push({ cv, mask });
+    });
+    cand.sort((x, y) => x.cv.length - y.cv.length);
+    const rows = new Map(), cycles = [];
+    for (const c of cand) {
+      if (cycles.length >= cyc) break;
+      let m = c.mask;
+      while (m) {
+        const top = m.toString(2).length - 1;
+        if (rows.has(top)) m ^= rows.get(top); else { rows.set(top, m); cycles.push(c.cv.map(i => vs[i])); break; }
+      }
+    }
+    const lens = cycles.map(c => c.length), tl = tails.length ? ' + ' + (tails.length === 1 ? 'tail of ' + tails[0] : 'tails of ' + tails.join(', ')) : '';
+    let kind, text;
+    if (cyc <= 0) {
+      kind = Math.max(0, ...deg0) <= 2 ? 'line' : 'tree';
+      text = n === 1 ? 'a single ion' : kind === 'line' ? 'line of ' + n : 'branched line of ' + n;
+    } else if (cyc === 1) { kind = tails.length ? 'six' : 'ring'; text = kind === 'ring' ? 'ring of ' + n : '6: ring of ' + lens[0] + tl; }
+    else if (cyc === 2) { kind = 'eight'; text = '8: rings of ' + lens[0] + ' and ' + lens[1] + tl; }
+    else { kind = 'beads'; text = cyc + ' rings of ' + lens.join(', ') + tl; }
+    // maximum matching (H is bipartite: the two kinds), by augmenting paths
+    const side = new Array(n).fill(-1); side[0] = 0;
+    { const st = [0]; while (st.length) { const v = st.pop(); for (const [w] of nb[v]) if (side[w] < 0) { side[w] = 1 - side[v]; st.push(w); } } }
+    const mate = new Array(n).fill(-1);
+    const aug = (v, vis) => { for (const [w] of nb[v]) { if (vis[w]) continue; vis[w] = true; if (mate[w] < 0 || aug(mate[w], vis)) { mate[w] = v; mate[v] = w; return true; } } return false; };
+    for (let v = 0; v < n; v++) if (side[v] === 0 && mate[v] < 0) aug(v, new Array(n).fill(false));
+    const match = [], single = [];
+    for (let v = 0; v < n; v++) { if (mate[v] < 0) single.push(vs[v]); else if (v < mate[v]) match.push([vs[v], vs[mate[v]]]); }
+    const count = [0, 0]; side.forEach(s => { count[Math.max(0, s)]++; });
+    // stress layout (graph distance = target distance), started on a circle in DFS order so loops open up untwisted
+    const D = Array.from({ length: n }, (_, s) => { const d = new Array(n).fill(Infinity); d[s] = 0; let fr = [s]; while (fr.length) { const nx = []; for (const v of fr) for (const [w] of nb[v]) if (d[w] === Infinity) { d[w] = d[v] + 1; nx.push(w); } fr = nx; } return d; });
+    // start from classical MDS (top two eigenvectors of the double-centred squared distances, by power iteration):
+    // untwisted, so loops open up as rings
+    const Dm = D.map(r => r.map(d => d === Infinity ? n : d)), B = Dm.map(r => r.map(d => -.5 * d * d));
+    const rm = B.map(r => r.reduce((a, b) => a + b, 0) / n), gm = rm.reduce((a, b) => a + b, 0) / n;
+    for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) B[i][j] += gm - rm[i] - rm[j];
+    const eig = (prev) => {
+      let v = Array.from({ length: n }, (_, i) => Math.sin(i * 1.7 + prev.length * 2.3 + 1)), lam = 0;
+      for (let it = 0; it < 120; it++) {
+        prev.forEach(([u]) => { const d = v.reduce((a, x, i) => a + x * u[i], 0); v = v.map((x, i) => x - d * u[i]); });
+        const w = B.map(r => r.reduce((a, x, j) => a + x * v[j], 0)), nr = Math.hypot(...w) || 1;
+        lam = nr; v = w.map(x => x / nr);
+      }
+      return [v, lam];
+    };
+    const e1 = eig([]), e2 = eig([e1]);
+    const X = e1[0].map(x => x * Math.sqrt(e1[1])), Y = e2[0].map(y => y * Math.sqrt(Math.max(1e-6, e2[1])));
+    for (let i = 0; i < n; i++) { X[i] += 1e-3 * Math.sin(i * 3.1); Y[i] += 1e-3 * Math.cos(i * 2.7); }
+    for (let it = 0; it < (n > 1 ? 160 : 0); it++) for (let i = 0; i < n; i++) {
+      let sx = 0, sy = 0, sw = 0;
+      for (let j = 0; j < n; j++) {
+        if (i === j || D[i][j] === Infinity) continue;
+        const w = 1 / (D[i][j] * D[i][j]), dx = X[i] - X[j], dy = Y[i] - Y[j], d = Math.hypot(dx, dy) || 1e-3;
+        sx += w * (X[j] + D[i][j] * dx / d); sy += w * (Y[j] + D[i][j] * dy / d); sw += w;
+      }
+      if (sw) { X[i] = sx / sw; Y[i] = sy / sw; }
+    }
+    const lay = new Map(vs.map((v, i) => [v, [X[i], Y[i]]]));
+    return { n, edges: E.length, cyc, cycles, tails, kind, text, match, single, count, side: new Map(vs.map((v, i) => [v, side[i]])), lay };
+  }
+
+  window.IONS = { KIND, layoutCell, pores, cascade, moveFor, chamberFor, chainShape };
   if (window.IONS_TEST) return;
 
   // ---------------------------------------------------------------- the cell
@@ -183,9 +318,99 @@
   const disp = g.col.slice(); // the chamber each ion is SHOWN in (lags g.col while a cascade plays)
   let L = null, bg = null, dpr = 1, R = 10;
   const chan = new Map(); // open channels 'A-B' -> { A, B, t0, t1 }
-  const pulses = [], rings = [], notes = [];
+  const rings = [], notes = [];
   let winTok = 0, held = null, sel = null, busy = false, won = false, hoverCh = null, hope = false;
   const mol = { x: 0, y: 0, R: 10, hx: 0, hy: 0, hR: 10, phase: 'wait', t0: 0, path: null, F: -1 };
+
+  // ---- the snake: chain K linking up along its map edges while you hold an ion over another chamber
+  // phases: 'form' (linking, held) -> 'wave' (released: the chameleon flip runs down it) -> 'settle' (bonds relax,
+  // members drift to their new chambers); or 'sag' for a web (no swap: bonds go slack and the snake falls back).
+  let S = null;
+  const ghosts = []; // snakes that were let go before a move (hover moved on): their bonds just fade
+  const BOND = 260;  // ms for one bond to tighten
+  function makeSnake(m, u) {
+    const K = m.K, depth = new Map([[u, 0]]), par = new Map(), order = [u];
+    for (let i = 0; i < order.length; i++) {
+      const v = order[i];
+      for (const w of g.adj[v]) if (K.set.has(w) && !depth.has(w)) { depth.set(w, depth.get(v) + 1); par.set(w, v); order.push(w); }
+    }
+    // every map edge inside K is a bond (members alternate colours, so a bond always joins depth d to depth d+1)
+    const edges = [];
+    g.edges.forEach(([a, b]) => {
+      if (!K.set.has(a) || !K.set.has(b)) return;
+      const [p, c] = depth.get(a) <= depth.get(b) ? [a, b] : [b, a];
+      edges.push({ a: p, b: c, d: depth.get(p), tree: par.get(c) === p, lock: false, s: 0 });
+    });
+    // the lock: tree bonds that join two or more starred rim ions (an edge is on the Steiner tree of the rim members
+    // when the subtree below it holds some of them but not all)
+    const rims = order.filter(v => rimSet.has(v));
+    if (rims.length >= 2) {
+      const cnt = new Map();
+      for (let i = order.length - 1; i >= 0; i--) {
+        const v = order[i]; cnt.set(v, (cnt.get(v) || 0) + (rimSet.has(v) ? 1 : 0));
+        if (par.has(v)) cnt.set(par.get(v), (cnt.get(par.get(v)) || 0) + cnt.get(v));
+      }
+      edges.forEach(e => { if (e.tree) { const c = cnt.get(e.b); e.lock = c > 0 && c < rims.length; } });
+    }
+    // outsiders: map neighbours of members that are not in K. They repel, they never join.
+    const out = [];
+    order.forEach(v => g.adj[v].forEach(w => { if (w !== hole && !K.set.has(w)) out.push([v, w]); }));
+    const maxD = depth.get(order[order.length - 1]);
+    const LINK = RM ? 0 : Math.max(45, Math.min(90, 600 / Math.max(1, maxD)));
+    // its shape (cycles, tails, the matching, a stress layout), cached per chain and starting ion
+    const ck = K.key + '@' + u;
+    if (!shapeCache.has(ck)) shapeCache.set(ck, chainShape(order, edges.map(e => [e.a, e.b])));
+    const shape = shapeCache.get(ck), mate = new Map();
+    shape.match.forEach(([a, b]) => { mate.set(a, b); mate.set(b, a); });
+    edges.forEach(e => { e.m = mate.get(e.a) === e.b; });
+    const S1 = { K, u, from: m.from, to: m.to, web: m.web, set: K.set, depth, par, order, edges, out, rims, maxD, LINK, shape, mate,
+      t0: now(), phase: 'form', heard: 0, flip: new Set(), tw: 0, tr: 0, tp: 0, relax: 700, STEP: 0, FL: 0, L0: R * 3.4, off: null, ax: 0, ay: 0 };
+    S1.ax = P[u].x; S1.ay = P[u].y; S1.oriented = now(); orient(S1);
+    return S1;
+  }
+  const shapeCache = new Map();
+  // turn the stress layout into pixel offsets from u: of 12 rotations x 2 reflections, the one that keeps bonds
+  // longest, needs the least shifting to fit in the cell around the finger, and moves the members least
+  function orient(s) {
+    const lay = s.shape.lay, o = lay.get(s.u), pts = s.order.map(v => [lay.get(v)[0] - o[0], lay.get(v)[1] - o[1]]);
+    const bw = (L.W - 2 * L.pad) * .92, bh = (L.H - L.top - L.pad) * .92, pu = P[s.u], top = R * 3.4, n = pts.length;
+    const X0 = L.pad + R * 1.2, X1 = L.W - L.pad - R * 1.2, Y0 = L.top + R * 1.2, Y1 = L.H - L.pad - R * 1.2;
+    let best = null;
+    for (const fl of [1, -1]) for (let a = 0; a < 12; a++) {
+      const th = a * Math.PI / 6, c = Math.cos(th), sn = Math.sin(th);
+      const rp = pts.map(q => [q[0] * c - q[1] * fl * sn, q[0] * sn + q[1] * fl * c]);
+      const xs = rp.map(q => q[0]), ys = rp.map(q => q[1]);
+      const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+      const sc = Math.max(R * 2.3, Math.min(top, bw / Math.max(.01, x1 - x0), bh / Math.max(.01, y1 - y0)));
+      const out = (lo, hi, A, B) => Math.max(0, A - lo) + Math.max(0, hi - B);
+      const shift = out(pu.x + x0 * sc, pu.x + x1 * sc, X0, X1) + out(pu.y + y0 * sc, pu.y + y1 * sc, Y0, Y1);
+      let cost = 0; s.order.forEach((v, i) => { cost += (pu.x + rp[i][0] * sc - P[v].x) ** 2 + (pu.y + rp[i][1] * sc - P[v].y) ** 2; });
+      const score = (top - sc) * 30 + shift * 3 + Math.sqrt(cost / n);
+      if (!best || score < best.score) best = { score, rp, sc };
+    }
+    s.L0 = best.sc; s.off = new Map(s.order.map((v, i) => [v, [best.rp[i][0] * best.sc, best.rp[i][1] * best.sc]]));
+  }
+  // where each member should sit right now: the shape hung from u (the finger while held), pushed inside the cell
+  function targets(s) {
+    const a = held === s.u ? P[s.u] : { x: s.ax, y: s.ay };
+    if (held === s.u) { s.ax = a.x; s.ay = a.y; }
+    let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+    s.off.forEach(([dx, dy]) => { x0 = Math.min(x0, a.x + dx); x1 = Math.max(x1, a.x + dx); y0 = Math.min(y0, a.y + dy); y1 = Math.max(y1, a.y + dy); });
+    const fit = (lo, hi, A, B) => hi - lo > B - A ? (A + B) / 2 - (lo + hi) / 2 : lo < A ? A - lo : hi > B ? B - hi : 0;
+    const sx = fit(x0, x1, L.pad + R * 1.2, L.W - L.pad - R * 1.2), sy = fit(y0, y1, L.top + R * 1.2, L.H - L.pad - R * 1.2);
+    if (held === s.u && Math.hypot(sx, sy) > R * 3 && now() - (s.oriented || 0) > 400) { // the finger moved on: swing round
+      s.oriented = now(); orient(s); return targets(s);
+    }
+    const T = new Map(); s.off.forEach(([dx, dy], v) => T.set(v, [a.x + dx + sx, a.y + dy + sy]));
+    return T;
+  }
+  // how far member v has linked in (0..1): u at once, layer d once the bond from layer d-1 starts to pull
+  function linkOf(s, v, t) { return s.set.has(v) ? Math.max(0, Math.min(1, (t - s.t0 - Math.max(0, s.depth.get(v) - 1) * s.LINK) / BOND)) : 0; }
+  // members out of their membranes (springs rule) vs. back under chamber confinement
+  function loose(v, t) { return S && S.set.has(v) && (S.phase === 'form' || S.phase === 'wave' || S.phase === 'pair' || (S.phase === 'sag' && t < S.tr)) && linkOf(S, v, t) > 0; }
+  function dropSnake() { if (S && S.phase === 'form') ghosts.push({ s: S, t0: now(), dur: 380 }); if (S && S.phase === 'form') S = null; }
+
+  window.IONS.live = { g, P, disp, layout: () => L, snake: () => S, targets: () => S && targets(S) }; // read-only handle for tests
 
   function counts() { const c = new Array(NC).fill(0); for (let v = 0; v < g.n; v++) if (v !== hole) c[disp[v]]++; return c; }
   function capacity() { return Math.max(Math.max(...counts()) + 1, Math.ceil((g.n - 1) / NC) + 2); }
@@ -242,21 +467,79 @@
   }
 
   // ---- motion: Brownian jitter, soft crowding, a membrane that keeps each ion in its chamber
+  // the snake's forces: spring-dampers along K's bonds, a little self-repulsion so the tree spreads out, a push on
+  // every outside neighbour, an elastic tether to each member's own chamber, and gravity while a web sags
+  function snakeForces(dt, t) {
+    if (!S) return;
+    const L0 = S.L0, KS = 70, CS = 4.5, relaxing = (S.phase === 'settle' || S.phase === 'sag') && t >= S.tr;
+    const fr = relaxing ? Math.min(1, (t - S.tr) / S.relax) : 0, pairing = S.phase === 'pair';
+    const fold = pairing ? Math.min(1, (t - S.tp) / 260) : 0; // the dominoes fold together, the other bonds let go
+    S.edges.forEach(e => {
+      let s = Math.max(0, Math.min(1, (t - S.t0 - e.d * S.LINK) / BOND)) * (1 - fr);
+      if (pairing || S.phase === 'settle') s *= e.m ? 1 : 1 - (pairing ? fold : 1);
+      e.s = s; if (s <= 0) return;
+      const a = P[e.a], b = P[e.b], dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy) || .01, ux = dx / d, uy = dy / d;
+      let rest = L0 * (1 + fr * (S.phase === 'sag' ? .6 : 2));
+      if (e.m && pairing) { rest = L0 + (R * 2.15 - L0) * fold; s *= 1.6; }
+      const vr = (b.vx - a.vx) * ux + (b.vy - a.vy) * uy;
+      const f = (KS * (d - rest) + CS * vr) * s * dt;
+      if (a.v !== held) { a.vx += ux * f; a.vy += uy * f; }
+      if (b.v !== held) { b.vx -= ux * f; b.vy -= uy * f; }
+    });
+    const M = S.order, D2 = pairing ? Math.max(R * 3.2, L0 * 1.1) : L0 * 1.15;
+    for (let i = 0; i < M.length; i++) {
+      const a = P[M[i]], la = linkOf(S, a.v, t); if (!la) continue;
+      for (let j = i + 1; j < M.length; j++) {
+        if (pairing && S.mate.get(M[i]) === M[j]) continue;
+        const b = P[M[j]], dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy);
+        if (d < D2 && d > .01) { const f = (D2 - d) / D2 * R * 90 * dt * la * (1 - fr), ux = dx / d, uy = dy / d; if (a.v !== held) { a.vx -= ux * f; a.vy -= uy * f; } if (b.v !== held) { b.vx += ux * f; b.vy += uy * f; } }
+      }
+    }
+    if (S.phase === 'form' || S.phase === 'wave') { // the shape: every member pulled to its place in the layout
+      const T = targets(S), damp = Math.exp(-3 * dt);
+      for (const v of M) {
+        if (v === held) continue;
+        const lk = linkOf(S, v, t); if (!lk) continue;
+        const p = P[v], q = T.get(v);
+        p.vx += (q[0] - p.x) * 42 * lk * dt; p.vy += (q[1] - p.y) * 42 * lk * dt;
+        p.vx *= 1 - (1 - damp) * lk; p.vy *= 1 - (1 - damp) * lk;
+      }
+    }
+    if (S.phase === 'form' || S.phase === 'wave') {
+      const DR = R * 7;
+      S.out.forEach(([v, w]) => {
+        const p = P[v], q = P[w]; if (!q || q.tr || w === held) return;
+        const lv = linkOf(S, v, t); if (!lv) return;
+        const dx = q.x - p.x, dy = q.y - p.y, d = Math.hypot(dx, dy);
+        if (d < DR && d > .01) { const f = (1 - d / DR) * R * 90 * dt * lv; q.vx += dx / d * f; q.vy += dy / d * f; }
+      });
+    }
+    if (S.phase === 'sag' && t >= S.tr) for (const v of M) if (v !== held) P[v].vy += R * 30 * dt * (1 - fr);
+  }
+
   function physics(dt, t) {
     const NOISE = R * (RM ? 14 : 80), DAMP = Math.exp(-2.6 * dt);
     const ions = P.filter(Boolean);
     for (const p of ions) {
       if (p.v === held || (p.tr && t >= p.tr.t0)) continue;
-      p.vx = p.vx * DAMP + (Math.random() - .5) * 2 * NOISE * dt;
-      p.vy = p.vy * DAMP + (Math.random() - .5) * 2 * NOISE * dt;
+      const q = loose(p.v, t) ? .12 : 1;
+      p.vx = p.vx * DAMP + (Math.random() - .5) * 2 * NOISE * q * dt;
+      p.vy = p.vy * DAMP + (Math.random() - .5) * 2 * NOISE * q * dt;
     }
+    snakeForces(dt, t);
     const D = R * 2.5;
     for (let i = 0; i < ions.length; i++) {
       const a = ions[i]; if (a.tr && t >= a.tr.t0) continue;
+      const la = loose(a.v, t);
       for (let j = i + 1; j < ions.length; j++) {
-        const b = ions[j]; if (disp[a.v] !== disp[b.v] || (b.tr && t >= b.tr.t0)) continue;
+        const b = ions[j]; if (b.tr && t >= b.tr.t0) continue;
+        const lb = loose(b.v, t);
+        if ((la && lb) || (!la && !lb && disp[a.v] !== disp[b.v])) continue; // members space each other in snakeForces
         const dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy);
-        if (d < D && d > .01) { const f = (D - d) / D * R * 45 * dt, ux = dx / d, uy = dy / d; a.vx -= ux * f; a.vy -= uy * f; b.vx += ux * f; b.vy += uy * f; }
+        if (d < D && d > .01) { // a linked member holds its place in the shape and shoulders the others aside
+          const f = (D - d) / D * R * 45 * dt, ux = dx / d, uy = dy / d, wa = la ? 0 : lb ? 2 : 1, wb = lb ? 0 : la ? 2 : 1;
+          a.vx -= ux * f * wa; a.vy -= uy * f * wa; b.vx += ux * f * wb; b.vy += uy * f * wb;
+        }
       }
       if (mol.phase === 'docked' && disp[a.v] === mol.F) {
         const dx = a.x - mol.x, dy = a.y - mol.y, d = Math.hypot(dx, dy), M = mol.R * 1.7 + R;
@@ -266,9 +549,18 @@
     for (const p of ions) {
       if (p.v === held || (p.tr && t >= p.tr.t0)) continue;
       const C = L.ch[disp[p.v]], ax = Math.max(4, C.rx - R * 1.4), ay = Math.max(4, C.ry - R * 1.4);
-      const ex = (p.x - C.cx) / ax, ey = (p.y - C.cy) / ay, e = Math.hypot(ex, ey);
-      if (e > 1) { const tx = C.cx + ex / e * ax, ty = C.cy + ey / e * ay, k = Math.min(1, 14 * dt); p.vx += (tx - p.x) * k * 4; p.vy += (ty - p.y) * k * 4; }
-      const sp = Math.hypot(p.vx, p.vy), cap = R * 40; if (sp > cap) { p.vx *= cap / sp; p.vy *= cap / sp; }
+      const ex = (p.x - C.cx) / ax, ey = (p.y - C.cy) / ay, e = Math.hypot(ex, ey), lo = loose(p.v, t);
+      if (e > 1) {
+        const tx = C.cx + ex / e * ax, ty = C.cy + ey / e * ay;
+        if (lo) { p.vx += (tx - p.x) * 2.2 * dt; p.vy += (ty - p.y) * 2.2 * dt; } // a member: the membrane is only a weak tether
+        else { const k = Math.min(1, 14 * dt); p.vx += (tx - p.x) * k * 4; p.vy += (ty - p.y) * k * 4; }
+      }
+      if (lo) { // stay inside the cell
+        const x0 = L.pad + R, x1 = L.W - L.pad - R, y0 = L.top + R, y1 = L.H - L.pad - R;
+        if (p.x < x0) p.vx += (x0 - p.x) * 30 * dt; if (p.x > x1) p.vx += (x1 - p.x) * 30 * dt;
+        if (p.y < y0) p.vy += (y0 - p.y) * 30 * dt; if (p.y > y1) p.vy += (y1 - p.y) * 30 * dt;
+      }
+      const sp = Math.hypot(p.vx, p.vy), cap = R * (lo || (S && S.set.has(p.v)) ? 90 : 40); if (sp > cap) { p.vx *= cap / sp; p.vy *= cap / sp; }
       p.x += p.vx * dt; p.y += p.vy * dt;
     }
   }
@@ -321,7 +613,9 @@
   let lastPass = 0;
   const sfx = {
     pick: () => tone(700, .07, 'sine', .06, 900),
-    pass: k => { const t = now(); if (t - lastPass < 45) return; lastPass = t; tone(PENT[k] * 2, .22, 'sine', .07, PENT[k] * 2.2); },
+    pass: (k, d) => { const t = now(); if (t - lastPass < 45) return; lastPass = t; tone(PENT[k] * 2 * (1 + (d || 0) * .06), .22, 'sine', .07, PENT[k] * 2.2 * (1 + (d || 0) * .06)); },
+    link: i => tone(520 + i * 70, .06, 'sine', .035, 640 + i * 70),
+    pair: () => { tone(660, .12, 'triangle', .05, 600); tone(880, .16, 'triangle', .04, 820, .07); },
     open: () => { tone(180, .35, 'sine', .08, 360); },
     push: i => tone(330 + i * 60, .12, 'triangle', .06, 250 + i * 50),
     dud: () => { tone(220, .3, 'sine', .08, 260); tone(260, .45, 'sine', .07, 210, .28); },
@@ -333,36 +627,60 @@
   function doMove(u, B) {
     const m = moveFor(g, u, B);
     held = null; sel = null; hoverCh = null; hope = false;
-    if (!m) { sfx.drop(); return; }
+    if (!m) { dropSnake(); sfx.drop(); return; }
     busy = true;
-    const t = now();
-    if (m.web) { // the two chambers would simply exchange everything: the system relaxes to the same state
-      const [pa, pb] = pores(L, m.from, m.to);
-      openChannel(m.from, m.to, t, t + 1500);
-      sfx.open(); setTimeout(sfx.dud, 500);
-      m.K.vs.forEach((w, i) => setTimeout(() => {
-        const p = P[w], q = disp[w] === m.from ? pa : pb;
-        p.vx += (q[0] - p.x) * 2.4; p.vy += (q[1] - p.y) * 2.4;
-      }, 120 + i * 18));
-      notes.push({ x: (pa[0] + pb[0]) / 2, y: (pa[1] + pb[1]) / 2, text: 'equilibrium', t0: t + 500, dur: 1500 });
-      setTimeout(() => { busy = false; }, 1500);
+    if (!S || S.K !== m.K || S.u !== u) { dropSnake(); S = makeSnake(m, u); } // a tap-tap move: link up now
+    const t = now(), ready = Math.max(t + (RM ? 0 : 90), S.t0 + S.maxD * S.LINK + (RM ? 0 : BOND));
+    if (m.web) { // the two chambers would simply exchange everything: the snake goes slack and falls back
+      S.phase = 'sag'; S.tr = ready + (RM ? 0 : 250); S.relax = RM ? 300 : 1500;
+      sfx.dud();
+      const c = snakeCentre(S);
+      notes.push({ x: Math.max(70, Math.min(L.W - 70, c[0])), y: Math.max(L.top + 20, c[1] - R * 3), text: 'equilibrium', t0: S.tr, dur: 1500 });
       return;
     }
     g.swap(m.K);
     sfx.open();
-    const STEP = RM ? 80 : 320, DUR = 720, GAP = RM ? 20 : 70;
-    const dropIn = (() => { const C = L.ch[m.to], p = P[u]; return Math.hypot((p.x - C.cx) / C.rx, (p.y - C.cy) / C.ry) < .95; })();
-    let end = 0;
-    m.layers.forEach((layer, i) => layer.forEach((w, j) => {
-      const delay = i * STEP + j * GAP;
-      sendThrough(w, g.col[w], delay, DUR, i === 0 && dropIn);
-      end = Math.max(end, delay + DUR);
-      if (i > 0) {
-        const by = m.layers[i - 1].find(x => g.adj[x].includes(w));
-        setTimeout(() => { pulses.push({ a: by, b: w, t0: now(), dur: 600 }); if (j === 0) sfx.push(i); }, delay);
+    S.phase = 'wave'; S.tw = ready; S.STEP = RM ? 0 : Math.max(85, Math.min(170, 1300 / Math.max(1, S.maxD)));
+    S.FL = RM ? 0 : 340; S.relax = RM ? 350 : 750;
+  }
+  function snakeCentre(s) {
+    let x = 0, y = 0; s.order.forEach(v => { x += P[v].x; y += P[v].y; });
+    return [x / s.order.length, y / s.order.length];
+  }
+  // runs every frame: link-up clicks, the chameleon wave (disp flips layer by layer), the hand-back to the chambers
+  function snakeTick(t) {
+    for (let i = ghosts.length - 1; i >= 0; i--) if (t - ghosts[i].t0 > ghosts[i].dur) ghosts.splice(i, 1);
+    if (!S) return;
+    if (S.phase === 'form' && !RM) {
+      const l = Math.floor((t - S.t0) / Math.max(1, S.LINK));
+      if (l > S.heard && l <= S.maxD) { S.heard = l; sfx.link(l); }
+    }
+    if (S.phase === 'wave') {
+      for (const v of S.order) {
+        if (S.flip.has(v) || t < S.tw + S.depth.get(v) * S.STEP) continue;
+        S.flip.add(v);
+        const p = P[v], pv = S.par.has(v) ? P[S.par.get(v)] : null;
+        p.fl = RM ? null : t; p.flFrom = disp[v]; disp[v] = g.col[v];
+        p.flDir = pv ? Math.atan2(p.y - pv.y, p.x - pv.x) : Math.atan2(L.ch[S.to].cy - L.ch[S.from].cy, L.ch[S.to].cx - L.ch[S.from].cx);
+        if (!RM) sfx.pass(g.col[v], S.depth.get(v));
       }
-    }));
-    setTimeout(() => { busy = false; refit(); if (g.won()) win(); }, end + 250);
+      if (t >= S.tw + S.maxD * S.STEP + S.FL) { // fold against each other and pair off
+        S.phase = 'pair'; S.tp = t; S.pairDur = RM ? 900 : 950;
+        if (RM) S.shape.match.forEach(([a, b]) => { // no animation: show the dominoes at once
+          const p = P[a], q = P[b], mx = (p.x + q.x) / 2, my = (p.y + q.y) / 2, d = Math.hypot(q.x - p.x, q.y - p.y) || 1, h = R * 1.07;
+          p.x = mx - (q.x - p.x) / d * h; p.y = my - (q.y - p.y) / d * h; q.x = mx + (q.x - mx) / (d / 2) * h; q.y = my + (q.y - my) / (d / 2) * h;
+          p.vx = p.vy = q.vx = q.vy = 0;
+        });
+        if (!RM) sfx.pair();
+      }
+    }
+    if (S.phase === 'pair' && t >= S.tp + S.pairDur) { S.phase = 'settle'; S.tr = t; }
+    if ((S.phase === 'settle' || S.phase === 'sag') && t >= S.tr + S.relax) {
+      const was = S; S = null;
+      ghosts.length = 0;
+      busy = false; refit();
+      if (was.phase === 'settle' && g.won()) win();
+    }
   }
   function refit() { // ions get a little smaller when a chamber gets crowded
     const r = layoutCell(L.W, L.H, NC, capacity()).r; if (Math.abs(r - L.r) > .3) { L.r = r; }
@@ -403,6 +721,8 @@
   g.on((_, info) => {
     if (info.type === 'swap') return;
     held = sel = null; hoverCh = null;
+    if (S) { S.order.forEach(v => { P[v].fl = null; }); S = null; busy = false; } // an outside undo/reset mid-wave
+    ghosts.length = 0;
     let i = 0;
     for (let v = 0; v < g.n; v++) if (v !== hole && disp[v] !== g.col[v]) { sendThrough(v, g.col[v], i * (RM ? 15 : 55), 650, false); i++; }
     if (i) { sfx.open(); busy = true; setTimeout(() => { busy = false; refit(); }, i * (RM ? 15 : 55) + 800); }
@@ -419,9 +739,163 @@
     }
     ctx.closePath();
   }
-  function drawIon(p, scale) {
+  const FLIP_MS = 340;
+  function drawIon(p, scale, t) {
     const k = disp[p.v], s = R * p.s * (scale || 1), G = s * 2.6;
+    if (p.fl != null) { // the chameleon flip: the new colour and shape wipe across the ion, the way the wave came
+      const e = (t - p.fl) / FLIP_MS;
+      if (e >= 1) p.fl = null;
+      else {
+        const G2 = G * (1 + .38 * Math.sin(Math.PI * e)), we = 1 - Math.pow(1 - e, 2), xw = -s * 1.35 + s * 2.7 * we;
+        for (const [kk, x0, x1] of [[p.flFrom, xw, G2], [k, -G2, xw]]) { // old skin ahead of the front, new skin behind it
+          if (x1 <= x0) continue;
+          ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.flDir);
+          ctx.beginPath(); ctx.rect(x0, -G2, x1 - x0, G2 * 2); ctx.clip();
+          ctx.rotate(-p.flDir); ctx.drawImage(coreSpr[kk], -G2, -G2, G2 * 2, G2 * 2); ctx.restore();
+        }
+        ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.flDir);
+        ctx.strokeStyle = `rgba(255,255,255,${(.9 * Math.sin(Math.PI * e)).toFixed(3)})`; ctx.lineWidth = Math.max(1.2, s * .18); ctx.lineCap = 'round';
+        ctx.beginPath(); ctx.moveTo(xw, -s * 1.15); ctx.lineTo(xw, s * 1.15); ctx.stroke(); ctx.restore();
+        return;
+      }
+    }
     ctx.drawImage(coreSpr[k], p.x - G, p.y - G, G * 2, G * 2);
+  }
+
+  // ---- the snake, drawn: dashed field lines to the outsiders, then glowing elastic bonds and the wave front
+  function bondCurve(a, b, L0) { // a slack bond sags into a curve, a taut one is straight
+    const dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy) || 1;
+    let nx = -dy / d, ny = dx / d; if (ny < 0) { nx = -nx; ny = -ny; }
+    const bow = Math.max(0, 1 - d / L0) * L0 * .6;
+    return { cx: (a.x + b.x) / 2 + nx * bow, cy: (a.y + b.y) / 2 + ny * bow, d };
+  }
+  function drawSnake(s, t, mul) {
+    const L0 = s.L0;
+    ctx.lineCap = 'round';
+    // loops: a faint tinted fill inside every ring of the cycle basis
+    const lf = s.phase === 'pair' ? Math.max(0, 1 - (t - s.tp) / 260) : s.phase === 'form' || s.phase === 'wave' || s.phase === 'sag' ? 1 : 0;
+    if (lf > 0) for (const cy of s.shape.cycles) {
+      let lk = 1; cy.forEach(v => { lk = Math.min(lk, linkOf(s, v, t)); });
+      const al = lk * lf * mul * (s.web ? .6 : 1); if (al < .02) continue;
+      let cx = 0, cyy = 0; cy.forEach(v => { cx += P[v].x; cyy += P[v].y; }); cx /= cy.length; cyy /= cy.length;
+      let rad = 0; cy.forEach(v => { rad = Math.max(rad, Math.hypot(P[v].x - cx, P[v].y - cyy)); });
+      const gr = ctx.createRadialGradient(cx, cyy, 0, cx, cyy, rad + 1);
+      gr.addColorStop(0, rgba(disp[cy[0]], .08 * al)); gr.addColorStop(1, rgba(disp[cy[1]], .28 * al));
+      ctx.beginPath(); cy.forEach((v, i) => ctx[i ? 'lineTo' : 'moveTo'](P[v].x, P[v].y)); ctx.closePath();
+      ctx.fillStyle = gr; ctx.fill();
+    }
+    // the pairing: matched members fold into dominoes, the left-over ones get a ring
+    if (s.phase === 'pair' || (s.phase === 'settle' && t < s.tr + 400)) {
+      const a0 = (s.phase === 'pair' ? Math.min(1, (t - s.tp) / 220) : 1 - (t - s.tr) / 400) * mul;
+      for (const [u1, u2] of s.shape.match) {
+        const p = P[u1], q = P[u2], w = R * Math.max(p.s, q.s) * 2.75;
+        ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(q.x, q.y);
+        ctx.globalAlpha = a0; ctx.strokeStyle = 'rgba(225,245,255,.55)'; ctx.lineWidth = w + 3; ctx.stroke();
+        ctx.strokeStyle = 'rgba(6,14,22,.92)'; ctx.lineWidth = w; ctx.stroke();
+        ctx.globalCompositeOperation = 'lighter';
+        const gr = ctx.createLinearGradient(p.x, p.y, q.x, q.y); gr.addColorStop(0, rgba(disp[u1], .35)); gr.addColorStop(1, rgba(disp[u2], .35));
+        ctx.strokeStyle = gr; ctx.lineWidth = w * .8; ctx.stroke();
+        ctx.globalCompositeOperation = 'source-over';
+      }
+      ctx.setLineDash([4, 4]); ctx.lineDashOffset = -t * .03; ctx.lineWidth = 2;
+      for (const v of s.shape.single) {
+        const p = P[v]; ctx.globalAlpha = a0 * (.75 + .25 * Math.sin(t * .012));
+        ctx.strokeStyle = '#fff1c4'; ctx.beginPath(); ctx.arc(p.x, p.y, R * p.s * (1.85 + .12 * Math.sin(t * .012)), 0, TAU); ctx.stroke();
+      }
+      ctx.setLineDash([]); ctx.globalAlpha = 1;
+    }
+    if (s.phase === 'form' || s.phase === 'wave') {
+      ctx.lineWidth = 1.1; ctx.setLineDash([2, 5]); ctx.lineDashOffset = -t * .05;
+      const shields = [];
+      for (const [v, w] of s.out) {
+        const lv = linkOf(s, v, t) * mul; if (lv < .02) continue;
+        const p = P[v], q = P[w], dx = q.x - p.x, dy = q.y - p.y, d = Math.hypot(dx, dy) || 1, ux = dx / d, uy = dy / d, r0 = R * 1.25, r1 = R * 1.6;
+        if (d < r0 + r1 + 3) continue;
+        const far = Math.max(0, 1 - d / (R * 15)); // a field line fades with distance; the shield stays
+        shields.push([q, Math.atan2(-uy, -ux), disp[w], lv]);
+        if (far < .05) continue;
+        ctx.strokeStyle = rgba(disp[w], .45 * lv * far);
+        ctx.beginPath(); ctx.moveTo(p.x + ux * r0, p.y + uy * r0); ctx.lineTo(q.x - ux * r1, q.y - uy * r1); ctx.stroke();
+      }
+      ctx.setLineDash([]); ctx.lineWidth = Math.max(1.4, R * .16);
+      for (const [q, ang, k, lv] of shields) { // the outsider pushes back: a small shield arc facing the member
+        ctx.strokeStyle = rgba(k, .7 * lv); ctx.beginPath(); ctx.arc(q.x, q.y, R * q.s * 1.6, ang - .7, ang + .7); ctx.stroke();
+      }
+    }
+    ctx.globalCompositeOperation = 'lighter';
+    for (const e of s.edges) {
+      const al = e.s * mul * (s.web ? .6 : 1); if (al < .02) continue;
+      const a = P[e.a], b = P[e.b], q = bondCurve(a, b, L0), st = q.d / L0;
+      const w = Math.max(1.6, R * .46 / Math.sqrt(Math.max(.7, st)));
+      const gr = ctx.createLinearGradient(a.x, a.y, b.x, b.y);
+      gr.addColorStop(.15, rgba(disp[e.a], 1)); gr.addColorStop(.85, rgba(disp[e.b], 1));
+      ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.quadraticCurveTo(q.cx, q.cy, b.x, b.y);
+      ctx.strokeStyle = gr;
+      ctx.globalAlpha = .22 * al; ctx.lineWidth = w * 3.6; ctx.stroke();
+      if (e.lock && !s.web) { ctx.globalAlpha = al * (.45 + .25 * Math.sin(t * .008)); ctx.strokeStyle = '#ffd36a'; ctx.lineWidth = w * 2.6; ctx.stroke(); ctx.strokeStyle = gr; }
+      ctx.globalCompositeOperation = 'source-over'; // the bond itself keeps both colours saturated
+      ctx.globalAlpha = .95 * al; ctx.lineWidth = w; ctx.stroke();
+      ctx.globalCompositeOperation = 'lighter';
+      if (e.lock && !s.web && s.phase === 'form') { // gold sparks running between the linked starred ions
+        ctx.fillStyle = '#fff1b8';
+        for (let i = 0; i < 3; i++) {
+          const f = (t * .0011 + i / 3 + e.d * .17) % 1, m = 1 - f;
+          ctx.globalAlpha = al * Math.sin(Math.PI * f);
+          ctx.beginPath(); ctx.arc(m * m * a.x + 2 * m * f * q.cx + f * f * b.x, m * m * a.y + 2 * m * f * q.cy + f * f * b.y, Math.max(1.6, w * .55), 0, TAU); ctx.fill();
+        }
+      }
+      ctx.globalAlpha = (s.web ? .25 : .5) * al; ctx.strokeStyle = e.lock && !s.web ? '#fff3c4' : '#ffffff'; ctx.lineWidth = Math.max(.8, w * .3); ctx.stroke();
+      if (s.phase === 'wave' && s.STEP) { // the front of the chameleon wave, carrying the colour b is about to take
+        const f = (t - s.tw - e.d * s.STEP) / s.STEP;
+        if (f > 0 && f < 1) {
+          const m = 1 - f, hx = m * m * a.x + 2 * m * f * q.cx + f * f * b.x, hy = m * m * a.y + 2 * m * f * q.cy + f * f * b.y, G = R * 2.2;
+          ctx.globalAlpha = 1; ctx.drawImage(glowSpr[g.col[e.b]], hx - G, hy - G, G * 2, G * 2);
+          ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(hx, hy, Math.max(1.8, w * .75), 0, TAU); ctx.fill();
+        }
+      }
+    }
+    ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+  }
+  // a short caption over a forming snake: a lock (two or more starred ions linked) or a web (no change)
+  // the caption over the snake: its shape while it links up and flips (plus the lock or web note), then the pairing
+  // and the count of each kind while the dominoes hold
+  function snakeCaption(t) {
+    if (!S) return;
+    let lines, al;
+    if (S.phase === 'form' || S.phase === 'wave' || (S.phase === 'sag' && t < S.tr + 400)) {
+      al = Math.min(1, (t - S.t0 - S.maxD * S.LINK) / 250);
+      if (S.phase === 'sag') al *= Math.max(0, 1 - (t - S.tr) / 400);
+      lines = [[[S.shape.text, '#e6f6ff']]];
+      if (S.web) lines.push([['takes both chambers whole: no change', '#b8cad6']]);
+      else if (S.rims.length >= 2) lines.push([[S.rims.length + ' \u2726 linked: they flip together', '#ffe39a']]);
+    } else if (S.phase === 'pair' || (S.phase === 'settle' && t < S.tr + 300)) {
+      al = S.phase === 'pair' ? Math.min(1, (t - S.tp) / 200) : 1 - (t - S.tr) / 300;
+      const np = S.shape.match.length, nl = S.shape.single.length, pw = np === 1 ? ' pair' : ' pairs';
+      lines = [[[nl ? np + pw + ' + ' + nl + ' left over' : np + pw + ', even', nl ? '#fff1c4' : '#e6f6ff']]];
+      const c = [0, 0], k = [-1, -1];
+      S.order.forEach(v => { const sd = S.shape.side.get(v); c[sd]++; k[sd] = disp[v]; });
+      const seg = i => [c[i] + ' ' + KIND[k[i]].name, KIND[k[i]].col];
+      lines.push(c[1] ? [seg(0), [' \u00b7 ', '#8fa6b4'], seg(1)] : [seg(0)]);
+    } else return;
+    if (al <= 0) return;
+    let x = 0, y = Infinity, yb = -Infinity;
+    S.order.forEach(v => { x += P[v].x; y = Math.min(y, P[v].y); yb = Math.max(yb, P[v].y); }); // clear of the whole snake
+    x /= S.order.length;
+    const fs = Math.max(11, Math.min(15, R * 1.05)), lh = fs * 1.3, h = lines.length * lh + fs * .5;
+    y = y - R * 2.2 - h / 2; if (y - h / 2 < L.top) y = yb + R * 2.2 + h / 2;
+    const widths = lines.map((ln, i) => { ctx.font = `${i ? 500 : 700} ${fs}px ${FONT}`; return ln.reduce((w, sg) => w + ctx.measureText(sg[0]).width, 0); });
+    const tw = Math.max(...widths);
+    x = Math.max(tw / 2 + 10, Math.min(L.W - tw / 2 - 10, x)); y = Math.max(L.top + h / 2, Math.min(L.H - h / 2, y));
+    ctx.globalAlpha = Math.max(0, Math.min(1, al));
+    ctx.fillStyle = 'rgba(3,8,14,.72)'; ctx.beginPath();
+    ctx.roundRect ? ctx.roundRect(x - tw / 2 - 8, y - h / 2, tw + 16, h, Math.min(h / 2, fs)) : ctx.rect(x - tw / 2 - 8, y - h / 2, tw + 16, h); ctx.fill();
+    ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+    lines.forEach((ln, i) => {
+      ctx.font = `${i ? 500 : 700} ${fs}px ${FONT}`;
+      let cx = x - widths[i] / 2; const cy = y - h / 2 + fs * .25 + lh * (i + .5) + 1;
+      ln.forEach(([txt, col]) => { ctx.fillStyle = col; ctx.fillText(txt, cx, cy); cx += ctx.measureText(txt).width; });
+    });
+    ctx.globalAlpha = 1;
   }
   function bezierTube(a, b, w, k1, k2, alpha, t) {
     const gr = ctx.createLinearGradient(a[0], a[1], b[0], b[1]);
@@ -543,12 +1017,9 @@
       const al = mol.phase === 'travel' ? Math.min(1, (t - mol.t0) / 300) : Math.max(0, 1 - (t - mol.t0) / 1200);
       if (al > 0) for (let i = 0; i < mol.path.length - 2; i++) bezierTube(mol.path[i], mol.path[i + 1], Math.max(14, mol.hR * 1.8), mol.F, mol.F, al, t);
     }
-    // field lines from the held / selected ion to everyone it repels
+    // field lines from the held / selected ion to everyone it repels (until a hovered chamber turns them into a snake)
     const focus = held != null ? held : sel;
-    const pushSet = new Map();
-    if (focus != null) {
-      const m = hoverCh != null ? moveFor(g, focus, hoverCh) : null;
-      if (m && !m.web) m.K.vs.forEach(w => { if (w !== focus) pushSet.set(w, g.col[w] === m.from ? m.to : m.from); });
+    if (focus != null && !S) {
       const p = P[focus];
       ctx.setLineDash([3, 6]); ctx.lineDashOffset = -t * .03; ctx.lineWidth = 1.4;
       g.adj[focus].forEach(w => {
@@ -560,22 +1031,22 @@
       });
       ctx.setLineDash([]);
     }
-    // push flashes during a cascade
+    // ion glows and streaks (snake members glow brighter as they link, and flare as they flip)
     ctx.globalCompositeOperation = 'lighter';
-    for (let i = pulses.length - 1; i >= 0; i--) {
-      const u = pulses[i], f = (t - u.t0) / u.dur; if (f >= 1) { pulses.splice(i, 1); continue; }
-      const a = P[u.a], b = P[u.b]; if (!a || !b) continue;
-      ctx.strokeStyle = `rgba(240,250,255,${((1 - f) * .7).toFixed(3)})`; ctx.lineWidth = 2.5 * (1 - f) + .5;
-      ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
-    }
-    // ion glows and streaks
-    const rep = focus != null ? new Set(g.adj[focus]) : null;
+    const rep = focus != null && !S ? new Set(g.adj[focus]) : null;
     P.forEach(p => {
       if (!p) return;
-      const k = disp[p.v], boost = (rep && rep.has(p.v)) ? 1.5 : (p.v === focus ? 1.7 : 1), s = R * p.s * 2.6 * boost;
+      const k = disp[p.v], lk = S ? linkOf(S, p.v, t) : 0;
+      const boost = (rep && rep.has(p.v)) ? 1.5 : (p.v === focus ? 1.7 : 1 + .45 * lk), s = R * p.s * 2.6 * boost;
       ctx.drawImage(glowSpr[k], p.x - s, p.y - s, s * 2, s * 2);
+      if (p.fl != null) { const e = (t - p.fl) / FLIP_MS; if (e < 1) { const G = R * p.s * 2.6 * (1.4 + 1.6 * e); ctx.globalAlpha = 1 - e; ctx.drawImage(glowSpr[k], p.x - G, p.y - G, G * 2, G * 2); ctx.globalAlpha = 1; } }
       if (p.tr && p.px != null) { ctx.strokeStyle = rgba(k, .45); ctx.lineWidth = R * .9; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(p.px - (p.x - p.px) * 3, p.py - (p.y - p.py) * 3); ctx.lineTo(p.x, p.y); ctx.stroke(); }
     });
+    ctx.globalCompositeOperation = 'source-over';
+    // the snake: bonds between members, field lines to the outsiders
+    ghosts.forEach(gh => drawSnake(gh.s, t, Math.max(0, 1 - (t - gh.t0) / gh.dur)));
+    if (S) drawSnake(S, t, 1);
+    ctx.globalCompositeOperation = 'lighter';
     // win pulses
     for (let i = rings.length - 1; i >= 0; i--) {
       const r = rings[i], f = (t - r.t0) / r.dur; if (f < 0) continue; if (f >= 1) { rings.splice(i, 1); continue; }
@@ -588,9 +1059,12 @@
     P.forEach(p => {
       if (!p) return;
       const lift = p.v === held ? 1.2 : 1;
-      drawIon(p, lift);
-      if (pushSet.has(p.v)) { const k2 = pushSet.get(p.v); ctx.strokeStyle = rgba(k2, .55 + .4 * Math.sin(t * .012)); ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(p.x, p.y, R * p.s * 1.7, 0, TAU); ctx.stroke(); }
-      if (rimSet.has(p.v)) { ctx.fillStyle = '#ffffff'; star(ctx, p.x + R * p.s * .8, p.y - R * p.s * .8, Math.max(2.6, R * .42), 5); ctx.fill(); }
+      drawIon(p, lift, t);
+      if (rimSet.has(p.v)) {
+        const lockd = S && !S.web && S.phase === 'form' && S.rims.length >= 2 && linkOf(S, p.v, t) > .5;
+        ctx.fillStyle = lockd ? '#ffe08a' : '#ffffff';
+        star(ctx, p.x + R * p.s * .8, p.y - R * p.s * .8, Math.max(2.6, R * (lockd ? .62 + .08 * Math.sin(t * .01) : .42)), 5); ctx.fill();
+      }
     });
     // win: the signal travels the channel / sits docked
     if (mol.phase === 'travel') {
@@ -607,6 +1081,7 @@
       drawMolecule(t, mol.x, mol.y, mol.R, .5 * (1 - f) + .15);
     }
     L.ch.forEach(C => drawBadge(C, t));
+    snakeCaption(t);
     drawBand(t);
     // floating notes ("equilibrium")
     for (let i = notes.length - 1; i >= 0; i--) {
@@ -621,7 +1096,9 @@
     const t = now();
     const dt = Math.min(.033, Math.max(0, (t - last) / 1000)); last = t;
     if (L.r !== R) R += (L.r - R) * Math.min(1, dt * 4);
-    transits(t); physics(dt, t); draw(t);
+    snakeTick(t); transits(t);
+    if (S) { physics(dt / 2, t); physics(dt / 2, t); } else physics(dt, t); // springs get two substeps
+    draw(t);
     requestAnimationFrame(frame);
   }
 
@@ -653,18 +1130,23 @@
     const [x, y] = pt(e), p = P[down.u];
     if (!down.moved && Math.hypot(x - down.x0, y - down.y0) > 8) down.moved = true;
     if (!down.moved) return;
+    const h0 = down.hist[down.hist.length - 1], hdt = Math.max(.008, (now() - h0[2]) / 1000);
+    p.vx = p.vx * .5 + (x - h0[0]) / hdt * .5; p.vy = p.vy * .5 + (y - h0[1]) / hdt * .5; // carried on release
     p.x = x; p.y = y - R * .3;
     down.hist.push([x, y, now()]); if (down.hist.length > 6) down.hist.shift();
     let B = chamberFor(L, x, y, disp[down.u], x - down.x0, y - down.y0);
     if (B === disp[down.u]) B = null;
-    if (B !== hoverCh) { hoverCh = B; const m = B != null ? moveFor(g, down.u, B) : null; hope = !!(m && !m.web && g.preview(m.K).won); }
+    if (B !== hoverCh) {
+      hoverCh = B; const m = B != null ? moveFor(g, down.u, B) : null; hope = !!(m && !m.web && g.preview(m.K).won);
+      dropSnake(); if (m) S = makeSnake(m, down.u); // the would-be chain links up
+    }
   });
   function release(e, cancel) {
     if (!down) return;
     const d = down; down = null; hoverCh = null; hope = false;
     const [x, y] = pt(e);
-    if (cancel) { held = null; return; }
-    if (!d.moved) { held = null; sel = d.wasSel ? null : d.u; return; }
+    if (cancel) { held = null; dropSnake(); return; }
+    if (!d.moved) { held = null; dropSnake(); sel = d.wasSel ? null : d.u; return; }
     const from = disp[d.u];
     let B = chamberFor(L, x, y, from, x - d.x0, y - d.y0);
     if (B === from) {
