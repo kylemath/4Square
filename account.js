@@ -59,6 +59,7 @@
       },
       store: {
         putPlayer: async () => {},
+        getPlayer: async () => null,
         getEntry: async (skin, uid) => (boards()[skin] || {})[uid] || null,
         putEntry: async (skin, uid, entry) => { const b = boards(); (b[skin] = b[skin] || {})[uid] = Object.assign({}, entry, { updatedAt: Date.now() }); jset(BOARDK, b); },
         board: async (skin, n) => Object.entries(boards()[skin] || {}).map(([uid, e]) => Object.assign({ uid }, e)).sort(order).slice(0, n || TOP_N),
@@ -114,6 +115,7 @@
         signOut: async () => { await A.signOut(auth); },
       },
       store: {
+        getPlayer: async uid => { const d = await F.getDoc(F.doc(db, 'players', uid)); return d.exists() ? d.data() : null; },
         putPlayer: async (uid, doc) => { await F.setDoc(F.doc(db, 'players', uid), Object.assign({}, doc, { createdAt: F.serverTimestamp() }), { merge: true }); },
         getEntry: async (skin, uid) => { const s = await F.getDoc(F.doc(db, 'boards', skin, 'entries', uid)); return s.exists() ? unpackEntry(s.data()) : null; },
         putEntry: async (skin, uid, entry, runs) => {
@@ -158,7 +160,7 @@
         if (cfg && cfg.apiKey) AD = firebaseAdapter(window.FTH_SDK_OVERRIDE || await loadFirebaseSdk(), cfg);
       } catch (e) { lastErr = 'Could not start the online service; using this device only.'; AD = null; }
       if (!AD) AD = localAdapter();
-      try { user = await AD.auth.init(); } catch (e) { lastErr = 'Sign-in is not available right now.'; user = null; }
+      try { user = await AD.auth.init(); await adoptNick(); } catch (e) { lastErr = 'Sign-in is not available right now.'; user = null; }
       AD.auth.onChange(u => { user = u; changed(); });
       addEventListener('online', () => flush());
       if (user && prefs().submit) flush();
@@ -181,12 +183,17 @@
     markDirty(skinIds()); changed(); if (prefs().submit) flush();
     return { ok: true, nick: nk };
   }
+  // a Google profile carries its nickname across devices: players/{uid}.nick (owner-only) wins over this device's random one
+  async function adoptNick() {
+    if (!user || user.anon || ls.get(NICKK + ':' + user.uid)) return;
+    try { const p = await AD.store.getPlayer(user.uid); if (p && p.nick && validateNick(p.nick).ok) { ls.set(NICKK + ':' + user.uid, p.nick); ls.set(NICKK, p.nick); changed(); } } catch (e) {}
+  }
   async function linkGoogle() {
     await ensureIdentity(); const r = await AD.auth.linkGoogle();
-    if (r.status === 'ok') { user = r.user; try { await AD.store.putPlayer(user.uid, { nick: nick(), linked: true }); } catch (e) {} changed(); }
+    if (r.status === 'ok') { user = r.user; await adoptNick(); try { await AD.store.putPlayer(user.uid, { nick: nick(), linked: true }); } catch (e) {} changed(); }
     return r;
   }
-  async function useCredential(cred) { user = await AD.auth.useCredential(cred); if (!nick()) setNick(randomNick(), true); markDirty(skinIds()); changed(); if (prefs().submit) flush(); return user; }
+  async function useCredential(cred) { user = await AD.auth.useCredential(cred); await adoptNick(); if (!nick()) setNick(randomNick(), true); markDirty(skinIds()); changed(); if (prefs().submit) flush(); return user; }
   async function signOut() { await init(); await AD.auth.signOut(); user = null; setPrefs({ submit: false }); changed(); }
   async function deleteMine() {
     await init(); if (!user) return 0;

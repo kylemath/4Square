@@ -100,7 +100,8 @@
 #lb .lb-ib svg{width:24px;height:24px}
 #lb .lb-ib:active{transform:translateY(3px);box-shadow:0 1px 0 #1c1640}
 #lb .lb-ib[disabled]{opacity:.45;cursor:not-allowed}
-#lb .lb-ib.on{background:#e4ffe9}
+#lb .lb-ib.on{background:#e4ffe9;opacity:1;cursor:default;position:relative}
+#lb .lb-ib.on::after{content:'✓';position:absolute;right:-7px;top:-7px;width:20px;height:20px;border-radius:50%;background:#2fbf55;color:#fff;font:900 13px/20px system-ui;border:2px solid #1c1640}
 #lb details{font-size:13px;margin-top:4px}
 #lb summary{cursor:pointer;font-weight:900;font-size:16px;list-style:none;opacity:.7;width:max-content;margin-left:auto;margin-top:-4px}
 #lb summary::-webkit-details-marker{display:none}
