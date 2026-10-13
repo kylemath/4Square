@@ -1,0 +1,296 @@
+{
+ "request": "4square-level/1",
+ "from": "Census34 batch (census maxima and engine-checked deepest holes), Claude session for kylemath, 13 Oct 2026",
+ "why": "An all-degree-6 rim (66666) whose 5,403 colourings fall into 8 Kempe classes, the most of any 66666 hole in Census33 (full) and the Census34 pilot; the engine finds a single state 3 swaps deep.",
+ "map": {
+  "key": "p33r240",
+  "name": "p33.r240#15356",
+  "source": "SolvingFrameworkPlan/docs/working/Census33/out/frame-33.txt p33.r240#15356 (hole 29; eval-33.jsonl.gz: word 66666, 8 Kempe classes, min class F/N 0.25, R 1, NR 2)",
+  "hole": 29,
+  "rot": [
+   [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6
+   ],
+   [
+    0,
+    6,
+    7,
+    8,
+    9,
+    2
+   ],
+   [
+    0,
+    1,
+    9,
+    10,
+    3
+   ],
+   [
+    0,
+    2,
+    10,
+    11,
+    12,
+    13,
+    4
+   ],
+   [
+    0,
+    3,
+    13,
+    14,
+    5
+   ],
+   [
+    0,
+    4,
+    14,
+    15,
+    6
+   ],
+   [
+    0,
+    5,
+    15,
+    16,
+    7,
+    1
+   ],
+   [
+    1,
+    6,
+    16,
+    17,
+    18,
+    8
+   ],
+   [
+    1,
+    7,
+    18,
+    19,
+    20,
+    9
+   ],
+   [
+    1,
+    8,
+    20,
+    10,
+    2
+   ],
+   [
+    2,
+    9,
+    20,
+    11,
+    3
+   ],
+   [
+    3,
+    10,
+    20,
+    21,
+    12
+   ],
+   [
+    3,
+    11,
+    21,
+    22,
+    13
+   ],
+   [
+    3,
+    12,
+    22,
+    23,
+    14,
+    4
+   ],
+   [
+    4,
+    13,
+    23,
+    24,
+    15,
+    5
+   ],
+   [
+    5,
+    14,
+    24,
+    25,
+    16,
+    6
+   ],
+   [
+    6,
+    15,
+    25,
+    17,
+    7
+   ],
+   [
+    7,
+    16,
+    25,
+    26,
+    27,
+    18
+   ],
+   [
+    7,
+    17,
+    27,
+    19,
+    8
+   ],
+   [
+    8,
+    18,
+    27,
+    28,
+    20
+   ],
+   [
+    8,
+    19,
+    28,
+    21,
+    11,
+    10,
+    9
+   ],
+   [
+    11,
+    20,
+    28,
+    29,
+    22,
+    12
+   ],
+   [
+    12,
+    21,
+    29,
+    30,
+    23,
+    13
+   ],
+   [
+    13,
+    22,
+    30,
+    24,
+    14
+   ],
+   [
+    14,
+    23,
+    30,
+    31,
+    25,
+    15
+   ],
+   [
+    15,
+    24,
+    31,
+    26,
+    17,
+    16
+   ],
+   [
+    17,
+    25,
+    31,
+    32,
+    27
+   ],
+   [
+    17,
+    26,
+    32,
+    28,
+    19,
+    18
+   ],
+   [
+    19,
+    27,
+    32,
+    29,
+    21,
+    20
+   ],
+   [
+    21,
+    28,
+    32,
+    30,
+    22
+   ],
+   [
+    22,
+    29,
+    32,
+    31,
+    24,
+    23
+   ],
+   [
+    24,
+    30,
+    32,
+    26,
+    25
+   ],
+   [
+    26,
+    31,
+    30,
+    29,
+    28,
+    27
+   ]
+  ]
+ },
+ "islands": {
+  "Frontier": [
+   "Census Frontier",
+   "cape",
+   "🧭"
+  ]
+ },
+ "levels": [
+  {
+   "id": "eight-seas",
+   "place": {
+    "after": "deepest-pit"
+   },
+   "num": "17.1",
+   "kicker": "Frontier",
+   "title": "Eight seas",
+   "tools": [
+    "locks",
+    "pi"
+   ],
+   "intro": "A 66666 hole: all five rim regions touch six others. Its colourings fall into 8 Kempe classes that no swap can cross, yet every class has colourings that fill. Of all of them, this is the only one 3 swaps from a fillable rim.",
+   "pick": {
+    "deepest": true
+   },
+   "expect": {
+    "par": 3,
+    "deepest": true,
+    "unique": true
+   }
+  }
+ ]
+}
