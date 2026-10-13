@@ -17,14 +17,20 @@
     K = g.chainAt(S, g.col[T]): the connected run of countries through S using only S's element and T's element. While
     dragging, K lights up (white edge, pulsing stripes of the element each country will become), everything else dims,
     and the flag rack shows g.preview(K): if the swap frees a flag, that flag rises and a green badge at the finger
-    shows it ("let go!"). Release = g.swap(K); the colours ripple through the chain outward from S. A drag onto the
+    shows it (a raised flag and a tick; a dud shows "="). Release = g.swap(K); the colours ripple through the chain outward from S. A drag onto the
     same element, the hole, or the sea picks nothing.
   - A chain with K.web (the only {a,b} chain on the map) is a dud: it only renames two elements, so releasing it
-    wobbles the map and nothing changes.
+    wobbles the map and nothing changes (no words on screen: pictures, motion and sound only).
   - Tap a country: its (up to) three chains, g.chainsThrough(S), light up one after another.
   - Idle hint: after a few quiet seconds (and at once when the "?" country is tapped) a ghost finger drags across a
     border along a chain of g.good() while that chain lights up (at most 3 times per quiet stretch; any touch stops it).
-  - Win (g.won()): the "?" country floods with g.free() with a splash ("Flag up!"); tap anywhere to play again (g.reset(); standalone only).
+  - Juice: a touched country lifts and its other-coloured neighbours glow; a traced chain pulses in its two colours with
+    a rising tone per piece; a swap flips the chain in a wave from the finger (45 ms apart, a pop each) after LAB.at();
+    the flag rack shows pips (rim countries per element), bounces when they change and a leaving pip flies out.
+  - Win (g.won()): the "?" floods with g.free() in a burst, a flag pops up on every country in a wave from the hole, a
+    compass rose spins, a ship sails, the map dances; LAB.done() after ~3.5 s. Standalone only: a tap then resets.
+  - Eggs: three taps on the compass rose in the sea dig up an X (LAB.egg('x-marks', 40)); after a long idle a sea
+    serpent swims past (LAB.egg('sea-serpent', 0)).
   Small undo / restart buttons sit in the bottom corners. All state goes through lab/core.js.
 -->
 <html lang="en">
@@ -81,7 +87,7 @@
     font-weight: 900; color: #1c1640; font-size: 15px; white-space: nowrap; pointer-events: none; transition: transform .2s; }
   #cue svg { display: block; overflow: visible; }
   #cue .qm { width: 26px; height: 26px; margin-right: 2px; }
-  #cue .fg { width: 24px; height: 30px; }
+  #cue .fg { width: 27px; height: 38px; }
   /* a flag a neighbour already flies: lowered and greyed; a free flag: raised and waving */
   .fgf { transition: transform .45s cubic-bezier(.3, 1.5, .5, 1), filter .3s, opacity .3s; transform: translateY(12px); filter: saturate(.45) brightness(1.05); opacity: .6; }
   .fg.up .fgf { transform: translateY(0); filter: none; opacity: 1; }
@@ -91,9 +97,10 @@
   #cue.win { background: #ffd84a; }
   .ct.lit .hx { animation: peek 1s ease-in-out infinite alternate; }
   @keyframes peek { from { opacity: .45; } to { opacity: .85; } }
-  .btn { position: fixed; bottom: max(8px, env(safe-area-inset-bottom)); width: 42px; height: 42px; border: 3px solid var(--sk-ctl-edge, #1c1640); border-radius: 14px; padding: 0;
-    box-shadow: 0 4px 0 var(--sk-ctl-edge, #1c1640); display: grid; place-items: center; cursor: pointer; touch-action: manipulation; transition: transform .08s, box-shadow .08s; }
-  .btn:active { transform: translateY(3px); box-shadow: 0 1px 0 var(--sk-ctl-edge, #1c1640); }
+  .btn { position: fixed; bottom: max(8px, env(safe-area-inset-bottom)); width: 44px; height: 44px; border: 3px solid var(--sk-ctl-edge, #1c1640); border-radius: 14px; padding: 0;
+    box-shadow: inset 0 3px 0 rgba(255,255,255,.55), inset 0 -4px 0 rgba(28,22,64,.18), 0 5px 0 var(--sk-ctl-edge, #1c1640), 0 8px 12px rgba(28,22,64,.25);
+    display: grid; place-items: center; cursor: pointer; touch-action: manipulation; transition: transform .08s, box-shadow .08s; }
+  .btn:active { transform: translateY(4px); box-shadow: inset 0 3px 0 rgba(255,255,255,.4), 0 1px 0 var(--sk-ctl-edge, #1c1640); }
   .btn svg { width: 26px; height: 26px; }
   .btn svg path:first-child { stroke: var(--sk-ctl, #1c1640); } .btn svg path:last-child { stroke: var(--sk-ctl-ink, #fff); }   /* halo in the button colour, glyph in the ink colour */
   #bU { left: 10px; background: var(--sk-ctl, linear-gradient(180deg, #ffb35c, #ff7a1a)); } #bR { right: 10px; background: var(--sk-ctl, linear-gradient(180deg, #6cc8ff, #2a7fdc)); }
@@ -101,9 +108,47 @@
     text-shadow: 2px 0 #1c1640, -2px 0 #1c1640, 0 2px #1c1640, 0 -2px #1c1640, 2px 2px #1c1640, -2px 2px #1c1640, 2px -2px #1c1640, -2px -2px #1c1640, 0 4px 0 #1c1640; }
   .fl.rise { animation: rise 1.1s ease-out forwards; }
   @keyframes rise { from { opacity: 0; transform: translate(-50%, -30%) scale(.7); } 20% { opacity: 1; transform: translate(-50%, -50%) scale(1.05); } to { opacity: 0; transform: translate(-50%, -120%); } }
+  /* juice: the touched country lifts (an overlay copy), its neighbours of other colours glow, a traced chain pulses in its two colours */
+  .ct { transform-box: fill-box; transform-origin: center; }
+  .lift { transition: transform .06s ease-out; transform-box: fill-box; transform-origin: center; }
+  .lift.on { transform: translate(0, -4px) scale(1.035); }
+  .pl.up .pt { translate: 0 -4px; transition: translate .06s; }
+  .ct.cand .lt { opacity: .5; stroke: #fff; animation: cand .55s ease-in-out infinite alternate; }
+  @keyframes cand { from { opacity: .45; } to { opacity: 1; } }
+  .ct.lit .lt { stroke: var(--pa, #fff); animation: twin .42s ease-in-out infinite alternate; }
+  @keyframes twin { to { stroke: var(--pb, #fff); } }
+  .pl.tr .pt { animation: tr .3s cubic-bezier(.3, 1.6, .5, 1); }
+  @keyframes tr { 40% { transform: scale(1.22); } }
+  .ct.flip { animation: flip .28s ease-in-out; }
+  @keyframes flip { 45% { transform: scale(.86, .7); } 75% { transform: scale(1.04, 1.06); } }
+  /* the rack: pips under each flag (how many rim countries fly it); it bounces when the rim changes, a leaving pip flies out */
+  #cue.bump { animation: bump .45s cubic-bezier(.3, 1.6, .5, 1); }
+  @keyframes bump { 35% { transform: translateX(-50%) scale(1.14, .9); } 70% { transform: translateX(-50%) scale(.96, 1.06); } }
+  #cue.wob { animation: wob .42s ease-in-out; }
+  @keyframes wob { 25% { transform: translateX(calc(-50% - 5px)) rotate(-2deg); } 75% { transform: translateX(calc(-50% + 5px)) rotate(2deg); } }
+  .fg .pip { transition: opacity .2s; } .fg .pip.off { opacity: 0; }
+  .fg.hop { animation: hop .4s cubic-bezier(.3, 1.6, .5, 1); }
+  @keyframes hop { 40% { transform: translateY(-6px) scale(1.12); } }
+  .pipfly { position: fixed; width: 10px; height: 10px; border-radius: 50%; border: 2px solid #1c1640; pointer-events: none; z-index: 5; animation: pipfly .8s cubic-bezier(.2, .7, .4, 1) forwards; }
+  @keyframes pipfly { 0% { transform: translate(-50%, -50%) scale(1.3); } 100% { transform: translate(calc(-50% + var(--dx)), calc(-50% + 70px)) scale(.4) rotate(200deg); opacity: 0; } }
+  /* the win: a flag pops up on every country in a wave, the board dances, a compass spins, a ship sails */
+  .wf { transform-box: fill-box; transform-origin: 50% 100%; animation: wf .5s cubic-bezier(.3, 1.7, .5, 1) backwards; }
+  @keyframes wf { from { transform: scale(0) rotate(-30deg); } }
+  .pl.dance .pt { animation: dance .36s ease-in-out 4 alternate; }
+  @keyframes dance { to { transform: translateY(-5px) rotate(6deg) scale(1.08); } }
+  .bigrose { transform-box: fill-box; transform-origin: center; animation: bigrose 2s cubic-bezier(.3, 1.2, .5, 1) forwards; }
+  @keyframes bigrose { 0% { transform: scale(0) rotate(-200deg); opacity: 0; } 25% { opacity: 1; } 70% { transform: scale(1) rotate(540deg); opacity: 1; } 100% { transform: scale(1.1) rotate(720deg); opacity: 0; } }
+  .sail { animation: sail 2.6s ease-in-out forwards; }
+  @keyframes sail { from { transform: translateX(var(--x0)); } to { transform: translateX(var(--x1)); } }
+  .bob2 { transform-box: fill-box; transform-origin: 50% 100%; animation: bob2 .6s ease-in-out infinite alternate; }
+  @keyframes bob2 { from { transform: rotate(-6deg); } to { transform: rotate(6deg) translateY(-2px); } }
+  /* easter eggs: the compass rose in the sea, the sea serpent */
+  .rose { cursor: pointer; transform-box: fill-box; transform-origin: center; }
+  .rose.tick { animation: tick .3s cubic-bezier(.3, 1.6, .5, 1); }
+  @keyframes tick { 40% { transform: rotate(40deg) scale(1.15); } }
+  .serp .hump { animation: hump .5s ease-in-out infinite alternate; transform-box: fill-box; transform-origin: 50% 100%; }
+  @keyframes hump { to { transform: scaleY(.6); } }
   #win { position: fixed; left: 50%; top: 50%; font-size: clamp(30px, 9vw, 52px); display: none; }
-  #win small { display: block; font-size: 15px; margin-top: 6px; text-shadow: 0 2px 0 #1c1640; opacity: .95; }
-  body.nohud #win small { display: none; }
   #win.on { display: block; animation: winIn .6s cubic-bezier(.3, 1.5, .5, 1); }
   @keyframes winIn { from { transform: translate(-50%, -50%) scale(.3); opacity: 0; } }
   @media (prefers-reduced-motion: reduce) {
@@ -116,7 +161,7 @@
 <div id="cue" aria-live="polite"></div>
 <button class="btn" id="bU" aria-label="Undo" title="Undo"><svg viewBox="0 0 28 28" aria-hidden="true"><g fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11h9a6 6 0 0 1 0 12h-6M13 6l-5 5 5 5" stroke="#1c1640" stroke-width="7"/><path d="M9 11h9a6 6 0 0 1 0 12h-6M13 6l-5 5 5 5" stroke="#fff" stroke-width="3.6"/></g></svg></button>
 <button class="btn" id="bR" aria-label="Restart" title="Restart"><svg viewBox="0 0 28 28" aria-hidden="true"><g fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 10.5A8.5 8.5 0 1 0 22.5 16M22 4.5v6h-6" stroke="#1c1640" stroke-width="7"/><path d="M21.5 10.5A8.5 8.5 0 1 0 22.5 16M22 4.5v6h-6" stroke="#fff" stroke-width="3.6"/></g></svg></button>
-<div class="fl" id="win">Flag up!<small>tap to play again</small></div>
+<div class="fl" id="win">Flag up!</div>
 <script src="../levels.js"></script>
 <script src="../layout.js"></script>
 <script src="core.js"></script>
@@ -215,8 +260,24 @@
   const dOf = pts => 'M' + pts.map(p => q1(p[0]) + ' ' + q1(p[1])).join('L') + 'Z';
   const icons = size => { const sc = size / 24, off = q1(-12 * sc); return IC.map((d, k) => '<path class="ti ti' + k + '" d="' + d + '" transform="translate(' + off + ' ' + off + ') scale(' + (Math.round(sc * 100) / 100) + ')"/>').join(''); };
   const hash = (i, k) => { const s = Math.sin(i * 127.1 + k * 311.7) * 43758.5453; return s - Math.floor(s); };
-  let G = null, W = 0, H = 0, T = [], gFx = null, arrow = null, badge = null, ghost = null, OW = 3;
-  let busy = false, celebrated = false, showTimer = null;
+  let G = null, W = 0, H = 0, T = [], gFx = null, gSea = null, gLift = null, gWin = null, arrow = null, badge = null, ghost = null, OW = 3;
+  let busy = false, celebrated = false, showTimer = null, doneAt = 0, winGen = 0;
+  let roseAt = null, roseG = null, roseTaps = 0, eggDone = false, serpY = 0;
+  const RMQ = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const egg = (id, pts) => { try { window.LAB && LAB.egg && LAB.egg(id, pts); } catch (e) {} };
+  const pop = (i, v) => tone(520 * Math.pow(2, (i % 12) / 12), .07, 'sine', v || .045, 1.9);
+  // a compass rose (radius R) and a treasure X, drawn the cartoon way
+  function roseArt(R) {
+    let d = ''; const P = (a, k) => q1(Math.cos(a) * k * R) + ' ' + q1(Math.sin(a) * k * R);
+    for (let i = 0; i < 8; i++) { const a = -Math.PI / 2 + i * Math.PI / 4, k = i % 2 ? .62 : 1, w = i % 2 ? .35 : .48;
+      d += '<path d="M0 0L' + P(a - w, .34) + 'L' + P(a, k) + 'Z" fill="' + (i ? i % 2 ? '#c9a45c' : '#2c4f7a' : '#e0452f') + '"/><path d="M0 0L' + P(a, k) + 'L' + P(a + w, .34) + 'Z" fill="' + (i ? i % 2 ? '#f3e3b3' : '#5f8fc8' : '#ff8a6a') + '"/>' +
+        '<path d="M' + P(a - w, .34) + 'L' + P(a, k) + 'L' + P(a + w, .34) + '" fill="none" stroke="#1c1640" stroke-width="' + q1(R * .08) + '" stroke-linejoin="round"/>'; }
+    return '<circle cx="1.5" cy="2.5" r="' + q1(R * .8) + '" fill="#1c1640" opacity=".3"/><circle r="' + q1(R * .8) + '" fill="#f3e3b8" stroke="#1c1640" stroke-width="' + q1(R * .09) + '"/>' + d + '<circle r="' + q1(R * .14) + '" fill="#ffd84a" stroke="#1c1640" stroke-width="1"/>';
+  }
+  const xMark = R => '<circle r="' + q1(R * .9) + '" fill="#e9c470" stroke="#1c1640" stroke-width="2" opacity=".9"/><path d="M-7 -7L7 7M7 -7L-7 7" stroke="#1c1640" stroke-width="7.5" stroke-linecap="round"/><path d="M-7 -7L7 7M7 -7L-7 7" stroke="#e0452f" stroke-width="4" stroke-linecap="round"/>';
+  const shipArt = '<g class="bob2"><path d="M-20 2Q-16 14 -2 14H14Q24 12 24 0Z" fill="#8b4f26" stroke="#1c1640" stroke-width="2.4" stroke-linejoin="round"/><path d="M-19 4H23" stroke="#d99a55" stroke-width="2.6"/><path d="M0 2V-30" stroke="#1c1640" stroke-width="2.6"/>' +
+    '<path d="M1 -28Q-18 -16 1 -1Z" fill="#fff6dc" stroke="#1c1640" stroke-width="2" stroke-linejoin="round"/><path d="M1 -28Q12 -16 1 -1Z" fill="#eadcb0" stroke="#1c1640" stroke-width="2" stroke-linejoin="round"/><path d="M0 -30V-38H11L8 -34L11 -30Z" fill="#e0452f" stroke="#1c1640" stroke-width="1.6"/></g>';
+  const reanim = (el, cls) => { el.classList.remove(cls); void el.getBoundingClientRect(); el.classList.add(cls); };
 
   function build() {
     const br = svg.getBoundingClientRect(); W = Math.round(br.width) || window.innerWidth; H = Math.round(br.height) || window.innerHeight; if (!W || !H) return;
@@ -245,8 +306,17 @@
     // pebbles on the sand
     for (let k = 0; k < 9; k++) { const t = 4 * hash(k, 11), q = warp(sqPerim(t), { cx: box.cx, cy: box.cy, a: box.a + sand * .72, b: box.b + sand * .72 }); s += '<ellipse cx="' + q1(q[0]) + '" cy="' + q1(q[1]) + '" rx="' + q1(1.6 + hash(k, 5) * 1.6) + '" ry="1.3" fill="#d9b25e"/>'; }
     svg.insertAdjacentHTML('beforeend', s);
-    const gC = mk('g', {}, svg), gL = mk('g', { 'pointer-events': 'none' }, svg), gP = mk('g', { 'pointer-events': 'none' }, svg);
+    gSea = mk('g', { 'pointer-events': 'none' }, svg);
+    // the compass rose in the sea (bottom middle, between the buttons): an easter egg, tapped three times it digs up an X
+    const isleBot = box.cy + box.b + sand, roseY = Math.max(isleBot + 20, H - 30);
+    roseAt = roseY < H - 12 ? [W / 2, roseY, 15] : null;
+    if (roseAt) { roseG = mk('g', { transform: 'translate(' + q1(roseAt[0]) + ' ' + q1(roseAt[1]) + ')' }, gSea); roseG.innerHTML = eggDone ? xMark(15) : '<g class="rose">' + roseArt(15) + '</g>'; }
+    serpY = Math.min(H - 10, (isleBot + H) / 2 + 4);
+    const gC = mk('g', {}, svg), gL = mk('g', { 'pointer-events': 'none' }, svg);
+    gLift = mk('g', { 'pointer-events': 'none' }, svg);
+    const gP = mk('g', { 'pointer-events': 'none' }, svg);
     gFx = mk('g', { 'pointer-events': 'none' }, svg);
+    gWin = mk('g', { 'pointer-events': 'none' }, svg);
     T = [];
     G.polys.forEach((p, u) => {
       const d = dOf(p), cp = 'url(#cp' + u + ')', grp = mk('g', { class: 'ct' }, gC);
@@ -271,8 +341,11 @@
     arrow = mk('g', { opacity: 0 }, gFx);
     arrow.innerHTML = '<path class="a1" fill="none" stroke="#1c1640" stroke-width="' + q1(OW * 3.2) + '" stroke-linecap="round" stroke-linejoin="round"/><path class="a2" fill="none" stroke="#fff" stroke-width="' + q1(OW * 1.5) + '" stroke-linecap="round" stroke-linejoin="round"/>';
     badge = mk('g', { opacity: 0 }, gFx);
-    badge.innerHTML = '<rect x="-42" y="-17" width="84" height="34" rx="17" fill="#8af574" stroke="#1c1640" stroke-width="3"/>' +
-      '<g class="bf" transform="translate(-37 -15)"></g><text class="bn" x="13" y="1" text-anchor="middle" dominant-baseline="central" font-size="13" font-weight="900" fill="#1c1640">let go!</text>';
+    // the finger badge, no words: a raised flag and a tick (this frees a flag), or an "=" (this only renames)
+    badge.innerHTML = '<rect x="-30" y="-15" width="60" height="34" rx="17" fill="#1c1640" opacity=".3" transform="translate(2 3)"/><rect class="bk" x="-30" y="-17" width="60" height="34" rx="17" fill="#8af574" stroke="#1c1640" stroke-width="3"/>' +
+      '<g class="bf" transform="translate(-26 -15)"></g>' +
+      '<g class="ok"><path d="M4 0L10 6L21 -6" fill="none" stroke="#1c1640" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 0L10 6L21 -6" fill="none" stroke="#fff" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/></g>' +
+      '<g class="eq"><rect x="-13" y="-8" width="26" height="6" rx="3" fill="#fff" stroke="#1c1640" stroke-width="2.4"/><rect x="-13" y="3" width="26" height="6" rx="3" fill="#fff" stroke="#1c1640" stroke-width="2.4"/></g>';
     ghost = mk('g', { opacity: 0 }, gFx);             // the idle-hint fingertip
     ghost.innerHTML = '<circle r="' + q1(OW * 5.5) + '" fill="#fff" opacity=".35"/><circle r="' + q1(OW * 3.6) + '" fill="#fff" opacity=".9" stroke="#1c1640" stroke-width="' + q1(OW * .8) + '"/>';
     paint(); celebrated && winPaint(false);
@@ -284,14 +357,33 @@
   function paint() { for (let u = 0; u < N; u++) setEl(u, u === HOLE && celebrated ? g.free() : g.col[u]); setCue(); }
   // the flag rack: a mini "?" plate, then one flag pole per element (built once; setCue only raises / lowers flags)
   const flagIcon = (e, sc, x, y) => '<path d="' + IC[e] + '" transform="translate(' + x + ' ' + y + ') scale(' + sc + ')" ' + (e === 2 ? 'fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round"' : 'fill="#fff"') + '/>';
-  const flagSvg = e => '<svg class="fg" viewBox="0 0 24 30" aria-hidden="true"><path d="M4.5 3V29" stroke="#1c1640" stroke-width="2.6" stroke-linecap="round"/><circle cx="4.5" cy="2.6" r="2.2" fill="#ffd84a" stroke="#1c1640" stroke-width="1.2"/>' +
-    '<g class="fgf"><g class="wv2"><path d="M5.5 4H22L18.6 9.2L22 14.4H5.5Z" fill="' + E[e].hex + '" stroke="#1c1640" stroke-width="1.8" stroke-linejoin="round"/>' + flagIcon(e, .32, 8.8, 5.4) + '</g></g></svg>';
-  cue.innerHTML = '<svg class="qm" viewBox="-14 -14 28 28" aria-hidden="true"><circle r="11.5" fill="#07090d" stroke="#ffd84a" stroke-width="2.6" stroke-dasharray="4 2.6"/><text y="1" text-anchor="middle" dominant-baseline="central" fill="#fff" font-weight="900" font-size="14">?</text></svg>' + ELS.map(flagSvg).join('');
+  // pips under each flag: how many rim countries fly it (up to 3 shown)
+  const flagSvg = (e, pips) => '<svg class="fg" viewBox="0 0 24 34" aria-hidden="true"><path d="M4.5 3V29" stroke="#1c1640" stroke-width="2.6" stroke-linecap="round"/><circle cx="4.5" cy="2.6" r="2.2" fill="#ffd84a" stroke="#1c1640" stroke-width="1.2"/>' +
+    '<g class="fgf"><g class="wv2"><path d="M5.5 4H22L18.6 9.2L22 14.4H5.5Z" fill="' + E[e].hex + '" stroke="#1c1640" stroke-width="1.8" stroke-linejoin="round"/>' + flagIcon(e, .32, 8.8, 5.4) + '</g></g>' +
+    (pips ? [0, 1, 2].map(i => '<circle class="pip off" cx="' + (10 + i * 5.4) + '" cy="31" r="2.3" fill="' + E[e].hex + '" stroke="#1c1640" stroke-width="1.1"/>').join('') : '') + '</svg>';
+  cue.innerHTML = '<svg class="qm" viewBox="-14 -14 28 28" aria-hidden="true"><circle r="11.5" fill="#07090d" stroke="#ffd84a" stroke-width="2.6" stroke-dasharray="4 2.6"/><text y="1" text-anchor="middle" dominant-baseline="central" fill="#fff" font-weight="900" font-size="14">?</text></svg>' + ELS.map(e => flagSvg(e, true)).join('');
   const flags = [...cue.querySelectorAll('.fg')];
+  let lastCount = null;                                 // rim countries per element at the last real (non-preview) paint
   function setCue(prev) {
     const cols = prev ? g.rim.map(x => prev.col[x]) : g.rimColours(), set = new Set(cols), free = ELS.filter(e => !set.has(e));
+    const cnt = ELS.map(e => cols.filter(c => c === e).length);
     cue.className = (prev ? 'prev ' : '') + (free.length && set.size <= g.goal && !celebrated ? 'good ' : '') + (celebrated ? 'win' : '');
-    flags.forEach((f, e) => f.classList.toggle('up', !set.has(e) && set.size <= g.goal));
+    flags.forEach((f, e) => { f.classList.toggle('up', !set.has(e) && set.size <= g.goal); [...f.querySelectorAll('.pip')].forEach((p, i) => p.classList.toggle('off', i >= cnt[e])); });
+    if (!prev) {
+      if (lastCount && cnt.some((c, e) => c !== lastCount[e])) {
+        reanim(cue, 'bump');
+        cnt.forEach((c, e) => {
+          if (c === lastCount[e]) return;
+          reanim(flags[e], 'hop');
+          if (c < lastCount[e] && !RMQ()) for (let k = c; k < lastCount[e]; k++) {   // a rim country stopped flying e: its pip flies out of the rack
+            const r = flags[e].getBoundingClientRect(), el = document.createElement('div');
+            el.className = 'pipfly'; el.style.background = E[e].hex; el.style.left = (r.left + r.width * (.4 + k * .22)) + 'px'; el.style.top = (r.top + r.height * .8) + 'px';
+            el.style.setProperty('--dx', ((e - 1.5) * 18 + k * 6) + 'px'); document.body.appendChild(el); setTimeout(() => el.remove(), 900);
+          }
+        });
+      }
+      lastCount = cnt;
+    }
     cue.setAttribute('aria-label', free.length ? 'A flag is free for the ? country' : 'Every flag is already flown by a neighbour of the ? country');
   }
   function light(K, label) {                          // light chain K (others dim); null clears
@@ -299,15 +391,38 @@
       const on = K && K.set.has(u), dim = K && !on;
       T[u].grp.classList.toggle('lit', !!on); T[u].grp.classList.toggle('dim', !!dim);
       T[u].pl.classList.toggle('lit', !!on); T[u].pl.classList.toggle('dim', !!dim);
-      if (on) T[u].hx.setAttribute('fill', 'url(#hp' + (g.col[u] === K.pair[0] ? K.pair[1] : K.pair[0]) + ')');
+      if (on) {
+        T[u].hx.setAttribute('fill', 'url(#hp' + (g.col[u] === K.pair[0] ? K.pair[1] : K.pair[0]) + ')');
+        T[u].grp.style.setProperty('--pa', E[K.pair[0]].neon); T[u].grp.style.setProperty('--pb', E[K.pair[1]].neon);
+      }
     }
     if (!K) setCue();
   }
-  function float(txt, x, y, size) {
-    const r = svg.getBoundingClientRect(), el = document.createElement('div');
-    el.className = 'fl rise'; el.textContent = txt; el.style.left = (r.left + x) + 'px'; el.style.top = (r.top + y) + 'px'; el.style.fontSize = (size || 20) + 'px';
-    document.body.appendChild(el); setTimeout(() => el.remove(), 1200);
+  // the chain's pieces in wave order from s (BFS through the chain)
+  function waveOrder(K, s) {
+    const st = s >= 0 && K.set.has(s) ? s : K.vs[0], depth = new Map([[st, 0]]); let front = [st];
+    while (front.length) { const nx = []; front.forEach(u => g.adj[u].forEach(w => { if (K.set.has(w) && !depth.has(w)) { depth.set(w, depth.get(u) + 1); nx.push(w); } })); front = nx; }
+    const c0 = T[st].c, dd = u => Math.hypot(T[u].c[0] - c0[0], T[u].c[1] - c0[1]);
+    return K.vs.slice().sort((a, b) => (depth.get(a) || 0) - (depth.get(b) || 0) || dd(a) - dd(b));
   }
+  // trace: the chain's plates pop one after another with a rising tone
+  let traceGen = 0;
+  function traceWave(K, s) {
+    const my = ++traceGen, ord = waveOrder(K, s), gap = RMQ() ? 0 : 34;
+    ord.slice(0, 14).forEach((u, i) => setTimeout(() => { if (my !== traceGen) return; if (gap) reanim(T[u].pl, 'tr'); note(i, .028); }, i * gap));
+  }
+  // touch: the country lifts at once (an overlay copy with a shadow), its neighbours of other colours glow
+  function liftOn(u) {
+    liftOff();
+    const d = dOf(G.polys[u]), c = E[g.col[u]] || { hex: '#aab4bf' };
+    gLift.innerHTML = '<g class="lift"><path d="' + d + '" fill="#1c1640" opacity=".35" transform="translate(3 5)"/><path d="' + d + '" fill="' + c.hex + '" stroke="#1c1640" stroke-width="' + q1(OW) + '" stroke-linejoin="round"/>' +
+      '<path d="' + d + '" fill="none" stroke="#fff" stroke-width="' + q1(OW * .9) + '" opacity=".75" stroke-linejoin="round"/></g>';
+    const L = gLift.firstChild; requestAnimationFrame(() => L && L.classList.add('on'));
+    T[u].pl.classList.add('up');
+    g.adj[u].forEach(w => { if (w !== HOLE && g.col[w] !== g.col[u]) T[w].grp.classList.add('cand'); });
+  }
+  function liftOff() { if (!gLift) return; gLift.innerHTML = ''; T.forEach(t => { t.pl.classList.remove('up'); t.grp.classList.remove('cand'); }); }
+  function wobble() { reanim(cue, 'wob'); thud(); }
   function ring(x, y, r, col, delay) {
     const c = mk('circle', { class: 'ring', cx: q1(x), cy: q1(y), r: q1(r), stroke: col, 'stroke-width': 4 }, gFx);
     c.style.animationDelay = (delay || 0) + 'ms'; setTimeout(() => c.remove(), 1000 + (delay || 0));
@@ -350,23 +465,25 @@
   }
 
   // ---------------- gestures ----------------
-  let drag = null;
+  let drag = null, lastPt = null;
   const ptOf = ev => { const r = svg.getBoundingClientRect(); return [ev.clientX - r.left, ev.clientY - r.top]; };
+  const pagePt = p => { const r = svg.getBoundingClientRect(); return [r.left + p[0], r.top + p[1]]; };
   function stopShow() { if (showTimer) { clearTimeout(showTimer); showTimer = null; light(null); } }
   svg.addEventListener('pointerdown', ev => {
+    poke();
     if (busy) return;
-    if (celebrated) { if (!LAB.embedded) g.reset(); return; }   // in the app the shell owns the next step
+    if (celebrated) { if (!LAB.embedded && doneAt) g.reset(); return; }   // in the app the shell owns the next step
     stopHint(); stopShow();
     const p = ptOf(ev), u = hit(G, p);
-    if (u < 0) return;
-    if (u === HOLE) { T[u].pl.classList.remove('pop'); void T[u].pl.getBBox(); T[u].pl.classList.add('pop'); float('I need a free flag!', T[u].c[0], T[u].c[1] - T[u].r - 14, 15); thud(); armHint(700, 1); return; }
+    if (u < 0) { if (roseAt && Math.hypot(p[0] - roseAt[0], p[1] - roseAt[1]) < roseAt[2] + 10) roseTap(); return; }
+    if (u === HOLE) { reanim(T[u].pl, 'pop'); reanim(T[u].grp, 'no'); wobble(); armHint(700, 1); return; }   // the ? wants a flag: the rack wobbles, a hint follows
     try { svg.setPointerCapture(ev.pointerId); } catch (e) {}
     drag = { id: ev.pointerId, s: u, p0: p, t0: performance.now(), tgt: u, K: null, moved: false };
-    note(0, .035);
+    lastPt = p; liftOn(u); pop(0, .04);
   });
   svg.addEventListener('pointermove', ev => {
     if (!drag || ev.pointerId !== drag.id) return;
-    const p = ptOf(ev); if (Math.hypot(p[0] - drag.p0[0], p[1] - drag.p0[1]) > 8) drag.moved = true;
+    const p = ptOf(ev); lastPt = p; if (Math.hypot(p[0] - drag.p0[0], p[1] - drag.p0[1]) > 8) drag.moved = true;
     if (!drag.moved) return;
     const t = hit(G, p), S = drag.s, c = T[S].c;
     // the arrow from the start country to the finger
@@ -374,37 +491,37 @@
     const head = 'M' + q1(hx - hl * Math.cos(ang - .5)) + ' ' + q1(hy - hl * Math.sin(ang - .5)) + 'L' + q1(hx) + ' ' + q1(hy) + 'L' + q1(hx - hl * Math.cos(ang + .5)) + ' ' + q1(hy - hl * Math.sin(ang + .5));
     const d = 'M' + q1(c[0]) + ' ' + q1(c[1]) + 'L' + q1(hx) + ' ' + q1(hy) + head;
     arrow.querySelector('.a1').setAttribute('d', d); arrow.querySelector('.a2').setAttribute('d', d); arrow.setAttribute('opacity', 1);
-    const bx = Math.max(46, Math.min(W - 46, p[0])), by = Math.max(60, p[1] - 46);
+    const bx = Math.max(36, Math.min(W - 36, p[0])), by = Math.max(60, p[1] - 50);
     badge.setAttribute('transform', 'translate(' + q1(bx) + ' ' + q1(by) + ')');
     if (t === drag.tgt) return;
     drag.tgt = t;
     const K = pick(S, t);
-    if (t >= 0 && t !== S && !K) { T[t].grp.classList.remove('no'); void T[t].grp.getBBox(); T[t].grp.classList.add('no'); }
+    if (t >= 0 && t !== S && !K) reanim(T[t].grp, 'no');
     drag.K = K; light(K);
     if (K) {
+      liftOff();
       const pv = g.preview(K); setCue(K.web ? null : pv);
-      // the finger badge only speaks when it matters: this frees a flag ("let go!"), or this changes nothing
+      // the finger badge only shows when it matters: this frees a flag (flag + tick), or this changes nothing (=)
       const fe = pv.won && !K.web ? ELS.find(e => !g.rim.some(x => pv.col[x] === e)) : -1;
-      badge.querySelector('.bf').innerHTML = fe >= 0 ? flagSvg(fe).replace('class="fg"', 'class="fg up" width="24" height="30"') : '';
-      badge.querySelector('.bn').textContent = K.web ? 'same map' : 'let go!';
-      badge.querySelector('.bn').setAttribute('x', K.web ? 0 : 13);
-      badge.querySelector('rect').setAttribute('fill', K.web ? '#d6d9e6' : '#8af574');
+      badge.querySelector('.bf').innerHTML = fe >= 0 ? flagSvg(fe).replace('class="fg"', 'class="fg up" width="24" height="34"') : '';
+      badge.querySelector('.ok').style.display = fe >= 0 ? '' : 'none';
+      badge.querySelector('.eq').style.display = K.web ? '' : 'none';
+      badge.querySelector('.bk').setAttribute('fill', K.web ? '#d6d9e6' : '#8af574');
       badge.setAttribute('opacity', K.web || fe >= 0 ? 1 : 0);
-      K.vs.forEach((u, i) => setTimeout(() => note(i, .03), i * 28));
-    } else { badge.setAttribute('opacity', 0); setCue(); }
+      traceWave(K, S);
+    } else { badge.setAttribute('opacity', 0); setCue(); traceGen++; }
   });
   function endDrag(ev, cancel) {
     if (!drag || ev.pointerId !== drag.id) return;
-    const D = drag; drag = null; arrow.setAttribute('opacity', 0); badge.setAttribute('opacity', 0);
+    const D = drag; drag = null; arrow.setAttribute('opacity', 0); badge.setAttribute('opacity', 0); liftOff(); traceGen++;
     armHint(7000);
     if (!D.moved && !cancel) { if (performance.now() - D.t0 < 600) showChains(D.s); return; }
     const K = D.K; light(null);
-    if (cancel || !K) { if (D.tgt >= 0 && D.tgt !== D.s && !cancel) thud(); return; }
+    if (cancel || !K) { if (D.tgt >= 0 && D.tgt !== D.s && !cancel) wobble(); return; }
     if (K.web) {                                      // the only {a,b} chain: swapping just renames two elements
-      svg.classList.remove('shake'); void svg.getBBox(); svg.classList.add('shake'); thud();
-      float('nothing changes!', T[D.s].c[0], T[D.s].c[1] - 20, 17); return;
+      reanim(svg, 'shake'); K.vs.forEach(u => reanim(T[u].grp, 'no')); wobble(); return;
     }
-    swapFrom(K, D.s);
+    swapFrom(K, D.s, lastPt);
   }
   svg.addEventListener('pointerup', ev => endDrag(ev, false));
   svg.addEventListener('pointercancel', ev => endDrag(ev, true));
@@ -412,51 +529,84 @@
     const Ks = g.chainsThrough(u); let i = 0;
     const step = () => {
       if (i >= Ks.length) { showTimer = null; light(null); return; }
-      const K = Ks[i++]; light(K); setCue(g.preview(K)); note(i * 2, .04);
+      const K = Ks[i++]; light(K); setCue(g.preview(K)); traceWave(K, u);
       showTimer = setTimeout(step, 650);
     };
     step();
   }
 
-  // ---------------- the swap ripple and the win ----------------
+  // ---------------- easter eggs ----------------
+  // x-marks: three taps on the compass rose in the sea dig up a treasure X (pays a few points, once)
+  function roseTap() {
+    if (eggDone || !roseG || celebrated) return;
+    roseTaps++; const r = roseG.querySelector('.rose'); r && reanim(r, 'tick'); pop(roseTaps * 3, .04);
+    if (roseTaps < 3) return;
+    eggDone = true; roseG.innerHTML = xMark(roseAt[2]);
+    
+    if (!RMQ()) { ring(roseAt[0], roseAt[1], roseAt[2], '#ffd84a', 0); ring(roseAt[0], roseAt[1], roseAt[2] * 1.4, '#fff', 120); }
+    [0, 4, 7, 12, 16].forEach((s, i) => setTimeout(() => tone(660 * Math.pow(2, s / 12), .18, 'triangle', .05, 1.01), i * 70));
+    egg('x-marks', 40);
+  }
+  // sea-serpent: after a long quiet spell a sea serpent swims along the sea below the island (once in a while)
+  let idleT = 0, serpLast = -1e9;
+  function poke() { clearTimeout(idleT); idleT = setTimeout(serpent, 28000); }
+  function serpent() {
+    if (celebrated || drag || !gSea || RMQ() || performance.now() - serpLast < 80000) { poke(); return; }
+    serpLast = performance.now();
+    const s = mk('g', { class: 'serp' }, gSea), y = serpY, k = Math.max(.6, Math.min(1, W / 420));
+    let body = '';
+    for (let i = 0; i < 3; i++) body += '<g transform="translate(' + (-26 - i * 22) + ' 0)"><path class="hump" style="animation-delay:' + (i * 160) + 'ms" d="M-9 2Q0 -16 9 2Z" fill="#2fa58a" stroke="#1c1640" stroke-width="2.4" stroke-linejoin="round"/></g>';
+    s.innerHTML = '<g transform="scale(' + q1(k) + ')">' + body + '<path d="M-14 2Q-8 -18 6 -16Q16 -15 15 -8L22 -6L14 -2Q10 2 2 2Z" fill="#2fa58a" stroke="#1c1640" stroke-width="2.4" stroke-linejoin="round"/><circle cx="6" cy="-10" r="2.2" fill="#fff" stroke="#1c1640" stroke-width="1"/><circle cx="6.6" cy="-10" r="1" fill="#1c1640"/>' +
+      '<path d="M-90 4q6 -5 12 0t12 0t12 0t12 0t12 0t12 0t12 0t12 0" stroke="#fff" stroke-width="2" fill="none" opacity=".6" stroke-linecap="round"/></g>';
+    const t0 = performance.now(), DUR = 7000;
+    const step = () => { const f = (performance.now() - t0) / DUR; if (f >= 1 || !s.isConnected) { s.remove(); poke(); return; }
+      s.setAttribute('transform', 'translate(' + q1(-60 + (W + 160) * f) + ' ' + q1(y + Math.sin(f * 20) * 2) + ')'); requestAnimationFrame(step); };
+    step(); egg('sea-serpent', 0);
+  }
+
+  // ---------------- the swap wave and the win ----------------
   let rippleFrom = -1;
-  function swapFrom(K, s) { rippleFrom = s; g.swap(K); }
+  function swapFrom(K, s, p) {
+    rippleFrom = s;
+    const q = pagePt(p || T[s].c);
+    try { window.LAB && LAB.at && LAB.at(q[0], q[1]); } catch (e) {}   // the shell flies this swap's coins from the finger
+    g.swap(K);
+  }
   g.on((gg, info) => {
+    const before = lastCount ? lastCount.join() : '';
     winEl.classList.remove('on');
-    stopHint();
-    if (info.type !== 'swap') { gFx && [...gFx.querySelectorAll('.pl')].forEach(n => n.remove()); celebrated = false; busy = false; light(null); paint(); armHint(5000); return; }
-    const K = info.chain, depth = new Map([[rippleFrom >= 0 && K.set.has(rippleFrom) ? rippleFrom : K.vs[0], 0]]);
-    let front = [...depth.keys()];
-    while (front.length) { const nx = []; front.forEach(u => g.adj[u].forEach(w => { if (K.set.has(w) && !depth.has(w)) { depth.set(w, depth.get(u) + 1); nx.push(w); } })); front = nx; }
-    const RM = matchMedia('(prefers-reduced-motion: reduce)').matches, gap = RM ? 0 : 85;
-    let maxD = 0; busy = true;
-    K.vs.forEach(u => {
-      const d = depth.has(u) ? depth.get(u) : 0; maxD = Math.max(maxD, d);
-      setTimeout(() => {
-        setEl(u, g.col[u]); T[u].pl.classList.remove('pop'); void T[u].pl.getBBox(); T[u].pl.classList.add('pop');
-        if (!RM) ring(T[u].c[0], T[u].c[1], T[u].r, E[g.col[u]].neon, 0);
-        note(d + 2, .05);
-      }, d * gap);
-    });
+    stopHint(); liftOff();
+    if (info.type !== 'swap') {
+      winGen++; gWin && (gWin.innerHTML = ''); gFx && [...gFx.querySelectorAll('.pl')].forEach(n => n.remove());
+      celebrated = false; doneAt = 0; busy = false; light(null); T.forEach(t => t.pl.classList.remove('dance')); lastCount = null; paint(); armHint(5000); return;
+    }
+    const K = info.chain, ord = waveOrder(K, rippleFrom);
+    const RM = RMQ(), gap = RM ? 0 : 45;
+    busy = true;
+    ord.forEach((u, i) => setTimeout(() => {   // each piece flips in turn from the touch point, with a pop
+      setEl(u, g.col[u]); reanim(T[u].pl, 'pop');
+      if (!RM) { reanim(T[u].grp, 'flip'); ring(T[u].c[0], T[u].c[1], T[u].r, E[g.col[u]].neon, 0); }
+      pop(i + 2, .04);
+    }, i * gap));
     setTimeout(() => {
       busy = false; setCue();
-      if (g.won()) celebrate(); else armHint(6000);
-    }, maxD * gap + 380);
+      if (g.won()) celebrate();
+      else { if (lastCount && lastCount.join() === before) wobble(); armHint(6000); }   // the rim did not change: a soft wobble
+    }, (ord.length - 1) * gap + 360);
   });
   function winPaint(fx) {
     const e = g.free(), c = T[HOLE].c, r = T[HOLE].r;
     setEl(HOLE, e); T[HOLE].pl.classList.remove('hole');
     // plant the free flag on the "?" country's plate
     const fs = Math.max(.9, r / 11), fl = mk('g', { class: 'pl', transform: 'translate(' + q1(c[0] + r * .35) + ' ' + q1(c[1] - r * .55 - 27 * fs) + ') scale(' + q1(fs) + ')' }, gFx);
-    fl.innerHTML = flagSvg(e).replace('<svg class="fg"', '<svg class="fg up" width="24" height="30"');
+    fl.innerHTML = flagSvg(e).replace('<svg class="fg"', '<svg class="fg up" width="24" height="34"');
     setCue(); const sr = svg.getBoundingClientRect(); winEl.style.top = (sr.top + Math.min(H - 110, c[1] + r * 1.4 + 44)) + 'px'; winEl.classList.add('on');
-    if (!fx) return;
-    T[HOLE].pl.classList.remove('pop'); void T[HOLE].pl.getBBox(); T[HOLE].pl.classList.add('pop');
-    const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
-    if (!RM) {
+    if (!fx) { winFlags(false); return; }
+    reanim(T[HOLE].pl, 'pop'); reanim(T[HOLE].grp, 'flip');
+    if (!RMQ()) {
       [0, 140, 300].forEach((dl, k) => ring(c[0], c[1], r * (1 + k * .5), k === 1 ? '#fff' : E[e].neon, dl));
-      for (let k = 0; k < 26; k++) {
-        const a = 2 * Math.PI * k / 26 + hash(k, 2), dist = 60 + hash(k, 9) * Math.min(W, H) * .35, cc = k % 3 ? E[e].hex : E[k % NC].neon;
+      for (let k = 0; k < 30; k++) {
+        const a = 2 * Math.PI * k / 30 + hash(k, 2), dist = 60 + hash(k, 9) * Math.min(W, H) * .38, cc = k % 3 ? E[e].hex : E[k % NC].neon;
         const p = mk('rect', { x: q1(c[0] - 4), y: q1(c[1] - 3), width: 8, height: 6, rx: 1.5, fill: cc, stroke: '#1c1640', 'stroke-width': 1.4, class: 'cf' }, gFx);
         p.style.setProperty('--x', q1(Math.cos(a) * dist) + 'px'); p.style.setProperty('--y', q1(Math.sin(a) * dist) + 'px'); p.style.setProperty('--r', (hash(k, 4) * 720 - 360) + 'deg');
         p.style.transformBox = 'fill-box'; p.style.transformOrigin = 'center';
@@ -465,13 +615,59 @@
     }
     [0, 4, 7, 12].forEach((s, i) => setTimeout(() => tone(523 * Math.pow(2, s / 12), .3, 'triangle', .07, 1.01), i * 110));
   }
-  function celebrate() { celebrated = true; light(null); winPaint(true); setTimeout(LAB.done, 1800); }
+  // a little flag pops up on every country, in a wave out from the filled hole (anim: false = all at once, no sound)
+  function winFlags(anim) {
+    if (!gWin) return;
+    const depth = new Map([[HOLE, 0]]); let front = [HOLE];
+    while (front.length) { const nx = []; front.forEach(u => g.adj[u].forEach(w => { if (!depth.has(w)) { depth.set(w, depth.get(u) + 1); nx.push(w); } })); front = nx; }
+    let s = '', maxD = 0;
+    for (let u = 0; u < N; u++) {
+      if (u === HOLE) continue;
+      const d = depth.get(u) || 1, t = T[u], fs = Math.max(.55, Math.min(1, t.r / 13)); maxD = Math.max(maxD, d);
+      s += '<g transform="translate(' + q1(t.c[0] + t.r * .3) + ' ' + q1(t.c[1] - t.r * .4 - 27 * fs) + ') scale(' + q1(fs) + ')"><g class="wf" style="animation-delay:' + (anim ? d * 150 + hash(u, 3) * 60 | 0 : 0) + 'ms">' +
+        '<path d="M5 29V3" stroke="#1c1640" stroke-width="2.8" stroke-linecap="round"/><path d="M5.5 4H22L18.6 9.2L22 14.4H5.5Z" fill="' + E[g.col[u]].hex + '" stroke="#1c1640" stroke-width="1.8" stroke-linejoin="round"/><circle cx="5" cy="2.6" r="2.2" fill="#ffd84a" stroke="#1c1640" stroke-width="1.2"/></g></g>';
+    }
+    gWin.insertAdjacentHTML('beforeend', s);
+    if (!anim) return maxD;
+    for (let d = 1; d <= maxD; d++) setTimeout(() => celebrated && tone(392 * Math.pow(2, PENT[(d + 2) % PENT.length] / 12), .14, 'triangle', .045, 1.02), d * 150);
+    return maxD;
+  }
+  function celebrate() {
+    if (celebrated) return;                           // the win hook and the swap wave may both call this
+    celebrated = true; light(null); liftOff(); stopHint();
+    const my = ++winGen, RM = RMQ(), later = (ms, fn) => setTimeout(() => { if (my === winGen && celebrated) fn(); }, ms);
+    winPaint(true);
+    if (RM) { winFlags(false); later(1200, finish); return; }
+    // 1. flags pop up on every country in a wave from the hole
+    later(350, () => winFlags(true));
+    // 2. a big compass rose spins over the hole, a ship sails past below
+    later(900, () => {
+      const c = T[HOLE].c, R = Math.min(W, H) * .16;
+      gWin.insertAdjacentHTML('beforeend', '<g transform="translate(' + q1(c[0]) + ' ' + q1(c[1]) + ')"><g class="bigrose" opacity=".95">' + roseArt(R) + '</g></g>');
+      tone(330, .5, 'sine', .04, 2.2);
+      const y = Math.min(H - 14, serpY + 6), sh = mk('g', { transform: 'translate(0 ' + q1(y) + ')' }, gWin), in2 = mk('g', { class: 'sail' }, sh);
+      in2.style.setProperty('--x0', '-50px'); in2.style.setProperty('--x1', (W + 50) + 'px');
+      in2.innerHTML = '<g transform="scale(' + q1(Math.max(.6, Math.min(1, W / 420))) + ')">' + shipArt + '</g>';
+    });
+    // 3. the whole map dances in a wave, left to right
+    later(1500, () => {
+      const xs = T.map(t => t.c[0]), x0 = Math.min(...xs), x1 = Math.max(...xs) || 1;
+      T.forEach((t, u) => { t.pl.querySelector('.pt').style.animationDelay = q1((t.c[0] - x0) / (x1 - x0 || 1) * 500) + 'ms'; reanim(t.pl, 'dance'); });
+      [0, 4, 7, 12, 16, 19].forEach((s, i) => setTimeout(() => celebrated && tone(523 * Math.pow(2, s / 12), .22, 'triangle', .05, 1.01), i * 120));
+    });
+    later(3500, finish);
+  }
+  function finish() {
+    doneAt = performance.now();
+    T.forEach(t => { t.pl.classList.remove('dance'); const pt = t.pl.querySelector('.pt'); pt && (pt.style.animationDelay = ''); });
+    LAB.done();
+  }
 
-  document.getElementById('bU').addEventListener('click', () => { if (!busy && !(celebrated && LAB.embedded)) { stopShow(); g.undo(); } });
-  document.getElementById('bR').addEventListener('click', () => { if (!busy && !(celebrated && LAB.embedded)) { stopShow(); g.reset(); } });
+  document.getElementById('bU').addEventListener('click', () => { poke(); if (!busy && !(celebrated && LAB.embedded)) { stopShow(); g.undo(); } });
+  document.getElementById('bR').addEventListener('click', () => { poke(); if (!busy && !(celebrated && LAB.embedded)) { stopShow(); g.reset(); } });
   let rz = 0; window.addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(build, 80); });
-  Object.assign(window.MAPLAB, { light, setCue, celebrate, swapFrom, showHint });   // for debugging in the console
-  build(); armHint(4000);
+  Object.assign(window.MAPLAB, { light, setCue, celebrate, swapFrom, showHint, serpent, roseTap });   // for debugging in the console
+  build(); armHint(4000); poke();
 })();
 </script>
 </body>

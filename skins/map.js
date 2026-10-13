@@ -42,32 +42,57 @@
     '.bob{transform-box:fill-box;transform-origin:center;animation:bb 1.6s ease-in-out infinite alternate}@keyframes bb{to{transform:translateY(-3px) scale(1.06)}}' +
     '.mv{animation:mv 3s ease-in-out infinite}@keyframes mv{0%,15%{transform:translate(0,0)}60%,100%{transform:translate(42px,28px)}}' +
     '.fl{animation:fl 3s ease-in-out infinite}@keyframes fl{0%,50%{opacity:0}70%,100%{opacity:1}}' +
-    '.mk{stroke-dasharray:6 5;animation:mk 1.6s linear infinite}@keyframes mk{to{stroke-dashoffset:-22}}}</style>';
+    '.mk{stroke-dasharray:6 5;animation:mk 1.6s linear infinite}@keyframes mk{to{stroke-dashoffset:-22}}' +
+    '.spin{animation:sp 9s linear infinite;transform-box:fill-box;transform-origin:center}@keyframes sp{to{transform:rotate(360deg)}}' +
+    '.rock{transform-box:fill-box;transform-origin:50% 100%;animation:rk 2.4s ease-in-out infinite alternate}@keyframes rk{from{transform:rotate(-5deg)}to{transform:rotate(5deg)}}' +
+    '.pz{animation:pz .9s ease-in-out infinite alternate}@keyframes pz{from{opacity:.25}to{opacity:1}}}</style>';
   const svg = b => '<svg viewBox="0 0 300 250" xmlns="http://www.w3.org/2000/svg">' + STY + sea + b + '</svg>';
   const say = (x, y, s, t, col) => '<text x="' + x + '" y="' + y + '" text-anchor="middle" font-family="Fredoka,system-ui,sans-serif" font-weight="700" font-size="' + s + '" fill="' + (col || '#fff') + '" stroke="' + INK + '" stroke-width="' + f1(s / 5) + '" paint-order="stroke" stroke-linejoin="round">' + t + '</text>';
   const holeRing = (cx, cy, R, cols, hr, holeSvg, sr) => rimPos(cx, cy, R).map((p, i) => country(p[0], p[1], sr || 27, cols[i], 3 + i)).join('') + (holeSvg || country(cx, cy, hr || 28, -1, 9, '<circle cx="' + cx + '" cy="' + cy + '" r="' + ((hr || 28) + 3) + '" fill="none" stroke="' + GOLD + '" stroke-width="3" class="mk"/>'));
   const finger = (x, y) => '<g transform="translate(' + x + ' ' + y + ')"><circle r="12" fill="#fff" opacity=".4"/><circle r="7.5" fill="#fff" stroke="' + INK + '" stroke-width="2"/></g>';
 
+  // a chunky compass rose (r ~ 1 unit = R) and a little sailing ship, shared by the title, card and icon
+  const rose = (x, y, R, cls) => { let d = ''; const P = (a, k) => f1(Math.cos(a) * k * R) + ' ' + f1(Math.sin(a) * k * R);
+    for (let i = 0; i < 8; i++) { const a = -Math.PI / 2 + i * Math.PI / 4, k = i % 2 ? .62 : 1, w = i % 2 ? .16 : .22;
+      d += '<path d="M0 0L' + P(a - w * 2.2, .34) + 'L' + P(a, k) + 'Z" fill="' + (i === 0 ? '#e0452f' : i % 2 ? '#c9a45c' : '#2c4f7a') + '"/>' +
+        '<path d="M0 0L' + P(a, k) + 'L' + P(a + w * 2.2, .34) + 'Z" fill="' + (i === 0 ? '#ff8a6a' : i % 2 ? '#f3e3b3' : '#5f8fc8') + '"/>' +
+        '<path d="M' + P(a - w * 2.2, .34) + 'L' + P(a, k) + 'L' + P(a + w * 2.2, .34) + '" fill="none" stroke="' + INK + '" stroke-width="' + f1(R * .07) + '" stroke-linejoin="round"/>'; }
+    return '<g transform="translate(' + x + ' ' + y + ')"><g' + (cls ? ' class="' + cls + '"' : '') + '><circle cx="' + f1(R * .08) + '" cy="' + f1(R * .12) + '" r="' + f1(R * .8) + '" fill="' + INK + '" opacity=".3"/><circle r="' + f1(R * .8) + '" fill="' + PAPER + '" stroke="' + INK + '" stroke-width="' + f1(R * .08) + '"/><circle r="' + f1(R * .64) + '" fill="none" stroke="#a9833a" stroke-width="' + f1(R * .05) + '" stroke-dasharray="' + f1(R * .08) + ' ' + f1(R * .1) + '"/>' + d +
+      '<circle r="' + f1(R * .12) + '" fill="' + GOLD + '" stroke="' + INK + '" stroke-width="' + f1(R * .06) + '"/></g></g>'; };
+  const ship = (x, y, s, cls) => '<g transform="translate(' + x + ' ' + y + ') scale(' + s + ')"><g' + (cls ? ' class="' + cls + '"' : '') + '><path d="M-20 2Q-16 14 -2 14H14Q24 12 24 0Z" fill="' + INK + '" opacity=".3" transform="translate(2 3)"/>' +
+    '<path d="M-20 2Q-16 14 -2 14H14Q24 12 24 0Z" fill="#8b4f26" stroke="' + INK + '" stroke-width="2.4" stroke-linejoin="round"/><path d="M-19 4H23" stroke="#d99a55" stroke-width="2.6"/><path d="M0 2V-30" stroke="' + INK + '" stroke-width="2.6"/>' +
+    '<path d="M1 -28Q-18 -16 1 -1Z" fill="#fff6dc" stroke="' + INK + '" stroke-width="2" stroke-linejoin="round"/><path d="M1 -28Q12 -16 1 -1Z" fill="#eadcb0" stroke="' + INK + '" stroke-width="2" stroke-linejoin="round"/><path d="M0 -30V-38H11L8 -34L11 -30Z" fill="#e0452f" stroke="' + INK + '" stroke-width="1.6" stroke-linejoin="round"/></g></g>';
+  // a pulsing white edge round a country (a lit chain in the pictures)
+  const litEdge = (cx, cy, r, seed) => '<path class="pz" d="' + blob(cx, cy, r, seed) + '" fill="none" stroke="#fff" stroke-width="6" stroke-linejoin="round"/>';
+  // the game's own cue: two-element stripes, a ghost fingertip with a trail
+  const arrowTo = (x0, y0, x1, y1) => '<path d="M' + x0 + ' ' + y0 + 'L' + x1 + ' ' + y1 + '" stroke="' + INK + '" stroke-width="9" stroke-linecap="round" opacity=".6"/><path d="M' + x0 + ' ' + y0 + 'L' + x1 + ' ' + y1 + '" stroke="#fff" stroke-width="4" stroke-linecap="round" stroke-dasharray="2 8"/>';
+
   const titleSvg = svg(island(125) + holeRing(150, 122, 62, [0, 1, 2, 3, 1], 29, null, 29).replace('class="mk"', 'class="mk bob"') +
-    flag(36, 44, 3, 1.1) + say(150, 232, 17, 'find a free flag'));
+    flag(36, 44, 3, 1.1) + rose(262, 212, 26, 'spin') + ship(40, 214, .9, 'rock'));
 
   const introP1 = svg(island(122) + holeRing(150, 118, 62, [0, 1, 2, 3, 0], 28, null, 27) +
-    [0, 1, 2, 3].map((e, i) => flag(78 + i * 48, 206, e, 1.15, true)).join('') + say(150, 240, 14, 'all four flags are flown next door'));
+    [0, 1, 2, 3].map((e, i) => flag(78 + i * 48, 206, e, 1.15, true)).join(''));
   const introP2 = svg(island(122) +
     country(100, 96, 34, 0, 21) + country(168, 88, 32, 1, 22) + country(212, 138, 30, 0, 23) + country(122, 160, 32, 1, 24) + country(60, 150, 26, 3, 25) +
-    '<g class="mv">' + finger(100, 96) + '</g>' + '<path d="M102 98 L140 118" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-dasharray="1 7" fill="none"/>' +
-    say(150, 30, 15, 'press, then drag over a border'));
+    litEdge(100, 96, 34, 21) + litEdge(168, 88, 32, 22) + litEdge(212, 138, 30, 23) + litEdge(122, 160, 32, 24) +
+    arrowTo(102, 98, 160, 90) + '<g class="mv">' + finger(100, 96) + '</g>');
   const introP3 = svg(island(122) +
     country(80, 100, 30, 0, 31) + country(150, 80, 30, 1, 32) + country(220, 100, 30, 0, 33) + country(115, 160, 30, 1, 34) + country(185, 165, 30, 3, 35) +
     '<g class="fl">' + country(80, 100, 30, 1, 31) + country(150, 80, 30, 0, 32) + country(220, 100, 30, 1, 33) + country(115, 160, 30, 0, 34) + '</g>' +
-    say(150, 30, 15, 'the whole red + blue chain swaps'));
-  const introP4 = svg(island(118) + holeRing(150, 112, 60, [0, 1, 0, 1, 2], 27, null, 26) +
-    '<g transform="translate(150 206)"><path d="M-12 -2V-12A12 12 0 0 1 12 -12V-2" fill="none" stroke="' + INK + '" stroke-width="4" stroke-linecap="round"/><rect x="-17" y="-4" width="34" height="26" rx="6" fill="' + GOLD + '" stroke="' + INK + '" stroke-width="3"/><circle cy="9" r="3.5" fill="' + INK + '"/></g>' +
-    say(150, 244, 13, 'a chain that wraps the rim only renames'));
+    litEdge(80, 100, 30, 31) + litEdge(150, 80, 30, 32) + litEdge(220, 100, 30, 33) + litEdge(115, 160, 30, 34));
+  const lock = (x, y, s) => '<g transform="translate(' + x + ' ' + y + ') scale(' + s + ')"><path d="M-12 -2V-12A12 12 0 0 1 12 -12V-2" fill="none" stroke="' + INK + '" stroke-width="4" stroke-linecap="round"/><rect x="-17" y="-4" width="34" height="26" rx="6" fill="' + GOLD + '" stroke="' + INK + '" stroke-width="3"/><circle cy="9" r="3.5" fill="' + INK + '"/></g>';
+  const introP4 = svg(island(118) + holeRing(150, 112, 60, [0, 1, 0, 1, 2], 27, null, 26) + lock(150, 214, 1.1));
   const introP5 = svg(island(118) + holeRing(150, 112, 60, [0, 1, 2, 0, 1], 27, country(150, 112, 28, 3, 9), 26) +
-    flag(168, 80, 3, 1.4) + say(150, 232, 17, 'free flag: planted!', GOLD));
+    '<circle class="pz" cx="150" cy="112" r="40" fill="none" stroke="' + GOLD + '" stroke-width="5"/>' + flag(168, 80, 3, 1.4) + [0, 1, 2].map((e, i) => flag(110 + i * 40, 206, e, 1, true)).join('') + flag(230, 198, 3, 1));
 
-  const tileHex = (r, seed) => blob(0, 0, r, seed);
+  // bonus gems: one silhouette per element in a -12..12 box, and a short top-left gleam on each
+  const GEM = [
+    'M0 -12C3.5 -7 10.5 -4 10.5 3.5C10.5 9 6 12 0 12C-6 12 -10.5 9 -10.5 3C-10.5 -2 -7 -5 -5 -8.5C-4.2 -4.5 -2.6 -3 -.6 -2.4C-1.8 -6 -1.4 -9 0 -12Z',
+    'M0 -12.5C4.5 -6 10.5 -.5 10.5 4.5C10.5 9.5 6 12.5 0 12.5C-6 12.5 -10.5 9.5 -10.5 4.5C-10.5 -.5 -4.5 -6 0 -12.5Z',
+    'M-7.5 9C-11 9 -12.5 6 -11.5 3.2C-12.8 -.6 -10 -4 -6.6 -3.2C-6 -8 -1.5 -10.5 2.4 -8.4C5 -11.4 11 -9.6 10.6 -4.2C13 -3 13 1.8 11.4 3.8C12.6 7 10.4 9 7.6 9Z',
+    'M-10.5 10.5C-12.5 -1.5 -4.5 -11.5 11.5 -11.5C11.5 3.5 2.5 12.5 -10.5 10.5Z',
+  ];
+  const GLEAM = ['M-6.5 1.5C-6.5 -1 -5 -3 -3.8 -4.4', 'M-6.4 3C-6.4 0 -4 -3.5 -1.6 -6.4', 'M-8.4 1.5C-8.6 -.6 -7.4 -1.8 -5.6 -1.6M-3.6 -3.6C-3 -6.4 -.4 -7.4 1.8 -6.4', 'M-7.6 3.5C-7.2 -2.5 -2.5 -7.6 4 -8.6'];
   // ---------------- the level map: an antique-meets-cartoon treasure chart ----------------
   const levelMap = (function () {
     const BR = '#7a4a24', CREAM = '#f8ecc4', PARCH = '#efdcab', RED = '#d8372b', DRED = '#8e1c17', FF = 'Fredoka,system-ui,sans-serif';
@@ -263,11 +288,121 @@
     };
   })();
 
+  // ---------------- icon, card, logo (SKIN-SPEC section 13) ----------------
+  // the wordmark: "Island Map" in chunky Fredoka, gold with a navy outline and offset shadow, a red dotted trail to an X
+  const logoArt = P => {
+    const T = (extra, fill, more) => '<text x="120" y="47" text-anchor="middle" font-family="Fredoka, \'Arial Black\', system-ui, sans-serif" font-weight="700" font-size="40" textLength="206" lengthAdjust="spacingAndGlyphs" ' + extra + ' fill="' + fill + '"' + (more || '') + '>Island Map</text>';
+    return '<defs><linearGradient id="' + P + 'g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff6c4"/><stop offset=".45" stop-color="' + GOLD + '"/><stop offset="1" stop-color="#f08a1c"/></linearGradient></defs>' +
+      T('transform="translate(3 4)" stroke="' + INK + '" stroke-width="9" stroke-linejoin="round"', INK) +
+      T('stroke="' + INK + '" stroke-width="8" stroke-linejoin="round" paint-order="stroke"', 'url(#' + P + 'g)') +
+      T('', 'none', ' stroke="#fffbe6" stroke-width="1.4" opacity=".55" transform="translate(-1 -1.5)"') +
+      '<path d="M26 66Q70 58 110 66T186 64" fill="none" stroke="' + INK + '" stroke-width="6" stroke-linecap="round"/><path d="M26 66Q70 58 110 66T186 64" fill="none" stroke="#e0452f" stroke-width="3" stroke-linecap="round" stroke-dasharray="1 7"/>' +
+      '<g transform="translate(204 63) rotate(8)"><path d="M-8 -8L8 8M8 -8L-8 8" stroke="' + INK + '" stroke-width="8.5" stroke-linecap="round"/><path d="M-8 -8L8 8M8 -8L-8 8" stroke="#e0452f" stroke-width="4.6" stroke-linecap="round"/><path d="M-7 -8.5L-3 -4.5" stroke="#ff9a8a" stroke-width="1.8" stroke-linecap="round"/></g>';
+  };
+  const logoSvg = '<svg viewBox="0 0 240 80" xmlns="http://www.w3.org/2000/svg">' + logoArt('map-lg-') + '</svg>';
+
+  // the icon: a chunky unrolled treasure map, four bold countries round a blank spot marked with a red X, on the ocean
+  const iconSvg = (function () {
+    const P = 'map-ic-', isl = blob(60, 61, 37, 5);
+    const Q = ['M60 61Q66 44 60 16L16 16L16 66Q42 56 60 61Z', 'M60 61Q66 44 60 16L104 16L104 56Q78 66 60 61Z', 'M60 61Q78 66 104 56L104 106L62 106Q52 78 60 61Z', 'M60 61Q52 78 62 106L16 106L16 66Q42 56 60 61Z'];
+    const SPK = 'M60 61Q66 44 60 16M60 61Q78 66 104 56M60 61Q52 78 62 106M60 61Q42 56 16 66';
+    const roll = x => '<rect x="' + x + '" y="20" width="13" height="84" rx="6.5" fill="url(#' + P + 'roll)" stroke="' + INK + '" stroke-width="3.2"/><path d="M' + (x + 4) + ' 26V98" stroke="#fff6d8" stroke-width="2.2" stroke-linecap="round" opacity=".8"/>';
+    const sheet = '<path d="M17 24H103V100H17Z" fill="url(#' + P + 'paper)" stroke="' + INK + '" stroke-width="3.2" stroke-linejoin="round"/>';
+    return '<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg"><defs>' +
+      '<linearGradient id="' + P + 'sea" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#6fdcff"/><stop offset=".55" stop-color="#2f9ae6"/><stop offset="1" stop-color="#1f5fb8"/></linearGradient>' +
+      '<linearGradient id="' + P + 'paper" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff4cf"/><stop offset="1" stop-color="#e9c983"/></linearGradient>' +
+      '<linearGradient id="' + P + 'roll" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#f7e2a6"/><stop offset=".6" stop-color="#d9b268"/><stop offset="1" stop-color="#a87a3a"/></linearGradient>' +
+      '<linearGradient id="' + P + 'sh" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".45"/><stop offset=".5" stop-color="#fff" stop-opacity="0"/><stop offset="1" stop-color="' + INK + '" stop-opacity=".3"/></linearGradient>' +
+      '<clipPath id="' + P + 'cl"><path d="' + isl + '"/></clipPath></defs>' +
+      '<rect width="120" height="120" rx="26" fill="url(#' + P + 'sea)"/>' +
+      '<path d="M0 26Q0 0 26 0H94Q120 0 120 26V40Q60 22 0 46Z" fill="#fff" opacity=".16"/>' +
+      [[12, 110], [92, 112], [98, 10]].map(w => '<path d="M' + w[0] + ' ' + w[1] + 'q4 -4 8 0t8 0" stroke="#fff" stroke-width="2.2" fill="none" opacity=".55" stroke-linecap="round"/>').join('') +
+      '<g transform="rotate(-7 60 62)">' +
+      '<g transform="translate(4 5)" fill="' + INK + '" opacity=".38"><rect x="8" y="20" width="104" height="84" rx="6"/></g>' +
+      sheet + roll(7) + roll(100) +
+      '<path d="M24 34q3 -3 6 0t6 0M84 92q3 -3 6 0t6 0" stroke="#fff" stroke-width="1.6" fill="none" stroke-linecap="round"/>' +
+      '<path d="' + isl + '" fill="' + INK + '" transform="translate(2.5 3)"/>' +
+      '<g clip-path="url(#' + P + 'cl)">' + Q.map((d, e) => '<path d="' + d + '" fill="' + COL[e] + '"/>').join('') +
+      Q.map((d, e) => '<path d="' + d + '" fill="none" stroke="' + DK[e] + '" stroke-width="7" opacity=".45" transform="translate(1.5 2)"/>').join('') +
+      Q.map((d, e) => '<path d="' + d + '" fill="none" stroke="' + NEON[e] + '" stroke-width="3" opacity=".6" transform="translate(-1 -1)"/>').join('') +
+      '<rect x="16" y="16" width="90" height="90" fill="url(#' + P + 'sh)"/>' +
+      '<path d="' + SPK + '" fill="none" stroke="' + INK + '" stroke-width="3" stroke-linecap="round"/></g>' +
+      '<path d="' + isl + '" fill="none" stroke="' + INK + '" stroke-width="3.6" stroke-linejoin="round"/>' +
+      '<circle cx="61" cy="63" r="12.5" fill="' + INK + '"/><circle cx="60" cy="61" r="12.5" fill="' + PAPER + '" stroke="' + INK + '" stroke-width="3"/>' +
+      '<circle cx="60" cy="61" r="16" fill="none" stroke="' + GOLD + '" stroke-width="2.6" stroke-dasharray="3.5 3"/>' +
+      '<g transform="translate(60 61)"><path d="M-7 -7L7 7M7 -7L-7 7" stroke="' + INK + '" stroke-width="7.6" stroke-linecap="round"/><path d="M-7 -7L7 7M7 -7L-7 7" stroke="#e0452f" stroke-width="4.2" stroke-linecap="round"/><path d="M-6 -7.4L-3 -4.4" stroke="#ff9a8a" stroke-width="1.6" stroke-linecap="round"/></g>' +
+      '</g>' +
+      rose(97, 97, 17).replace('<g transform="translate(97 97)">', '<g transform="translate(97 97) rotate(14)">') + '</svg>';
+  })();
+
+  // the reel card: a still of play, the island cut into countries round the "?" (a red/blue chain lit and dragged
+  // across a border, the flag rack on top), over the logo. Rings of wedges share their wobbly borders exactly.
+  const cardSvg = (function () {
+    const P = 'map-cd-', CX = 120, CY = 132, KY = .9, D2 = Math.PI / 180;
+    const rr = (R, a) => R * (1 + .07 * Math.sin(3 * a + R * .1) + .04 * Math.sin(5 * a + R * .07));
+    const sp = (a, r) => a + .07 * Math.sin(r / 7 + a * 3);
+    const pt = (r, a) => [CX + Math.cos(a) * r, CY + Math.sin(a) * r * KY];
+    // the cell between radii r0..r1 (r0 = 0: the centre) and angles a0..a1, as a polygon on the shared wobbly lines
+    const cell = (r0, r1, a0, a1) => {
+      const P2 = [], n = Math.max(4, Math.round((a1 - a0) / .12)), m = 6;
+      for (let i = 0; i <= n; i++) { const a = a0 + (a1 - a0) * i / n; P2.push(pt(rr(r1, a), a)); }
+      for (let j = 1; j < m; j++) { const r = r1 + (r0 - r1) * j / m; P2.push(pt(rr(r, sp(a1, r)), sp(a1, r))); }
+      if (r0 > 0) for (let i = n; i >= 0; i--) { const a = a0 + (a1 - a0) * i / n; P2.push(pt(rr(r0, a), a)); }
+      for (let j = 1; j < m && r0 > 0; j++) { const r = r0 + (r1 - r0) * j / m; P2.push(pt(rr(r, sp(a0, r)), sp(a0, r))); }
+      if (!r0) { for (let j = 1; j < m; j++) { const r = r1 * (1 - j / m); P2.push(pt(rr(r, sp(a0, r)), sp(a0, r))); } }
+      return 'M' + P2.map(p => f1(p[0]) + ' ' + f1(p[1])).join('L') + 'Z';
+    };
+    const ring0 = (R) => { const P2 = []; for (let i = 0; i < 60; i++) { const a = i * Math.PI / 30; P2.push(pt(rr(R, a), a)); } return 'M' + P2.map(p => f1(p[0]) + ' ' + f1(p[1])).join('L') + 'Z'; };
+    const R0 = 24, R1 = 60, R2 = 150;
+    const C = [];   // [path, element, centre]
+    const rimA = k => (-90 - 36 + 72 * k) * D2, rimCol = [0, 1, 2, 3, 1];
+    for (let k = 0; k < 5; k++) { const a0 = rimA(k), a1 = rimA(k + 1), am = (a0 + a1) / 2; C.push([cell(R0, R1, a0, a1), rimCol[k], pt(rr(42, am), am), 'rim' + k]); }
+    const outA = k => (-90 - 18 + 45 * k + (k % 2 ? 8 : -6)) * D2, outCol = [3, 2, 0, 1, 0, 2, 3, 0];
+    for (let k = 0; k < 8; k++) { const a0 = outA(k), a1 = outA(k + 1), am = (a0 + a1) / 2; C.push([cell(R1, R2, a0, a1), outCol[k], pt(rr(84, am), am), 'out' + k]); }
+    const isl = 'M' + Array.from({ length: 72 }, (_, i) => { const a = i * 5 * D2, w = 1 + .025 * Math.sin(3 * a + .7) + .018 * Math.sin(5 * a + 2); return f1(CX + Math.cos(a) * 108 * w) + ' ' + f1(CY + Math.sin(a) * 98 * w); }).join('L') + 'Z';
+    const LIT = new Set(['rim0', 'rim1', 'rim4']);
+    const plate = (c, e, r, on) => '<circle cx="' + f1(c[0] + r * .1) + '" cy="' + f1(c[1] + r * .2) + '" r="' + f1(r) + '" fill="' + DK[e] + '"/><circle cx="' + f1(c[0]) + '" cy="' + f1(c[1]) + '" r="' + f1(r) + '" fill="#07090d" stroke="' + (on ? '#fff' : NEON[e]) + '" stroke-width="2"/>' + icon(e, c[0], c[1], r * 1.25 / 24, NEON[e]);
+    const hole = ring0(R0);
+    return '<svg viewBox="0 0 240 320" xmlns="http://www.w3.org/2000/svg"><defs>' +
+      '<radialGradient id="' + P + 'sea" cx="50%" cy="35%" r="80%"><stop offset="0" stop-color="#5fd0ff"/><stop offset=".6" stop-color="#2a8fdc"/><stop offset="1" stop-color="#1f5fb8"/></radialGradient>' +
+      '<linearGradient id="' + P + 'band" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2a2360" stop-opacity="0"/><stop offset=".3" stop-color="#2a2360" stop-opacity=".94"/><stop offset="1" stop-color="' + INK + '"/></linearGradient>' +
+      '<linearGradient id="' + P + 'sh" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".3"/><stop offset=".5" stop-color="#fff" stop-opacity="0"/><stop offset="1" stop-color="' + INK + '" stop-opacity=".25"/></linearGradient>' +
+      '<clipPath id="' + P + 'cl"><path d="' + isl + '"/></clipPath>' +
+      '<pattern id="' + P + 'hp" width="9" height="9" patternUnits="userSpaceOnUse" patternTransform="rotate(40)"><rect width="9" height="9" fill="' + COL[1] + '"/><rect width="4.5" height="9" fill="' + COL[0] + '"/></pattern></defs>' +
+      '<rect width="240" height="320" fill="url(#' + P + 'sea)"/>' +
+      [[10, 50], [200, 52], [14, 236], [206, 240], [116, 236]].map(w => '<path d="M' + w[0] + ' ' + w[1] + 'q5 -5 10 0t10 0" stroke="#fff" stroke-width="2.2" fill="none" opacity=".5" stroke-linecap="round"/>').join('') +
+      '<path d="' + isl + '" fill="#7fd6ff" opacity=".6" transform="translate(120 132) scale(1.1) translate(-120 -132)"/>' +
+      '<path d="' + isl + '" fill="' + SAND + '" stroke="#fff3c4" stroke-width="3" transform="translate(120 132) scale(1.05) translate(-120 -132)"/>' +
+      '<path d="' + isl + '" fill="' + INK + '" transform="translate(3 4)"/>' +
+      '<g clip-path="url(#' + P + 'cl)">' +
+      C.map(c => '<path d="' + c[0] + '" fill="' + (LIT.has(c[3]) ? 'url(#' + P + 'hp)' : COL[c[1]]) + '"/>' + (LIT.has(c[3]) ? '<path d="' + c[0] + '" fill="' + COL[c[1]] + '" opacity=".45"/>' : '')).join('') +
+      C.map(c => '<path d="' + c[0] + '" fill="none" stroke="' + (LIT.has(c[3]) ? '#fff' : NEON[c[1]]) + '" stroke-width="' + (LIT.has(c[3]) ? 7 : 4) + '" opacity="' + (LIT.has(c[3]) ? 1 : .5) + '" stroke-linejoin="round"/>').join('') +
+      '<rect width="240" height="320" fill="url(#' + P + 'sh)"/>' +
+      C.map(c => '<path d="' + c[0] + '" fill="none" stroke="' + INK + '" stroke-width="3" stroke-linejoin="round"/>').join('') +
+      '<path d="' + hole + '" fill="#aab4bf" stroke="' + INK + '" stroke-width="3"/><path d="' + ring0(R0 + 3) + '" fill="none" stroke="' + GOLD + '" stroke-width="3" stroke-dasharray="5 4"/>' +
+      '</g><path d="' + isl + '" fill="none" stroke="' + INK + '" stroke-width="4" stroke-linejoin="round"/>' +
+      C.map(c => plate(c[2], c[1], c[3].startsWith('rim') ? 10 : 11, LIT.has(c[3]))).join('') +
+      '<circle cx="' + CX + '" cy="' + CY + '" r="13" fill="#07090d" stroke="#e6edf3" stroke-width="2"/><text x="' + CX + '" y="' + (CY + 1) + '" text-anchor="middle" dominant-baseline="central" font-family="Fredoka,\'Arial Black\',system-ui,sans-serif" font-weight="700" font-size="17" fill="#fff">?</text>' +
+      (function () { const a = C[0][2], b = C[1][2], e2 = [b[0] + 8, b[1] + 6]; return arrowTo(f1(a[0]), f1(a[1]), f1(e2[0]), f1(e2[1])) + finger(f1(e2[0]), f1(e2[1])); })() +
+      [[C[0][2], 7, '#fff', -16, -18], [C[1][2], 8, NEON[2], 14, -20], [C[4][2], 6, '#fff', -18, -12]].map(s => '<path d="M' + f1(s[0][0] + s[3]) + ' ' + f1(s[0][1] + s[4]) + 'l2 -' + s[1] + 'l2 ' + s[1] + 'l' + s[1] + ' 2l-' + s[1] + ' 2l-2 ' + s[1] + 'l-2 -' + s[1] + 'l-' + s[1] + ' -2Z" fill="' + s[2] + '" stroke="' + INK + '" stroke-width="1.3" stroke-linejoin="round"/>').join('') +
+      // the flag rack on top: three flown, one about to rise
+      '<g transform="translate(60 6)"><rect x="3" y="4" width="120" height="34" rx="17" fill="' + INK + '" opacity=".35"/><rect y="0" width="120" height="34" rx="17" fill="#fff" stroke="' + INK + '" stroke-width="3"/>' + [0, 1, 2, 3].map(e => flag(22 + e * 26, 8, e, .72, e !== 3)).join('') + '</g>' +
+      '<rect y="218" width="240" height="102" fill="url(#' + P + 'band)"/>' +
+      ship(26, 248, .6, '') + rose(214, 246, 17) +
+      '<g transform="translate(0 246)">' + logoArt('map-cd-lg-') + '</g></svg>';
+  })();
+
   FTH_SKINS.register({
     id: 'map', name: 'Island Map', ic: '🗺️', blurb: 'drag across a border',
     coin: { name: 'compass rose', plural: 'compass roses', glyph: '🧭', value: 20, pitch: 1.1,   // this skin's currency (SKIN-SPEC.md section 12)
       colors: { main: '#f3e3b3', edge: '#2c4f7a' },
-      svg: FTH_SKINS.coinArt('<circle r="11.6" fill="#f3e3b3" stroke="#1c1640" stroke-width="2"/><circle r="8.8" fill="none" stroke="#a9833a" stroke-width="1" stroke-dasharray="1.4 1.6"/><path d="M0 -10.2L2.5 -2.5 10.2 0 2.5 2.5 0 10.2 -2.5 2.5 -10.2 0 -2.5 -2.5Z" fill="#2c4f7a" stroke="#1c1640" stroke-width="1.2" stroke-linejoin="round"/><path d="M0 -10.2L2.5 -2.5H-2.5Z" fill="#e0452f"/><circle r="1.7" fill="#f3e3b3" stroke="#1c1640" stroke-width="1"/>') },
+      // a brass-rimmed compass rose: offset shadow, parchment face, two-tone points lit from the top left, red north
+      svg: FTH_SKINS.coinArt('<circle cx=".6" cy="1.9" r="11.6" fill="#1c1640" opacity=".45"/><circle r="11.6" fill="#c9a45c" stroke="#1c1640" stroke-width="2"/><circle r="9.2" fill="#f3e3b3" stroke="#8a6a2e" stroke-width="1"/>' +
+        '<path d="M-6.4 -6.4L0 -1.6 6.4 -6.4 1.6 0 6.4 6.4 0 1.6 -6.4 6.4 -1.6 0Z" fill="#c9a45c" stroke="#1c1640" stroke-width=".9" stroke-linejoin="round"/>' +
+        '<path d="M0 -10L2.6 -2.6 10 0 2.6 2.6 0 10 -2.6 2.6 -10 0 -2.6 -2.6Z" fill="#2c4f7a" stroke="#1c1640" stroke-width="1.3" stroke-linejoin="round"/>' +
+        '<path d="M0 -10L0 0 -2.6 -2.6ZM10 0L0 0 2.6 -2.6ZM0 10L0 0 2.6 2.6ZM-10 0L0 0 -2.6 2.6Z" fill="#6f9ed6"/>' +
+        '<path d="M0 -10L2.6 -2.6 0 0 -2.6 -2.6Z" fill="#e0452f" stroke="#1c1640" stroke-width="1.1" stroke-linejoin="round"/><path d="M0 -10L0 0 -2.6 -2.6Z" fill="#ff8a6a"/>' +
+        '<circle r="1.9" fill="#ffd84a" stroke="#1c1640" stroke-width="1"/><path d="M-8.4 -4.6A9.6 9.6 0 0 1 -3.6 -8.9" stroke="#fff" stroke-width="1.8" fill="none" stroke-linecap="round" opacity=".85"/>') },
     src: 'lab/map.html', needs: ['cells'],
     hud: 'compact',
     theme: {
@@ -292,7 +427,7 @@
     css: [
       // secondary-button tokens (spec 3b) set as declarations: skin_check only accepts --sk-letters as theme keys
       '--sk-btn2:' + PAPER + ';--sk-btn2-ink:' + INK + ';',
-      '.tl .hl{opacity:0;transition:opacity .15s}.tl.lit .hl{opacity:1}.tl.lit .hx{stroke-width:3.6}.tl.glow .tin{filter:drop-shadow(0 0 5px #fff) drop-shadow(0 0 2px ' + INK + ')}',
+      '.tl .hl{opacity:0;transition:opacity .15s}.tl.lit .hl{opacity:1}.tl.lit .hx{stroke-width:1.9}.tl.glow .tin{filter:drop-shadow(0 0 5px #fff) drop-shadow(0 0 2px ' + INK + ')}',
       // buttons: parchment scroll label with a stitched inner keyline and a 3px hard navy shadow
       '.btn3d{border:2.5px solid ' + INK + ';border-radius:16px;text-shadow:none;box-shadow:inset 0 0 0 4px rgba(255,246,214,.45),inset 0 0 0 5.5px rgba(122,74,36,.4),inset 0 3px 0 rgba(255,255,255,.5),0 3px 0 ' + INK + ',0 6px 12px rgba(28,22,64,.25)}',
       '.btn3d:active{transform:translateY(3px);box-shadow:inset 0 0 0 4px rgba(255,246,214,.35),0 0 0 ' + INK + '}',
@@ -333,24 +468,36 @@
     fonts: ['https://fonts.googleapis.com/css2?family=Fredoka:wght@500;700&display=swap'],
     title: { svg: titleSvg },
     intro: [
-      { title: 'A flag for the ?', text: 'The grey ? country needs a flag no neighbour flies. Its five neighbours already fly all four.', svg: introP1 },
-      { title: 'Drag over a border', text: 'Press a country and drag across a border into a neighbour of another element. Their two elements will swap.', svg: introP2 },
-      { title: 'Whole chains swap', text: 'Every touching country of those two elements swaps with them. Look for a swap that drops a flag from the rim.', svg: introP3 },
-      { title: 'Wrapped chains are locked', text: 'A chain that circles the whole rim only renames its two elements: nothing really changes.', svg: introP4 },
-      { title: 'Raise the flag', text: 'Once the neighbours fly only three flags, the fourth is free and the ? country plants it.', svg: introP5 },
+      { title: 'A flag for ?', text: 'The ? needs a flag that none of its neighbours fly.', svg: introP1 },
+      { title: 'Drag over a border', text: 'Press a country, then drag into a neighbour of another colour.', svg: introP2 },
+      { title: 'Whole chains swap', text: 'Every touching country of those two colours swaps at once.', svg: introP3 },
+      { title: 'Wrapped chains lock', text: 'A chain round the whole rim only renames: nothing changes.', svg: introP4 },
+      { title: 'Raise the flag', text: 'Rim down to three flags? The fourth flies on ?.', svg: introP5 },
+    ],
+    icon: iconSvg,
+    card: cardSvg,
+    logo: logoSvg,
+    eggs: [
+      { id: 'x-marks', on: 'page', note: 'tap the compass rose in the sea three times: a treasure X is dug up', pays: true },
+      { id: 'sea-serpent', on: 'page', note: 'leave the map alone a while: a sea serpent swims past along the coast', pays: false },
     ],
     bonus: {
-      label: 'TREASURE BONUS',
+      label: 'TREASURE',
+      games: ['hop', 'snake', 'chain'],   // hopping islands, a trail across the map, a chain of countries
+      intro: 'curtain',                   // the bonus board unrolls like a map
       board: 'radial-gradient(ellipse at 50% 40%, #2a3f7a, #151a45 88%)',
       line: '#ffffff',
+      // one bold silhouette per element (flame, drop, cloud, leaf), drawn in a -12..12 box and scaled to r:
+      // offset ink shadow, dark body, lit body nudged up-left (shade bottom-right), ink outline, a top-left gleam
       tile(x, y, r, e, k) {
-        const R = r * 0.95, pr = R * 0.5, d = tileHex(R, k * 5 + e);
-        return '<g class="tl e' + e + '" data-k="' + k + '" transform="translate(' + x + ' ' + y + ')"><g class="tin">' +
-          '<path class="hl" d="' + blob(0, 0, R * 1.13, k * 5 + e) + '" fill="#fff"/>' +
-          '<path d="' + d + '" fill="' + COL[e] + '"/>' +
-          '<path class="hx" d="' + d + '" fill="none" stroke="' + INK + '" stroke-width="2.4" stroke-linejoin="round"/>' +
-          '<circle cy="' + f1(pr * .14) + '" r="' + f1(pr) + '" fill="' + DK[e] + '"/><circle r="' + f1(pr) + '" fill="#07090d" stroke="' + NEON[e] + '" stroke-width="1.6"/>' +
-          icon(e, 0, 0, pr * 1.25 / 24, NEON[e]) + '</g></g>';
+        const s = f1(r * 0.95 / 12 * 1000) / 1000, d = GEM[e], w = 1.3;
+        return '<g class="tl e' + e + '" data-k="' + k + '" transform="translate(' + x + ' ' + y + ')"><g class="tin"><g transform="scale(' + s + ')">' +
+          '<path class="hl" d="' + d + '" fill="#fff" transform="scale(1.2)"/>' +
+          '<path d="' + d + '" fill="' + INK + '" opacity=".4" transform="translate(1.3 1.9)"/>' +
+          '<path d="' + d + '" fill="' + DK[e] + '"/>' +
+          '<path d="' + d + '" fill="' + COL[e] + '" transform="translate(-.7 -.9) scale(.9)"/>' +
+          '<path d="' + GLEAM[e] + '" fill="none" stroke="' + NEON[e] + '" stroke-width="2.4" stroke-linecap="round" opacity=".9"/><path d="' + GLEAM[e] + '" fill="none" stroke="#fff" stroke-width="1.1" stroke-linecap="round" opacity=".85"/>' +
+          '<path class="hx" d="' + d + '" fill="none" stroke="' + INK + '" stroke-width="' + w + '" stroke-linejoin="round"/></g></g></g>';
       },
     },
     map: {
