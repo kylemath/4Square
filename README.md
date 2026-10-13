@@ -15,9 +15,9 @@ The levels come from real research data: maps from an exhaustive census of spher
 ([site](https://kylemath.github.io/GraphColourDeductiveSolver/)). The Four Colour Theorem is already proved; this
 game explores the Kempe-swap dynamics behind Kempe's 1879 attempt and Heawood's 1890 objection.
 
-**Game styles (skins).** The same levels play in ten styles, chosen on the title screen: the Islands family (Islands,
-Islands Free, Islands 3D), Dots, Line Doodle, Blank Doodle, Island Map, Bonus Swipe, Ion Channels and Gran's Table.
-Each skin restyles the whole game, not just the board: theme, HUD level (full, compact, minimal), title art,
+**Game styles (skins).** The same levels play in fourteen styles, chosen on the title screen: Islands, Islands Free,
+Islands 3D, Dots, Line Doodle, Blank Doodle, Island Map, Bonus Swipe, Ion Channels, Gran's Table, Rat Maze, Candy,
+Rim Word and Spheres. Each skin restyles the whole game, not just the board: theme, HUD level (full, compact, minimal), title art,
 how-to-play pages, bonus-round tiles and the look of the exploration map, which every skin charts as you swap.
 Islands and Islands Free are two layouts of one board renderer (`board/island.js`: walls, or no walls with tiles that
 settle like soft bubbles; `node tools/free_check.js` checks the free layout on every level); Islands 3D is a three.js
@@ -25,12 +25,13 @@ scene (`lab/islands3d.html`, `node tools/islands3d_check.js`). The contract is i
 is `skins/<id>.js` plus an optional play page `lab/<id>.html`, checked with `node tools/skin_check.js`.
 `lab/Families.html` shows the experimental styles side by side.
 
-**Coins and skin tickets.** Each skin earns its own currency (ink beads, doubloons, pearls, crystal shards...). A new player
+**Coins and skin tickets.** Each skin earns its own currency (ink beads, letter tiles, sugar cubes, sweets, doubloons, glass marbles, cheese wedges,
+pearls, crystal shards...), worth between 1 and 100 G. A new player
 owns Islands only; every other skin is unlocked with a **skin ticket** (`tickets.js`, the 🎟️ Skins button). Ticket *n* opens
-once enough levels are beaten (1, 3, 5, 8, 11, 14, 17, 21, 25) and costs coins from any one wallet (900 points' worth at
-first, about one level's pay, rising to 5,600): each skin comes a little further on and costs a little more. The ticket
+once enough levels are beaten (1, 3, 5, 7, 9, 12, 14, 16, 18, 20, 23, 26, 28) and costs coins from any one wallet (900 points'
+worth at first, about one level's pay, rising by 300 a ticket to 4,500): each skin comes a little further on and costs a little more. The ticket
 then unlocks any locked skin. `node tools/tickets_check.js` checks the rules and that each ticket is affordable at its gate
-on clean play (16-22% to spare, before bonus rounds); `node tools/shop_check.js` plays it end to end. SKIN-SPEC.md section 12.
+on clean play (17-29% to spare, before bonus rounds); `node tools/shop_check.js` plays it end to end. SKIN-SPEC.md section 12.
 
 **Feature bench.** Parked features stay in the code, switched off, until they are wanted again:
 - *Currency exchange* (`economy.js`: a graph of direct markets where coins convert along the cheapest route, with no
@@ -39,12 +40,14 @@ on clean play (16-22% to spare, before bonus rounds); `node tools/shop_check.js`
 Accounts, per-skin leaderboards and the cheat-evidence log are described in [ACCOUNTS.md](ACCOUNTS.md); they work locally
 with no setup and go online once `account-config.js` is filled in.
 
-**Further abstractions (lab only).** Three pages go one layer further from the map:
-[Rim Word](lab/rimword.html) labels every state within par swaps with a five-letter string so that each swap flips
-one tile and the fillable states are exactly the real words (labels from `node tools/word_graph.js`, which writes
-`lab/rimword-data.js`); [Lab Maze](lab/maze.html) draws the swap graph itself as a rat maze in a 3/4 view (collect a
-coin in every room, then find the cheese; `node tools/maze_check.js`); [Candy Kempe](lab/crush.html) turns the
-Candy-Crush gesture of swapping two neighbouring candies into the Kempe chain that runs through them.
+**Rat Maze and Candy** are on that title screen. [Rat Maze](lab/maze.html) draws the swap graph itself as a rat maze
+in a 3/4 view (inside the app it starts on Find the cheese: the cheese is par rooms away; the lab page also has a
+coins round and a self-training rat; `node tools/maze_check.js`). [Candy](lab/crush.html) turns the gesture of
+swapping two neighbouring candies into the Kempe chain that runs through them.
+
+**Rim Word** is on that title screen. [Rim Word](lab/rimword.html) labels every state within par swaps with a
+five-letter string so that each swap flips one tile and the fillable states are exactly the real words. The labels
+are `lab/rimword-data.js`, written by `node tools/word_graph.js`. A level with no chart plays on the Islands board.
 
 **Maze Arena (lab research page).** [Maze Arena](lab/MazeArena.html) trains one map-independent graph neural network
 (afterstate TD learning, hand-written backward pass, `lab/arena/engine.js`) with mice in up to 25 swap mazes at once,

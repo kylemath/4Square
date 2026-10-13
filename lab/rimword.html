@@ -2,16 +2,19 @@
 <!--
   RIM WORD (lab front end: the puzzle as a word ladder, the map never shown until you win)
 
-  What the player sees: five wooden letter tiles spelling a non-word, a flip counter against the level's par, and a
-  ladder of the words so far. Tap a tile: the letters it can flip to right now pop up above it; pick one and the tile
-  flips. A tile with nothing to offer is pinned. Every flip can be flipped back (a Kempe swap undoes itself), so you
-  can wander freely; spell a real word and you win, with stars for doing it in par; then the map
-  underneath is revealed, with the swaps you made.
+  What the player sees: five wooden letter tiles spelling a non-word, a rack of tiles that belong to the player
+  (their letters, like a small Scrabble rack), a flip counter against par, and a ladder of the words so far.
+  Drag or tap a rack tile onto any square. The rack only offers letters that still have a way to a word. If the
+  square you chose is not the next swap, the spelling walks along the chart until that letter is on a state that
+  is closer to a word, then the rack is dealt again. Undo puts the letter back. Spell a real word and you win,
+  with stars for doing it in par; then the map underneath is revealed.
 
   Mapping (every flip is exactly one g.swap(K)):
     the five-letter string        = the current colouring, up to renaming the elements (core.js canon)
-    one tile flip                 = one Kempe swap (a non-web chain); the letters a tile offers are the swaps that
-                                    change that letter; a pinned tile has none
+    one rack tile played          = a walk of Kempe swaps along edges that get closer to a word, ending on a
+                                    charted spelling that carries the letter you played. A square that is not the
+                                    next swap is not rejected: the walk continues until the tree has that letter.
+                                    Edges that step farther from every word are not offered and not walked.
     a real English word           = a fill (the rim down to three elements); every other state is a word-like
                                     non-word, and a state two or more swaps from a fill is never one letter from any
                                     common word, so the letters give no false scent
@@ -64,12 +67,20 @@
   .tile.pinned .face { background: linear-gradient(160deg, #e7dccb, var(--pin)); box-shadow: inset 0 2px 0 #f6efe3, inset 0 -5px 0 #8f8270, 0 3px 6px #0002; color: #5d5243; cursor: default; }
   .tile.pinned::after { content: ''; position: absolute; top: 6px; left: 7px; width: 7px; height: 7px; border-radius: 50%; background: #7a6d5b; box-shadow: inset 0 -1px 0 #0004; }
   .tile .n { position: absolute; right: 6px; bottom: 7px; font: 800 .62rem Nunito, sans-serif; color: #6b4a20aa; }
-  #tray { min-height: clamp(58px, 16vw, 74px); display: flex; align-items: center; justify-content: center; gap: 8px; flex-wrap: wrap; margin: 4px 0 0; }
-  #tray .arrow { font: 800 1.1rem Fraunces, Georgia, serif; color: var(--dim); letter-spacing: .1em; text-transform: uppercase; }
-  .opt { width: clamp(42px, 13vw, 60px); aspect-ratio: 1; border-radius: 10px; border: 0; cursor: pointer;
+  #rack { margin: 16px auto 0; width: 100%; max-width: 420px; background: linear-gradient(#e7c99a, #b8884e); border-radius: 18px; padding: 8px 10px 12px;
+    box-shadow: inset 0 2px 0 #fff1d0, inset 0 -6px 0 #8a6230, 0 8px 16px #6b4a2033; }
+  #rack .racklab { display: block; text-align: center; font: 800 .68rem Nunito, sans-serif; letter-spacing: .16em; text-transform: uppercase; color: #4a3018; margin: 0 0 6px; }
+  #tray { min-height: clamp(58px, 16vw, 74px); display: flex; align-items: center; justify-content: center; gap: 8px; flex-wrap: wrap; margin: 0; }
+  .opt { position: relative; width: clamp(42px, 13vw, 60px); aspect-ratio: 1; border-radius: 10px; border: 0; cursor: pointer; touch-action: none;
     background: linear-gradient(160deg, #fff7e6, #f0d6a8); box-shadow: inset 0 -4px 0 #c99a55, 0 4px 8px #0002;
     font: 800 clamp(22px, 7vw, 32px)/1 Fraunces, Georgia, serif; text-transform: uppercase; color: #5b3a16; animation: pop .18s ease-out both; }
+  .opt .at { position: absolute; right: 4px; bottom: 3px; font: 800 .6rem Nunito, sans-serif; color: #6b4a20aa; letter-spacing: 0; }
+  .opt.sel { transform: translateY(-10px); box-shadow: inset 0 -4px 0 #c99a55, 0 0 0 3px #3a2a1a, 0 12px 14px #0003; }
+  .opt.back { background: linear-gradient(160deg, #fff, #f3e0b8); box-shadow: inset 0 -4px 0 #c99a55, 0 0 0 2px #8a6230; }
   .opt:hover { filter: brightness(1.05); }
+  #ghost { position: fixed; z-index: 20; margin: 0; pointer-events: none; transform: translate(-50%, -50%); animation: none; }
+  .tile.aim .face { box-shadow: inset 0 2px 0 #fff5dd, inset 0 -5px 0 var(--edge), 0 0 0 3px var(--good), 0 10px 16px #6b4a2044; }
+  .tile.quiet .face { filter: saturate(.85); }
   @keyframes pop { from { transform: translateY(10px) scale(.6); opacity: 0; } }
   #ladder { margin: 14px auto 0; width: 100%; max-width: 360px; background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 10px 12px; }
   #ladder h2 { margin: 0 0 6px; font: 800 .72rem Nunito, sans-serif; color: var(--dim); text-transform: uppercase; letter-spacing: .12em; }
@@ -92,6 +103,7 @@
   #win button { border: 0; border-radius: 12px; padding: 9px 16px; margin: 0 4px; background: #3a2a1a; color: #fff; font-weight: 800; cursor: pointer; }
   #win button.alt { background: var(--line); color: var(--ink); }
   .help { margin: 16px auto 0; max-width: 380px; color: var(--dim); font-size: .82rem; text-align: center; }
+  body.app header h1, body.app #lvl, body.app .help, body.app #budget .stars, body.app #win button { display: none; }
   @media (prefers-reduced-motion: reduce) { .tile.flip .face, .opt { animation: none; } .face { transition: none; } }
 </style>
 </head>
@@ -105,11 +117,12 @@
   </header>
   <div id="budget" aria-live="polite"></div>
   <div id="cue">Tap a tile to see what it can become.</div>
-  <div id="board" role="group" aria-label="Letter tiles"></div>
-  <div id="tray" aria-live="polite"></div>
+  <div id="board" role="group" aria-label="The word"></div>
+  <div id="rack"><span class="racklab">Your tiles</span><div id="tray" role="group" aria-label="Your tiles"></div></div>
+  <div id="ghost" class="opt" hidden></div>
   <section id="ladder"><h2>Your ladder</h2><ol id="steps"></ol></section>
   <section id="reveal"><p id="revealNote">The map underneath. Each flip was one Kempe swap.</p><canvas id="map" width="600" height="600"></canvas></section>
-  <p class="help">Every tile flip is a swap in a hidden map colouring. Real words are exactly the colourings where the hole can be filled. A tile only offers the letters a swap would give it, and every flip can be flipped back.</p>
+  <p class="help">These tiles stay for the whole level. They are every letter on the way from the start to a word. Play them on any square, over and over, until a word shows up. Undo puts the last letter back.</p>
 </main>
 <div id="win" role="dialog" aria-live="polite"><div><h3 id="winWord"></h3><p id="winNote"></p><button id="winMap">See the map</button><button class="alt" id="winAgain">Play again</button></div></div>
 <script src="../levels.js"></script>
@@ -122,8 +135,9 @@
   const ids = window.GAME.levels.filter(l => RW[l.id]).map(l => l.id);
   const q = new URLSearchParams(location.search), want = q.get('lvl');
   const pickId = () => { const L = want && window.GAME.levels.find(l => l.id === want || String(l.num) === want); return L && RW[L.id] ? L.id : (RW['kempes-double'] ? 'kempes-double' : ids[0]); };
+  if (LAB.embedded || q.get('hud')) document.body.classList.add('app');
   const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
-  let D, nb, g, path, open = -1, done = false;
+  let D, nb, g, path, sel = null, done = false, handNow = [], note = '', rack = [];
 
   ids.forEach(id => { const L = window.GAME.levels.find(l => l.id === id); const o = document.createElement('option'); o.value = id; o.textContent = L.num + ' ' + L.title + ' (' + RW[id].par + ')'; $('lvl').appendChild(o); });
   $('lvl').onchange = () => { const u = new URL(location.href); u.searchParams.set('lvl', $('lvl').value); history.replaceState(null, '', u); load($('lvl').value); };
@@ -136,7 +150,8 @@
     if (g.canon() !== D.col[0].replace('.', '')) console.warn('rimword: start state does not match the level');
     const L = g.level; $('title').firstChild.textContent = L.title + ' ';
     $('sub').textContent = 'Level ' + L.num + ' · par ' + D.par + ' flip' + (D.par > 1 ? 's' : '');
-    path = [0]; open = -1; done = false; $('win').classList.remove('on'); $('reveal').classList.remove('on');
+    path = [0]; sel = null; done = false; $('win').classList.remove('on'); $('reveal').classList.remove('on');
+    buildRack();
     render();
   }
   const cur = () => path[path.length - 1];
@@ -144,36 +159,83 @@
   const R = () => D.R || D.par;
   const atEdge = () => !done && D.d[cur()] >= R();   // charted no further: only the flips back inward exist here
   const stars = n => n <= D.par ? 3 : n <= D.par + 2 ? 2 : 1;
-  // the moves on tile i: neighbours of the current state whose string differs there
-  function options(i) {
-    if (done) return [];
-    const s = D.w[cur()];
-    return nb[cur()].filter(j => D.w[j][i] !== s[i]).map(j => ({ j, ch: D.w[j][i] })).sort((a, b) => a.ch < b.ch ? -1 : 1);
+  const keyOf = t => t.ch;
+  // one slot where two spellings differ (every charted swap changes exactly one letter)
+  function slotOf(a, b) { for (let i = 0; i < 5; i++) if (a[i] !== b[i]) return i; return 0; }
+  // the tree between the start and a word: only swaps that get closer. Dead ends are not in it.
+  function treeFrom(root) {
+    const q = [root], par = new Map([[root, -1]]), dist = new Map([[root, 0]]);
+    while (q.length) {
+      const u = q.shift();
+      if (D.won[u]) continue;
+      for (const j of nb[u]) {
+        if (par.has(j) || !(D.toFill[j] < D.toFill[u])) continue;
+        par.set(j, u); dist.set(j, dist.get(u) + 1); q.push(j);
+      }
+    }
+    return { par, dist };
+  }
+  // one tile for every letter that appears on that tree. The set is fixed for the level.
+  function buildRack() {
+    const { par } = treeFrom(0), map = new Map();
+    for (const j of par.keys()) {
+      if (j === 0) continue;
+      const slot = slotOf(D.w[par.get(j)], D.w[j]), ch = D.w[j][slot];
+      if (!map.has(ch)) map.set(ch, { ch, slot });
+    }
+    rack = [...map.values()].sort((a, b) => a.slot - b.slot || (a.ch < b.ch ? -1 : a.ch > b.ch ? 1 : 0));
+  }
+  function hand() { return done ? [] : rack; }
+  // a spelling on the tree that carries this letter. Prefer one still ahead of where we are.
+  function seek(letter, slot) {
+    const here = cur(), whole = treeFrom(0), ahead = treeFrom(here);
+    let dest = null, best = null;
+    for (const j of whole.par.keys()) {
+      if (j === here || D.w[j].indexOf(letter) < 0) continue;
+      const slotHit = D.w[j][slot] === letter ? 0 : 1;
+      const forward = ahead.par.has(j);
+      const d = forward ? ahead.dist.get(j) : 1000 + whole.dist.get(j);
+      const rank = [slotHit, d, D.toFill[j]];
+      if (!best || rank[0] < best[0] || (rank[0] === best[0] && (rank[1] < best[1] || (rank[1] === best[1] && rank[2] < best[2])))) { best = rank; dest = j; }
+    }
+    return dest;
   }
   function render(flipAt) {
     const s = D.w[cur()];
+    handNow = hand();
+    if (sel && !handNow.some(t => keyOf(t) === sel)) sel = null;
+    const chosen = handNow.find(t => keyOf(t) === sel) || null;
     const n = flips(), st = stars(Math.max(n, 1));
     $('budget').innerHTML = '<b>' + n + '</b><span>flip' + (n === 1 ? '' : 's') + ' · par ' + D.par + '</span><span class="stars" aria-label="' + st + ' stars if you find a word now">' + '★'.repeat(st) + '☆'.repeat(3 - st) + '</span>';
     const B = $('board'); B.innerHTML = '';
     for (let i = 0; i < 5; i++) {
-      const t = document.createElement('div'), opts = options(i);
-      t.className = 'tile' + (opts.length ? '' : ' pinned') + (i === open ? ' open' : '') + (i === flipAt && !reduce ? ' flip' : '');
-      t.setAttribute('role', 'button'); t.setAttribute('aria-label', 'Tile ' + (i + 1) + ': ' + s[i].toUpperCase() + (opts.length ? ', ' + opts.length + ' options' : ', pinned'));
-      t.tabIndex = opts.length ? 0 : -1;
-      t.innerHTML = '<div class="face">' + s[i] + '</div>' + (opts.length ? '<span class="n">' + opts.length + '</span>' : '');
-      t.onclick = () => { if (!opts.length) return; open = open === i ? -1 : i; render(); };
-      t.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); t.onclick(e); } };
+      const t = document.createElement('div');
+      const hot = chosen ? true : handNow.some(tile => tile.slot === i);
+      t.className = 'tile' + (hot ? ' aim' : handNow.length ? ' quiet' : '') + (i === flipAt && !reduce ? ' flip' : '');
+      t.setAttribute('role', 'button');
+      t.setAttribute('aria-label', 'Square ' + (i + 1) + ': ' + s[i].toUpperCase() + (chosen ? ', play ' + chosen.ch.toUpperCase() + ' here' : ''));
+      t.tabIndex = chosen || hot ? 0 : -1;
+      t.innerHTML = '<div class="face">' + s[i] + '</div>';
+      t.onclick = () => { if (chosen) playLetter(chosen.ch, i); };
+      t.onkeydown = e => { if ((e.key === 'Enter' || e.key === ' ') && chosen) { e.preventDefault(); playLetter(chosen.ch, i); } };
       B.appendChild(t);
     }
-    // the open tile's letters, in a tray under the board
     const T = $('tray'); T.innerHTML = '';
-    if (open >= 0 && options(open).length) {
-      const a = document.createElement('span'); a.className = 'arrow'; a.textContent = s[open] + ' \u2192'; T.appendChild(a);
-      options(open).forEach(o => { const b = document.createElement('button'); b.className = 'opt'; b.textContent = o.ch; b.setAttribute('aria-label', 'Flip tile ' + (open + 1) + ' to ' + o.ch.toUpperCase()); const i = open; b.onclick = e => { e.stopPropagation(); go(o.j, i); }; T.appendChild(b); });
-    }
-    $('cue').classList.toggle('edge', atEdge());
-    $('cue').textContent = done ? 'A word! The hole can be filled.' : atEdge() ? 'The words are charted only this far. Flip back to explore elsewhere.' :
-      open >= 0 ? 'Pick a letter for this tile.' : 'Tap a tile to see what it can become.';
+    handNow.forEach(tile => {
+      const b = document.createElement('button');
+      b.className = 'opt' + (keyOf(tile) === sel ? ' sel' : '');
+      b.textContent = tile.ch;
+      b.setAttribute('aria-label', 'Your ' + tile.ch.toUpperCase() + ', plays on any square');
+      b.onclick = e => { e.stopPropagation(); if (suppressClick) { suppressClick = false; return; } sel = keyOf(tile) === sel ? null : keyOf(tile); render(); };
+      bindDrag(b, tile);
+      T.appendChild(b);
+    });
+    $('cue').classList.toggle('edge', !done && !handNow.length);
+    $('cue').textContent = note || (done ? 'A word! The hole can be filled.'
+      : !handNow.length ? 'Undo, and try another letter.'
+      : chosen ? 'Play ' + chosen.ch.toUpperCase() + ' on any square.'
+      : 'These tiles stay. Play them until a word shows up.');
+    note = '';
     const ol = $('steps'); ol.innerHTML = '';
     const from = Math.max(0, path.length - 12);
     if (from) { const li = document.createElement('li'); li.innerHTML = '<span></span><em>\u2026</em>'; ol.appendChild(li); }
@@ -188,17 +250,71 @@
   function sync(j) {
     const target = D.col[j].replace('.', '');
     const K = g.chains.find(K => !K.web && canonAfter(K) === target);
-    if (K) g.swap(K); else console.warn('rimword: no chain leads to state', j);
+    if (K) { g.swap(K); return true; }
+    console.warn('rimword: no chain leads to state', j);
+    return false;
   }
   function canonAfter(K) {
     const c = g.col.slice(); K.set.forEach(u => { c[u] = c[u] === K.pair[0] ? K.pair[1] : K.pair[0]; });
     const mp = {}; let k = 0, s = ''; for (let u = 0; u < g.n; u++) { if (u === g.hole) continue; if (!(c[u] in mp)) mp[c[u]] = k++; s += mp[c[u]]; } return s;
   }
-  function go(j, i) {
-    sync(j); path.push(j); open = -1;
-    if (D.won[j]) done = true;
-    render(i); chime(D.won[j]);
+  // play a letter on a square. If that exact swap is not the next step, walk closer spellings until the tree
+  // has a state where the letter sits, and stop there. Never step onto a spelling farther from every word.
+  function playLetter(letter, slot) {
+    if (done || !letter) return;
+    const dest = seek(letter, slot);
+    if (dest == null) return;
+    // the letter may sit on another branch: walk back to where that branch starts, then forward
+    while (!treeFrom(cur()).par.has(dest)) {
+      if (path.length < 2) return;
+      path.pop(); g.undo(); done = false;
+    }
+    const { par } = treeFrom(cur());
+    const steps = [];
+    for (let x = dest; x !== cur(); x = par.get(x)) steps.push(x);
+    steps.reverse();
+    let last = slot;
+    for (const j of steps) {
+      const prevW = D.w[cur()];
+      if (!sync(j)) return;
+      path.push(j);
+      last = slotOf(prevW, D.w[j]);
+      if (D.won[j]) { done = true; break; }
+    }
+    const landed = D.w[cur()];
+    note = landed[slot] === letter ? '' : letter.toUpperCase() + ' sits on square ' + (landed.indexOf(letter) + 1) + ' from here.';
+    sel = null;
+    render(last); chime(done);
     if (done) setTimeout(win, reduce ? 50 : 650);
+  }
+  let drag = null, suppressClick = false;
+  function bindDrag(el, tile) {
+    el.onpointerdown = e => {
+      if (e.button != null && e.button !== 0) return;
+      suppressClick = false;
+      drag = { tile, x: e.clientX, y: e.clientY, moved: false };
+      el.setPointerCapture(e.pointerId);
+    };
+    el.onpointermove = e => {
+      if (!drag || drag.tile !== tile) return;
+      if (Math.hypot(e.clientX - drag.x, e.clientY - drag.y) < 8) return;
+      drag.moved = true;
+      const gh = $('ghost'); gh.hidden = false; gh.textContent = tile.ch; gh.style.left = e.clientX + 'px'; gh.style.top = e.clientY + 'px';
+      [...$('board').children].forEach(sq => sq.classList.add('aim'));
+    };
+    const end = e => {
+      if (!drag || drag.tile !== tile) return;
+      const moved = drag.moved; drag = null;
+      $('ghost').hidden = true;
+      if (!moved) return;
+      suppressClick = true;
+      const hit = e && document.elementFromPoint(e.clientX, e.clientY);
+      const sq = hit && hit.closest && hit.closest('#board .tile');
+      const i = sq ? [...$('board').children].indexOf(sq) : -1;
+      if (i >= 0) playLetter(tile.ch, i); else render();
+    };
+    el.onpointerup = end;
+    el.onpointercancel = () => { drag = null; $('ghost').hidden = true; };
   }
   function win() {
     $('winWord').textContent = D.w[cur()];
@@ -208,10 +324,10 @@
   }
   $('winMap').onclick = () => { $('win').classList.remove('on'); showMap(); };
   $('winAgain').onclick = () => load(D === RW[$('lvl').value] ? $('lvl').value : ids[0]);
-  $('undo').onclick = () => { if (path.length < 2) return; path.pop(); g.undo(); done = false; open = -1; $('reveal').classList.remove('on'); render(); };
+  $('undo').onclick = () => { if (path.length < 2) return; path.pop(); g.undo(); done = false; sel = null; $('reveal').classList.remove('on'); render(); };
   $('again').onclick = () => { load($('lvl').value); };
-  document.addEventListener('click', e => { if (open >= 0 && !e.target.closest('.tile') && !e.target.closest('#tray')) { open = -1; render(); } });
-  addEventListener('keydown', e => { if ((e.ctrlKey || e.metaKey) && e.key === 'z') { e.preventDefault(); $('undo').onclick(); } if (e.key === 'Escape' && open >= 0) { open = -1; render(); } });
+  document.addEventListener('click', e => { if (sel && !e.target.closest('#board') && !e.target.closest('#tray')) { sel = null; render(); } });
+  addEventListener('keydown', e => { if ((e.ctrlKey || e.metaKey) && e.key === 'z') { e.preventDefault(); $('undo').onclick(); } if (e.key === 'Escape' && sel) { sel = null; render(); } });
 
   // ---- the reveal: the map under the word, with the regions each flip changed
   function showMap() {
@@ -244,8 +360,13 @@
       notes.forEach((f, k) => { const o = AC.createOscillator(), gn = AC.createGain(), t = AC.currentTime + k * 0.09; o.type = 'triangle'; o.frequency.value = f; gn.gain.setValueAtTime(0.0001, t); gn.gain.exponentialRampToValueAtTime(0.12, t + 0.02); gn.gain.exponentialRampToValueAtTime(0.0001, t + 0.3); o.connect(gn).connect(AC.destination); o.start(t); o.stop(t + 0.32); });
     } catch (_) {}
   }
-  window.RIMWORD_PAGE = { load, go, options, state: () => ({ path: path.slice(), word: D.w[cur()], done, canon: g.canon(), col: D.col[cur()] }) };
-  load(pickId());
+  window.RIMWORD_PAGE = { load, play: playLetter, hand, state: () => ({ path: path.slice(), word: D.w[cur()], done, hand: hand().map(t => t.ch), canon: g.canon(), col: D.col[cur()] }) };
+  // inside the app a missing chart must not silently play another level: the shell falls back to Islands
+  if (LAB.embedded) {
+    const L = want && window.GAME.levels.find(l => l.id === want || String(l.num) === want);
+    if (!L || !RW[L.id]) throw new Error('Rim Word has no word chart for this level');
+    load(L.id);
+  } else load(pickId());
 })();
 </script>
 </body>

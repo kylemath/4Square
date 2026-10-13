@@ -1,6 +1,6 @@
 // End-to-end check of skin tickets and the coin podium in the real shell (headless Chrome, no npm packages):
 //   node docs/game/tools/shop_check.js [--shots dir]
-//   - a fresh player owns Islands only: one open chip, nine locked; a locked chip opens the shop on that skin;
+//   - a fresh player owns Islands only: one open chip, every other skin locked; a locked chip opens the shop on that skin;
 //   - the currency exchange is benched: no wallet button (it comes back with ?feat=exchange);
 //   - winning the first level (Islands, at par) pays enough for ticket 1: the win card says so, the shop sells it,
 //     the ticket unlocks Dots, the picker opens it, a reload keeps it with a clean seal;
@@ -22,8 +22,8 @@ const SAVE = 'fill-the-hole-v2';
   try {
     await go('');
     const pick = await P.eval(`({ open: [...document.querySelectorAll('#skinPick button:not(.lock)')].map(b => b.dataset.s), locked: document.querySelectorAll('#skinPick button.lock').length,
-      wallet: !!document.getElementById('btnWalletTitle'), hudWallet: getComputedStyle(document.getElementById('btnWallet')).display })`);
-    ok('a new player owns Islands only', pick.open.join() === 'islands' && pick.locked === 9, pick);
+      n: FTH_SKINS.list.length, wallet: !!document.getElementById('btnWalletTitle'), hudWallet: getComputedStyle(document.getElementById('btnWallet')).display })`);
+    ok('a new player owns Islands only', pick.open.join() === 'islands' && pick.locked === pick.n - 1, pick);
     ok('the exchange is benched: no wallet buttons', !pick.wallet && pick.hudWallet === 'none');
     await shot('title-locked');
     await P.eval(`document.querySelector('#skinPick button[data-s="dots"]').click()`);
@@ -65,9 +65,9 @@ const SAVE = 'fill-the-hole-v2';
     ok('leaderboard opens', await until(P, `document.querySelector('#lb.on #lbJoin')`, 10000));
     await P.eval(`document.getElementById('lbNick').value = 'Test Otter'; document.getElementById('lbJoin').click()`);
     ok('joined, podium lists every skin', await until(P, `document.querySelectorAll('#lb .lb-sk').length === FTH_SKINS.list.length && /Test Otter/.test(document.querySelector('#lb .lb-sk[data-s="islands"]').textContent)`, 15000));
-    const pod = await P.eval(`(() => { const r = document.querySelector('#lb .lb-sk[data-s="islands"]'); const first = r.querySelector('.lb-top li'); return { first: first.textContent, me: first.classList.contains('me'), locked: document.querySelectorAll('#lb .lb-lock').length, dots: document.querySelector('#lb .lb-sk[data-s="dots"] .lb-top li').textContent }; })()`);
+    const pod = await P.eval(`(() => { const r = document.querySelector('#lb .lb-sk[data-s="islands"]'); const first = r.querySelector('.lb-top li'); return { first: first.textContent, me: first.classList.contains('me'), n: FTH_SKINS.list.length, locked: document.querySelectorAll('#lb .lb-lock').length, dots: document.querySelector('#lb .lb-sk[data-s="dots"] .lb-top li').textContent }; })()`);
     ok('you are 1st in Islands with your coins earned there', pod.me && /🥇/.test(pod.first) && /Test Otter/.test(pod.first), pod.first);
-    ok('locked skins are tagged, unplayed skins show nobody yet', pod.locked === 8 && /nobody yet/i.test(pod.dots), pod);
+    ok('locked skins are tagged, unplayed skins show nobody yet', pod.locked === pod.n - 2 && /nobody yet/i.test(pod.dots), pod);
     await shot('podium');
     await P.eval(`document.querySelector('#lb .lb-x').click()`);
 

@@ -20,7 +20,8 @@
     - Duds: a chain with K.web === true (the only {a,b} chain on the map) only renames two elements everywhere, so it
       is refused with a gentle shake. Dragging onto a sphere outside the chain, or onto the hole, wobbles it.
     - Tapping the glass hole flashes a hint (a chain from g.good()). Undo / restart are the two tiny corner buttons.
-  Win: when the ring uses 3 elements (g.won()), the glass sphere fills with g.free(); tap to play again (g.reset()).
+  Win: when the ring uses 3 elements (g.won()), the glass sphere fills with g.free(). Standalone, a tap plays again
+  (g.reset()). Inside the app the shell owns the next step, so the page calls LAB.done() and does not restart.
 -->
 <html lang="en">
 <head>
@@ -47,7 +48,7 @@
   #toast { position: fixed; left: 0; right: 0; top: calc(max(8px, env(safe-area-inset-top)) + 24px); text-align: center; pointer-events: none;
     font-size: 12px; color: #c9d1d9; opacity: 0; transition: opacity .3s; }
   .tb { position: fixed; bottom: max(8px, env(safe-area-inset-bottom)); width: 40px; height: 40px; border-radius: 50%;
-    border: 1px solid var(--line); background: rgba(22,27,34,.75); color: var(--dim); font-size: 18px; display: grid; place-items: center;
+    border: 1px solid var(--sk-ctl-edge, var(--line)); background: var(--sk-ctl, rgba(22,27,34,.75)); color: var(--sk-ctl-ink, var(--dim)); font-size: 18px; display: grid; place-items: center;
     cursor: pointer; padding: 0; touch-action: manipulation; }
   .tb:active { background: #21262d; color: var(--fg); }
   #undo { left: 10px; } #reset { right: 10px; }
@@ -127,6 +128,21 @@ function rippleDepth(g, K, from) {
   return d;
 }
 if (typeof document === 'undefined') { module.exports = { buildLayout, chainFor, rippleDepth }; } else (function () {
+// A filler test (?filler=1) hands over one combined graph: the level's core plus the filler drawn around it.
+// The positions are already the picture, so the layout keeps them instead of pulling the map into a fresh triangle.
+(function installFiller() {
+  const q = new URLSearchParams(location.search);
+  if (q.get('filler') !== '1' || !window.GAME) return;
+  let spec = null;
+  try { spec = JSON.parse(sessionStorage.getItem('spheres-filler-play') || 'null'); } catch (e) { spec = null; }
+  if (!spec || !spec.edges || !spec.col || spec.hole == null) return;
+  const key = 'filler-play';
+  GAME.graphs[key] = { name: spec.name || 'filler', n: spec.n, hole: spec.hole, link: spec.link, pos: spec.pos, edges: spec.edges, ncol: 4, goal: 3 };
+  const level = { id: key, num: 'filler', g: key, title: spec.title || 'Filler', start: spec.col };
+  const at = GAME.levels.findIndex(l => l.id === key);
+  if (at >= 0) GAME.levels[at] = level; else GAME.levels.push(level);
+  if (window.LAYOUT) LAYOUT[key] = { border: [], arcs: {}, centre: spec.pos, cells: null };
+})();
 // ---------- page ----------
 const g = LAB.game();
 const E = LAB.ELEM, ICONS = LAB.ICON.map(p => new Path2D(p));
@@ -188,7 +204,8 @@ function cue() {
   const balls = rc.map(c => `<span class="ball" style="background:radial-gradient(circle at 35% 30%, ${E[c].pastel}, ${E[c].hex} 55%, ${E[c].dark})"></span>`).join('');
   if (g.won()) {
     const f = g.free();
-    cueEl.innerHTML = `${balls}<span class="q" style="background:${E[f].hex};color:#fff;border-color:#fff">&#10003;</span><b>${E[f].name}!</b> tap to play again`;
+    const again = LAB.embedded ? '' : ' tap to play again';
+    cueEl.innerHTML = `${balls}<span class="q" style="background:${E[f].hex};color:#fff;border-color:#fff">&#10003;</span><b>${E[f].name}!</b>${again}`;
     return;
   }
   let pv = '';
@@ -236,9 +253,17 @@ function tap(u) {
   if (pend === u) { pend = null; cue(); return; }
   pend = u; sel = null; tone(440, 0.06, 'sine', 0.04); cue();
 }
+let doneSent = false;
+function armDone() {
+  if (!LAB.embedded || doneSent || !g.won()) return;
+  doneSent = true;
+  setTimeout(() => { // doSwap assigns winT after g.swap returns, so read it on the next turn
+    setTimeout(() => { if (g.won()) LAB.done(); else doneSent = false; }, Math.max(500, (winT || 0) - now() + 700));
+  }, 0);
+}
 cv.addEventListener('pointerdown', e => {
   audio(); e.preventDefault();
-  if (g.won()) { if (now() > winT + 300) g.reset(); return; }
+  if (g.won()) { if (!LAB.embedded && now() > winT + 300) g.reset(); return; }
   const u = hit(e.clientX, e.clientY);
   try { cv.setPointerCapture(e.pointerId); } catch (_) {}
   drag = { id: e.pointerId, start: u, cur: u, K: null, bad: null };
@@ -267,9 +292,15 @@ function up(e) {
 }
 cv.addEventListener('pointerup', up);
 cv.addEventListener('pointercancel', e => { if (drag && drag.id === e.pointerId) drag = null; });
-document.getElementById('undo').addEventListener('click', () => { audio(); if (!g.won() || now() > winT) g.undo(); });
-document.getElementById('reset').addEventListener('click', () => { audio(); g.reset(); });
-g.on((_, info) => { if (info.type !== 'swap') { sel = null; pend = null; anim = null; winT = 0; hint = null; } cue(); });
+document.getElementById('undo').addEventListener('click', () => { audio(); if (g.won() && LAB.embedded) return; if (!g.won() || now() > winT) g.undo(); });
+document.getElementById('reset').addEventListener('click', () => { audio(); if (g.won() && LAB.embedded) return; g.reset(); });
+g.on((_, info) => {
+  if (info.type !== 'swap') { sel = null; pend = null; anim = null; hint = null; if (!g.won()) { winT = 0; doneSent = false; } }
+  if (g.won() && !winT) winT = now() + 400; // a swap from outside the page (the embed check) still fills the glass
+  if (g.won()) armDone();
+  cue();
+});
+window.PLAYLAB = { get won() { return !!(winT && now() > winT); } };
 
 // ---------- drawing ----------
 function shadow(x, y, r) {

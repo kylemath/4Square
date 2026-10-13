@@ -13,15 +13,18 @@
  */
 (function () {
   'use strict';
-  // direct markets: [coin a, coin b, fee]. Hand-tuned for the layout below (a ring of nine with chords, swipe inside).
+  // direct markets: [coin a, coin b, fee]. Hand-tuned for the layout below (a ring, Bonus Swipe inside,
+  // letter tiles, sweets and cheese wedges in the gaps). Every coin trades with 2 to 4 others.
   const EDGES = [
     ['dots', 'doodle', .01], ['doodle', 'blank', .02], ['blank', 'map', .03], ['map', 'ions', .03], ['ions', 'islands-3d', .02],
     ['islands-3d', 'islands-free', .03], ['islands-free', 'islands', .04], ['islands', 'tables', .02], ['tables', 'dots', .02],
     ['tables', 'blank', .05], ['islands', 'map', .02], ['islands', 'swipe', .03], ['swipe', 'ions', .05],
+    ['rimword', 'doodle', .02], ['rimword', 'blank', .03], ['crush', 'tables', .02], ['crush', 'dots', .03], ['maze', 'map', .03], ['maze', 'swipe', .04],
+    ['spheres', 'islands-free', .03], ['spheres', 'islands-3d', .02],
   ];
-  // node centres in a 360 x 560 stage (placed once by hand: a ring of nine, Bonus Swipe inside, no edge through a node)
+  // node centres in a 360 x 560 stage (no node box overlaps, no edge passes through another node)
   const POS = { dots: [180, 70], doodle: [268, 128], blank: [304, 255], map: [290, 400], ions: [228, 500], 'islands-3d': [132, 500],
-    'islands-free': [50, 408], islands: [56, 255], tables: [92, 128], swipe: [150, 366] };
+    'islands-free': [50, 408], islands: [56, 255], tables: [92, 128], swipe: [150, 366], rimword: [220, 254], crush: [140, 214], maze: [310, 494], spheres: [50, 494] };
   const STAGE = [360, 560];
 
   const skinsAll = () => (window.FTH_SKINS && FTH_SKINS.list) || [];

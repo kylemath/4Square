@@ -55,9 +55,9 @@ The shell's bar on top of the play surface:
 
 | level | shows |
 |---|---|
-| `full` | menu, level badge and title, points, help, the rim (goal bar), 3-star meter, the exploration-map hexagon (bottom right) |
-| `compact` | one slim row: menu, title, star meter, a small MAP button |
-| `minimal` | a floating round menu button and a tiny star meter only; the exploration map opens from the menu button's long-press |
+| `full` | menu, level badge and title, the coin counter and its wallet button, help, the rim (goal bar), 3-star meter, the exploration-map hexagon (bottom right) |
+| `compact` | one slim row: menu, title, star meter, a small MAP button. The coin counter and wallet stay on the title screen and the level map, so the map can sit in the bar's empty corner |
+| `minimal` | a floating round menu button and a tiny star meter only; the exploration map opens from the menu button's long-press. The wallet stays on the title screen and the level map |
 
 The frame URL carries `&hud=<level>` so a play page can show or hide its own chrome (its own undo/reset stay; it
 should not repeat the level title or stars when the hud is `full` or `compact`).
@@ -273,7 +273,7 @@ stay in the shell. `layout(grow, [w, h])` and `step(now)` build the geometry and
 
 ### Islands 3D (`lab/islands3d.html`)
 
-The same island as a three.js scene, a normal skin with a play page (`src: 'lab/islands3d.html'`, `family: 'islands'`).
+The same island as a three.js scene, a normal skin with a play page (`src: 'lab/islands3d.html'`). It sits in the main style list with Islands and Islands Free.
 It draws every level: the layout (tiles on a hexagonal lattice, float levels so no bridge runs through a tile) is
 derived from the level's own graph and stored per map in `lab/islands3d-plans.js`; `node tools/islands3d_check.js`
 checks all of them (and `--write` regenerates the file after a map changes). three.js (r128) loads from cdnjs; if
@@ -316,10 +316,14 @@ coin: { name: 'pearl', plural: 'pearls',        // singular and plural, lower ca
 | ink bead | Dots | 1 | the commonest: a dot of ink |
 | pencil stub | Line Doodle | 2 | worn-down, still plentiful |
 | paint drop | Blank Doodle | 3 | cheap, but it takes a few to cover a map |
+| letter tile | Rim Word | 4 | a scrap of the alphabet |
 | sugar cube | Gran's Table | 5 | a household luxury |
+| sweet | Candy | 8 | a wrapped candy, just under a doubloon |
 | doubloon | Islands | 10 | the original game's gold: the reference coin |
 | casino chip | Bonus Swipe | 14 | a stake, worth a bit more than gold |
+| glass marble | Spheres | 16 | a lab specimen from the ball-and-stick model |
 | compass rose | Island Map | 20 | an explorer's prize |
+| cheese wedge | Rat Maze | 25 | the prize at the end of the corridor |
 | ion orb | Ion Channels | 35 | charged, short-lived, scarce |
 | pearl | Islands Free | 60 | rare and valuable |
 | crystal shard | Islands 3D | 100 | the rarest |

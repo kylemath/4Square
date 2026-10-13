@@ -170,7 +170,7 @@
   .lvname .t { min-width: 0; font-weight: 900; color: #fff; font-size: .95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-shadow: 0 2px 0 #1c1640; }
   .coins { display: inline-flex; align-items: center; gap: 6px; flex: none; background: linear-gradient(180deg, #ffe066, #ffab1a); border: 3px solid #fff; border-radius: 999px; padding: 2px 12px 2px 3px; box-shadow: 0 4px 0 #b06a00, 0 0 18px rgba(255,200,40,.35); color: #4a2a00; font-weight: 900; font-size: 1.15rem; font-variant-numeric: tabular-nums; min-width: 78px; position: relative; overflow: hidden; }
   .coins .coin { width: 28px; height: 28px; flex: none; }
-  #btnWallet svg { width: 22px; height: 22px; }
+  #btnWallet > svg { width: 22px; height: 22px; overflow: visible; }
   .coins b { min-width: 2.2ch; text-align: right; }
   .coins::after { content: ""; position: absolute; top: 0; bottom: 0; width: 30%; left: -40%; background: linear-gradient(100deg, transparent, rgba(255,255,255,.85), transparent); transform: skewX(-20deg); opacity: 0; }
   .coins.bump { animation: cbump .38s cubic-bezier(.3, 1.8, .5, 1); }
@@ -247,7 +247,7 @@
   body:not([data-skin="islands"]) #lvBadge .tl, body:not([data-skin="islands"]) #briefBadge .tl {
     --c: var(--sk-accent); --d: color-mix(in srgb, var(--sk-accent) 55%, #000); --n: color-mix(in srgb, var(--sk-accent) 40%, #fff); }
   body:not([data-skin="islands"]) #lvBadge .tl .tp, body:not([data-skin="islands"]) #briefBadge .tl .tp { fill: color-mix(in srgb, var(--sk-accent) 18%, #000); }
-  body:not([data-skin="islands"]) .btn3d svg path, body:not([data-skin="islands"]) .btn3d svg g { stroke: currentColor !important; }
+  body:not([data-skin="islands"]) .btn3d > svg > g, body:not([data-skin="islands"]) .btn3d > svg > g path { stroke: currentColor !important; }
   body:not([data-skin="islands"]) .btn3d.rb svg g path:first-child { stroke: none !important; }
   body:not([data-skin="islands"]) .gtop .lvname, body:not([data-skin="islands"]) .gtop .lvname * { color: var(--sk-ink); text-shadow: none; }
   body:not([data-skin="islands"]) #brief .card, body:not([data-skin="islands"]) #win .card { background: var(--sk-card); color: var(--sk-card-ink);
@@ -267,7 +267,7 @@
   body:not([data-skin="islands"]) .skins button { background: color-mix(in srgb, var(--sk-card-ink) 8%, transparent); color: var(--sk-ink); border-color: color-mix(in srgb, var(--sk-ink) 35%, transparent); box-shadow: none; }
   body:not([data-skin="islands"]) .skins button[aria-checked="true"] { background: var(--sk-accent); color: var(--sk-btn-ink); border-color: var(--sk-accent); }
   body:not([data-skin="islands"]) #title .waves, body:not([data-skin="islands"]) #title .sky { display: none; }
-  #tSkinArt { width: min(76vw, 300px); aspect-ratio: 300 / 250; display: none; }
+  #tSkinArt { width: min(76vw, 300px); aspect-ratio: 300 / 250; max-height: min(28vh, 240px); display: none; flex: 1 1 auto; min-height: 0; }
   #tSkinArt svg { width: 100%; height: 100%; display: block; }
   body.skinart #tSkinArt { display: block; } body.skinart #tDemo { display: none; }
   .skinblurb { grid-column: 1 / -1; text-align: center; font-size: .78rem; opacity: .85; min-height: 1em; color: #fff; text-shadow: 0 1px 0 rgba(14,52,110,.5); }
@@ -289,7 +289,7 @@
   #skinFrame { display: none; flex: 1; min-height: 0; width: 100%; border: 0; background: #fff; }
   #game.skinned .board, #game.skinned .bar { display: none; }
   #game.skinned #skinFrame { display: block; }
-  .skins { display: grid; grid-template-columns: repeat(4, minmax(0, 84px)); gap: 6px; justify-content: center; margin: 2px 0 4px; }
+  .skins { display: grid; grid-template-columns: repeat(4, minmax(0, 84px)); gap: 6px; justify-content: center; margin: 2px 0 4px; max-height: min(46vh, 300px); overflow-y: auto; overscroll-behavior: contain; }
   .skins .lbl { grid-column: 1 / -1; text-align: center; color: #fff; font-weight: 800; font-size: .8rem; letter-spacing: .08em; text-transform: uppercase; text-shadow: 0 2px 0 rgba(14,52,110,.5); }
   .skins button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; min-width: 0; padding: 5px 3px 4px; line-height: 1.1; font-size: .68rem !important; border-radius: 14px; border: 3px solid rgba(255,255,255,.55);
     background: rgba(255,255,255,.18); color: #fff; font: inherit; font-weight: 800; font-size: .82rem; cursor: pointer; box-shadow: 0 3px 0 rgba(14,52,110,.35); }
@@ -540,7 +540,7 @@
       <button class="btn3d white rbtn sm" id="btnMenu" aria-label="Back to levels">☰</button>
       <div class="lvname"><svg id="lvBadge" viewBox="-40 -40 80 80" aria-hidden="true"></svg><div class="t"><span class="sr" id="lvKicker"></span><span id="lvTitle"></span></div></div>
       <div class="coins" id="coinBox" title="Coins" aria-label="Coins"><svg class="coin" viewBox="-13 -13 26 26" aria-hidden="true"><use href="#coinG"/></svg><b id="score">0</b></div>
-      <button class="btn3d white rbtn sm" id="btnWallet" aria-label="Wallet and currency exchange" title="Wallet" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><g fill="none" stroke="#1c1640" stroke-width="2" stroke-linecap="round"><path d="M7 7.5L17 7.5M6.5 9L11 17M17.5 9L13 17"/></g><g fill="#ffd84a" stroke="#1c1640" stroke-width="1.6"><circle cx="6" cy="7" r="3.2"/><circle cx="18" cy="7" r="3.2"/><circle cx="12" cy="18" r="3.2"/></g></svg></button>
+      <button class="btn3d white rbtn sm" id="btnWallet" aria-label="Wallet and currency exchange" title="Wallet" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><g fill="none" stroke="#1c1640" stroke-width="2" stroke-linecap="round"><path d="M7 7.5L17 7.5M6.5 9L11 17M17.5 9L13 17"/></g><svg class="coin" x="2.6" y="3.6" width="6.8" height="6.8" viewBox="-13 -13 26 26"><use href="#coinG"/></svg><svg class="coin" x="14.6" y="3.6" width="6.8" height="6.8" viewBox="-13 -13 26 26"><use href="#coinG"/></svg><svg class="coin" x="8.6" y="14.6" width="6.8" height="6.8" viewBox="-13 -13 26 26"><use href="#coinG"/></svg></svg></button>
       <button class="btn3d yellow rbtn sm" id="btnHelp" aria-label="Level briefing">?</button>
     </div>
     <div class="stats">
@@ -625,6 +625,10 @@
 <script src="skins/ions.js"></script>
 <script src="skins/tables.js"></script>
 <script src="tickets.js"></script>
+<script src="skins/maze.js"></script>
+<script src="skins/crush.js"></script>
+<script src="skins/rimword.js"></script>
+<script src="skins/spheres.js"></script>
 <script>
 (function () {
   'use strict';
@@ -798,7 +802,7 @@
   const STAR_D = (() => { let s = ''; for (let k = 0; k < 10; k++) { const a = -Math.PI / 2 + Math.PI * k / 5, r = k % 2 ? 4.9 : 11.5; s += (k ? 'L' : 'M') + q1(r * Math.cos(a)) + ' ' + q1(r * Math.sin(a) + .8); } return s + 'Z'; })();
   const starSvg = '<svg viewBox="-13 -13 26 26" aria-hidden="true"><path d="' + STAR_D + '"/></svg>';
   const COIN = '<svg viewBox="-13 -13 26 26" aria-hidden="true"><use href="#coinG"/></svg>';
-  const BAG = '<svg viewBox="-33 -38 66 72" aria-hidden="true"><circle cx="-7" cy="-27" r="6" fill="#ffd84a" stroke="#1c1640" stroke-width="2"/><circle cx="6" cy="-29" r="6" fill="#ffd84a" stroke="#1c1640" stroke-width="2"/>' +
+  const BAG = '<svg viewBox="-33 -38 66 72" aria-hidden="true"><g transform="translate(-7 -27) scale(.46)"><use href="#coinG"/></g><g transform="translate(6 -29) scale(.46)"><use href="#coinG"/></g>' +
     '<path d="M-12 -21C-34 -6 -32 31 0 31C32 31 34 -6 12 -21Z" fill="#d99a55" stroke="#1c1640" stroke-width="3.2" stroke-linejoin="round"/><path d="M-17 -6C-22 6 -20 20 -10 26" stroke="#f2c27a" stroke-width="4" fill="none" stroke-linecap="round" opacity=".8"/>' +
     '<path d="M-14 -21Q0 -15 14 -21" stroke="#7a4a1c" stroke-width="6" fill="none" stroke-linecap="round"/><path d="M-14 -21Q0 -15 14 -21" stroke="#c0392b" stroke-width="3" fill="none" stroke-linecap="round"/>' +
     '<g transform="translate(0 7) scale(1.05)"><use href="#coinG"/></g></svg>';

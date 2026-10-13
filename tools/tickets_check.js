@@ -57,9 +57,9 @@ const dots = SK.find(k => k.id === 'dots'), pd = T.coinsFor(T.PRICE[1], dots);
 c.save.wallet.dots = { bal: pd, earned: pd, f: 0 }; c.beaten = () => T.GATE[1];
 ok('any one wallet pays, priced in its own coins', T.canBuy(c) && T.next(c).pay[0].id === 'dots' && T.buy(c, 'dots') && c.save.wallet.dots.bal === 0, pd + ' ink beads');
 ok('a wallet never pays part of a price', (c.save.wallet.islands.bal = 5, c.save.wallet.dots.bal = 5, c.beaten = () => 99, !T.canBuy(c)));
-// all the way: nine tickets unlock everything, then no tenth
+// all the way: one ticket per locked skin unlocks everything, then no more
 c = mk(99, {}); SK.forEach(k => { c.save.wallet[k.id] = { bal: 1e7, earned: 1e7, f: 0 }; });
 for (let i = 0; i < T.GATE.length; i++) { const nx = T.next(c); T.buy(c, nx.pay[0].id); T.use(c, SK.find(k => !T.owns(c.save, k.id)).id); }
-ok('nine tickets own every skin', SK.every(k => T.owns(c.save, k.id)) && T.next(c) === null, c.save.skins.own.length + ' owned');
+ok(T.GATE.length + ' tickets own every skin', SK.every(k => T.owns(c.save, k.id)) && T.next(c) === null, c.save.skins.own.length + ' owned');
 console.log(bad ? bad + ' problem(s)' : 'tickets OK');
 process.exit(bad ? 1 : 0);

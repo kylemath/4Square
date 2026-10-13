@@ -300,7 +300,7 @@
       '.btn3d{border:2.5px solid #2b2d42;border-radius:15px 19px 14px 18px/18px 14px 19px 15px;box-shadow:3px 4px 0 #2b2d42;font-family:var(--sk-font);font-weight:700;letter-spacing:.02em;color:#2b2d42;text-shadow:none;transition:transform .12s,box-shadow .12s}' +
       '.btn3d.white{background:#fffcf3}.btn3d.yellow{background:#ffc928}.btn3d.blue{background:#3fa7f5}.btn3d.orange{background:#ff9a3c}' +
       '.btn3d.go{background:#3ccf6e;color:#2b2d42}' +
-      '.btn3d svg path,.btn3d svg g{stroke:#2b2d42}' +
+      '.btn3d > svg > g path,.btn3d > svg > g{stroke:#2b2d42}' +
       '.btn3d.rb svg g path:first-child{stroke:none}' +
       '.btn3d.rbtn,.btn3d.rb{border-radius:14px 17px 13px 16px/16px 13px 17px 14px}' +
       '.btn3d:active{transform:translate(2px,3px) rotate(1.5deg);box-shadow:1px 1px 0 #2b2d42}' +

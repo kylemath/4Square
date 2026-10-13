@@ -6,7 +6,6 @@ FTH_SKINS.register({
   coin: { name: 'doubloon', plural: 'doubloons', glyph: '🪙', value: 10, pitch: 1,   // this skin's currency (SKIN-SPEC.md section 12)
     colors: { main: '#ffd84a', edge: '#c27a00' },
     svg: FTH_SKINS.coinArt('<circle cy="1.8" r="11" fill="#c27a00" stroke="#1c1640" stroke-width="2"/><circle r="11" fill="#ffd84a" stroke="#1c1640" stroke-width="2"/><circle r="7.4" fill="none" stroke="#f0a91c" stroke-width="1.8"/><path d="M0 -4.8L1.4 -1.4 4.8 0 1.4 1.4 0 4.8-1.4 1.4-4.8 0-1.4-1.4Z" fill="#fff6c8" stroke="#c27a00" stroke-width=".8"/><path d="M-6.5 -6A9 9 0 0 1 1 -9.2" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round" opacity=".85"/>') },
-  family: 'islands',                  // the title screen groups skins of one family
   board: { free: false },             // the island board: three far regions as walls, tiles on their planar layout (SKIN-SPEC.md section 11)
   hud: 'full',
   theme: {
