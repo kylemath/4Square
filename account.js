@@ -303,8 +303,8 @@
     const lv = k.own ? ((window.GAME && GAME.levels.length) || 64) : levels;
     return Math.ceil(FTH_SKINS.rate(k) * COIN_PTS * lv);
   }
-  // podium(scope): [{ skin, top: [{rank, nick, coins, me}] (up to 3), me: {rank, coins} | null, mine: coins on this device, hidden }]
-  async function podium(scope) {
+  // podium(scope, n): [{ skin, top: [{rank, nick, coins, me}] (up to n, default 3), me: {rank, coins} | null, mine: coins on this device, hidden }]
+  async function podium(scope, n) {
     await init(); await ensureCore();
     const list = (window.FTH_SKINS && FTH_SKINS.list || []).map(k => k.id), out = [];
     for (const skin of list) {
@@ -325,7 +325,7 @@
       }
       rows.sort(byCoins); rows.forEach((r, i) => { r.rank = i + 1; });
       const me = rows.find(r => r.me);
-      out.push({ skin, top: rows.slice(0, 3), me: me ? { rank: me.rank, coins: me.coins } : null, mine: earned(skin), hidden });
+      out.push({ skin, top: rows.slice(0, n || 3), me: me ? { rank: me.rank, coins: me.coins } : null, mine: earned(skin), hidden });
     }
     return out;
   }
