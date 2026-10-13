@@ -687,7 +687,9 @@
     get: (_, i) => { const L = G.levels[+i]; return L ? save.byId[L.id] : undefined; },
     set: (_, i, v) => { const L = G.levels[+i]; if (L) save.byId[L.id] = v; return true; },
   });
-  const unlockAll = /[?&]all=1/.test(location.search);
+  // dev mode: ?all=1, or tap the score badge on the title screen 5 times (toggles; remembered on this device) -> every level and skin open
+  const DEVKEY = 'fth-dev-unlock', devOn = () => { try { return localStorage.getItem(DEVKEY) === '1'; } catch (_) { return false; } };
+  const unlockAll = /[?&]all=1/.test(location.search) || devOn();
 
   // ---------------- sound ----------------
   let AC = null;
@@ -2146,6 +2148,12 @@
   // ---------------- dev panel (board/island.js): live spring / damping knobs, crossing guard, free borders ----------------
   // Open with #dev on the link, or tap the level name five times. Changes apply at once to the running board.
   const devOpen = BRD.dev;
+  { let taps = [];
+    $('titleBadge').addEventListener('click', () => { const t = performance.now(); taps = taps.filter(x => t - x < 2000); taps.push(t); if (taps.length < 5) return; taps = [];
+      const on = !devOn(); try { on ? localStorage.setItem(DEVKEY, '1') : localStorage.removeItem(DEVKEY); } catch (_) { return; }
+      const b = $('titleBadge'); b.style.transition = 'transform .25s'; b.style.transform = 'scale(1.25) rotate(' + (on ? -6 : 6) + 'deg)'; blip(on ? 880 : 330, .15, 'triangle', .05);
+      setTimeout(() => location.reload(), 500); });
+    if (devOn()) $('titleBadge').insertAdjacentHTML('afterbegin', '<span class="s" title="Dev mode: every level open">🛠️</span>'); }
   { let taps = [];
     $('lvTitle').addEventListener('click', () => { const t = performance.now(); taps = taps.filter(x => t - x < 2000); taps.push(t); if (taps.length >= 5) { taps = []; devOpen(!$('devPanel')); } });
     const fromHash = () => { if (location.hash === '#dev') devOpen(true); };
