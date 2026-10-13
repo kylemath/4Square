@@ -558,7 +558,6 @@
         <p>🔬 Can we save your moves to help scientists learn how people solve puzzles? No names, just taps and timing.</p>
         <div><button id="consentYes">OK!</button><button id="consentNo">No thanks</button></div>
       </div>
-      <div class="tfoot">Part of the <a href="https://kylemath.github.io/GraphColourDeductiveSolver/">Graph Colour Deductive Solver</a><span id="researchNote" hidden> · 🔬 moves are logged for puzzle research (🏆 to turn off)</span></div>
     </div>
   </div>
 </section>
@@ -2909,7 +2908,6 @@
   $('btnMapsTitle').onclick = $('btnMapsMap').onclick = () => { if (window.FTH_MAPS) { FTH_MAPVIEW.sfx(); FTH_MAPS.open(); } };
   titleBuild();
   (function () {                           // research consent: ask once, record nothing until OK
-    const rn = document.getElementById('researchNote'); if (rn && window.FTH_LOG) rn.hidden = FTH_LOG.consent() !== 'on';
     const box = document.getElementById('consent'); if (!box || !window.FTH_LOG) return;
     // the request was removed from the title screen: without a yes, telemetry.js records nothing
     document.getElementById('consentYes').onclick = () => { FTH_LOG.setConsent(true); box.hidden = true; };
