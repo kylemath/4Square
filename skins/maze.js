@@ -186,7 +186,7 @@
     '<ellipse cx="-.34" cy="-.3" rx=".22" ry=".11" transform="rotate(-40 -.34 -.3)" fill="#fff" opacity=".9"/></g>';
 
   FTH_SKINS.register({
-    id: 'maze', name: 'Rat Maze', ic: '🐀', blurb: 'walk the swaps, find the cheese',
+    id: 'maze', name: 'Rat Maze', ic: '🐀', blurb: 'walk the swaps, find cheese',
     coin: { name: 'cheese wedge', plural: 'cheese wedges', glyph: '🧀', value: 25, pitch: 0.75,
       colors: { main: '#ffd36a', edge: '#a8740c' },
       svg: FTH_SKINS.coinArt('<path d="M-11 7.5H11V1.5L-3.6 -9.6Z" fill="#1c1640" opacity=".35" transform="translate(1.2 1.8)"/><path d="M-11 7.5H11V1.5L-3.6 -9.6Z" fill="#e7a91c"/><path d="M-11 7.5V2.6L-3.6 -9.6L11 1.5V2.4Z" fill="#ffd36a"/><path d="M-11 2.6L11 2.4" stroke="#1c1640" stroke-width="1.2"/><path d="M-11 7.5H11V1.5L-3.6 -9.6L-11 2.6Z" fill="none" stroke="#1c1640" stroke-width="2" stroke-linejoin="round"/><ellipse cx="-1.4" cy="-2.6" rx="2" ry="1.4" fill="#c98a10" stroke="#1c1640" stroke-width=".9"/><ellipse cx="4.6" cy="5" rx="1.6" ry="1.2" fill="#c98a10"/><ellipse cx="-6" cy="5.2" rx="1.2" ry="1" fill="#c98a10"/><path d="M-8.4 .4L-4.4 -5.6" stroke="#fff" stroke-width="1.5" stroke-linecap="round"/>') },

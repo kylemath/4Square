@@ -119,7 +119,7 @@
     '<ellipse cx="-.36" cy="-.42" rx=".22" ry=".1" transform="rotate(-38 -.36 -.42)" fill="#fff" opacity=".95"/></g>';
 
   FTH_SKINS.register(FTH_SKINS.extend('islands', {
-    id: 'islands-free', name: 'Islands Free', ic: '🫧', blurb: 'no walls: tiles drift like bubbles',
+    id: 'islands-free', name: 'Islands Free', ic: '🫧', blurb: 'no walls, bubbly tiles',
   coin: { name: 'pearl', plural: 'pearls', glyph: '🦪', value: 60, pitch: 1.25,   // this skin's currency (SKIN-SPEC.md section 12)
     colors: { main: '#fdf6ff', edge: '#d9587f' },
     svg: FTH_SKINS.coinArt('<path d="M-11.5 3.5C-13.5 -6 -6.5 -11.4 0 -11.8C6.5 -11.4 13.5 -6 11.5 3.5C8 10.5 -8 10.5 -11.5 3.5Z" fill="#ff9fb8" stroke="#1c1640" stroke-width="2" stroke-linejoin="round"/><path d="M0 -10.6V8M-5.6 -9.2L-4.6 8M5.6 -9.2L4.6 8M-9.6 -4.6L-8.6 6M9.6 -4.6L8.6 6" stroke="#d9587f" stroke-width="1.1" stroke-linecap="round" fill="none"/><circle cy="1.2" r="6.2" fill="#fdf6ff" stroke="#1c1640" stroke-width="2"/><path d="M-3.6 -1.2A4.4 4.4 0 0 1 -.4 -3.4" stroke="#fff" stroke-width="1.8" fill="none" stroke-linecap="round"/><circle cx="2.2" cy="3.4" r="1.7" fill="#d6e6ff"/>') },

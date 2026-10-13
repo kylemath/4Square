@@ -154,7 +154,7 @@
     spark(214, 230, 7, GOLD) + spark(26, 296, 5) + '</svg>';
 
   FTH_SKINS.register({
-    id: 'crush', name: 'Candy', ic: '🍬', blurb: 'swap two candies, the chain ripples',
+    id: 'crush', name: 'Candy', ic: '🍬', blurb: 'swap candies, chains ripple',
     coin: { name: 'sweet', plural: 'sweets', glyph: '🍭', value: 8, pitch: 1.15,
       colors: { main: '#ff5fa8', edge: '#ffd23a' },
       svg: FTH_SKINS.coinArt('<g transform="translate(1 2)" fill="#1c1640" opacity=".35"><path d="M-7 -1L-12.6 -6Q-14.4 0 -12.6 6L-7 1Z"/><path d="M7 -1L12.6 -6Q14.4 0 12.6 6L7 1Z"/><ellipse rx="8.4" ry="7.6"/></g>' +
