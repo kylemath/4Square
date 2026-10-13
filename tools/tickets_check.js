@@ -2,7 +2,9 @@
 //   - gates and prices both rise, one ticket per skin other than Islands;
 //   - each ticket is affordable at its gate on clean 3-star play with no bonus rounds, with some room to spare (PAY below
 //     is measured: points per level in play order, a fresh save, one first win each, achievements included);
-//   - buy / use / owns behave (one wallet pays, whole coins, the gate holds, a ticket unlocks exactly one skin).
+//   - each ticket is earnable from the levels since the last one alone (each wallet buys one ticket, so it is new coins);
+//   - buy / use / owns behave (one wallet pays, whole coins, each wallet buys one ticket only, the gate holds, a ticket
+//     unlocks exactly one skin).
 const fs = require('fs'), path = require('path'), vm = require('vm');
 const D = path.join(__dirname, '..');
 const ctx = { window: {}, console, Math }; ctx.window.window = ctx.window; vm.createContext(ctx);
@@ -28,6 +30,10 @@ T.GATE.forEach((g, i) => {
   console.log('  ' + String(i + 1).padStart(6) + String(g).padStart(6) + String(T.PRICE[i]).padStart(7) + String(spent).padStart(7) + String(cum).padStart(8) + (Math.round(spare * 100) + '%').padStart(7));
   ok('ticket ' + (i + 1) + ' affordable at its gate with 10-35% to spare (clean play, no bonus rounds)', spare >= .10 && spare <= .35);
 });
+// each wallet buys one ticket, so ticket n (n > 1) is paid in coins earned after ticket n - 1 unlocked their skin:
+// the levels between the two gates must pay for it on their own
+T.GATE.forEach((g, i) => { if (!i) return; let e = 0; for (let j = T.GATE[i - 1]; j < g; j++) e += PAY[j];
+  ok('ticket ' + (i + 1) + ' is earned by the levels since ticket ' + i + ' (one wallet each)', e >= T.PRICE[i], e + ' >= ' + T.PRICE[i]); });
 
 // ---- the rules on a plain ctx
 const mk = (beaten, wallet) => {
@@ -56,7 +62,13 @@ ok('ticket 2 has a further gate and a higher price', t.n === 2 && t.gate === T.G
 const dots = SK.find(k => k.id === 'dots'), pd = T.coinsFor(T.PRICE[1], dots);
 c.save.wallet.dots = { bal: pd, earned: pd, f: 0 }; c.beaten = () => T.GATE[1];
 ok('any one wallet pays, priced in its own coins', T.canBuy(c) && T.next(c).pay[0].id === 'dots' && T.buy(c, 'dots') && c.save.wallet.dots.bal === 0, pd + ' ink beads');
-ok('a wallet never pays part of a price', (c.save.wallet.islands.bal = 5, c.save.wallet.dots.bal = 5, c.beaten = () => 99, !T.canBuy(c)));
+ok('the ticket is recorded against that wallet', JSON.stringify(c.save.skins.paid) === '["islands","dots"]');
+// each wallet buys one ticket only: full Islands and Dots wallets cannot buy ticket 3, the next unlocked skin's coins can
+T.use(c, 'ions'); c.save.wallet.dots.bal = 1e6; c.save.wallet.islands.bal = 1e6; c.beaten = () => T.GATE[2];
+ok('a wallet that bought a ticket cannot buy another', !T.canBuy(c) && T.buy(c, 'dots') === false && T.buy(c, 'islands') === false && !T.next(c).pay.some(w => w.id === 'dots' || w.id === 'islands'));
+const ions = SK.find(k => k.id === 'ions'); c.save.wallet.ions = { bal: T.coinsFor(T.PRICE[2], ions), earned: 0, f: 0 };
+ok('a newly unlocked skin\'s coins buy the next ticket', T.canBuy(c) && T.buy(c, 'ions') && c.save.wallet.ions.bal === 0 && c.save.skins.bought === 3);
+ok('a wallet never pays part of a price', (T.use(c, 'doodle'), c.save.wallet.doodle = { bal: 5, earned: 5, f: 0 }, c.beaten = () => 99, !T.canBuy(c)));
 // all the way: one ticket per locked skin unlocks everything, then no more
 c = mk(99, {}); SK.forEach(k => { c.save.wallet[k.id] = { bal: 1e7, earned: 1e7, f: 0 }; });
 for (let i = 0; i < T.GATE.length; i++) { const nx = T.next(c); T.buy(c, nx.pay[0].id); T.use(c, SK.find(k => !T.owns(c.save, k.id)).id); }

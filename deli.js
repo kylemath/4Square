@@ -145,6 +145,7 @@
 .dl-pr .cn{display:flex;-webkit-text-stroke:0;filter:drop-shadow(0 2px 0 rgba(28,22,64,.5))}.dl-pr .cn svg{width:calc(var(--w) * .26);height:auto}
 .dl-bar{width:62%;height:7px;border-radius:9px;background:linear-gradient(rgba(28,22,64,.55),rgba(28,22,64,.3));overflow:hidden;border:1.5px solid #1c1640}
 .dl-bar i{display:block;height:100%;background:linear-gradient(#b4f7a6,#4fcf4f 55%,#2b9439);box-shadow:inset 0 1px 0 rgba(255,255,255,.6)}
+.dl-used{font-size:15px;line-height:1;opacity:.9}
 .dl-sign.no .dl-face{filter:saturate(.3) brightness(.8);opacity:.88}
 .dl-sign.ok{z-index:25 !important}   /* in front of its neighbours (the rows set z-index inline) */
 .dl-sign.ok .dl-face{filter:drop-shadow(0 0 7px rgba(255,236,140,.95)) drop-shadow(0 0 16px rgba(255,190,40,.7))}
@@ -220,10 +221,12 @@
     document.body.appendChild(root);
     root.addEventListener('keydown', e => { if (e.key === 'Escape') { e.stopPropagation(); if (root.querySelector('.dl-zoom')) unzoom(); else close(); } });
   }
-  // every currency's price for the next ticket: the wallets the rules list first (they can pay), then every other skin's coin
+  // every currency's price for the next ticket: the wallets the rules list first (they can pay), then every other skin's coin;
+  // a wallet that already bought its one ticket (t.used) hangs last, dimmed, with a ✓ instead of a progress bar
   function signs(t) {
-    const seen = new Set(t.pay.map(w => w.id)), out = t.pay.slice();
-    C.skins.forEach(k => { if (!seen.has(k.id)) out.push({ id: k.id, spec: k, price: T().coinsFor(t.pts, k), bal: 0, ok: false, frac: 0 }); });
+    const seen = new Set(t.pay.map(w => w.id)), out = t.pay.slice(), used = t.used || [];
+    C.skins.forEach(k => { if (!seen.has(k.id) && !used.includes(k.id)) out.push({ id: k.id, spec: k, price: T().coinsFor(t.pts, k), bal: 0, ok: false, frac: 0 }); });
+    C.skins.forEach(k => { if (used.includes(k.id)) out.push({ id: k.id, spec: k, price: T().coinsFor(t.pts, k), bal: 0, ok: false, frac: 0, used: true }); });
     return out;
   }
   function open(ctx, opts) {
@@ -254,7 +257,7 @@
           const hang = 10 + r * rowH + hash(i, 2) * rowH * .3, tilt = ((hash(i, 4) - .5) * (one ? 18 : 6)).toFixed(1);
           const amp = Math.min(3, Math.atan(10 / (hang + 40)) * 180 / Math.PI) * (ok ? 1 : .3);   // the same small sway at the bottom of a long string
           h += '<div class="dl-sign ' + (ok ? 'ok' : 'no') + (one ? ' one' : '') + '" style="z-index:' + (20 - r) + ';left:' + x.toFixed(1) + 'px;--w:' + wpx + 'px;--hang:' + Math.round(hang) + 'px;--tilt:' + tilt + 'deg;--amp:' + amp.toFixed(2) + 'deg;--sp:' + (2.2 + hash(i, 5) * 1.8).toFixed(2) + 's;--dl:' + (-hash(i, 6) * 3).toFixed(2) + 's">' +
-            '<button class="dl-face" data-w="' + esc(w.id) + '" aria-label="' + esc(fmt(w.price) + ' ' + S().coinOf(w.spec).plural) + (ok ? '' : ', ' + fmt(w.bal) + ' held') + '">' + signSvg(i, ok) + face(w) + '</button></div>';
+            '<button class="dl-face" data-w="' + esc(w.id) + '" aria-label="' + esc(fmt(w.price) + ' ' + S().coinOf(w.spec).plural) + (w.used ? ', already bought a ticket' : ok ? '' : ', ' + fmt(w.bal) + ' held') + '">' + signSvg(i, ok) + face(w) + '</button></div>';
         }
         r++;
       }
@@ -270,7 +273,7 @@
     root.querySelectorAll('.dl-face').forEach(b => b.onclick = () => zoom(b));
   }
   const face = (w, big) => '<span class="dl-in"><span class="dl-pr"><span class="cn">' + S().coinOf(w.spec).svg(26) + '</span>' + fmt(w.price) + '</span>' +
-    '<span class="dl-bar" aria-hidden="true"><i style="width:' + (Math.min(1, w.bal / w.price) * 100).toFixed(1) + '%"></i></span></span>';
+    (w.used ? '<span class="dl-used" aria-hidden="true">🎟️✓</span>' : '<span class="dl-bar" aria-hidden="true"><i style="width:' + (Math.min(1, w.bal / w.price) * 100).toFixed(1) + '%"></i></span>') + '</span>';
   // the glass case, drawn at the screen's width: a lit cabinet of cheese, salami, pickles, olives and spare tickets on a steel
   // tray, glass glare over the front, a steel sill and a panelled wooden base with a gold trim
   function caseArt(W) {

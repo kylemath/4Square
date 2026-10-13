@@ -5,9 +5,11 @@
  *   - one wallet holds PRICE[n - 1] points' worth of its own coins          (earn more each time)
  * A price is set in points, the game's internal unit, and shown in each coin as ceil(points x FTH_SKINS.rate(skin)): the
  * same rate play pays, so every currency costs the same effort. It is paid from ONE wallet (the exchange is on the
- * feature bench, see README), never split. A ticket unlocks any locked skin, the player's choice.
+ * feature bench, see README), never split, and each wallet pays for ONE ticket only: Islands' doubloons buy the first, and
+ * every later ticket is bought with the coins of a skin a ticket unlocked. A ticket unlocks any locked skin, the player's choice.
  *
- * save.skins = { own: ['islands', ...], tickets: 0, bought: 0 }   (sealed with the rest of the save, see integrity.js)
+ * save.skins = { own: ['islands', ...], tickets: 0, bought: 0, paid: ['islands', ...] }   (paid: the wallets that bought a
+ * ticket; sealed with the rest of the save, see integrity.js)
  *
  * The rules are pure (FTH_TICKETS.next / canBuy / buy / use work on a plain ctx and run in node: tools/tickets_check.js);
  * open() draws the shop (a full-screen showroom on the skin reel, reel.js); the deli counter that sells tickets is deli.js.
@@ -29,6 +31,7 @@
     if (!Array.isArray(s.own)) s.own = [START];
     if (!s.own.includes(START)) s.own.unshift(START);
     s.tickets = s.tickets | 0; s.bought = s.bought | 0;
+    if (!Array.isArray(s.paid)) s.paid = [];
     return s;
   }
   const owns = (save, id) => state(save).own.includes(id);
@@ -40,17 +43,17 @@
     const s = state(ctx.save), n = s.bought + 1, left = locked(ctx).length;
     if (!left || s.tickets >= left || n > GATE.length) return null;
     const beaten = ctx.beaten(), pts = PRICE[n - 1], gate = GATE[n - 1];
-    const pay = ctx.skins.filter(k => owns(ctx.save, k.id) || bal(ctx.save, k.id) > 0)       // any wallet with coins (incl. one earned before skins were locked)
+    const pay = ctx.skins.filter(k => !s.paid.includes(k.id) && (owns(ctx.save, k.id) || bal(ctx.save, k.id) > 0))   // a wallet that has not bought a ticket yet (incl. one earned before skins were locked)
       .map(k => ({ id: k.id, spec: k, price: coinsFor(pts, k), bal: bal(ctx.save, k.id) }))
       .map(w => Object.assign(w, { ok: w.bal >= w.price, frac: Math.min(1, w.bal / w.price) }))
       .sort((a, b) => (b.ok - a.ok) || (b.frac - a.frac));
-    return { n, of: GATE.length, gate, beaten, gateOk: beaten >= gate, pts, pay };
+    return { n, of: GATE.length, gate, beaten, gateOk: beaten >= gate, pts, pay, used: s.paid.slice() };
   }
   const canBuy = ctx => { const t = next(ctx); return !!t && t.gateOk && t.pay.some(w => w.ok); };
   function buy(ctx, payId) {                        // spend one wallet's coins on the next ticket
     const t = next(ctx); if (!t || !t.gateOk) return false;
     const w = t.pay.find(x => x.id === payId); if (!w || !w.ok) return false;
-    const s = state(ctx.save); ctx.save.wallet[payId].bal -= w.price; s.tickets++; s.bought++;
+    const s = state(ctx.save); ctx.save.wallet[payId].bal -= w.price; s.tickets++; s.bought++; s.paid.push(payId);
     ctx.persist(); log('ticket_buy', { n: t.n, pay: payId, price: w.price }); return true;
   }
   function use(ctx, id) {                           // a ticket unlocks any locked skin

@@ -376,6 +376,7 @@ coin: { name: 'pearl', plural: 'pearls',        // singular and plural, lower ca
 - Skins that `extend` another merge `coin` field by field, so give every field again.
 - **Skin tickets.** Coins buy skin tickets (`tickets.js`; README "Coins and skin tickets"): a ticket's price is set in points and
   shown in each coin as `ceil(points x FTH_SKINS.rate(spec))`, the rate play pays, so every coin costs the same effort.
+  Each skin's wallet buys one ticket only (`save.skins.paid`), so every skin's coins pay for the next skin.
   `FTH_SKINS.rate(spec) = sqrt(10 / value) / 4`. A new skin is locked until a ticket unlocks it; add a `GATE`/`PRICE` step in
   `tickets.js` for it (`node tools/tickets_check.js` fails until there is one ticket per skin other than Islands).
 - **Value and the economy.** `value` is the coin's price in G. Coins trade in the exchange (on the feature bench: `?feat=exchange`;
