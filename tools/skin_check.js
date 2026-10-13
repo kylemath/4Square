@@ -1,16 +1,19 @@
-// Validates skin specs (SKIN-SPEC.md): node docs/game/tools/skin_check.js [id ...]
+// Validates skin specs (SKIN-SPEC.md): node docs/game/tools/skin_check.js [--strict] [id ...]
 // Loads skins/registry.js and every skins/<id>.js, then checks fields and calls every function with sample arguments.
+// Section 13 art (icon, card, logo) is a WARNING while the skins are being drawn; --strict makes a missing or bad one fail.
+// Copy (section 0): blurb <= 30 chars, intro title <= 28 and text <= 110 per page, words.* <= 40, bonus.label <= 8.
 const fs = require('fs'), path = require('path'), vm = require('vm');
 const D = path.join(__dirname, '..', 'skins');
-const ctx = { window: {}, console }; ctx.window.window = ctx.window; vm.createContext(ctx);
+const ctx = { window: {}, console, setTimeout: () => 0, clearTimeout: () => {} }; ctx.window.window = ctx.window; vm.createContext(ctx);   // timers: egg run()s may schedule a second beat
 vm.runInContext(fs.readFileSync(path.join(D, 'registry.js'), 'utf8'), ctx);
 ctx.FTH_SKINS = ctx.window.FTH_SKINS;
-const want = process.argv.slice(2);
+const STRICT = process.argv.includes('--strict'), want = process.argv.slice(2).filter(a => a !== '--strict');
 const read = f => fs.readFileSync(path.join(D, f), 'utf8');
 const files = fs.readdirSync(D).filter(f => f.endsWith('.js') && f !== 'registry.js' && (!want.length || want.includes(f.replace(/\.js$/, ''))))
   .sort((x, y) => /FTH_SKINS\.extend\(/.test(read(x)) - /FTH_SKINS\.extend\(/.test(read(y)));   // skins that extend another load after it
 if (want.length && files.some(f => /FTH_SKINS\.extend\('([\w-]+)'/.test(read(f)))) fs.readdirSync(D).filter(f => f.endsWith('.js') && f !== 'registry.js' && !files.includes(f) && !/FTH_SKINS\.extend\(/.test(read(f))).forEach(f => files.unshift(f));
-let bad = 0; const fail = (id, m) => { bad++; console.log('  FAIL ' + id + ': ' + m); };
+let bad = 0, warned = 0; const fail = (id, m) => { bad++; console.log('  FAIL ' + id + ': ' + m); };
+const warn = (id, m) => { if (STRICT) return fail(id, m); warned++; console.log('  WARN ' + id + ': ' + m); };
 for (const f of files) {
   try { vm.runInContext(fs.readFileSync(path.join(D, f), 'utf8'), ctx, { filename: f }); }
   catch (e) { fail(f, 'does not load: ' + e.message); }
@@ -67,6 +70,60 @@ for (const s of ctx.window.FTH_SKINS.list) {
     }
   }
   if (s.title && s.title.svg) svgOk(s.title.svg, 'title.svg', id);
+  {                                                  // section 13: the app-store icon, the reel card, the optional wordmark
+    const art = (k, vb, need) => {
+      const v = s[k];
+      if (v === undefined) return need ? warn(id, k + ' missing (SKIN-SPEC 13: an <svg viewBox="' + vb + '"> string)') : undefined;
+      if (typeof v !== 'string' || !/^\s*<svg[\s>]/.test(v)) return warn(id, k + ': not an <svg> string');
+      if (!new RegExp('<svg[^>]*viewBox="' + vb + '"').test(v)) warn(id, k + ': viewBox must be "' + vb + '"');
+      if (/<script|<image|<foreignObject|\bon\w+=/i.test(v)) warn(id, k + ': no script, images or handlers');
+      if (/(href|src)="(https?:|data:|\/\/)/i.test(v)) warn(id, k + ': no external or embedded images');
+      const o = (v.match(/<g[\s>]/g) || []).length, c = (v.match(/<\/g>/g) || []).length; if (o !== c) warn(id, k + ': unbalanced <g> (' + o + ' open, ' + c + ' close)');
+      const ids = (v.match(/\bid="([^"]+)"/g) || []).map(x => x.slice(4, -1)).filter(x => !x.startsWith(id)); if (ids.length) warn(id, k + ': ids must start with the skin id: ' + ids.slice(0, 3).join(' '));
+      if ((v.match(/<(path|circle|rect|polygon|ellipse|polyline)\b/g) || []).length < 3) warn(id, k + ': looks empty (fewer than 3 shapes)');
+      if (k === 'icon' && /<text\b/.test(v) && (v.replace(/<[^>]+>/g, '').replace(/\s/g, '').length > 1)) warn(id, 'icon: no text except one letter or digit');
+    };
+    art('icon', '0 0 120 120', true); art('card', '0 0 240 320', true); art('logo', '0 0 240 80', false);
+  }
+  {                                                  // section 0: symbols, not sentences
+    const len = (v, max, where) => { if (typeof v === 'string' && v.replace(/<[^>]+>/g, '').length > max) fail(id, where + ' is ' + v.replace(/<[^>]+>/g, '').length + ' chars (max ' + max + '): ' + JSON.stringify(v.slice(0, 50))); };
+    len(s.blurb, 30, 'blurb');
+    (Array.isArray(s.intro) ? s.intro : []).forEach((p, i) => { len(p && p.title, 28, 'intro[' + i + '].title'); len(p && p.text, 110, 'intro[' + i + '].text'); });
+    for (const k of Object.keys(s.words || {})) { if (typeof s.words[k] !== 'string') fail(id, 'words.' + k + ' must be a string'); else len(s.words[k], 40, 'words.' + k); }
+    if (s.bonus) len(s.bonus.label, 8, 'bonus.label');
+  }
+  if (s.bonus) {                                     // section 6: the win flow and the bonus games
+    const GAMES = ['chain', 'snake', 'hop', 'stack', 'pop'];
+    if (s.bonus.flow !== undefined && !['card', 'fade'].includes(s.bonus.flow)) fail(id, "bonus.flow must be 'card' or 'fade'");
+    if (s.bonus.games !== undefined) {
+      if (!Array.isArray(s.bonus.games)) fail(id, 'bonus.games must be an array');
+      else { const x = s.bonus.games.filter(g => !GAMES.includes(g)); if (x.length) fail(id, 'bonus.games: unknown ' + x.join(', ') + ' (' + GAMES.join(' ') + ')'); if (new Set(s.bonus.games).size !== s.bonus.games.length) fail(id, 'bonus.games has a repeat'); }
+    }
+    if (s.bonus.intro !== undefined && !['drop', 'spin', 'curtain', 'zoom'].includes(s.bonus.intro)) fail(id, "bonus.intro must be 'drop' | 'spin' | 'curtain' | 'zoom'");
+  }
+  if (s.eggs !== undefined) {                        // section 15: easter eggs
+    const ONS = ['page', 'title', 'map', 'win', 'idle'], SOUNDS = ['pop', 'chime', 'whoosh', 'cheer'];
+    if (!Array.isArray(s.eggs)) fail(id, 'eggs must be an array');
+    else {
+      const seen = new Set();
+      s.eggs.forEach((e, i) => {
+        const w = 'eggs[' + i + ']';
+        if (!e || typeof e !== 'object') return fail(id, w + ' must be an object');
+        if (typeof e.id !== 'string' || !/^[a-z0-9-]{1,32}$/.test(e.id)) fail(id, w + '.id must be a short kebab-case string');
+        else if (seen.has(e.id)) fail(id, w + '.id ' + e.id + ' repeats'); else seen.add(e.id);
+        if (!ONS.includes(e.on)) return fail(id, w + '.on must be one of ' + ONS.join(' '));
+        if (e.note !== undefined && typeof e.note !== 'string') fail(id, w + '.note must be a string');
+        if (e.on === 'page') { if (e.run !== undefined) fail(id, w + ": a page egg has no run (the page calls LAB.egg)"); return; }
+        if (typeof e.run !== 'function') return fail(id, w + '.run(fx) must be a function');
+        if ((e.on === 'title' || e.on === 'map') && e.taps !== undefined && !(Number.isInteger(e.taps) && e.taps >= 2 && e.taps <= 20)) fail(id, w + '.taps must be an integer 2-20');
+        if (e.on === 'win' && e.p !== undefined && !(typeof e.p === 'number' && e.p > 0 && e.p <= 1)) fail(id, w + '.p must be in (0, 1]');
+        if (e.on === 'idle' && e.secs !== undefined && !(typeof e.secs === 'number' && e.secs >= 3)) fail(id, w + '.secs must be a number >= 3');
+        const fx = { burst(g, x, y) { if (typeof g !== 'string' || !(x >= 0 && x <= 1 && y >= 0 && y <= 1)) fail(id, w + ': fx.burst(glyph, x, y) wants a string and fractions 0-1'); },
+          sound(nm) { if (!SOUNDS.includes(nm)) fail(id, w + ': fx.sound(' + nm + ') is not one of ' + SOUNDS.join(' ')); }, shake() {}, pay(p) { if (!(p > 0 && p <= 2000)) fail(id, w + ': fx.pay wants 1-2000 points'); } };
+        try { e.run(fx); } catch (x) { fail(id, w + '.run throws: ' + x.message); }
+      });
+    }
+  }
   if (s.intro) {
     if (!Array.isArray(s.intro) || s.intro.length < 3 || s.intro.length > 5) fail(id, 'intro must have 3-5 pages');
     (s.intro || []).forEach((p, i) => { if (!p.title || !p.text) fail(id, 'intro[' + i + '] needs title and text'); svgOk(p.svg, 'intro[' + i + '].svg', id); });
@@ -114,5 +171,6 @@ for (const s of ctx.window.FTH_SKINS.list) {
     }
   }
 }
+if (warned) console.log(warned + ' warning(s) (section 13 art; --strict fails on them)');
 console.log(bad ? bad + ' problem(s)' : 'all skin specs OK');
 process.exit(bad ? 1 : 0);

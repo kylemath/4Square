@@ -115,7 +115,7 @@
   .mnode .pulse { position: absolute; inset: -9px; border-radius: 50%; border: 4px solid #fff; animation: mpulse 1.4s ease-out infinite; pointer-events: none; }
   .mnode .pulse.p2 { animation-delay: .7s; }
   @keyframes mpulse { from { transform: scale(.75); opacity: 1; } to { transform: scale(1.4); opacity: 0; } }
-  .mnode .me { position: absolute; left: 50%; bottom: 74%; width: 46px; height: 56px; margin-left: -23px; animation: mbob .8s ease-in-out infinite alternate; pointer-events: none; }
+  .mnode .me { position: absolute; left: 50%; bottom: 74%; width: 46px; height: 56px; margin-left: -23px; animation: mbob .8s ease-in-out infinite alternate; pointer-events: auto; cursor: pointer; }
   .mnode .me svg { width: 100%; height: 100%; overflow: visible; }
   @keyframes mbob { to { transform: translateY(-9px); } }
   .mnode.boss > svg { filter: drop-shadow(0 0 10px #ff7a2a); }
@@ -195,7 +195,7 @@
   .say.on { opacity: 1; transform: none; }
   .say .pinm { width: 38px; height: 48px; flex: none; animation: mbob .8s ease-in-out infinite alternate; }
   .say .pinm svg { width: 100%; height: 100%; overflow: visible; display: block; }
-  .msg { position: relative; flex: 0 1 auto; margin-bottom: 14px; padding: 7px 12px; border-radius: 18px; background: #fff; border: 3px solid #1c1640; box-shadow: 0 4px 0 rgba(28,22,64,.35); font-size: .9rem; font-weight: 800; line-height: 1.3; color: #1c1640; }
+  .msg { position: relative; flex: 0 1 auto; margin-bottom: 14px; padding: 7px 12px; border-radius: 18px; background: #fff; border: 3px solid #1c1640; box-shadow: 0 4px 0 rgba(28,22,64,.35); font-size: 1.05rem; font-weight: 900; line-height: 1.3; color: #1c1640; }
   .msg::before { content: ""; position: absolute; left: -11px; bottom: 6px; border: 7px solid transparent; border-right: 10px solid #1c1640; border-left: 0; }
   .msg::after { content: ""; position: absolute; left: -6px; bottom: 9px; border: 4px solid transparent; border-right: 6px solid #fff; border-left: 0; }
   .msg b { color: #c2185b; }
@@ -285,6 +285,10 @@
   #game.hud-full #mini.floatmap:not(.big) { bottom: auto; top: calc(100px + env(safe-area-inset-top)); width: 92px; height: 80px; }
   #game.hud-compact #mini.floatmap:not(.big) { bottom: auto; top: calc(6px + env(safe-area-inset-top)); right: 10px; width: 62px; height: 54px; }   /* docked in the slim bar's empty right side */
   #game.hud-minimal #mini.floatmap:not(.big) { display: none; }
+  /* compact / minimal HUD: the hidden coin counter peeks in at the top while a swap's coins land (peekCoins) */
+  #game.cpeek .gtop .coins { display: inline-flex; position: fixed; z-index: 12; top: calc(8px + env(safe-area-inset-top)); left: 50%; translate: -50% 0; animation: cpeek .25s cubic-bezier(.3, 1.6, .5, 1); }
+  #game.cpeek .gtop .coins.bump { animation: cbump .38s cubic-bezier(.3, 1.8, .5, 1); }
+  @keyframes cpeek { from { opacity: 0; scale: .6; } }
   #mini.floatmap.big { right: auto; bottom: auto; left: calc(50% - min(47vw, 215px)); top: calc(50% - min(94vw, 430px) * .433); transform: none !important; z-index: 9; }
   #skinFrame { display: none; flex: 1; min-height: 0; width: 100%; border: 0; background: #fff; }
   #game.skinned .board, #game.skinned .bar { display: none; }
@@ -342,6 +346,10 @@
   @keyframes train { to { stroke-dashoffset: -1; } }
   .float { position: absolute; pointer-events: none; z-index: 6; font-weight: 900; color: #ffd84a; font-size: 1.5rem; white-space: nowrap; text-align: center; animation: rise 1.2s cubic-bezier(.2, .8, .3, 1) forwards; text-shadow: 2px 0 #1c1640, -2px 0 #1c1640, 0 2px #1c1640, 0 -2px #1c1640, 2px 2px #1c1640, -2px 2px #1c1640, 2px -2px #1c1640, -2px -2px #1c1640, 0 4px 0 #1c1640; }
   .float.dim { color: #fff; font-size: 1.15rem; }
+  .ghost { position: absolute; left: 0; top: 0; z-index: 5; pointer-events: none; font-size: 34px; line-height: 1; opacity: 0; filter: drop-shadow(0 3px 0 rgba(28,22,64,.45)); will-change: transform; }
+  .msg .mel { display: inline-grid; place-items: center; width: 1.45em; height: 1.45em; border-radius: 50%; border: 2px solid #1c1640; vertical-align: -.42em; margin: 0 1px; box-shadow: 0 2px 0 rgba(28,22,64,.35); }
+  .msg .mel svg { width: .95em; height: .95em; }
+  .msg .mpair { white-space: nowrap; }
   .float small { display: block; font-size: .72rem; color: #fff; }
   @keyframes rise { 0% { transform: translate(-50%, -50%) scale(.4); opacity: 0; } 18% { transform: translate(-50%, -80%) scale(1.25); opacity: 1; } 75% { opacity: 1; } 100% { transform: translate(-50%, -190%) scale(1); opacity: 0; } }
   /* loot: coins and bags fly over everything, in screen space */
@@ -509,7 +517,7 @@
       <button class="btn3d green" id="btnPlay" aria-label="Play">PLAY ▶</button>
       <div class="skins" id="skinPick" role="radiogroup" aria-label="Game style"></div>
       <div class="trow">
-        <button class="btn3d yellow" id="btnHowTitle" aria-label="How to play">❓ How to play</button>
+        <button class="btn3d yellow" id="btnHowTitle" aria-label="How to play">❓ Rules</button>
         <button class="btn3d white" id="btnLbTitle" aria-label="Leaderboard and profile">🏆 Scores</button>
         <button class="btn3d white" id="btnShopTitle" aria-label="Skins and skin tickets">🎟️ Skins<i class="tdot" hidden></i></button>
         <button class="btn3d blue" id="btnInstall" aria-label="Install the game on this phone" hidden>📲 Install</button>
@@ -578,12 +586,12 @@
   <div class="k" id="briefKicker"></div><h2 id="briefTitle"></h2>
   <p id="briefText"></p>
   <div class="meta" id="briefMeta"></div>
-  <details><summary>Controls &amp; scoring</summary>
+  <details><summary aria-label="Controls and scoring">👆 ⇄ ✦</summary>
   <table>
-    <tr><td>Trace</td><td>drag along alternating colours; cover the whole chain to capture it</td></tr>
-    <tr><td>Tap</td><td>a tile: chain wheel. Pick a captured chain, then tap it to flip</td></tr>
-    <tr><td>Drag the sea</td><td>turn and tilt the island; double-tap the sea to reset</td></tr>
-    <tr><td>Score</td><td>length × free ends × ring (rim ×3, next ring ×2)</td></tr>
+    <tr><td aria-label="Trace">👆 ➜</td><td>whole chain = caught</td></tr>
+    <tr><td aria-label="Tap">👆</td><td>chain wheel · tap again ⇄</td></tr>
+    <tr><td aria-label="Score">✦</td><td>length × free ends × ring (rim ×3, next ×2)</td></tr>
+    <tr><td aria-label="New pattern">✨</td><td>+25 a new colouring</td></tr>
   </table></details>
   <div class="row"><button class="btn3d green" id="briefGo" aria-label="Play this level">PLAY ▶</button></div>
 </div></div>
@@ -600,9 +608,9 @@
 </div></div>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs><g id="coinG"><circle cy="1.8" r="11" fill="#c27a00" stroke="#1c1640" stroke-width="2"/><circle r="11" fill="#ffd84a" stroke="#1c1640" stroke-width="2"/><circle r="7.4" fill="none" stroke="#f0a91c" stroke-width="1.8"/><path d="M0 -4.8L1.4 -1.4 4.8 0 1.4 1.4 0 4.8-1.4 1.4-4.8 0-1.4-1.4Z" fill="#fff6c8" stroke="#c27a00" stroke-width=".8"/><path d="M-6.5 -6A9 9 0 0 1 1 -9.2" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round" opacity=".85"/></g></defs></svg>
 <div class="howto" id="howto" role="dialog" aria-modal="true" aria-label="How to play">
-  <div class="hthead"><span class="htk">How to play</span><button class="htskip" id="htSkip" aria-label="Skip how to play">Skip ✕</button></div>
+  <div class="hthead"><span class="htk">How to play</span><button class="htskip" id="htSkip" aria-label="Skip how to play">✕</button></div>
   <div class="htview"><div class="httrack" id="htTrack"></div></div>
-  <div class="htfoot"><button class="btn3d white rbtn" id="htBack" aria-label="Previous step">◀</button><div class="htdots" id="htDots"></div><button class="btn3d green" id="htNext" aria-label="Next step">Next ▶</button></div>
+  <div class="htfoot"><button class="btn3d white rbtn" id="htBack" aria-label="Previous step">◀</button><div class="htdots" id="htDots"></div><button class="btn3d green" id="htNext" aria-label="Next step">▶</button></div>
 </div>
 <canvas id="confetti"></canvas>
 
@@ -629,6 +637,7 @@
 <script src="skins/crush.js"></script>
 <script src="skins/rimword.js"></script>
 <script src="skins/spheres.js"></script>
+<script src="eggs.js"></script>
 <script>
 (function () {
   'use strict';
@@ -890,9 +899,9 @@
       if (f0 !== f) grow.push([c.querySelector('.liq'), f]);
       c.setAttribute('aria-label', NAMES[a] + '–' + NAMES[b] + ' chain, ' + K.size + ' tiles, ' + (done ? 'caught' : k + ' traced') + (K.lock ? ', lock' : '') + (win && ready ? ', swapping it wins' : ''));
       c.onclick = () => {
-        if (done) { if (active === K.key && canFlip(K)) doFlip(K, false); else { active = K.key; drawActive(); updateHud(); msg('Tap it again to <b>swap</b>!'); } return; }
+        if (done) { if (active === K.key && canFlip(K)) doFlip(K, false); else { active = K.key; drawActive(); updateHud(); msg('<b>⇄</b> tap again'); } return; }
         const set = t || new Set(), next = K.vs.find(u => !set.has(u) && (!set.size || [...set].some(x => adj[x].includes(u)))) ?? K.vs[0];
-        popBall(next, 'hintpulse'); msg('Start at the <b>glowing</b> tile!');
+        popBall(next, 'hintpulse'); ghost(chainWalk(K, next, 4));
       };
       tray.appendChild(c);
     });
@@ -905,6 +914,27 @@
     d.style.left = sx + 'px'; d.style.top = sy + 'px'; $('board').appendChild(d); setTimeout(() => d.remove(), 1250);
   }
   const floatBall = (u, t, s, cls) => { const [x, y] = toScreen(u); floatAt(x, y, t, s, cls); };
+  // symbols, not sentences (SKIN-SPEC section 0): the talking pin shows element chips and a glyph or two; the aria-live text is the chips' labels
+  const elemChip = e => '<i class="mel" style="background:' + HEX[e] + '" role="img" aria-label="' + NAMES[e] + '">' + iconSvg(e, '#fff') + '</i>';
+  const pairChip = (a, b) => '<span class="mpair">' + elemChip(a) + elemChip(b) + '</span>';
+  // a ghost finger: drags from tile to tile along a chain (the cue for "trace here"), twice, then fades
+  let ghostEl = null;
+  function chainWalk(K, u, k) { const out = [u]; let cur = u; while (out.length < (k || 4)) { const w = adj[cur].find(x => K.set.has(x) && !out.includes(x)); if (w === undefined) break; out.push(w); cur = w; } return out; }
+  function ghost(path) {
+    if (ghostEl) ghostEl.remove(); ghostEl = null;
+    if (!path || !path.length || ACT.src || !$('game').classList.contains('on')) return;
+    const pts = path.map(u => toScreen(u)), d = document.createElement('div'); d.className = 'ghost'; d.textContent = '👆'; d.setAttribute('aria-hidden', 'true');
+    $('board').appendChild(d); ghostEl = d;
+    const T = (p, sc) => 'translate(' + q1(p[0] - 12) + 'px,' + q1(p[1] - 2) + 'px) scale(' + (sc || 1) + ')', N = pts.length, dur = 700 + 380 * N;
+    if (reduced || !d.animate) { d.style.transform = T(pts[0]); setTimeout(() => d.remove(), 2400); return; }
+    const kf = [{ transform: T(pts[0], 1.35), opacity: 0, offset: 0 }, { transform: T(pts[0], .9), opacity: .92, offset: .16 }];
+    pts.slice(1).forEach((p, i) => kf.push({ transform: T(p, .9), opacity: .92, offset: .16 + .66 * (i + 1) / (N - 1) }));
+    if (N === 1) kf.push({ transform: T(pts[0], 1), opacity: .92, offset: .5 });
+    kf.push({ transform: T(pts[N - 1], 1.2), opacity: 0, offset: 1 });
+    d.animate(kf, { duration: dur, iterations: 2, easing: 'ease-in-out', fill: 'forwards' });
+    setTimeout(() => { if (ghostEl === d) ghostEl = null; d.remove(); }, 2 * dur + 60);
+  }
+  const ghostChain = K => { if (!K) return; const rim = new Set(link), u = K.vs.find(x => rim.has(x)) ?? K.vs[0]; popBall(u, 'hintpulse'); ghost(chainWalk(K, u, 4)); };
 
   // ---------------- the skin's coin: art, name and the points-to-coins rate (SKIN-SPEC.md section 12) ----------------
   // ONE source of art: #coinG in the page defs is rewritten to the current skin's coin, so the counter, the flying loot, the
@@ -1005,27 +1035,54 @@
     chains.forEach(K => { if (K.size > 1 && S.has(K.vs.join('.')) && !found.has(K.key)) { found.add(K.key); any = true; } });
     return any || a.length > 0;
   }
+  // ---------------- scoring: ONE set of rules for the island board and the framed skins ----------------
+  // A chain pays once, when it is first caught (island: traced whole; frame: swapped): 10 x size x free ends x ring (chainPoints),
+  // +5 x size when it is the longest yet. A colouring pays NEWPAT the first time it is reached. Both are remembered for the level
+  // (found, visited), so undo / reset / swapping back pays nothing again: a framed skin's free undo cannot farm points.
+  // Achievements (award) pay 100 once per save. tools/tickets_check.js's PAY table is this rule on par play.
+  const NEWPAT = 25;
+  function chainPay(K) {                       // -> { pts, longest } for catching K now (moves bestLen)
+    const { pts } = chainPoints(K); let bonus = 0, longest = false;
+    if (K.size > bestLen) { if (bestLen > 1) { bonus = 5 * K.size; longest = true; } bestLen = K.size; }
+    return { pts: pts + bonus, longest };
+  }
+  function chainAwards(K) { award('capture'); if (K.lock) award('lock'); if (K.size >= 15) award('long'); if (L.tools.includes('pi')) { const pk = piChain(); if (pk && pk.key === K.key) award('pi'); } }
+  // a framed skin's swap (lab/core.js message): K is the chain swapped, found in the colouring BEFORE it (chains still of that state)
+  let frameAt = null;                          // last swap point from the frame (LAB.at), in frame CSS px
+  const framePt = () => { const r = $('skinFrame').getBoundingClientRect(); return frameAt ? [r.left + frameAt[0], r.top + frameAt[1]] : [r.left + r.width / 2, r.top + r.height * .45]; };
+  function framedCatch(K) {                    // before the colouring changes: the chain's own pay
+    if (!K || K.web || K.size < 2 || found.has(K.key)) return 0;
+    found.add(K.key); memCatch(K); const { pts } = chainPay(K); chainAwards(K); return pts;
+  }
+  function framedLand(pts) {                   // after: a new colouring pays too; then the coins fly from the swap into the counter
+    const cs = canon(col); if (!visited.has(cs)) { visited.add(cs); pts += NEWPAT; award('newstate'); }
+    memRecall(); lastProgress = performance.now();
+    if (!(pts > 0)) return;
+    gain(pts); peekCoins();
+    loot(pts, () => { const p = framePt(); floatFix(p, '+' + cfl(pts)); return p; }, { delay: 90 });
+  }
+  function floatFix(p, text) { if (reduced) return; const d = document.createElement('div'); d.className = 'float'; d.textContent = text; d.style.left = (p[0] - 30) + 'px'; d.style.top = (p[1] - 30) + 'px'; d.style.minWidth = '60px'; lootLayer.appendChild(d); setTimeout(() => d.remove(), 1250); }
+  // compact / minimal HUDs hide the counter: it peeks in at the top while coins land, then hides again
+  let peekT = 0;
+  function peekCoins() { const gm = $('game'); if (!gm.classList.contains('hud-compact') && !gm.classList.contains('hud-minimal')) return; gm.classList.add('cpeek'); clearTimeout(peekT); peekT = setTimeout(() => gm.classList.remove('cpeek'), 2600); }
   // ---------------- capture ----------------
   const LOG = (t, d) => { if (window.FTH_LOG) window.FTH_LOG.ev(t, d); };   // anonymous research log (telemetry.js), only after consent
   function capture(K, atBall) {
     LOG('catch', { n: K.size, p: K.pair, lock: !!K.lock, web: !!K.web });
     found.add(K.key); lastProgress = performance.now(); wrongSteps = 0; memCatch(K);
-    const { pts } = chainPoints(K);
-    let bonus = 0, longest = false;
-    if (K.size > bestLen) { if (bestLen > 1) { bonus = 5 * K.size; longest = true; } bestLen = K.size; }
-    gain(pts + bonus);
+    const { pts, longest } = chainPay(K);
+    gain(pts);
     if (needFind) needFind = false;
-    floatBall(atBall, '+' + cfl(pts + bonus), longest ? 'longest yet!' : '');
-    loot(pts + bonus, () => tileAt(atBall), { delay: 180 });
-    award('capture'); if (K.lock) award('lock'); if (K.size >= 15) award('long');
-    if (L.tools.includes('pi')) { const pk = piChain(); if (pk && pk.key === K.key) award('pi'); }
+    floatBall(atBall, '+' + cfl(pts), longest ? '🏅' : '');
+    loot(pts, () => tileAt(atBall), { delay: 180 });
+    chainAwards(K);
     [0, 2, 4].forEach((d, i) => setTimeout(() => note(K.size + d), i * 70));   // a chord at the top of the climb
     K.order.forEach((layer, i) => setTimeout(() => layer.forEach(u => popBall(u)), reduced ? 0 : i * 45));
     active = K.key;
     const piK = L.tools.includes('pi') ? piChain() : null;
-    msg(K.web ? '<b>Caught the whole ' + NAMES[K.pair[0]] + '–' + NAMES[K.pair[1]] + ' web!</b> Swapping it just swaps two colours everywhere.'
-      : K.lock ? '<b>Lock caught!</b> Swapping it just moves the problem round.'
-      : '<b>Caught!</b> ' + (piK && piK.key === K.key ? 'This is <b>π</b>! ' : '') + 'Tap the chain to <b>swap</b> it.');
+    msg(K.web ? pairChip(K.pair[0], K.pair[1]) + ' <b>🔁 web</b>'                     // the whole web: swapping it only renames two colours
+      : K.lock ? pairChip(K.pair[0], K.pair[1]) + ' <b>🔒 lock</b>'                    // a lock: swapping it only moves the problem round
+      : '<b>Caught!</b> ' + (piK && piK.key === K.key ? '<b>π</b> ' : '') + '<b>⇄</b>');
     drawTraced(); drawActive(); updateHud();
   }
 
@@ -1033,9 +1090,9 @@
   function canFlip(K) { return found.has(K.key) && (!needFind || K.key === lastFlip); }
   function doFlip(K, isBack) {
     if (busy || won) return;
-    if (!found.has(K.key)) { LOG('swap_no', { why: 'untraced', n: K.size }); msg('Trace that chain first!'); return; }
+    if (!found.has(K.key)) { LOG('swap_no', { why: 'untraced', n: K.size }); msg('<b>👆</b> trace first'); return; }
     if (K.web) { LOG('swap_web', { n: K.size, p: K.pair }); flipWeb(K); return; }
-    if (!canFlip(K)) { LOG('swap_no', { why: 'charge', n: K.size }); msg('Catch a <b>new</b> chain first! (BACK still works.)'); popBall(K.vs[0], 'wob'); blip(160, .15, 'square', .03); return; }
+    if (!canFlip(K)) { LOG('swap_no', { why: 'charge', n: K.size }); msg('<b>🔍</b> new chain first'); popBall(K.vs[0], 'wob'); blip(160, .15, 'square', .03); return; }
     busy = true; closeWheel(); LOG('swap', { n: K.size, p: K.pair, back: !!isBack, lock: !!K.lock });
     const after = flipped(col, K);
     if (!isBack) history.push(K.key);
@@ -1058,7 +1115,7 @@
           pause = 330; note(12); setTimeout(() => note(16), 160);
           BRD.holePop(1.25);
           popBall(link[0], 'hintpulse');
-          msg('<b>' + NAMES[gone[0]][0].toUpperCase() + NAMES[gone[0]].slice(1) + ' is gone from the ring!</b> Now the middle can take it.');
+          msg(elemChip(gone[0]) + ' <b>gone!</b>');
         }
       }
       if (++i < K.order.length) setTimeout(tick, reduced ? 0 : STEP + pause);
@@ -1066,7 +1123,7 @@
     };
     if (winning) {                                                     // build-up: the ring pulses, then the slow ripple
       link.forEach((u, k) => setTimeout(() => popBall(u, 'hintpulse'), k * 30));
-      msg('Watch the ring…'); blip(220, .2, 'sine', .04);
+      msg('<b>👀</b>'); blip(220, .2, 'sine', .04);
       setTimeout(tick, 180);
     } else tick();
   }
@@ -1091,7 +1148,7 @@
       computeChains(); if (window.FTH_RUN) FTH_RUN.op('w', col);
       blip(150, .14, 'square', .035); setTimeout(() => blip(110, .2, 'square', .03), 130);
       const some = K.vs.filter(u => BRD.isTile(u)); some.filter((u, j) => j % Math.max(1, Math.floor(some.length / 5)) === 0).slice(0, 6).forEach(u => { shake(u); popBall(u, 'wob'); });
-      msg('<b>Nothing changed!</b> That just swapped ' + NAMES[a] + ' and ' + NAMES[b] + ' everywhere: same puzzle, new colours.');
+      msg(pairChip(a, b) + ' <b>🔁 same puzzle</b>');                   // the web swap renamed two colours everywhere
       drawTraced(); drawActive(); updateHud();
     };
     tick();
@@ -1107,11 +1164,11 @@
     const alive = new Set(chains.map(c => c.key));
     [...traced.keys()].forEach(k => { if (!alive.has(k)) traced.delete(k); });
     const known = memRecall();
-    if (isNew) { visited.add(cs); needFind = !known; gain(25); floatBall(K.vs[0], '+' + cfl(25), 'new pattern!'); loot(25, () => tileAt(K.vs[0]), { delay: 120 }); award('newstate'); }
+    if (isNew) { visited.add(cs); needFind = !known; gain(NEWPAT); floatBall(K.vs[0], '+' + cfl(NEWPAT), '✨'); loot(NEWPAT, () => tileAt(K.vs[0]), { delay: 120 }); award('newstate'); }
     else needFind = false;
     worldEnter(K);
-    if (filled(col)) { drawTraced(); drawActive(); updateHud(); return win(); }
-    msg(isNew && !known ? '<b>New pattern!</b> Catch a new chain to charge your next swap.' : isNew ? '<b>You know this one</b> from before: its chains are still caught.' : 'Been here before: swaps are free.');
+    if (filled(col)) { drawTraced(); drawActive(); updateHud(); win(); eggsWon(); return; }
+    msg(isNew && !known ? '<b>✨ New!</b> 🔍 catch a chain' : isNew ? '<b>🧠 seen before</b>' : '<b>↺ free swap</b>');   // new: catch a chain to charge the next swap; known: its chains stay caught; revisited: swaps are free
     drawTraced(); drawActive(); updateHud();
   }
 
@@ -1149,9 +1206,9 @@
       o.addEventListener('pointerdown', e => e.stopPropagation());
       o.addEventListener('click', e => {
         e.stopPropagation();
-        if (!isFound) { msg('Trace the <b>' + NAMES[col[u]] + '–' + NAMES[c] + '</b> chain from here first!'); o.animate && o.animate([{ transform: 'translateX(-5px)' }, { transform: 'translateX(5px)' }, { transform: 'none' }], { duration: 180 }); blip(160, .12, 'square', .03); return; }
+        if (!isFound) { msg(pairChip(col[u], c) + ' <b>👆</b>'); closeWheel(); ghost(chainWalk(K, u, 4)); o.animate && o.animate([{ transform: 'translateX(-5px)' }, { transform: 'translateX(5px)' }, { transform: 'none' }], { duration: 180 }); blip(160, .12, 'square', .03); return; }
         active = K.key; drawActive(); closeWheel();
-        msg(K.web ? 'The whole ' + NAMES[K.pair[0]] + '–' + NAMES[K.pair[1]] + ' web: <b>🔁 same puzzle</b> if you swap it. Tap it to try!' : (K.lock ? '<b>Lock chain.</b> ' : '') + 'Tap the chain to <b>swap</b> it' + (canFlip(K) ? '!' : ' (catch a new chain first).'));
+        msg(K.web ? '<b>🔁 same puzzle</b>' : (K.lock ? '<b>🔒</b> ' : '') + (canFlip(K) ? '<b>⇄</b> tap to swap' : '<b>🔍</b> new chain first'));
         blip(700, .07);
       });
       wheel.appendChild(o);
@@ -1197,12 +1254,12 @@
     lastPartial = t && t.pair ? { key: t.comp.key, pair: t.pair } : lastPartial;
     if (!t || !t.pair) return;
     const K = t.comp, set = traced.get(K.key); LOG('trace_end', { k: set.size, n: K.size, p: K.pair });
-    if (found.has(K.key)) { drawTraced(); msg('Already caught!'); active = K.key; drawActive(); return; }
+    if (found.has(K.key)) { drawTraced(); msg('<b>✓</b>'); active = K.key; drawActive(); return; }
     if (set.size >= K.size) capture(K, t.path[t.path.length - 1]);
     else {
       drawTraced();
       const [x, y] = toScreen(t.path[t.path.length - 1]); floatAt(x, y, set.size + '/' + K.size, '', 'dim');
-      msg('<b>' + set.size + ' of ' + K.size + '!</b> It branches: trace the rest.');
+      msg('<b>' + set.size + '/' + K.size + '</b> 🌿');                        // it branches: trace the rest
     }
   }
   function extendByTap(u) {                // tap a neighbour of the chain being built to add it
@@ -1211,7 +1268,7 @@
     const set = traced.get(K.key); if (!set || set.has(u)) return false;
     if (!K.set.has(u) || ![...set].some(x => adj[x].includes(u))) { if (adj[u].some(x => set.has(x))) { shake(u); blip(150, .14, 'square', .035); return true; } return false; }
     set.add(u); popBall(u); note(set.size - 1); ripple(u, .1, 1);
-    if (set.size >= K.size) capture(K, u); else msg('<b>' + set.size + ' of ' + K.size + '!</b> Keep going.');
+    if (set.size >= K.size) capture(K, u); else msg('<b>' + set.size + '/' + K.size + '</b> ➜');
     updateHud(); return true;
   }
   function startByTaps(a, u) {             // tap a tile, then a neighbour of another colour: start that chain
@@ -1220,7 +1277,7 @@
     if (!traced.has(K.key)) traced.set(K.key, new Set());
     const set = traced.get(K.key); [a, u].forEach(x => { if (!set.has(x)) { set.add(x); popBall(x); note(set.size - 1); } });
     lastPartial = { key: K.key, pair: K.pair.slice() };
-    if (set.size >= K.size) capture(K, u); else msg('<b>' + set.size + ' of ' + K.size + '!</b> Keep going.');
+    if (set.size >= K.size) capture(K, u); else msg('<b>' + set.size + '/' + K.size + '</b> ➜');
     return true;
   }
   // After a swap the flipped chain stays lit on a dimmed board so you can see what changed. The first sign that you
@@ -1314,13 +1371,12 @@
     if (m === 'next') { if (BRD.cer) { BRD.cer.skip = true; if (BRD.cer.wake) BRD.cer.wake(); return; } $('winNext').click(); return; }   // during the hole ceremony: hurry it along
     if (m === 'swap') {
       const A = (active && chains.find(c => c.key === active)) || chains.filter(K => found.has(K.key) && K.size > 1 && !K.web && canFlip(K)).sort((a, b) => filled(flipped(col, b)) - filled(flipped(col, a)))[0];
-      if (A) { if (active !== A.key) { active = A.key; drawActive(); updateHud(); msg('Press <b>SWAP!</b> again!'); } else doFlip(A, false); }
+      if (A) { if (active !== A.key) { active = A.key; drawActive(); updateHud(); msg('<b>⇄</b> again'); } else doFlip(A, false); }
       return;
     }
     const rim = new Set(link), cand = chains.filter(K => K.size > 1 && !K.web && !found.has(K.key) && K.vs.some(u => rim.has(u)));
     const K = cand[0] || chains.find(K => K.size > 1 && !K.web && !found.has(K.key)); if (!K) return;
-    const u = K.vs.find(x => rim.has(x)) ?? K.vs[0]; popBall(u, 'hintpulse');
-    msg('Start at the <b>glowing</b> tile and drag!');
+    ghostChain(K);
   };
   $('btnRestart').onclick = () => { if (window.FTH_LOG) FTH_LOG.end('restart'); startLevel(levelIdx, false); };
   $('btnHint').onclick = () => {
@@ -1332,14 +1388,14 @@
     hintsUsed++; if (window.FTH_RUN) FTH_RUN.hint(); const paid = Math.min(score, 100); score -= paid; walletAdd(ACT.id, -paid * RATE); pending = Math.min(pending, score);
     if (paid) { bumpEl($('coinBox'), 'loss'); const [cx, cy] = centerOf($('coinBox')), br = $('board').getBoundingClientRect(); floatAt(cx - br.left, Math.max(20, cy - br.top + 30), '−' + cfl(paid), '', 'dim'); blip(220, .15, 'triangle', .03); }
     const K = good.find(k => found.has(k.key)) || good.sort((a, b) => a.size - b.size)[0];
-    const why = ' It takes you from <b>' + d + '</b> to <b>' + (d - 1) + '</b> swap' + (d - 1 === 1 ? '' : 's') + ' from filling' + (W ? ': the <b style="color:#2e9e57">green</b> arrow.' : '.');
+    const why = ' <b>' + d + '→' + (d - 1) + '</b>';                    // swaps from filling: now, after this chain (the compass's green arrow)
     if (found.has(K.key)) {
       active = K.key; drawActive(); compassChain(K, -1);
-      msg('Hint: swap the <b>glowing</b> chain!' + why);
+      msg('<b>💡 ⇄</b>' + why);
     } else {
       const u = K.vs.slice().sort((a, b) => ring[a] - ring[b])[0];
-      popBall(u, 'hintpulse'); compassChain(K, u);
-      msg('Hint: catch the <b>' + NAMES[K.pair[0]] + '–' + NAMES[K.pair[1]] + '</b> chain at the pulsing tile, then swap it!' + why);
+      popBall(u, 'hintpulse'); compassChain(K, u); ghost(chainWalk(K, u, 4));
+      msg('<b>💡</b> ' + pairChip(K.pair[0], K.pair[1]) + why);
     }
     updateHud();
   };
@@ -1349,15 +1405,17 @@
 
   // ---------------- achievements ----------------
   const ACH = {
-    capture: ['First catch', 'captured a Kempe chain'], lock: ['Lock-picker', 'captured a lock chain'], long: ['Long haul', 'captured a chain of 15+'],
-    newstate: ['Explorer', 'flipped into a new colouring'], hexes10: ['Cartographer', 'charted 10 hex tiles'], hexes50: ['Surveyor', 'charted 50 hex tiles'],
-    landho: ['Land ho!', 'one flip from an island'], pi: ['Canon', 'captured the π chain'], island: ['Landfall', 'filled the hole on the record map'],
+    // [title, what earned it]: the toast shows the title only; the second part is for the research log and the code
+    capture: ['First catch', 'captured a Kempe chain'], lock: ['🔒 Lock-picker', 'captured a lock chain'], long: ['Long haul', 'captured a chain of 15+'],
+    newstate: ['✨ Explorer', 'flipped into a new colouring'], hexes10: ['🗺️ Cartographer', 'charted 10 hex tiles'], hexes50: ['🗺️ Surveyor', 'charted 50 hex tiles'],
+    landho: ['Land ho!', 'one flip from an island'], pi: ['π Canon', 'captured the π chain'], island: ['🏝️ Landfall', 'filled the hole on the record map'],
     jump: ['Long jump', 'a flip that crossed a third of the map'],
   };
   save.ach = save.ach || {};
   function award(k) {
     if (save.ach[k]) return; save.ach[k] = 1; persist();
-    const d = toast(ACH[k][0], ACH[k][1], '🏆', 100); gain(100); arp(660, 4, 70);
+    if (ACT.src) { gain(100); arp(660, 4, 70); peekCoins(); loot(100, framePt, { bag: true, delay: 420 }); return; }   // framed skin: no toast (the board is hidden)
+    const d = toast(ACH[k][0], '', '🏆', 100); gain(100); arp(660, 4, 70);
     loot(100, () => d.isConnected ? centerOf(d.querySelector('.tro')) : centerOf($('board')), { bag: true, delay: 420 });
   }
   // a card slides in at the top of the board; with an icon it's a trophy card (achievements carry +points)
@@ -1492,7 +1550,7 @@
     const after = chartedCount(), gained = after - before;
     if (gained > 0 && K) { gain(10 * gained); loot(10 * gained, () => { const r = $('mini').getBoundingClientRect(); return r.width ? [r.left + r.width / 2, r.top + r.height / 2] : centerOf($('board')); }, { delay: 500 }); }
     if (after >= 10) award('hexes10'); if (after >= 50) award('hexes50');
-    if (land && !won && K) { award('landho'); toast('Island in sight!', 'one swap from here fills the hole', '🏝️'); }
+    if (land && !won && K) { award('landho'); toast('1 swap!', '', '🏝️'); }   // island in sight: one swap from here fills the hole
     wVer++; worldPersist(); pmDirty = true;
   }
   // the player icon on the map: a gold diamond with a pulsing ring
@@ -1721,7 +1779,7 @@
       wedge + arrows + '<path d="M42 37 L45.5 42 L42 47 L38.5 42Z" fill="#ffd666" stroke="#1a1200" stroke-width="1"/></svg>';
     el.classList.add('on');
     if (!compassTold) { compassTold = true; try { localStorage.setItem('fth-compass', '1'); } catch (_) {}
-      msg('The <b>compass</b> shows which way a swap takes you on the map: <b style="color:#2e9e57">green</b> is closer to filling, <b style="color:#d23a3a">red</b> further.'); }
+      msg('<b>🧭</b> <b style="color:#2e9e57">▲ closer</b> <b style="color:#d23a3a">▼ further</b>'); }   // which way a swap takes you on the map of colouring space
   }
   let compassTold = false; try { compassTold = localStorage.getItem('fth-compass') === '1'; } catch (_) {}
   const tileAtPx = u => BRD.posOf(u);
@@ -1796,7 +1854,7 @@
   function skinStart() {
     clearTimeout(skinWinT);
     ACT = !SKIN.src || skinFits(SKIN) ? SKIN : SKINS[0];                       // a skin with a play page that cannot draw this map plays on the island
-    if (ACT !== SKIN) msg(SKIN.name + ' cannot draw this map yet, so it plays on the island.');
+    if (ACT !== SKIN) msg('<b>🏝️</b> ' + SKIN.ic);                       // this skin cannot draw this map yet: it plays on the island
     const on = !!ACT.src, f = $('skinFrame'), gm = $('game'), hud = ACT.hud || 'full';
     gm.classList.toggle('skinned', on);
     if (on) BRD.destroy();                                  // the island board is not drawn while a play page runs
@@ -1812,19 +1870,30 @@
   addEventListener('message', e => {
     const d = e.data, f = $('skinFrame');
     if (window.FTH_RUN) FTH_RUN.sniff(e, d, f.contentWindow);
-    if (!d || !d.fth || !ACT.src || e.source !== f.contentWindow || !L || won) return;
+    if (!d || !d.fth || !ACT.src || e.source !== f.contentWindow || !L) return;
+    if (d.type === 'egg') return eggPage(d);               // a page easter egg (SKIN-SPEC 15): may land during the win celebration too
+    if (won) return;
     if (d.type === 'ready') skinTokens(ACT);
     if (d.type === 'error') {                              // the skin broke: finish this level on the island board
       console.warn('skin ' + ACT.id + ' failed on ' + L.id + ': ' + d.message);
       if (window.FTH_RUN) FTH_RUN.end('skin-error');
-      ACT = SKINS[0]; skinStop(); msg(SKIN.name + ' hit a problem here, so this level plays on the island.');
+      ACT = SKINS[0]; skinStop(); msg('<b>🏝️</b> ' + SKIN.ic);
       requestAnimationFrame(() => { computeChains(); buildBoard(false); drawTraced(); drawActive(); updateHud(); });   // the board was hidden
       if (window.FTH_LOG) FTH_LOG.ev('skin-error', { skin: SKIN.id, message: d.message });
       return;
     }
     if (d.id !== L.id) return;
+    if (d.type === 'at') { if (Array.isArray(d.at) && d.at.every(isFinite)) frameAt = d.at.slice(0, 2); return; }   // LAB.at called just after its swap
+    EGGS.touch();
     if (!ACT.own && (d.type === 'swap' || d.type === 'undo' || d.type === 'reset')) {
-      col = d.col.slice(); col[hole] = -1; flips = d.moves; computeChains(); updateHud();
+      // scoring (same rules as the island board, see chainPay): the chain swapped is read off the colouring before the swap
+      let K = null;
+      if (d.type === 'swap' && Array.isArray(d.col) && d.col.length === n) { const v = d.col.findIndex((c, u) => u !== hole && c !== col[u]); if (v >= 0 && chainAt[v]) K = chainAt[v][d.col[v]]; if (K && !K.vs.every(u => d.col[u] !== col[u])) K = null; }
+      frameAt = Array.isArray(d.at) && d.at.length >= 2 && d.at.every(isFinite) ? d.at.slice(0, 2) : null;
+      const pts = framedCatch(K);
+      col = d.col.slice(); col[hole] = -1; flips = d.moves; computeChains();
+      if (d.type === 'swap') framedLand(pts);
+      updateHud();
       if (window.FTH_RUN) FTH_RUN.frame(d);
       worldEnter(d.type === 'swap' ? { skin: ACT.id } : null);   // every skin charts colouring space
       if (window.FTH_LOG) FTH_LOG.ev(d.type, { skin: ACT.id, state: canon(col), moves: d.moves });
@@ -1832,9 +1901,47 @@
     if (ACT.own && d.type === 'done' && d.own) { flips = Math.min(d.moves, L.par); hintsUsed = 0; }   // a full colouring: every star
     if (d.won && (d.type === 'done' || (d.type === 'swap' && !ACT.waits))) {
       clearTimeout(skinWinT);                              // done: now; a skin that never calls LAB.done(): after 6 s
-      skinWinT = setTimeout(() => { if (!won) win(); }, d.type === 'done' ? 0 : 6000);
+      skinWinT = setTimeout(() => { if (!won) { win(); eggsWon(); } }, d.type === 'done' ? 0 : 6000);
     }
   });
+
+  // ---------------- easter eggs (eggs.js; SKIN-SPEC.md section 15) ----------------
+  // Page eggs arrive as { type: 'egg', id, pts, lvl } from LAB.egg; title / map / win / idle eggs run in eggs.js. Credit is QUIET:
+  // coins straight into the skin's wallet (no score, no toast, no counter bump), capped at EGG_CAP points a level (off-level
+  // eggs: a day), so nothing about stars, best scores or run proofs changes. Every egg found is logged (research log).
+  const EGG_CAP = 2000, eggLvl = { pts: 0 };
+  const inLevel = () => $('game').classList.contains('on') && !!L;
+  function eggCredit(k, egg, pts, on) {
+    const lvl = inLevel(), day = new Date().toISOString().slice(0, 10);
+    if (!lvl && !(save.eggDay && save.eggDay.d === day)) save.eggDay = { d: day, p: 0 };
+    const room = EGG_CAP - (lvl ? eggLvl.pts : save.eggDay.p), p = egg.pays === false ? 0 : Math.max(0, Math.min(Math.round(pts) || 0, room));
+    LOG('egg', { skin: k.id, id: egg.id, on, pts: p, asked: pts, lvl: lvl ? L.id : '' });
+    if (!p || LABN) return 0;
+    if (lvl) eggLvl.pts += p; else save.eggDay.p += p;
+    walletAdd(k.id, p * (lvl ? RATE : FTH_SKINS.rate(k)));       // persists (and seals) the save
+    return p;
+  }
+  function eggPage(d) {                          // only eggs the skin declares with on: 'page', for this level
+    const egg = EGGS.of(ACT, 'page').find(e => e.id === d.id);
+    if (!egg || (d.lvl && d.lvl !== L.id)) { LOG('egg_unknown', { skin: ACT.id, id: String(d.id).slice(0, 40) }); return; }
+    eggCredit(ACT, egg, Math.max(0, +d.pts || 0), 'page');
+  }
+  const EGGS = FTH_EGGS.create({ reduced,
+    skin: on => on === 'title' || on === 'map' ? SKIN : ACT,
+    sound: nm => { if (nm === 'pop') { blip(620, .07, 'triangle', .05); setTimeout(() => blip(930, .09, 'sine', .04), 60); } else if (nm === 'chime') arp(784, 4, 70); else if (nm === 'whoosh') wsfx.sweep(); else if (nm === 'cheer') wsfx.cheer(); },
+    pay: (egg, pts, on) => eggCredit(on === 'title' || on === 'map' ? SKIN : ACT, egg, pts, on),
+    log: (egg, on) => LOG('egg_run', { skin: (on === 'title' || on === 'map' ? SKIN : ACT).id, id: egg.id, on }),
+    screen: () => document.querySelector('.screen.on') });
+  function eggsWon() { EGGS.idleStop(); EGGS.win(); }
+  ['tSkinArt', 'tDemo'].forEach(id => $(id).addEventListener('pointerdown', () => EGGS.tap('title')));
+  $('saga').addEventListener('click', e => {      // the "you are here" pin is its own tap target: it wiggles (and may hide an egg)
+    const me = e.target.closest && e.target.closest('.me'); if (!me) return;
+    e.stopPropagation(); e.preventDefault(); blip(700 + Math.random() * 200, .06, 'triangle', .04);
+    if (!reduced && me.animate) me.firstElementChild.animate([{ transform: 'none' }, { transform: 'scale(1.2, .8)' }, { transform: 'translateY(-10px) rotate(-10deg)' }, { transform: 'rotate(8deg)' }, { transform: 'none' }], { duration: 420, easing: 'ease-out' });
+    EGGS.tap('map');
+  }, true);
+  $('game').addEventListener('pointerdown', () => EGGS.touch(), true);
+  $('skinFrame').addEventListener('load', () => { try { $('skinFrame').contentDocument.addEventListener('pointerdown', () => EGGS.touch(), true); } catch (e) { /* cross-origin: swaps still count as touches */ } });
 
   // ---------------- levels ----------------
   function startLevel(i, brief) {
@@ -1855,9 +1962,10 @@
     lootReset(); hudStars = 3; goalKey = ''; goalPrev = null; trayFrac.clear(); stamped.clear(); $('starMeter').innerHTML = '';
     $('menu').classList.remove('on'); $('game').classList.add('on'); $('win').classList.remove('on');
     BRD.reset(); BRD.configure(boardOf(SKIN), SKIN.id); compass = null; $('compass').classList.remove('on'); computeChains(); memRecall(); buildBoard(); closeWheel(); drawTraced(); drawActive(); worldStart();
-    msg('Drag across two colours to <b>catch</b> a chain!');
+    msg('<b>👆 trace a chain</b>');
     updateHud();
-    skinStart();
+    setTimeout(() => { if (!ACT.src && L === G.levels[i] && !score && !trace && !won && !flips) { const rim = new Set(link); ghostChain(chains.filter(K => K.size > 1 && !K.web && !found.has(K.key) && K.vs.some(u => rim.has(u))).sort((a, b) => a.size - b.size)[0]); } }, 1400);
+    skinStart(); eggLvl.pts = 0; EGGS.idleStart();
     if (window.FTH_RUN && !LABN) FTH_RUN.begin({ id: L.id, skin: ACT.id, cnt: ACT.src ? 'net' : 'all', own: !!ACT.own });   // run proof recorder (integrity.js)
     if (brief) showBrief();
   }
@@ -1866,8 +1974,8 @@
     $('briefTitle').textContent = L.title; $('briefText').textContent = L.intro;
     { const nm = L.num || String(levelIdx + 1); $('briefBadge').innerHTML = uiTile(0, 0, 31, [6, 5, 7, 6, 5, 6, 7, 5][levelIdx % 8], levelIdx % 4, { label: nm, fs: nm.length > 2 ? 16 : nm.length > 1 ? 21 : 26 }); }
     const b = save.best[levelIdx];
-    $('briefMeta').innerHTML = '<span class="pill">Par <b>' + L.par + '</b> flip' + (L.par > 1 ? 's' : '') + '</span><span class="pill">' + (n - 1) + ' tiles</span>' +
-      '<span class="pill">' + Gr.name + '</span>' + (b ? '<span class="pill">Best ' + b.score + ' ' + '★'.repeat(b.stars) + '</span><span class="pill">Replay pays ¼</span>' : '');
+    $('briefMeta').innerHTML = '<span class="pill" aria-label="Par ' + L.par + ' swap' + (L.par > 1 ? 's' : '') + '">⇄ <b>' + L.par + '</b></span><span class="pill" aria-label="' + (n - 1) + ' tiles">⬢ ' + (n - 1) + '</span>' +
+      '<span class="pill" aria-label="Map ' + Gr.name + '">🗺️ ' + Gr.name + '</span>' + (b ? '<span class="pill" aria-label="Best ' + b.score + ' points, ' + b.stars + ' stars">🏅 ' + b.score + ' ' + '★'.repeat(b.stars) + '</span><span class="pill" aria-label="A replay pays a quarter">↻ ¼</span>' : '');
     $('brief').classList.add('on');
   }
   function win() {
@@ -2142,6 +2250,7 @@
     good: () => { const d = dist(col); return chains.filter(K => dist(flipped(col, K)) === d - 1); }, dist: () => dist(col), get won() { return won; }, get T() { return BRD.debug().T; }, get trace() { return trace; }, pick: (x, y) => pick(x, y), pickAll: (x, y) => pickAll(x, y), stepTarget: (x, y) => stepTarget(x, y), ballAt: (x, y) => ballAt(x, y), get layout() { return BRD.debug().LAYO; }, get box() { return BRD.debug().BOX; }, get graph() { return Gr; }, get bridges() { return BRD.debug().bridges; }, board: BRD,
     gain, win: () => win(), capture: K => capture(K, K.vs[0]), flip: K => doFlip(K), get busy() { return busy; }, get score() { return score; }, get rate() { return RATE; },   // test hooks for tools/coins_check.js
     bonus: (ncol, delay) => { $('win').classList.add('on'); bonusStart(delay || 0, ncol); }, get bz() { return bz; }, get active() { return active; }, get compass() { return compass; }, get pm() { return PM; }, get free() { return BRD.debug().free; }, get LIVE() { return BRD.LIVE; } };   // test hook
+  Object.defineProperty(window.__game, 'act', { get: () => ACT });   // test hook: the running skin's spec (eggs tests)
   Object.assign(window.__game, { sfx: wsfx, flip: K => { found.add(K.key); needFind = false; doFlip(K); } });   // test hook: tools/win_scene_check.js (flip: marks the chain found first)
   // ---------------- dev panel (board/island.js): live spring / damping knobs, crossing guard, free borders ----------------
   // Open with #dev on the link, or tap the level name five times. Changes apply at once to the running board.
@@ -2243,7 +2352,7 @@
   function titleStop() { if (titleStopFn) titleStopFn(); titleStopFn = null; }
   function showTitle() {
     $('win').classList.remove('on'); $('brief').classList.remove('on');
-    $('game').classList.remove('on'); $('menu').classList.remove('on'); $('title').classList.add('on');
+    $('game').classList.remove('on'); $('menu').classList.remove('on'); $('title').classList.add('on'); EGGS.idleStop();
     uiTotals(); titleStart(); ticketDots();
   }
 
@@ -2332,7 +2441,7 @@
     [[X, 2, 'x', 6], [Y, 0, 'y', 5], [V, 3, 'v', 6], [W, 2, 'w', 5]].forEach(([p, e, k, n]) => { s += uiTile(p[0], p[1], 20, n, e, { k: k }); });
     P.forEach((p, k) => { s += uiTile(p[0], p[1], 21, RIMS[k], rim[k], { k: k }); });
     s += '<g class="lock" opacity="0" transform="translate(277 96)"><g class="lin"><circle r="19" fill="#fff" stroke="#ff2d55" stroke-width="4"/><text x="0" y="2" text-anchor="middle" dominant-baseline="central" font-size="20">🔒</text></g></g>';
-    s += '<text class="nope chunky" x="150" y="252" text-anchor="middle" font-size="20" fill="#ff8aa0" stroke-width="5" opacity="0">Locked! Try another chain.</text>';
+    s += '<text class="nope chunky" x="150" y="252" text-anchor="middle" font-size="22" fill="#ff8aa0" stroke-width="5" opacity="0">🔒 Locked!</text>';
     svg.innerHTML = s;
     const C = [tk(svg, 0), tk(svg, 'x'), tk(svg, 'y'), tk(svg, 2)], lock = svg.querySelector('.lock'), lin = svg.querySelector('.lin'), nope = svg.querySelector('.nope'), trail = svg.querySelector('.trail');
     lin.style.transformBox = 'fill-box'; lin.style.transformOrigin = 'center';
@@ -2348,10 +2457,10 @@
     return { loop: 5400, steps, end: () => { reset(); C.forEach(t => t.classList.add('lit')); trail.setAttribute('opacity', .8); locked(); } };
   }
   const HT0 = [
-    { h: 'The goal', p: 'Get one element off the ring. Then the middle tile can take it!', b: htGoal },
-    { h: 'Trace a chain', p: 'Drag along tiles of two elements that take turns. Light them all up!', b: htTrace },
-    { h: 'Swap!', p: 'Tap the glowing chain to swap its two elements.', b: htSwap },
-    { h: 'Watch out for locks', p: 'A chain that joins two ring tiles just moves the problem. Try another!', b: htLock },
+    { h: 'The goal', p: 'One element off the ring fills the middle.', b: htGoal },
+    { h: 'Trace a chain', p: 'Drag along two elements that take turns.', b: htTrace },
+    { h: 'Swap!', p: 'Tap the chain: its two elements swap.', b: htSwap },
+    { h: 'Locks', p: 'A chain joining two ring tiles just moves the problem.', b: htLock },
   ];
   let HT = HT0, htPage = -1, htStopFn = null, htAfter = null;
   const htStill = () => ({ steps: [[0, () => {}]], loop: 60000, end() {} });   // skin pages animate with CSS
@@ -2390,7 +2499,7 @@
     const d = HT[p].b($('htDemo' + p)); htStopFn = uiScript(d.steps, d.loop, d.end);
     [...$('htDots').children].forEach((b, k) => { b.classList.toggle('on', k === p); b.setAttribute('aria-current', k === p ? 'step' : 'false'); });
     $('htBack').disabled = p === 0;
-    $('htNext').textContent = p === HT.length - 1 ? "Let's play! ▶" : 'Next ▶';
+    $('htNext').textContent = p === HT.length - 1 ? 'PLAY ▶' : '▶';
     $('htNext').setAttribute('aria-label', p === HT.length - 1 ? 'Done, start playing' : 'Next step');
   }
   function htGo(p) {
@@ -2611,7 +2720,7 @@
     return { y: P[cur][1] / H };
   }
   function showMenu() {
-    skinStop();
+    skinStop(); EGGS.idleStop();
     $('win').classList.remove('on'); $('brief').classList.remove('on'); closeWheel(); titleStop();
     lootReset(); msg('');
     $('game').classList.remove('on'); $('title').classList.remove('on'); $('menu').classList.add('on');

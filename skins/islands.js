@@ -8,6 +8,9 @@ FTH_SKINS.register({
     svg: FTH_SKINS.coinArt('<circle cy="1.8" r="11" fill="#c27a00" stroke="#1c1640" stroke-width="2"/><circle r="11" fill="#ffd84a" stroke="#1c1640" stroke-width="2"/><circle r="7.4" fill="none" stroke="#f0a91c" stroke-width="1.8"/><path d="M0 -4.8L1.4 -1.4 4.8 0 1.4 1.4 0 4.8-1.4 1.4-4.8 0-1.4-1.4Z" fill="#fff6c8" stroke="#c27a00" stroke-width=".8"/><path d="M-6.5 -6A9 9 0 0 1 1 -9.2" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round" opacity=".85"/>') },
   board: { free: false },             // the island board: three far regions as walls, tiles on their planar layout (SKIN-SPEC.md section 11)
   hud: 'full',
+  eggs: [                             // SKIN-SPEC.md section 15: tap the title island five times and a whale leaps out of the sea
+    { id: 'whale', on: 'title', taps: 5, run(fx) { fx.sound('whoosh'); fx.burst('🐋', .3, .34); setTimeout(() => { fx.sound('pop'); fx.burst('🐟', .72, .36); }, 700); fx.pay(40); } },
+  ],
   theme: {
     '--sk-bg': 'linear-gradient(180deg, #5fd0ff 0%, #3aa6f0 48%, #2a7fdc 100%)',
     '--sk-ink': '#ffffff',
