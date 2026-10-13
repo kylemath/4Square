@@ -5,7 +5,7 @@ one region, the hole, is left blank because its five neighbours use all four. Yo
 chain of regions that alternate two elements and swap them. Get the rim down to three elements and the hole can be
 filled.
 
-**Play:** https://kylemath.github.io/4Square/ (open `index.html`; it is a static site, no build needed to play).
+**Play:** https://4square.studio (also https://kylemath.github.io/4Square/; open `index.html`; it is a static site, no build needed to play).
 It is a progressive web app: the **📲 Install** button on the title screen adds it to an Android or iPhone home screen,
 where it runs full screen and offline (`manifest.webmanifest`, `sw.js`; icons from `tools/make_icons.py`).
 
