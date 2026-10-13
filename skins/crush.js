@@ -104,7 +104,7 @@
 
   // ---- logo, icon, card (SKIN-SPEC section 13) ----
   const LETTERS = ['#ff4d5e', '#ffd23a', '#3d8cff', '#3ecf6e', '#ff7ad1'];
-  const word = (x, y, fs, sp) => ['C', 'a', 'n', 'd', 'y'].map((ch, i) => '<tspan fill="' + LETTERS[i] + '"' + (i ? ' dx="' + sp + '"' : '') + '>' + ch + '</tspan>').join('');
+  const word = (x, y, fs, sp) => ['C', 'a', 'n', 'd', 'y'].map((ch, i) => '<tspan fill="' + LETTERS[i] + '"' + (i && sp ? ' dx="' + sp + '"' : '') + '>' + ch + '</tspan>').join('');
   const logoInner = (fs, y) => {
     const t = (extra, inner) => '<text x="120" y="' + y + '" text-anchor="middle" font-family="' + FONT + '" font-size="' + fs + '" letter-spacing="1"' + extra + '>' + inner + '</text>';
     return t(' fill="' + OUT + '" stroke="' + OUT + '" stroke-width="16" stroke-linejoin="round" transform="translate(0 6)"', 'Candy') +

@@ -14,4 +14,9 @@
  *   appId: '1:123456789:web:abcdef',
  * };
  */
-window.FTH_FIREBASE = null;
+window.FTH_FIREBASE = {           // project play4square (Kyle's Firebase console), web app "4square web"
+  apiKey: 'AIzaSyBVTFGbu7aabcS97eViouhmosML6YB2Xxg',
+  authDomain: 'play4square.firebaseapp.com',
+  projectId: 'play4square',
+  appId: '1:529165401237:web:516188c734b55e4787ef9c',
+};
