@@ -33,6 +33,12 @@ worth at first, about one level's pay, rising by 300 a ticket to 4,500): each sk
 then unlocks any locked skin. `node tools/tickets_check.js` checks the rules and that each ticket is affordable at its gate
 on clean play (17-29% to spare, before bonus rounds); `node tools/shop_check.js` plays it end to end. SKIN-SPEC.md section 12.
 
+**Maps.** The 🗺️ button (title screen and level map) opens `maps.js`: every map as a thumbnail of how much of its
+colouring space you have charted (drawn by the shell's own exploration-map renderer, `window.FTH_MAPVIEW.render`), most
+recently played first (`save.maps[<map>] = {t, id}`, written in `startLevel`; outside the save seal, which covers progress).
+Played maps show a % charted ring and open a big view with their levels; maps never played are greyed with a ▶ chip that
+starts their first level (🔒 while it is locked).
+
 **Feature bench.** Parked features stay in the code, switched off, until they are wanted again:
 - *Currency exchange* (`economy.js`: a graph of direct markets where coins convert along the cheapest route, with no
   arbitrage, `node tools/economy_check.js`). Off: no wallet button. `?feat=exchange` brings the button back.

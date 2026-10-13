@@ -511,6 +511,7 @@
       <div class="trow">
         <button class="btn3d yellow" id="btnHowTitle" aria-label="How to play">❓ How to play</button>
         <button class="btn3d white" id="btnLbTitle" aria-label="Leaderboard and profile">🏆 Scores</button>
+        <button class="btn3d white" id="btnMapsTitle" aria-label="Your maps">🗺️ Maps</button>
         <button class="btn3d white" id="btnShopTitle" aria-label="Skins and skin tickets">🎟️ Skins<i class="tdot" hidden></i></button>
         <button class="btn3d blue" id="btnInstall" aria-label="Install the game on this phone" hidden>📲 Install</button>
       </div>
@@ -528,6 +529,7 @@
     <button class="btn3d white rbtn" id="btnTitle" aria-label="Back to title screen">🏠</button>
     <div class="badge" aria-label="Your stars and points"><span class="s">★ <b id="totalStars">0</b></span><span class="p">✦ <b id="totalScore">0</b></span></div>
     <button class="btn3d white rbtn" id="btnLbMap" aria-label="Leaderboard and profile">🏆</button>
+    <button class="btn3d white rbtn" id="btnMapsMap" aria-label="Your maps">🗺️</button>
     <button class="btn3d white rbtn" id="btnShopMap" aria-label="Skins and skin tickets">🎟️<i class="tdot" hidden></i></button>
     <button class="btn3d yellow rbtn" id="btnHowMap" aria-label="How to play">?</button>
   </div>
@@ -625,6 +627,7 @@
 <script src="skins/ions.js"></script>
 <script src="skins/tables.js"></script>
 <script src="tickets.js"></script>
+<script src="maps.js"></script>
 <script src="skins/maze.js"></script>
 <script src="skins/crush.js"></script>
 <script src="skins/rimword.js"></script>
@@ -1853,6 +1856,7 @@
     score = 0; flips = 0; hintsUsed = 0; won = false; bestLen = 0; history = []; busy = false; trace = null; lastPartial = null;
     $('lvKicker').textContent = 'Level ' + (L.num || i + 1) + ' · ' + L.kicker; $('lvTitle').textContent = L.title;
     { const nm = L.num || String(i + 1); $('lvBadge').innerHTML = uiTile(0, 0, 31, [6, 5, 7, 6, 5, 6, 7, 5][i % 8], i % 4, { label: nm, fs: nm.length > 2 ? 16 : nm.length > 1 ? 21 : 26 }); }
+    if (!LABN) { (save.maps = save.maps || {})[L.g] = { t: Date.now(), id: L.id }; persist(); }   // maps.js: last played per map (outside the seal: progress is byId)
     MUL = save.best[levelIdx] ? .25 : 1; RATE = BASE * MUL;      // a beaten level pays a quarter on replay
     lootReset(); hudStars = 3; goalKey = ''; goalPrev = null; trayFrac.clear(); stamped.clear(); $('starMeter').innerHTML = '';
     $('menu').classList.remove('on'); $('game').classList.add('on'); $('win').classList.remove('on');
@@ -2701,6 +2705,38 @@
     const sc = document.createElement('script'); sc.src = 'economy.js'; sc.onload = go; sc.onerror = () => alert('The wallet could not load. Check your connection and try again.'); document.head.appendChild(sc);
   };
   $('btnLbTitle').onclick = $('btnLbMap').onclick = () => { if (window.FTH_RUN) FTH_RUN.openBoard(SKIN.id); };   // lazy: leaderboard.js, account.js
+  // ---------------- the maps screen (maps.js): every map's charted state, drawn by renderWorld above ----------------
+  window.FTH_MAPVIEW = {
+    maps() {                                       // one row per map in G.graphs: its levels, when it was last played, how much is charted
+      const at = save.maps || {}, wl = save.worlds || {};
+      return Object.keys(G.graphs).map(key => {
+        const g = G.graphs[key], lv = [];
+        G.levels.forEach((l, i) => { if (l.g === key) { const b = save.best[i]; lv.push({ i, id: l.id, num: l.num || String(i + 1), title: l.title, open: isOpen(i), stars: b ? b.stars : 0 }); } });
+        const sv = wl[key], m = at[key], ch = g.world && sv ? new Set([...(sv.v || []), ...(sv.g || [])]).size : 0;
+        return { key, name: g.name, world: !!g.world, S: g.world ? g.world.S : 0, charted: ch, at: m ? m.t : 0, levels: lv,
+          last: (m && lv.find(x => x.id === m.id)) || null, played: !!(m || (sv && sv.v && sv.v.length) || lv.some(x => x.stars)),
+          n: g.n, hole: g.hole, pos: g.pos, edges: g.edges, start: lv.length ? G.levels[lv[0].i].start : null };
+      });
+    },
+    render(cv, key, o) {                           // one map's charted state into a canvas (o: { big, w, h }); false when it has no world
+      o = o || {}; const g = G.graphs[key], w0 = g && g.world; if (!w0) return false;
+      const keep = [W, Wst, trail, here, n, hole, Gr, wVer], hv = w0._hv, hd = w0._hd, fg = w0._fg, sv = (save.worlds || {})[key] || {};
+      try {
+        Gr = g; n = g.n; hole = g.hole; W = w0; worldPrep(); trail = []; here = -1;
+        Wst = { v: new Set(sv.v || []), g: new Set(sv.g || []), e: new Set(sv.e || []) };
+        W._hv = new Uint8Array(W.hexes.length); W._hd = new Int16Array(W.hexes.length).fill(99); W._fg = {};
+        Wst.g.forEach(k => hexMark(k, 1)); Wst.v.forEach(k => hexMark(k, 2));
+        const r = cv.getBoundingClientRect(), w = o.w || r.width || 160, h = o.h || r.height || 140, dpr = Math.min(2, window.devicePixelRatio || 1);
+        cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
+        const ctx = cv.getContext('2d'); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        const fit = pmFit(w, h); renderWorld(ctx, w, h, { cx: fit.cx, cy: fit.cy, s: fit.s, mini: !o.big, fog: o.big ? .72 : .5 });
+        return true;
+      } finally { [W, Wst, trail, here, n, hole, Gr, wVer] = keep; w0._hv = hv; w0._hd = hd; w0._fg = fg; }
+    },
+    play(i) { blip(660, .12, 'triangle', .04); titleStop(); $('title').classList.remove('on'); startLevel(i, true); },
+    sfx(k) { if (k === 'no') blip(140, .15, 'square', .03); else blip(523, .08, 'triangle', .04); },
+  };
+  $('btnMapsTitle').onclick = $('btnMapsMap').onclick = () => { if (window.FTH_MAPS) { FTH_MAPVIEW.sfx(); FTH_MAPS.open(); } };
   titleBuild();
   (function () {                           // research consent: ask once, record nothing until OK
     const box = document.getElementById('consent'); if (!box || !window.FTH_LOG) return;

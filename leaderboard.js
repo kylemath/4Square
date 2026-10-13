@@ -1,69 +1,143 @@
-/* leaderboard.js: the account + leaderboard screen. One list: every skin with its top 3 by coins earned in that skin
- * (FTH_ACCT.podium), then your own count. Lazy-loaded (after account-config.js and account.js) the first time
- * the trophy button is tapped, so the game itself stays fast and offline-capable. Styled only with the skin's --sk-*
- * tokens (see SKIN-SPEC.md), so it looks right in every skin.   window.FTH_LB.open(skinId)
+/* leaderboard.js: the account + leaderboard screen. One standings table, Mario Kart style: slanted position numbers
+ * (gold, silver, bronze, then plain), banded rows sliding in from the right, your own row lit and pulsing, ranked by
+ * coins earned in one skin (FTH_ACCT.podium). A strip of skin icons picks the skin; two icon tabs pick this device or
+ * everyone. Not joined yet: a bright join banner on top, with Google sign-in right there (disabled in LOCAL mode).
+ * Lazy-loaded (after account-config.js and account.js) the first time the trophy button is tapped, so the game itself
+ * stays fast and offline-capable. Styled only with the skin's --sk-* tokens (SKIN-SPEC.md), so it fits every skin.
+ *   window.FTH_LB.open(skinId)
  */
 (function () {
   'use strict';
   const A = window.FTH_ACCT, $ = (s, r) => (r || document).querySelector(s);
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const fmt = n => Math.floor(n).toLocaleString('en');
+  const ROWS = 10;
+  const AV = ['#ff6a45', '#4aa8ff', '#ffb31a', '#3fc35a', '#b77bff', '#ff5fa2', '#16b8a6', '#ff8a3c'];
+  const GOOGLE = '<svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#ffc107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#ff3d00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4caf50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976d2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg>';
   const CSS = `
-#lb{position:fixed;inset:0;z-index:70;display:none;flex-direction:column;background:var(--sk-bg);color:var(--sk-ink,#fff);font-family:var(--sk-font,system-ui,sans-serif);padding:max(10px,env(safe-area-inset-top)) 14px max(12px,env(safe-area-inset-bottom));overflow:hidden}
+#lb{position:fixed;inset:0;z-index:70;display:none;flex-direction:column;background:var(--sk-bg);color:var(--sk-ink,#fff);font-family:var(--sk-font,system-ui,sans-serif);padding:max(10px,env(safe-area-inset-top)) 12px max(12px,env(safe-area-inset-bottom));overflow:hidden}
 #lb.on{display:flex}
 #lb *{box-sizing:border-box}
-#lb .lb-head{display:flex;align-items:center;gap:10px;margin-bottom:8px}
-#lb h2{margin:0;font-size:22px;flex:1;letter-spacing:.02em}
-#lb button{font:inherit;cursor:pointer;min-height:40px}
-#lb .lb-x{width:44px;height:44px;border-radius:50%;border:2px solid var(--sk-edge,color-mix(in srgb,var(--sk-card-ink,#fff) 30%,transparent));background:var(--sk-btn2,var(--sk-card));color:var(--sk-btn2-ink,var(--sk-card-ink,#fff));font-size:20px;line-height:1}
-#lb .lb-tabs button{flex:none;border-radius:999px;padding:6px 12px;border:2px solid color-mix(in srgb,var(--sk-ink,#fff) 35%,transparent);background:color-mix(in srgb,var(--sk-card-ink,#fff) 8%,transparent);color:var(--sk-ink,#fff);font-weight:700;font-size:14px}
-#lb button[aria-checked="true"],#lb button[aria-selected="true"]{background:var(--sk-accent);color:var(--sk-btn-ink,#111);border-color:var(--sk-accent)}
-#lb .lb-tabs{display:flex;gap:6px;margin-bottom:8px}
-#lb .lb-body{flex:1;overflow-y:auto;border-radius:var(--sk-radius,18px);background:var(--sk-card);color:var(--sk-card-ink,#e6edf3);padding:10px 12px;-webkit-overflow-scrolling:touch}
-#lb table{width:100%;border-collapse:collapse;font-size:15px;font-variant-numeric:tabular-nums}
-#lb th{font-size:11px;text-transform:uppercase;letter-spacing:.08em;opacity:.7;text-align:right;padding:2px 4px 6px;font-weight:700}
-#lb td{padding:7px 4px;text-align:right;border-top:1px solid color-mix(in srgb,var(--sk-card-ink,#fff) 14%,transparent)}
-#lb th:nth-child(2),#lb td:nth-child(2){text-align:left;width:100%;max-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-#lb th:first-child,#lb td:first-child{text-align:center;width:2.4em;font-weight:800}
-#lb tr.me td{background:color-mix(in srgb,var(--sk-accent) 28%,transparent);font-weight:800}
-#lb .lb-pod{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
-#lb .lb-sk{border-radius:14px;padding:8px 10px;background:color-mix(in srgb,var(--sk-card-ink,#fff) 6%,transparent);border:2px solid transparent}
-#lb .lb-sk.focus{border-color:var(--sk-accent)}
-#lb .lb-skh{display:flex;align-items:center;gap:7px;font-weight:800;font-size:15px}
-#lb .lb-skh .ic{font-size:19px}
-#lb .lb-skh .cn{margin-left:auto;display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:600;opacity:.8}
-#lb .lb-lock{font-size:11px;font-weight:700;padding:1px 7px;border-radius:99px;border:1px solid color-mix(in srgb,var(--sk-card-ink,#fff) 35%,transparent);opacity:.8}
-#lb .lb-top{list-style:none;margin:6px 0 0;padding:0;display:grid;grid-template-columns:1fr;gap:2px;font-variant-numeric:tabular-nums}
-#lb .lb-top li{display:flex;gap:8px;align-items:center;font-size:14px;padding:3px 2px;border-radius:8px}
-#lb .lb-top li .m{width:1.5em;text-align:center;flex:none}
-#lb .lb-top li .n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-#lb .lb-top li .c{font-weight:800}
-#lb .lb-top li.me{background:color-mix(in srgb,var(--sk-accent) 28%,transparent);font-weight:800}
-#lb .lb-top li.empty{opacity:.5}
-#lb .lb-you{font-size:12px;opacity:.85;margin-top:4px}
-#lb .lb-note{font-size:13px;opacity:.85;margin:8px 0 0;line-height:1.35}
-#lb .lb-state{padding:26px 8px;text-align:center;opacity:.9;line-height:1.4}
-#lb .lb-card{margin-top:12px;padding-top:10px;border-top:2px solid color-mix(in srgb,var(--sk-card-ink,#fff) 18%,transparent)}
-#lb .lb-card h3{margin:0 0 6px;font-size:15px}
-#lb .lb-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:6px 0}
-#lb input[type=text]{flex:1;min-width:140px;min-height:42px;border-radius:12px;border:2px solid color-mix(in srgb,var(--sk-card-ink,#fff) 35%,transparent);background:transparent;color:inherit;padding:0 10px;font:inherit}
-#lb .lb-btn{border-radius:14px;border:2px solid transparent;padding:8px 14px;font-weight:800;background:var(--sk-btn);color:var(--sk-btn-ink,#fff)}
-#lb .lb-btn.alt{background:transparent;color:inherit;border-color:color-mix(in srgb,var(--sk-card-ink,#fff) 40%,transparent)}
-#lb .lb-btn[disabled],#lb .lb-tabs button[disabled]{opacity:.45;cursor:not-allowed}
-#lb .lb-err{color:#ff8a80;font-size:13px;min-height:1.2em}
-#lb label.lb-chk{display:flex;gap:8px;align-items:flex-start;font-size:13px;line-height:1.35}
-#lb label.lb-chk input{margin-top:3px;width:18px;height:18px}
-#lb details{font-size:13px;margin-top:8px}
-#lb :focus-visible{outline:3px solid var(--sk-accent);outline-offset:2px}
+#lb button{font:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent}
+#lb .lb-head{display:flex;align-items:center;gap:10px;margin-bottom:10px;flex:none}
+#lb h2{margin:0;font-size:26px;font-weight:900;font-style:italic;flex:1;letter-spacing:.02em;text-shadow:0 3px 0 rgba(0,0,0,.18);white-space:nowrap}
+#lb .lb-x{width:46px;height:46px;flex:none;border-radius:16px;border:0;background:#fff;color:#1c1640;font-size:20px;font-weight:900;box-shadow:0 5px 0 #8fa6c4,0 8px 14px rgba(0,0,0,.22)}
+#lb .lb-x:active{transform:translateY(4px);box-shadow:0 1px 0 #8fa6c4}
+#lb .lb-tabs{display:flex;padding:4px;gap:4px;border-radius:18px;background:rgba(0,0,0,.25);flex:none}
+#lb .lb-tabs button{width:48px;height:40px;border-radius:14px;border:0;background:transparent;font-size:22px;line-height:1;opacity:.6;filter:grayscale(.6)}
+#lb .lb-tabs button[aria-selected="true"]{background:#fff;opacity:1;filter:none;box-shadow:0 3px 0 #8fa6c4}
+#lb .lb-tabs button[disabled]{opacity:.3;cursor:not-allowed}
+#lb .lb-scroll{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;margin:0 -12px;padding:0 12px 16px;display:flex;flex-direction:column;gap:12px}
+/* join banner */
+#lb .lb-join{position:relative;flex:none;border-radius:var(--sk-radius,22px);border:3px solid #1c1640;background:linear-gradient(160deg,#ffe766 0%,#ffb31a 60%,#ff8a1a 100%);color:#3a1d00;padding:12px 12px 12px;box-shadow:0 6px 0 #b0600a,0 12px 22px rgba(0,0,0,.25);overflow:hidden}
+#lb .lb-join::before{content:'';position:absolute;inset:-40% -10% auto auto;width:180px;height:180px;border-radius:50%;background:radial-gradient(circle,rgba(255,255,255,.55),transparent 65%);pointer-events:none}
+#lb .lb-jt{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+#lb .lb-jt .flag{font-size:40px;line-height:1;filter:drop-shadow(0 3px 0 rgba(0,0,0,.25))}
+#lb .lb-jt b{font-size:24px;font-weight:900;font-style:italic;letter-spacing:.02em;line-height:1;text-shadow:0 2px 0 rgba(255,255,255,.6)}
+#lb .lb-jrow{display:flex;gap:8px;align-items:center}
+#lb .lb-in{flex:1;min-width:0;height:48px;border-radius:14px;border:3px solid #1c1640;background:#fff;color:#1c1640;padding:0 12px;font:inherit;font-weight:800;font-size:16px}
+#lb .lb-dice{width:48px;height:48px;flex:none;border-radius:14px;border:3px solid #1c1640;background:#fff;font-size:22px;box-shadow:0 4px 0 #1c1640}
+#lb .lb-dice:active{transform:translateY(3px);box-shadow:0 1px 0 #1c1640}
+#lb .lb-jbtns{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+#lb .b3{height:52px;border-radius:16px;border:3px solid #1c1640;font-weight:900;font-size:19px;font-style:italic;letter-spacing:.03em;display:flex;align-items:center;justify-content:center;gap:8px;box-shadow:0 5px 0 #1c1640;transition:transform .08s,box-shadow .08s}
+#lb .b3:active{transform:translateY(4px);box-shadow:0 1px 0 #1c1640}
+#lb .b3.go{background:linear-gradient(180deg,#8af574,#2fbf4a);color:#fff;text-shadow:0 2px 0 rgba(0,0,0,.25)}
+#lb .b3.gg{background:#fff;color:#1c1640;font-style:normal;font-size:16px}
+#lb .b3 svg{width:24px;height:24px;flex:none}
+#lb .b3[disabled]{opacity:.5;cursor:not-allowed;box-shadow:0 2px 0 #1c1640;transform:none}
+#lb .lb-chk{display:flex;gap:8px;align-items:center;font-size:12px;font-weight:700;line-height:1.25;margin-top:10px;opacity:.85}
+#lb .lb-chk input{width:20px;height:20px;flex:none;accent-color:#2fbf4a}
+#lb .lb-err{font-size:13px;font-weight:800;min-height:0;color:#b3001b}
+#lb .lb-err:empty{display:none}
+#lb .lb-card .lb-err{color:#ff8a80}
+/* skin strip */
+#lb .lb-skins{flex:none;display:flex;gap:8px;overflow-x:auto;padding:10px 2px 12px;margin-top:-6px!important;margin:0 -12px;padding-left:12px;padding-right:12px;scrollbar-width:none;scroll-snap-type:x proximity}
+#lb .lb-skins::-webkit-scrollbar{display:none}
+#lb .lb-sk{position:relative;flex:none;width:56px;height:56px;border-radius:16px;border:3px solid #1c1640;padding:0;background:#fff;display:grid;place-items:center;font-size:28px;line-height:1;scroll-snap-align:center;box-shadow:0 4px 0 #1c1640;overflow:visible}
+#lb .lb-sk .ic{width:100%;height:100%;display:grid;place-items:center;border-radius:13px;overflow:hidden}
+#lb .lb-sk .ic svg{width:100%;height:100%;display:block}
+#lb .lb-sk[aria-checked="true"]{transform:translateY(-3px) scale(1.1);box-shadow:0 6px 0 #1c1640,0 0 0 4px var(--sk-accent,#ffd84a)}
+#lb .lb-sk:not([aria-checked="true"]) .ic{opacity:.8}
+#lb .lb-sk .bd{position:absolute;right:-6px;top:-7px;font-size:15px;line-height:1;filter:drop-shadow(0 2px 0 rgba(0,0,0,.35))}
+#lb .lb-sk.lock .ic{filter:grayscale(.85) brightness(.85)}
+/* the standings */
+#lb .lb-card{flex:none;border-radius:var(--sk-radius,22px);background:var(--sk-card);color:var(--sk-card-ink,#e6edf3);padding:10px 10px 12px;border:3px solid var(--sk-edge,rgba(0,0,0,.35));box-shadow:0 6px 0 rgba(0,0,0,.25)}
+#lb .lb-bh{display:flex;align-items:center;gap:8px;padding:2px 4px 10px}
+#lb .lb-bh .nm{font-weight:900;font-size:20px;font-style:italic;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#lb .lb-bh .cn{display:inline-flex;align-items:center}
+#lb .lb-bh .mini{width:32px;height:32px;flex:none;border-radius:10px;overflow:hidden;display:grid;place-items:center;font-size:24px}
+#lb .lb-bh .mini svg{width:100%;height:100%}
+#lb .lb-shield{font-size:12px;font-weight:900;padding:3px 8px;border-radius:99px;background:color-mix(in srgb,var(--sk-card-ink,#fff) 14%,transparent)}
+#lb .lb-rows{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:5px}
+#lb .lb-r{position:relative;display:flex;align-items:center;gap:9px;height:54px;padding:0 12px 0 4px;font-variant-numeric:tabular-nums;clip-path:polygon(12px 0,100% 0,calc(100% - 12px) 100%,0 100%);background:color-mix(in srgb,var(--sk-card-ink,#fff) 9%,transparent)}
+#lb .lb-r:nth-child(even){background:color-mix(in srgb,var(--sk-card-ink,#fff) 17%,transparent)}
+#lb .lb-r.top1{background:linear-gradient(90deg,color-mix(in srgb,#ffd84a 38%,transparent),color-mix(in srgb,var(--sk-card-ink,#fff) 9%,transparent))}
+#lb .lb-r.me{background:linear-gradient(90deg,var(--sk-accent,#ffd84a),color-mix(in srgb,var(--sk-accent,#ffd84a) 55%,#fff));color:#1c1640}
+#lb .lb-pos{width:50px;flex:none;display:flex;align-items:baseline;justify-content:center;transform:skewX(-14deg);font-weight:900;font-style:italic;line-height:1}
+#lb .lb-pos b{font-size:32px;letter-spacing:-1px}
+#lb .lb-pos i{font-size:12px;font-style:normal;margin-left:1px}
+#lb .lb-pos.p1,#lb .lb-pos.p2,#lb .lb-pos.p3{height:42px;align-items:center;border-radius:8px;border:3px solid #1c1640;box-shadow:0 3px 0 #1c1640;color:#fff;text-shadow:0 2px 0 rgba(0,0,0,.35)}
+#lb .lb-pos.p1{background:linear-gradient(180deg,#fff3a0,#ffd84a 45%,#e59a00)}
+#lb .lb-pos.p2{background:linear-gradient(180deg,#ffffff,#cfd8e3 50%,#8d9bb0)}
+#lb .lb-pos.p3{background:linear-gradient(180deg,#ffd1a6,#e08a4a 50%,#a3521c)}
+#lb .lb-pos.pn{opacity:.8}
+#lb .lb-av{width:38px;height:38px;flex:none;border-radius:50%;border:3px solid #1c1640;display:grid;place-items:center;color:#fff;font-weight:900;font-size:17px;text-shadow:0 2px 0 rgba(0,0,0,.3);box-shadow:inset 0 -4px 0 rgba(0,0,0,.18),inset 0 3px 0 rgba(255,255,255,.35)}
+#lb .lb-n{flex:1;min-width:0;font-weight:900;font-size:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#lb .lb-c{display:flex;align-items:center;gap:5px;font-weight:900;font-size:18px;flex:none}
+#lb .lb-r.gap{height:18px;background:none;justify-content:center;font-weight:900;letter-spacing:4px;opacity:.6;clip-path:none}
+#lb .lb-r.ghost{background:none;outline:3px dashed color-mix(in srgb,var(--sk-card-ink,#fff) 28%,transparent);outline-offset:-3px;clip-path:none;border-radius:12px}
+#lb .lb-r.ghost .lb-av{background:color-mix(in srgb,var(--sk-card-ink,#fff) 20%,transparent);border-style:dashed}
+#lb .lb-r.ghost .bar{flex:1;height:12px;border-radius:6px;background:color-mix(in srgb,var(--sk-card-ink,#fff) 14%,transparent)}
+#lb .lb-r.you{background:none;outline:3px dashed var(--sk-accent,#ffd84a);outline-offset:-3px;clip-path:none;border-radius:12px;cursor:pointer}
+#lb .lb-r.you .tag{font-size:12px;font-weight:900;padding:3px 8px;border-radius:99px;background:var(--sk-accent,#ffd84a);color:#1c1640}
+#lb .lb-pod{display:block;width:100%;max-width:280px;margin:0 auto 6px}
+#lb .lb-state{padding:30px 8px;text-align:center;font-size:40px}
+#lb .lb-state .b3{margin:10px auto 0;width:140px}
+/* you */
+#lb .lb-you{display:flex;align-items:center;gap:8px}
+#lb .lb-you .lb-in{border-color:color-mix(in srgb,var(--sk-card-ink,#fff) 40%,transparent);background:color-mix(in srgb,var(--sk-card-ink,#fff) 8%,transparent);color:inherit}
+#lb .lb-ib{width:48px;height:48px;flex:none;border-radius:14px;border:3px solid #1c1640;background:#fff;color:#1c1640;font-size:20px;display:grid;place-items:center;box-shadow:0 4px 0 #1c1640;padding:0}
+#lb .lb-ib svg{width:24px;height:24px}
+#lb .lb-ib:active{transform:translateY(3px);box-shadow:0 1px 0 #1c1640}
+#lb .lb-ib[disabled]{opacity:.45;cursor:not-allowed}
+#lb .lb-ib.on{background:#e4ffe9}
+#lb details{font-size:13px;margin-top:4px}
+#lb summary{cursor:pointer;font-weight:900;font-size:16px;list-style:none;opacity:.7;width:max-content;margin-left:auto;margin-top:-4px}
+#lb summary::-webkit-details-marker{display:none}
+#lb .lb-note{font-size:12px;opacity:.8;margin:8px 0 0;line-height:1.35}
+#lb .lb-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0}
+#lb .lb-btn{border-radius:12px;border:2px solid color-mix(in srgb,var(--sk-card-ink,#fff) 40%,transparent);padding:8px 12px;font-weight:800;background:transparent;color:inherit;min-height:40px}
+#lb .lb-card .lb-chk{opacity:.85}
+#lb :focus-visible{outline:3px solid var(--sk-accent,#ffd84a);outline-offset:2px}
+@media (prefers-reduced-motion:no-preference){
+#lb .lb-r{animation:lbin .42s cubic-bezier(.2,1.2,.4,1) both}
+@keyframes lbin{0%{transform:translateX(110%);opacity:0}100%{transform:none;opacity:1}}
+#lb .lb-r.me{animation:lbin .42s cubic-bezier(.2,1.2,.4,1) both,lbme 1.6s ease-in-out .6s infinite}
+@keyframes lbme{0%,100%{filter:brightness(1)}50%{filter:brightness(1.18)}}
+#lb .lb-r.me .lb-pos,#lb .lb-r.me .lb-av{animation:lbbob 1.6s ease-in-out .6s infinite}
+@keyframes lbbob{0%,100%{scale:1}50%{scale:1.1}}
+#lb .lb-join{animation:lbpop .5s cubic-bezier(.3,1.6,.5,1) both}
+#lb .lb-jt .flag{animation:lbwig 2.4s ease-in-out infinite}
+@keyframes lbpop{0%{transform:scale(.7);opacity:0}100%{transform:none;opacity:1}}
+@keyframes lbwig{0%,70%,100%{transform:rotate(0)}76%{transform:rotate(-14deg) scale(1.1)}84%{transform:rotate(12deg) scale(1.1)}92%{transform:rotate(-6deg)}}
+#lb .lb-pod .gh{animation:lbfloat 2.6s ease-in-out infinite}
+@keyframes lbfloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}}
 `;
-  let root, skin, scope = 'device', seq = 0;
+  let root, skin, scope = 'device', seq = 0, nickDraft = '';
   const skins = () => (window.FTH_SKINS && FTH_SKINS.list || []).filter(k => k.id);
+  const specOf = id => skins().find(x => x.id === id) || { id, name: id, ic: '' };
+  const coinOf = k => window.FTH_SKINS ? FTH_SKINS.coinOf(k) : { plural: 'coins', svg: () => '' };
+  const own = id => !window.FTH_OWNS || FTH_OWNS(id);
+  const iconOf = k => typeof k.icon === 'string' && /^\s*<svg[\s>]/.test(k.icon) && !/<script/i.test(k.icon) ? k.icon : '<span aria-hidden="true">' + esc(k.ic || '•') + '</span>';
+  const hue = s => { let h = 0; for (const c of String(s || '')) h = (h * 31 + c.charCodeAt(0)) | 0; return AV[Math.abs(h) % AV.length]; };
+  const initial = s => esc((String(s || '?').trim()[0] || '?').toUpperCase());
+  const ord = r => r === 1 ? 'st' : r === 2 ? 'nd' : r === 3 ? 'rd' : 'th';
   function build() {
     if (root) return;
     const st = document.createElement('style'); st.textContent = CSS; document.head.appendChild(st);
     root = document.createElement('div'); root.id = 'lb'; root.setAttribute('role', 'dialog'); root.setAttribute('aria-modal', 'true'); root.setAttribute('aria-labelledby', 'lbTitle');
-    root.innerHTML = '<div class="lb-head"><h2 id="lbTitle">🏆 Leaderboard</h2><button class="lb-x" aria-label="Close leaderboard">✕</button></div>' +
-      '<div class="lb-tabs" role="tablist" aria-label="Who to show"></div>' +
-      '<div class="lb-body" id="lbBody" aria-live="polite"></div>';
+    root.innerHTML = '<div class="lb-head"><button class="lb-x" aria-label="Close leaderboard">✕</button><h2 id="lbTitle">🏆 Scores</h2><div class="lb-tabs" role="tablist" aria-label="Who to show"></div></div>' +
+      '<div class="lb-scroll"><div id="lbJoin"></div><div class="lb-skins" role="radiogroup" aria-label="Skin"></div><div class="lb-card" id="lbBody" aria-live="polite"></div><div id="lbYou"></div></div>';
     document.body.appendChild(root);
     $('.lb-x', root).onclick = close;
     root.addEventListener('keydown', e => { if (e.key === 'Escape') close(); });
@@ -73,95 +147,117 @@
   async function open(skinId) {
     build(); const S = skins();
     skin = S.some(k => k.id === skinId) ? skinId : (S[0] && S[0].id) || 'islands';
-    root._from = document.activeElement; root._scroll = true; root.classList.add('on');
+    root._from = document.activeElement; root._center = true; root.classList.add('on');
     await A.init(); scope = A.state().kind === 'local' ? 'device' : 'everyone'; render();
     setTimeout(() => $('.lb-x', root).focus(), 30);
   }
-  function chips() {
-    const s = A.state(), tabs = $('.lb-tabs', root);
-    tabs.innerHTML = `<button role="tab" aria-selected="${scope === 'device'}" data-t="device">This device</button>` +
-      `<button role="tab" aria-selected="${scope === 'everyone'}" data-t="everyone" ${s.kind === 'local' ? 'disabled title="Needs the online setup"' : ''}>Everyone</button>`;
-    tabs.querySelectorAll('button').forEach(b => b.onclick = () => { if (b.disabled) return; scope = b.dataset.t; render(); });
+  function tabs() {
+    const s = A.state(), t = $('.lb-tabs', root);
+    t.innerHTML = `<button role="tab" aria-selected="${scope === 'device'}" data-t="device" aria-label="This device" title="This device">📱</button>` +
+      `<button role="tab" aria-selected="${scope === 'everyone'}" data-t="everyone" aria-label="Everyone" ${s.kind === 'local' ? 'disabled title="Everyone: needs the online setup"' : 'title="Everyone"'}>🌍</button>`;
+    t.querySelectorAll('button').forEach(b => b.onclick = () => { if (b.disabled || scope === b.dataset.t) return; scope = b.dataset.t; render(); });
+  }
+  function strip(P) {
+    const el = $('.lb-skins', root), by = {}; (P || []).forEach(p => { by[p.skin] = p; });
+    el.innerHTML = skins().map(k => { const p = by[k.id], r = p && p.me ? p.me.rank : 0;
+      const bd = !own(k.id) ? '🔒' : r === 1 ? '🥇' : r === 2 ? '🥈' : r === 3 ? '🥉' : '';
+      return `<button class="lb-sk${own(k.id) ? '' : ' lock'}" role="radio" aria-checked="${k.id === skin}" data-s="${esc(k.id)}" aria-label="${esc(k.name)}${r ? ', you are ' + r + ord(r) : ''}" title="${esc(k.name)}"><span class="ic">${iconOf(k)}</span>${bd ? `<span class="bd" aria-hidden="true">${bd}</span>` : ''}</button>`; }).join('');
+    el.querySelectorAll('.lb-sk').forEach(b => b.onclick = () => { if (skin === b.dataset.s) return; skin = b.dataset.s; el.querySelectorAll('.lb-sk').forEach(x => x.setAttribute('aria-checked', x === b)); board(P); });
+    const f = $('.lb-sk[aria-checked="true"]', el); if (f && root._center) { root._center = false; el.scrollLeft = Math.max(0, f.offsetLeft - el.clientWidth / 2 + f.offsetWidth / 2); }
+  }
+  const row = (r, i, C) => `<li class="lb-r${r.me ? ' me' : ''}${r.rank === 1 ? ' top1' : ''}" style="animation-delay:${i * 70}ms${r.me ? `,${i * 70 + 600}ms` : ''}" aria-label="${r.rank}${ord(r.rank)}: ${esc(r.nick)}${r.me ? ' (you)' : ''}, ${fmt(r.coins)} ${esc(C.plural)}">` +
+    `<span class="lb-pos ${r.rank <= 3 ? 'p' + r.rank : 'pn'}" aria-hidden="true"><b>${r.rank}</b><i>${ord(r.rank)}</i></span>` +
+    `<span class="lb-av" style="background:${hue(r.nick)}" aria-hidden="true">${initial(r.nick)}</span>` +
+    `<span class="lb-n" aria-hidden="true">${esc(r.nick)}${r.me ? ' ★' : ''}</span><span class="lb-c" aria-hidden="true">${C.svg(22)}${fmt(r.coins)}</span></li>`;
+  // the empty podium: three ghost steps, 2-1-3, waiting for someone
+  const podiumSvg = C => { const step = (x, h, n, c) => `<g class="gh" style="animation-delay:${n * .3}s"><circle cx="${x + 34}" cy="${102 - h - 26}" r="13" fill="currentColor" opacity=".18"/><path d="M${x + 16} ${102 - h - 4}q18-22 36 0z" fill="currentColor" opacity=".18"/><text x="${x + 34}" y="${102 - h - 21}" text-anchor="middle" font-size="14" font-weight="900" fill="currentColor" opacity=".45">?</text></g>` +
+      `<rect x="${x}" y="${102 - h}" width="68" height="${h}" rx="6" fill="${c}" stroke="#1c1640" stroke-width="3"/><text x="${x + 34}" y="${102 - h + 26}" text-anchor="middle" font-size="24" font-weight="900" font-style="italic" fill="#fff" style="fill:#fff" stroke="#1c1640" stroke-width="1.2">${n}</text>`;
+    return `<svg class="lb-pod" viewBox="0 0 220 106" aria-hidden="true">${step(4, 44, 2, '#b8c3d1')}${step(76, 64, 1, '#f2b81c')}${step(148, 30, 3, '#d27a3c')}<g transform="translate(110 12)">${C.svg(22).replace('<svg', '<svg x="-11" y="-11"')}</g></svg>`; };
+  function board(P) {
+    const body = $('#lbBody', root), s = A.state(), p = (P || []).find(x => x.skin === skin) || { top: [], me: null, mine: 0, hidden: 0 }, k = specOf(skin), C = coinOf(k);
+    let h = `<div class="lb-bh"><span class="mini" aria-hidden="true">${iconOf(k)}</span><span class="nm">${esc(k.name)}</span>` +
+      (p.hidden ? `<span class="lb-shield" title="${p.hidden} hidden: solutions did not replay" aria-label="${p.hidden} hidden entries">🛡️ ${p.hidden}</span>` : '') +
+      `<span class="cn" title="${esc(C.plural)}" aria-label="ranked by ${esc(C.plural)} earned">${C.svg(28)}</span></div>`;
+    const rows = p.top.slice(0, ROWS);
+    let li = rows.map((r, i) => row(r, i, C)).join('');
+    if (p.me && !rows.some(r => r.me)) li += `<li class="lb-r gap" aria-hidden="true">•••</li>` + row({ rank: p.me.rank, nick: s.nick || 'You', coins: p.me.coins, me: true }, rows.length + 1, C);
+    if (!rows.length) {
+      h += podiumSvg(C);
+      li += [0, 1, 2].map(i => `<li class="lb-r ghost" style="animation-delay:${i * 70}ms" aria-hidden="true"><span class="lb-pos ${'p' + (i + 1)}" style="opacity:.35"><b>${i + 1}</b><i>${ord(i + 1)}</i></span><span class="lb-av"></span><span class="bar"></span></li>`).join('');
+    }
+    if (!s.signedIn && p.mine > 0) li += `<li class="lb-r you" data-join style="animation-delay:${(rows.length + 3) * 70}ms" aria-label="You: ${fmt(p.mine)} ${esc(C.plural)}, join to get on the board"><span class="lb-pos pn"><b>?</b></span><span class="lb-av" style="background:${hue('you')}">★</span><span class="lb-n">You</span><span class="tag" aria-hidden="true">JOIN ↑</span><span class="lb-c">${C.svg(22)}${fmt(p.mine)}</span></li>`;
+    body.innerHTML = h + `<ol class="lb-rows" aria-label="${esc(k.name)} standings">${li}</ol>`;
+    const yj = $('[data-join]', body); if (yj) yj.onclick = () => { const j = $('#lbJoin', root); j.scrollIntoView && j.scrollIntoView({ block: 'start', behavior: 'smooth' }); const n = $('#lbNick', j); if (n) n.focus(); };
   }
   async function render() {
-    const my = ++seq; chips();
+    const my = ++seq; tabs(); join(); you();
     const body = $('#lbBody', root), s = A.state();
-    body.innerHTML = '<div class="lb-state">Loading…</div>';
-    let html = '';
+    strip(null); body.innerHTML = '<div class="lb-state" aria-label="Loading">⏳</div>';
     try {
       if (scope === 'everyone' && !s.online) throw Object.assign(new Error('offline'), { offline: true });
-      const P = await A.podium(scope); if (my !== seq) return;
-      const own = id => !window.FTH_OWNS || FTH_OWNS(id), fmt = n => Math.floor(n).toLocaleString('en');
-      const medal = ['🥇', '🥈', '🥉'];
-      html += '<ol class="lb-pod" aria-label="Coins earned in each skin, top three">' + P.map(p => {
-        const k = skins().find(x => x.id === p.skin) || { id: p.skin, name: p.skin, ic: '' }, C = window.FTH_SKINS ? FTH_SKINS.coinOf(k) : { plural: 'coins', svg: () => '' };
-        const slots = !p.top.length ? '<li class="empty"><span class="m" aria-hidden="true">🥇</span><span class="n">Nobody yet: be the first!</span></li>' : [0, 1, 2].filter(i => i < Math.max(1, p.top.length)).map(i => { const r = p.top[i];
-          return r ? `<li class="${r.me ? 'me' : ''}"><span class="m" aria-label="${['1st', '2nd', '3rd'][i]}">${medal[i]}</span><span class="n">${esc(r.nick)}${r.me ? ' (you)' : ''}</span><span class="c">${fmt(r.coins)}</span></li>`
-            : `<li class="empty"><span class="m" aria-hidden="true">${medal[i]}</span><span class="n">nobody yet</span></li>`; }).join('');
-        const you = p.me ? (p.me.rank > 3 ? `You: #${p.me.rank}, ${fmt(p.me.coins)}` : '') : p.mine > 0 ? `You have earned ${fmt(p.mine)} here${s.signedIn ? '' : '. Join below to get on the board'}.` : '';
-        return `<li class="lb-sk${k.id === skin ? ' focus' : ''}" data-s="${esc(k.id)}"><div class="lb-skh"><span class="ic" aria-hidden="true">${esc(k.ic || '')}</span>${esc(k.name)}${own(k.id) ? '' : ' <span class="lb-lock">🔒 locked</span>'}<span class="cn">${C.svg(16)}${esc(C.plural)}</span></div>` +
-          `<ol class="lb-top" aria-label="${esc(k.name)} top three">${slots}</ol>${you ? `<div class="lb-you">${you}</div>` : ''}</li>`;
-      }).join('') + '</ol>';
-      const hid = P.reduce((a, p) => a + p.hidden, 0);
-      if (hid) html += `<p class="lb-note">${hid} entr${hid === 1 ? 'y is' : 'ies are'} hidden: ${hid === 1 ? 'its' : 'their'} solutions did not replay correctly.</p>`;
-      html += '<p class="lb-note">Ranked by coins earned in each skin, all time: spending them on tickets does not lower it. Every entry\'s solutions are replayed on your device first, and its coins count only up to what its replayed levels could pay.</p>';
+      const P = await A.podium(scope, ROWS); if (my !== seq) return;
+      strip(P); board(P);
     } catch (e) {
-      html += e && e.offline ? '<div class="lb-state">You are offline, so the shared board cannot load.<br>Your scores are saved and will be sent when you are back online.</div>'
-        : '<div class="lb-state">Could not load the board right now.<br><button class="lb-btn alt" id="lbRetry">Try again</button></div>';
+      if (my !== seq) return;
+      body.innerHTML = e && e.offline ? '<div class="lb-state" aria-label="Offline: your scores are saved and sent later">📡✕</div>'
+        : '<div class="lb-state" aria-label="Could not load the board">⚠️<button class="b3 go" id="lbRetry" aria-label="Try again">↻</button></div>';
+      const rt = $('#lbRetry', body); if (rt) rt.onclick = render;
     }
-    body.innerHTML = html + account();
-    const f = $('.lb-sk.focus', body); if (f && f.scrollIntoView && root._scroll) { root._scroll = false; f.scrollIntoView({ block: 'center' }); }   // the skin you came from, once per open
-    const rt = $('#lbRetry', body); if (rt) rt.onclick = render;
-    wire(body);
   }
-  function account() {
-    const s = A.state(), integ = window.FTH_INT ? FTH_INT.counts() : {}, ik = Object.keys(integ);
-    if (!s.signedIn) return `<div class="lb-card"><h3>Join the leaderboard</h3>
-      <p class="lb-note">${s.kind === 'local' ? 'This device only: no account is created and nothing is uploaded.' : 'No sign-up needed: you play under a nickname, as an anonymous player that comes back as itself.'}</p>
-      <div class="lb-row"><input type="text" id="lbNick" maxlength="16" autocomplete="off" aria-label="Nickname" placeholder="Pick a nickname" value="${esc(A.randomNick())}"><button class="lb-btn" id="lbJoin">Join</button></div>
-      <div class="lb-err" id="lbErr" role="alert"></div>${notice(true)}</div>`;
-    return `<div class="lb-card"><h3>You</h3>
-      <div class="lb-row"><input type="text" id="lbNick" maxlength="16" autocomplete="off" aria-label="Nickname" value="${esc(s.nick)}"><button class="lb-btn alt" id="lbSave">Change name</button></div>
+  // ---------------------------------------------------------------- join banner (not joined yet) and your card (joined)
+  const notice = on => `<label class="lb-chk"><input type="checkbox" id="lbSub" ${on ? 'checked' : ''}><span>📤 Share nickname, scores &amp; replays. No real name or email.</span></label>`;
+  function join() {
+    const el = $('#lbJoin', root), s = A.state();
+    if (s.signedIn) { el.innerHTML = ''; return; }
+    if (!nickDraft) nickDraft = A.randomNick();
+    const g = s.hasGoogle ? '' : `disabled title="${esc(s.note)}"`;
+    el.innerHTML = `<div class="lb-join" role="region" aria-label="Join the leaderboard"><div class="lb-jt"><span class="flag" aria-hidden="true">🏁</span><b>JOIN THE RACE!</b></div>
+      <div class="lb-jrow"><input class="lb-in" type="text" id="lbNick" maxlength="16" autocomplete="off" aria-label="Nickname" value="${esc(nickDraft)}"><button class="lb-dice" id="lbDice" aria-label="Random nickname">🎲</button></div>
+      <div class="lb-jbtns"><button class="b3 go" id="lbJoinBtn">JOIN ▶</button><button class="b3 gg" id="lbGoogleJ" ${g} aria-label="Join with Google">${GOOGLE}Google</button></div>
+      ${notice(true)}<div class="lb-err" id="lbErrJ" role="alert"></div></div>`;
+    const err = m => { const e = $('#lbErrJ', el) || $('#lbErr', root); if (e) e.textContent = m || ''; }, nk = $('#lbNick', el);
+    nk.oninput = () => { nickDraft = nk.value; };
+    $('#lbDice', el).onclick = () => { nickDraft = nk.value = A.randomNick(); };
+    const start = async () => {
+      const v = A.validateNick(nk.value); if (!v.ok) { err(v.why); return null; }
+      const want = $('#lbSub', el).checked;            // read before awaiting: the screen re-renders when the identity appears
+      await A.ensureIdentity(); A.setNick(v.nick); A.setSubmit(want); nickDraft = ''; return v;
+    };
+    $('#lbJoinBtn', el).onclick = async () => { try { await start(); } catch (e) { err('Could not start: ' + (e && e.message || 'try again')); } render(); };
+    $('#lbGoogleJ', el).onclick = async e => { e.currentTarget.disabled = true; try { if (await start()) await google(err); } catch (x) { err('Google sign-in did not work (' + ((x && x.code) || 'error') + ').'); } render(); };
+  }
+  async function google(err) {
+    const r = await A.linkGoogle();
+    if (r.status === 'in-use') {
+      if (confirm('That Google account already has a 4square profile. Switch to it? Your solutions from this device will be added to it. (The anonymous profile you have now stays as it is.)')) await A.useCredential(r.credential);
+    } else if (r.status === 'redirect') err('Opening Google…'); else if (r.status === 'unavailable') err('Google sign-in needs setup.');
+  }
+  function you() {
+    const el = $('#lbYou', root), s = A.state();
+    if (!s.signedIn) { el.innerHTML = ''; return; }
+    const integ = window.FTH_INT ? FTH_INT.counts() : {}, ik = Object.keys(integ);
+    el.innerHTML = `<div class="lb-card" role="region" aria-label="You">
+      <div class="lb-you"><span class="lb-av" style="background:${hue(s.nick)}" aria-hidden="true">${initial(s.nick)}</span>
+        <input class="lb-in" type="text" id="lbNickMe" maxlength="16" autocomplete="off" aria-label="Nickname" value="${esc(s.nick)}">
+        <button class="lb-ib" id="lbSave" aria-label="Change name">✏️</button>
+        <button class="lb-ib${s.linked ? ' on' : ''}" id="lbGoogle" ${s.hasGoogle && !s.linked ? '' : 'disabled'} aria-label="${s.linked ? 'Linked to Google' : 'Keep my progress with Google'}" title="${esc(s.linked ? 'Linked to Google' : s.hasGoogle ? 'Keep my progress with Google' : s.note)}">${GOOGLE}</button></div>
       <div class="lb-err" id="lbErr" role="alert">${esc(s.err)}</div>
-      ${notice(false, s.submit)}
-      ${s.queued ? `<p class="lb-note">${s.queued} board${s.queued === 1 ? '' : 's'} waiting to be sent${s.online ? '' : ' (offline)'}.</p>` : ''}
-      <div class="lb-row">
-        <button class="lb-btn" id="lbGoogle" ${s.hasGoogle && !s.linked ? '' : 'disabled'}>${s.linked ? 'Linked to Google ✓' : 'Keep my progress with Google'}</button>
-        <button class="lb-btn alt" id="lbOut">Sign out</button>
-      </div>
-      ${s.hasGoogle ? '<p class="lb-note">Linking keeps your scores. Your Google name and email are never shown or stored by the game.</p>' : `<p class="lb-note">${esc(s.note)}</p>`}
-      <details><summary>Your data</summary>
-        <div class="lb-row"><button class="lb-btn alt" id="lbDel">Delete my leaderboard data</button></div>
-        <p class="lb-note">Integrity notes on this device${ik.length ? ': ' + ik.map(k => esc(k) + ' ×' + integ[k]).join(', ') : ': none'}. They stay here unless you submit scores (see above).</p>
-        ${ik.length ? '<div class="lb-row"><button class="lb-btn alt" id="lbClearLog">Clear notes</button></div>' : ''}
+      ${s.queued ? `<p class="lb-note" aria-label="${s.queued} boards waiting to be sent">📤 ${s.queued}${s.online ? '' : ' · 📡✕'}</p>` : ''}
+      <details><summary aria-label="Settings and your data">⚙️</summary>
+        ${notice(s.submit)}
+        ${s.hasGoogle ? '<p class="lb-note">Linking keeps your scores. Your Google name and email are never shown or stored by the game.</p>' : `<p class="lb-note">${esc(s.note)}</p>`}
+        <p class="lb-note">Ranked by coins earned in each skin, all time: spending them does not lower it. Every entry's solutions are replayed on your device first, and its coins count only up to what its replayed levels could pay.</p>
+        <div class="lb-row"><button class="lb-btn" id="lbOut">⏏ Sign out</button><button class="lb-btn" id="lbDel">🗑 Delete my leaderboard data</button></div>
+        <p class="lb-note">Integrity notes on this device${ik.length ? ': ' + ik.map(k => esc(k) + ' ×' + integ[k]).join(', ') : ': none'}. They stay here unless you submit scores.</p>
+        ${ik.length ? '<div class="lb-row"><button class="lb-btn" id="lbClearLog">Clear notes</button></div>' : ''}
       </details></div>`;
-  }
-  const notice = (join, on) => `<label class="lb-chk"><input type="checkbox" id="lbSub" ${join || on ? 'checked' : ''}><span>Send my nickname, scores and a replayable record of my solutions, with any tamper warnings from this device, to the leaderboard. No real name, email or location.</span></label>`;
-  function wire(body) {
-    const err = m => { const e = $('#lbErr', body); if (e) e.textContent = m || ''; };
-    const nickIn = () => $('#lbNick', body).value;
-    const join = $('#lbJoin', body);
-    if (join) join.onclick = async () => {
-      const v = A.validateNick(nickIn()); if (!v.ok) return err(v.why);
-      const want = $('#lbSub', body).checked;            // read before awaiting: the screen re-renders when the identity appears
-      try { await A.ensureIdentity(); A.setNick(v.nick); A.setSubmit(want); } catch (e) { err('Could not start: ' + (e && e.message || 'try again')); } render();
-    };
-    const sv = $('#lbSave', body); if (sv) sv.onclick = () => { const r = A.setNick(nickIn()); if (!r.ok) err(r.why); else { err(''); render(); } };
-    const sub = $('#lbSub', body); if (sub && !join) sub.onchange = () => A.setSubmit(sub.checked);
-    const g = $('#lbGoogle', body);
-    if (g) g.onclick = async () => {
-      g.disabled = true;
-      try {
-        const r = await A.linkGoogle();
-        if (r.status === 'in-use') {
-          if (confirm('That Google account already has a 4square profile. Switch to it? Your solutions from this device will be added to it. (The anonymous profile you have now stays as it is.)')) await A.useCredential(r.credential);
-        } else if (r.status === 'redirect') err('Opening Google…'); else if (r.status === 'unavailable') err('Google sign-in needs setup.');
-      } catch (e) { err('Google sign-in did not work (' + ((e && e.code) || 'error') + ').'); }
-      render();
-    };
-    const out = $('#lbOut', body); if (out) out.onclick = async () => { await A.signOut(); render(); };
-    const del = $('#lbDel', body); if (del) del.onclick = async () => { if (confirm('Delete your leaderboard entries and profile? Your game progress on this device is kept.')) { try { await A.deleteMine(); } catch (e) { err('Could not delete right now: ' + (e && e.code || 'error')); } render(); } };
-    const cl = $('#lbClearLog', body); if (cl) cl.onclick = () => { FTH_INT.clear(); render(); };
+    const err = m => { const e = $('#lbErr', root); if (e) e.textContent = m || ''; };
+    $('#lbSave', el).onclick = () => { const r = A.setNick($('#lbNickMe', el).value); if (!r.ok) err(r.why); else { err(''); render(); } };
+    $('#lbSub', el).onchange = e => A.setSubmit(e.target.checked);
+    $('#lbGoogle', el).onclick = async e => { e.currentTarget.disabled = true; try { await google(err); } catch (x) { err('Google sign-in did not work (' + ((x && x.code) || 'error') + ').'); } render(); };
+    $('#lbOut', el).onclick = async () => { await A.signOut(); render(); };
+    $('#lbDel', el).onclick = async () => { if (confirm('Delete your leaderboard entries and profile? Your game progress on this device is kept.')) { try { await A.deleteMine(); } catch (x) { err('Could not delete right now: ' + (x && x.code || 'error')); } render(); } };
+    const cl = $('#lbClearLog', el); if (cl) cl.onclick = () => { FTH_INT.clear(); render(); };
   }
   window.FTH_LB = { open, close, render };
 })();

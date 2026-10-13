@@ -62,12 +62,14 @@ const SAVE = 'fill-the-hole-v2';
 
     // the leaderboard: join (local mode), then the podium
     await P.eval(`document.getElementById('btnLbTitle').click()`);
-    ok('leaderboard opens', await until(P, `document.querySelector('#lb.on #lbJoin')`, 10000));
-    await P.eval(`document.getElementById('lbNick').value = 'Test Otter'; document.getElementById('lbJoin').click()`);
-    ok('joined, podium lists every skin', await until(P, `document.querySelectorAll('#lb .lb-sk').length === FTH_SKINS.list.length && /Test Otter/.test(document.querySelector('#lb .lb-sk[data-s="islands"]').textContent)`, 15000));
-    const pod = await P.eval(`(() => { const r = document.querySelector('#lb .lb-sk[data-s="islands"]'); const first = r.querySelector('.lb-top li'); return { first: first.textContent, me: first.classList.contains('me'), n: FTH_SKINS.list.length, locked: document.querySelectorAll('#lb .lb-lock').length, dots: document.querySelector('#lb .lb-sk[data-s="dots"] .lb-top li').textContent }; })()`);
-    ok('you are 1st in Islands with your coins earned there', pod.me && /🥇/.test(pod.first) && /Test Otter/.test(pod.first), pod.first);
-    ok('locked skins are tagged, unplayed skins show nobody yet', pod.locked === pod.n - 2 && /nobody yet/i.test(pod.dots), pod);
+    ok('leaderboard opens with the join banner on top', await until(P, `document.querySelector('#lb.on #lbJoin .lb-join')`, 10000));
+    await P.eval(`document.getElementById('lbNick').value = 'Test Otter'; document.getElementById('lbJoinBtn').click()`);
+    ok('joined: banner gone, a skin icon per skin, your row on the Islands standings', await until(P, `(document.querySelector('#lb .lb-sk[data-s="islands"]') || { click() {} }).click(), !document.querySelector('#lbJoin .lb-join') && document.querySelectorAll('#lb .lb-sk').length === FTH_SKINS.list.length && document.querySelector('#lb .lb-bh .nm').textContent === 'Islands' && /Test Otter/.test((document.querySelector('#lb .lb-r.me') || {}).textContent || '')`, 15000));
+    const pod = await P.eval(`(() => { const first = document.querySelector('#lb .lb-rows .lb-r'); return { first: first.textContent, me: first.classList.contains('me'), gold: !!first.querySelector('.lb-pos.p1'), n: FTH_SKINS.list.length, locked: document.querySelectorAll('#lb .lb-sk.lock').length }; })()`);
+    ok('you are 1st in Islands with your coins earned there', pod.me && pod.gold && /Test Otter/.test(pod.first), pod.first);
+    await P.eval(`document.querySelector('#lb .lb-sk[data-s="dots"]').click()`);
+    pod.dots = await P.eval(`({ ghosts: document.querySelectorAll('#lb .lb-r.ghost').length, rows: document.querySelectorAll('#lb .lb-r:not(.ghost)').length, podium: !!document.querySelector('#lb .lb-pod') })`);
+    ok('locked skins are tagged, unplayed skins show the empty podium', pod.locked === pod.n - 2 && pod.dots.ghosts === 3 && !pod.dots.rows && pod.dots.podium, pod);
     await shot('podium');
     await P.eval(`document.querySelector('#lb .lb-x').click()`);
 
