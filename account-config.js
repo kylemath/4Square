@@ -16,7 +16,9 @@
  */
 window.FTH_FIREBASE = {           // project play4square (Kyle's Firebase console), web app "4square web"
   apiKey: 'AIzaSyBVTFGbu7aabcS97eViouhmosML6YB2Xxg',
-  authDomain: 'play4square.firebaseapp.com',
+  // sign-in runs on the page's own domain where Firebase Hosting serves /__/auth (4square.studio), so the installed
+  // iPhone app's storage partitioning cannot break it; other hosts (GitHub Pages, web.app) use the Firebase default
+  authDomain: location.hostname === '4square.studio' ? '4square.studio' : 'play4square.firebaseapp.com',
   projectId: 'play4square',
   appId: '1:529165401237:web:516188c734b55e4787ef9c',
 };
