@@ -74,7 +74,9 @@ form is configured in `telemetry.js` (none is).
 ## How levels are made
 
 Every level is a map plus a start colouring. Maps and levels are plain JSON; one script turns them into the two
-files the game loads (`levels.js`, `layout.js`). Every skin (the main game and the lab wrappers) reads those same files
+files the game loads (`levels.js`, `layout.js`). New graphs from other sessions or pipelines come in as **level
+requests**: one JSON file with the map and its levels, checked and added by `tools/level_request.py`. The format and
+the steps after adding are in [LEVEL-REQUEST.md](LEVEL-REQUEST.md). Every skin (the main game and the lab wrappers) reads those same files
 through the same rules (`lab/core.js`), so a new level works in every skin.
 
 ```
@@ -141,5 +143,6 @@ quiet chains help). Use it to order levels within an island and to pick warm-ups
 | `build_layout.py` | region shapes (numpy, scipy, torch), called by the build |
 | `world_map.py` | the colouring-space mini-map (scikit-learn), called by the build |
 | `gen_map.py` | random warm-up maps |
+| `tools/level_request.py` | checks and applies a level request ([LEVEL-REQUEST.md](LEVEL-REQUEST.md)) |
 | `maps/`, `levels.json` | the content |
 | `levels.js`, `layout.js` | generated; do not edit |

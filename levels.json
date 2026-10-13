@@ -6,7 +6,8 @@
       "  exits (quietOnly | loudOnly | piOnly), deepest, piRule (loops | par | over); prefer: sort keys such as",
       "  \"-difficulty\", \"+difficulty\", \"+N\", \"-N\", \"+dF\", \"-dF\", \"+shortWin\", \"+fewWins\". Ties go to the smallest state key.",
       "expect: facts the build asserts (par, onLoop, loopLength, loops, N, unique, deepest, piRunN).",
-      "legacy: level ids in the order of the old 20-level game (old saves were keyed by position)."
+      "legacy: level ids in the order of the old 20-level game (old saves were keyed by position).",
+      "New maps and levels from other sessions: send a level request (LEVEL-REQUEST.md, tools/level_request.py)."
   ],
   "islands": {"First steps": ["Splash Cove", "cove", "🐚"], "Warm-up": ["Warm-up Beach", "beach", "🏖️"], "Tutorial": ["Tutorial Town", "town", "🏘️"], "Locks": ["Lock Harbour", "harbour", "⚓"], "Far chains": ["Far Chains Forest", "forest", "🌲"], "π": ["π Loop Lighthouse", "cape", "💡"], "Six rings": ["Six-Ring Reef", "reef", "⚽"], "Depths": ["The Depths", "cave", "💎"], "Boss": ["Volcano Boss", "volcano", "🌋"]},
   "legacy": ["splash", "one-of-each", "forked-path", "first-lock", "spark", "ripples", "archipelago", "big-water", "first-flip", "open-doors", "one-lock", "kempes-double", "heawoods-catch", "far-away", "the-loop", "9-8-9-8", "depth-3", "depth-4", "depth-5", "deepest-pit"],
