@@ -194,18 +194,18 @@ const sigs = w => w.FTH_INT.counts();
   w.FTH_RUN.loadAccount = async () => w.FTH_ACCT;
   const attempt = async (lv, out) => { w.FTH_LOG.start({ num: lv, id: 'kempes-double', skin: 'dots', map: 'm', par: 2, state: '0123' }); w.tick(900); w.FTH_LOG.ev('swap', [1, 'ab']); w.FTH_LOG.end(out || 'win'); await w.FTH_LOG.upload(); };
   const logs = uid => Object.keys(db).filter(k => k.startsWith('logs/' + uid + '/attempts/'));
-  await attempt(1); ok('research log off before Google sign-in: nothing recorded or sent', w.FTH_LOG.consent() === null && !w.FTH_LOG.records().length && !logs('anon-1').length);
+  await attempt(1); ok('research log on by default: the attempt is sent under the device identity', w.FTH_LOG.consent() === 'on' && logs('anon-1').length === 1);
   let lk = await F.linkGoogle(); ok('Google link keeps the uid (progress kept)', lk.status === 'ok' && F.state().uid === 'anon-1' && F.state().linked);
   ok('player doc marks linked, holds nickname only', db['players/anon-1'].linked === true && db['players/anon-1'].nick === F.state().nick);
   ok('Google sign-in switches the research log on', w.FTH_LOG.consent() === 'on');
   await attempt(2); await attempt(3, 'quit');
   { const ks = logs('anon-1'), d = ks.length && db[ks[0]];
-    ok('each attempt is one log doc under the player', ks.length === 2 && d.uid === 'anon-1' && d.attempt === ks[0].split('/').pop() && typeof d.data === 'string' && JSON.parse(d.data).ev.length === 1, ks.length + ' docs');
+    ok('each attempt is one log doc under the player', ks.length === 3 && d.uid === 'anon-1' && d.attempt === ks[0].split('/').pop() && typeof d.data === 'string' && JSON.parse(d.data).ev.length === 1, ks.length + ' docs');
     ok('log docs carry only the allowed fields', ks.every(k => Object.keys(db[k]).every(f => ['v', 'uid', 'attempt', 'level', 'skin', 'outcome', 'ms', 'app', 'data', 'at'].includes(f)))); }
-  ok('an uploaded attempt is not sent again', (await w.FTH_LOG.upload()) === 0 && logs('anon-1').length === 2);
-  netDown = true; await attempt(4); ok('offline: the attempt waits in the local queue', logs('anon-1').length === 2);
-  netDown = false; await w.FTH_LOG.upload(); ok('back online: the waiting attempt is sent', logs('anon-1').length === 3);
-  w.FTH_LOG.setConsent(false); await attempt(5); ok('switched off on the account screen: nothing more is sent', logs('anon-1').length === 3);
+  ok('an uploaded attempt is not sent again', (await w.FTH_LOG.upload()) === 0 && logs('anon-1').length === 3);
+  netDown = true; await attempt(4); ok('offline: the attempt waits in the local queue', logs('anon-1').length === 3);
+  netDown = false; await w.FTH_LOG.upload(); ok('back online: the waiting attempt is sent', logs('anon-1').length === 4);
+  w.FTH_LOG.setConsent(false); await attempt(5); ok('switched off on the account screen: nothing more is sent', logs('anon-1').length === 4);
   w.FTH_LOG.setConsent(true);
   sdk._inuse = true; currentUser = mkUser('anon-1', true); lk = await F.linkGoogle(); ok('already-linked-elsewhere is reported with a credential', lk.status === 'in-use' && !!lk.credential);
   await F.useCredential(lk.credential); ok('switching to the existing account works', F.state().uid === 'g-existing');
@@ -214,6 +214,9 @@ const sigs = w => w.FTH_INT.counts();
   await F.deleteMine(); ok('delete my data removes entry, run docs and player doc', !db['boards/dots/entries/g-existing'] && !db['players/g-existing']);
   ok('delete my data removes the research log too', logs('g-existing').length === 0);
   await F.signOut(); ok('sign-out', !F.state().signedIn && !F.state().submit);
+  { const before = logs('anon-1').length; await attempt(7);
+    ok('no identity yet: the first finished attempt signs the device in silently and is sent', F.state().signedIn && F.state().anon && logs('anon-1').length === before + 1);
+    ok('the silent identity turns on the cloud save of level progress, not the leaderboard', !!JSON.parse(w.store['fth-acct']).on && !F.state().submit); }
 
   console.log(fails ? '\n' + fails + ' FAILED' : '\nall passed'); process.exit(fails ? 1 : 0);
 })().catch(e => { console.error(e); process.exit(2); });

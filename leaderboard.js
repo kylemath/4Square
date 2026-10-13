@@ -217,7 +217,7 @@
     el.innerHTML = `<div class="lb-join" role="region" aria-label="Join the leaderboard"><div class="lb-jt"><span class="flag" aria-hidden="true">🏁</span><b>JOIN THE RACE!</b></div>
       <div class="lb-jrow"><input class="lb-in" type="text" id="lbNick" maxlength="16" autocomplete="off" aria-label="Nickname" value="${esc(nickDraft)}"><button class="lb-dice" id="lbDice" aria-label="Random nickname">🎲</button></div>
       <div class="lb-jbtns"><button class="b3 go" id="lbJoinBtn">JOIN ▶</button><button class="b3 gg" id="lbGoogleJ" ${g} aria-label="Join with Google">${GOOGLE}Google</button></div>
-      ${notice(true)}${s.hasGoogle ? '<p class="lb-note">🔬 With Google, your moves are also logged for the lab\'s puzzle research.</p>' : ''}<div class="lb-err" id="lbErrJ" role="alert"></div></div>`;
+      ${notice(true)}${research() ? '<p class="lb-note">🔬 Your moves are logged for the lab\'s puzzle research (no name or email).</p>' : ''}<div class="lb-err" id="lbErrJ" role="alert"></div></div>`;
     const err = m => { const e = $('#lbErrJ', el) || $('#lbErr', root); if (e) e.textContent = m || ''; }, nk = $('#lbNick', el);
     nk.oninput = () => { nickDraft = nk.value; };
     $('#lbDice', el).onclick = () => { nickDraft = nk.value = A.randomNick(); };
@@ -251,7 +251,7 @@
       ${s.queued ? `<p class="lb-note" aria-label="${s.queued} boards waiting to be sent">📤 ${s.queued}${s.online ? '' : ' · 📡✕'}</p>` : ''}
       <details><summary aria-label="Settings and your data">⚙️</summary>
         ${notice(s.submit)}
-        ${s.linked && window.FTH_LOG ? `<label class="lb-chk"><input type="checkbox" id="lbResearch" ${research() ? 'checked' : ''}><span>🔬 Log my moves for the lab's puzzle research (no name or email).</span></label>` : ''}
+        ${window.FTH_LOG ? `<label class="lb-chk"><input type="checkbox" id="lbResearch" ${research() ? 'checked' : ''}><span>🔬 Log my moves for the lab's puzzle research (no name or email).</span></label>` : ''}
         ${s.hasGoogle ? '<p class="lb-note">Linking keeps your scores. Your Google name and email are never shown or stored by the game.</p>' : `<p class="lb-note">${esc(s.note)}</p>`}
         <p class="lb-note">Ranked by coins earned in each skin, all time: spending them does not lower it. Every entry's solutions are replayed on your device first, and its coins count only up to what its replayed levels could pay.</p>
         <div class="lb-row"><button class="lb-btn" id="lbOut">⏏ Sign out</button><button class="lb-btn" id="lbDel">🗑 Delete my leaderboard data</button></div>

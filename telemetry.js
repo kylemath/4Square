@@ -13,10 +13,11 @@
  *      runs as a claude.ai artifact that declares the db capability and the viewer may write.
  *   3. a Google Form (set FTH_FORM below): one form response per attempt, the attempt as a JSON string in one field.
  *      Only works where the page may reach docs.google.com (e.g. the GitHub Pages copy; claude.ai artifacts block it).
- *   4. Firestore logs/<uid>/attempts/<attempt id> (account.js logPut; rules in firestore.rules), for a player signed in
- *      with Google on the online site. Signing in with Google is the consent (account.js researchOn); the account
- *      screen shows it and can switch it off. Attempts not yet uploaded are retried from the local queue
- *      (FTH_LOG.upload(): on each new attempt, on sign-in, when the browser comes back online).
+ *   4. Firestore logs/<uid>/attempts/<attempt id> (account.js logPut; rules in firestore.rules) on the online site.
+ *      ON BY DEFAULT for every player (lab demo, Oct 2026): the device gets a silent anonymous identity on its first
+ *      finished attempt, no sign-in screen. The title screen says so in one line; the account screen (🏆) switches it
+ *      off. Attempts not yet uploaded are retried from the local queue (FTH_LOG.upload(): on each new attempt, on
+ *      page load, when the browser comes back online).
  *
  * Related, separate from this file: integrity.js keeps an always-on, on-device integrity log and the run proofs for
  * leaderboards (see ACCOUNTS.md). It never changes what this research log records or its consent; its signals are
@@ -37,7 +38,7 @@
       dpr: +(devicePixelRatio || 1).toFixed(2), touch, lang: (navigator.language || '').slice(0, 5) };
   };
   let cur = null, inputs = {};
-  const consent = () => ls.get(CKEY);          // 'on' | 'off' | null (not asked)
+  const consent = () => ls.get(CKEY) || 'on';  // 'on' (default) | 'off' (switched off on the account screen)
 
   // ---------- sinks ----------
   let dbP = null;

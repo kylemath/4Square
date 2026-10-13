@@ -212,9 +212,11 @@
     return r;
   }
   async function useCredential(cred) { user = await AD.auth.useCredential(cred); await adoptNick(); if (!nick()) setNick(randomNick(), true); markDirty(skinIds()); researchOn(); changed(); if (prefs().submit) flush(); return user; }
-  // telemetry.js hands each finished attempt here; true once it is in the cloud
+  // telemetry.js hands each finished attempt here; true once it is in the cloud. A device with no identity yet gets a
+  // silent anonymous one (no sign-in screen), which also turns on its cloud save of level progress (cloud.js).
   async function logPut(rec) {
-    await init(); if (!user || !user.linked || AD.kind !== 'firebase') return false;
+    await init(); if (AD.kind !== 'firebase') return false;
+    if (!user) await ensureIdentity();
     let data = JSON.stringify(rec);
     if (data.length > 900000) data = JSON.stringify(Object.assign({}, rec, { ev: rec.ev.slice(0, 2000), cut: rec.ev.length }));
     return AD.store.putLog(user.uid, { v: 1, attempt: String(rec.attempt), level: String(rec.level).slice(0, 40), skin: String(rec.skin || 'islands'),
