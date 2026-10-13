@@ -14,6 +14,30 @@ A skin is two things:
 
 Nothing else is per-skin. A skin never edits `index.html`, `lab/core.js` or another skin's files.
 
+## 0. The product bar (read this first)
+
+4square is a **fun mobile game**, not a puzzle tool. Islands is the reference for every skin: bright layered shapes, a
+thick dark outline on every object, one light from the top left, chunky 3D buttons, things that bounce, pop, fly and
+glow. Complexity of the maths must never leak into the look. A skin is rejected if it fails any of these:
+
+1. **Symbols, not sentences.** Any on-screen copy is at most ~4 words (a level title, "+120", "×3", "SWAP"). Teach with
+   pictures and motion (a pulsing chain, a ghost finger, an arrow), never with an instruction paragraph. No status
+   lines that narrate the rules ("tap a door, swipe or use the arrows...", "none of its 5 ions may be inside"). The
+   brief and how-to pages are the only place for a sentence, and they get one short one each.
+2. **Every affordance is visible.** What can be touched glows, bobs or pulses; what cannot is flat and quiet. The next
+   useful action is always the brightest thing on screen. Colour carries meaning (the four element colours, the
+   accent for "do this", grey for "not yet").
+3. **Every action has juice** (section 14): a swap flips with a pop and a sound, coins fly from the swap into the
+   counter, a win is a 3 to 5 s sequence. A silent, static change is a bug.
+4. **Filled, not line art.** Icons, tiles, markers and coins are solid cartoon shapes with an outline, a highlight and a
+   drop shadow (an offset darker copy). Thin strokes on an empty background are for the board's links only. A skin
+   whose look is minimal (Dots, Line Doodle) is minimal in *palette and pace*, not in polish: its icon, buttons and
+   coins are still crisp, filled and alive.
+5. **It has an app-store icon and a card** (section 13) good enough to sell the skin on their own.
+
+`node tools/skin_check.js` enforces what a script can (icon and card present, copy length of `intro`, `words`,
+`blurb`); reviewers enforce the rest by comparing a skin's screenshots (`node tools/shots.js`) with Islands'.
+
 ## 1. The spec object
 
 ```js
@@ -40,6 +64,10 @@ FTH_SKINS.register({
   map: { ... },                    // the exploration map's look (section 7)
   words: { ... },                  // optional copy overrides (section 8)
   coin: { ... },                   // the skin's own currency: name, value, art (section 12)
+  icon: '<svg viewBox="0 0 120 120">…</svg>',   // REQUIRED: the app-store icon (section 13)
+  card: '<svg viewBox="0 0 240 320">…</svg>',   // REQUIRED: the reel card: logo + a still of play (section 13)
+  logo: '<svg viewBox="0 0 240 80">…</svg>',    // optional: the skin's name as a stylised wordmark (section 13)
+  eggs: [ { id, on, … } ],                      // optional: easter eggs (section 15)
 });
 ```
 
@@ -122,30 +150,50 @@ The shell shows them in its carousel (Back / Next / Skip). Teach, in this skin's
 the goal (empty the hole's rim of one element), what a chain is and how this skin swaps it, a lock, and the win.
 SVGs may animate with CSS; no script inside them.
 
-## 6. Bonus round
+## 6. Bonus round and the win flow
 
-The win screen's mini-game: a 9 x 7 hex board; a drag along a path alternating two elements finds and collects coins.
-The shell owns the rules, input, coins and countdown. The skin owns the look. Rules the skin should know about:
-the coins are HIDDEN (the shell draws them only when a chain reveals them, so **a tile must not draw coins itself**:
-no coin pips or stacks in `tile`), a round has THREE chains (header pips `.bpips`, drawn from `--sk-chip`, `--sk-edge`,
-`--sk-accent`), and the tiles of an ended chain get the extra class `spent` (dimmed by the shell). Chain, clock and
-board rules are documented at the top of the bonus-round section of `index.html`; boards are validated by
-`tools/bonus_boards.js`.
+After a win the shell plays the skin's **win flow**. Two flows exist:
+
+| `bonus.flow` | what happens after the win scene |
+|---|---|
+| `'card'` (default) | the win card (stars, coins flying into the total), then one **bonus game** picked at random from `bonus.games`, then NEXT |
+| `'fade'` | no card and no bonus: the board slowly fades out (~1.5 s), the stars and pay land quietly in the HUD, and the next level fades in already started (no brief). For chill, endless skins (Dots) |
 
 ```js
 bonus: {
-  label: 'BONUS',                  // the tag text
-  board: 'rgba(...)' ,             // CSS background of the board area
-  line: '#ff7a52',                 // stroke of the traced path (default: the pair's neon colour)
-  tile(x, y, r, e, k) { return '<g class="tl e' + e + '" data-k="' + k + '" transform="translate(' + x + ' ' + y + ')"><g class="tin">…</g></g>'; },
+  flow: 'card',                    // 'card' | 'fade'
+  games: ['chain', 'snake', 'hop', 'stack', 'pop'],   // which bonus games this skin may roll (default: all five); [] = card with no game
+  label: '★',                      // the tag on the bonus header: a glyph or one short word
+  board: 'rgba(...)',              // CSS background of the bonus play area
+  line: '#ff7a52',                 // stroke of a traced path (default: the pair's neon colour)
+  tile(x, y, r, e, k) { … },       // one gem of element e (the art every bonus game draws its pieces with)
+  intro: 'drop',                   // optional: how the bonus board arrives: 'drop' | 'spin' | 'curtain' | 'zoom' (default 'drop')
 }
 ```
 
-`tile` returns the SVG for one tile of element `e` (0 fire, 1 water, 2 air, 3 earth) centred at `(x, y)` with radius
-`r`. **The outer `<g>` must keep `class="tl e{e}"`, `data-k="{k}"` and the translate; the inner `<g class="tin">` must
-wrap everything else** (the shell scales `.tin` when a tile pops and adds the classes `lit` and `glow` to the outer
-`<g>` when it is traced, and `spent` once its chain has ended (it keeps `lit`); style those in `css`). Draw in local
-coordinates round (0, 0).
+**The five bonus games** (`bonus/games.js`; the shell owns rules, input, coins, sounds and the countdown, the skin
+owns the look through `tile`, `board`, `line`, the coin and the `--sk-*` tokens). Each round is about 15 to 20 s, is
+taught by one animated ghost-finger cue (no instruction text), and pays through the shell's coin flight. Every game is a
+Kempe game: pieces alternate two elements.
+
+| id | classic | the idea |
+|---|---|---|
+| `chain` | match-3 drag | a 5 x 4 board of big gems; drag a path that alternates two elements to reveal hidden coins; three chains |
+| `snake` | Snake | steer a snake over a field of gems; it may only eat the element that alternates with its last bite; a wrong bite ends the run |
+| `hop` | Frogger | lanes of gems slide sideways; hop up lane by lane, landing only on the element that alternates with your last |
+| `stack` | Tetris | gems fall in a narrow well; tap a column so no gem lands on its own element; full rows of two alternating elements clear and pay |
+| `pop` | bubble / whack | gems pop up and vanish; tap only the element that continues the two-element run; the run's length is the multiplier |
+
+A skin restricts the list to games that fit its fiction (Rat Maze might roll only `snake` and `hop`; Candy `chain`,
+`stack`, `pop`). The rules of each game are documented at the top of `bonus/games.js`; boards are validated by
+`tools/bonus_boards.js`.
+
+**`tile` contract** (unchanged): `tile(x, y, r, e, k)` returns the SVG for one gem of element `e` (0 fire, 1 water,
+2 air, 3 earth) centred at `(x, y)` with radius `r`. The outer `<g>` must keep `class="tl e{e}"`, `data-k="{k}"` and the
+translate; the inner `<g class="tin">` wraps everything else (the shell scales `.tin` when a tile pops and adds the
+classes `lit`, `glow` and `spent` to the outer `<g>`; style those in `css`). Draw in local coordinates round (0, 0). The
+coins are hidden: **a tile must not draw coins itself**. Gems are drawn big (r is about 2x what it used to be): give them
+a bold silhouette that reads at a glance, one element per shape as well as per colour.
 
 ## 7. Exploration map
 
@@ -337,3 +385,60 @@ level pays a quarter. The credit goes to the wallet of the skin the level actual
 exchange never changes it), `f` the sub-coin remainder. It is written only through `persist()`, and `integrity.js` hashes it
 with the progress, so an offline edit shows up as an edited save. Migration (a save with no wallet): the old total of best
 points becomes the Islands balance 1:1, once. `window.FTH_WALLET` (`bal`, `earned`, `wealth`, `swap`) is the shell's wallet API.
+
+## 13. Icon, card and logo
+
+Every skin sells itself on the skin reel (title screen and shop), where it is a card on a ribbon you swipe left and
+right: the centred card is big and bright, its neighbours smaller and shaded.
+
+- **`icon`** (required): an SVG string, `viewBox="0 0 120 120"`, the skin's app-store icon. A full-bleed rounded square
+  (rx about 26) in the skin's palette, one bold central motif that says how this skin plays (a candy, a cheese, a
+  lettered tile, a glowing ion...), drawn the Islands way: layered fills, a dark outline, a top-left highlight, a drop
+  shadow, depth from a gradient. No text except at most one letter or digit that is part of the motif. It must read at
+  48 px. Never line art, never an emoji.
+- **`card`** (required): an SVG string, `viewBox="0 0 240 320"`, the reel card: a still of this skin's gameplay (its
+  board look, its tiles, a chain being swapped) filling the card, with the skin's `logo` (or its name in the skin's
+  font) across the bottom third. The shell adds ownership: an owned card is in colour with a slow idle shimmer; a
+  locked card gets a grey overlay, stays still and shows a ticket badge.
+- **`logo`** (optional): the skin's name as a wordmark, `viewBox="0 0 240 80"`, in the skin's font and colours. The
+  reel shows it under the card. Without it the shell sets `name` in `--sk-font`.
+
+All three are plain strings (no script, no external images, ids prefixed with the skin id) and are checked by
+`tools/skin_check.js`.
+
+## 14. Juice: what every play page must animate
+
+The shell animates its own screens; a play page owns the feel of its board. Each of these is required:
+
+| moment | what the player sees and hears |
+|---|---|
+| touch a piece | it lifts or glows at once (< 50 ms); its candidate chains light |
+| a chain is traced | the chain pulses in its two element colours, a rising tone per piece |
+| swap | every piece of the chain flips in a wave from where you touched (30 to 60 ms apart), each with a pop |
+| coins | call `LAB.at(x, y)` (page CSS px) before or right after a swap: the shell flies that swap's coins from there into the HUD counter, which rolls up and bumps |
+| progress | the rim / goal shows the change with a bounce (an element leaving the rim visibly flies out) |
+| no progress | a soft shake or wobble, never a text error |
+| win | at least 3 s: the hole fills with a burst, the whole board celebrates (a wave, a dance, a light show in the skin's fiction), then `LAB.done()` |
+
+Points stay the shell's: it scores framed swaps the same way as the island board, so `LAB.at` only says *where* the
+coins come from.
+
+## 15. Easter eggs (optional)
+
+A skin may hide small delights. Each egg is declared in `eggs` so the shell, the reel and the research log know about
+it, and it lives either in the play page or in the shell:
+
+```js
+eggs: [
+  { id: 'snake-run', on: 'page', note: 'trace through every dot of a chain: a rising multiplier', pays: true },
+  { id: 'fish', on: 'title', taps: 5, run(fx) { fx.burst('🐟', 0.5, 0.6); fx.sound('pop'); } },
+]
+```
+
+- `on: 'page'`: the play page detects it and calls `LAB.egg(id, pts)`. The shell credits `pts` points **quietly**: no
+  toast, no counter bump, just the coins added (it caps an egg at 2,000 points a level and logs it).
+- `on: 'title'` (tap the title art `taps` times), `'map'` (tap the level-map pin `taps` times), `'win'` (once per win, with
+  probability `p`, default 0.1) or `'idle'` (after `secs` seconds without a touch on the board): the shell calls
+  `run(fx)`, where `fx` offers `burst(glyph, x, y)` (x, y as fractions of the screen), `sound(name)` (`'pop' 'chime' 'whoosh'
+  'cheer'`), `shake()` and `pay(pts)`.
+- An egg is never needed to progress, never explained in text, and never interrupts play.
