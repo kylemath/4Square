@@ -2,6 +2,7 @@
 // (ACCOUNTS.md). Collections:
 //   players/{uid}                       { nick, linked, createdAt, v }                 owner read/write/delete
 //   boards/{skin}/entries/{uid}         one best-per-skin entry per player; PUBLIC read, owner write
+//   saves/{uid}                         the progress save (cloud.js): progress, wallets, skins, maps; owner only
 //   runs/{uid}_{levelId}_{skinId}       full replayable proof of the best run on that level + skin; owner read/write
 // What these rules enforce: signed in (anonymous counts), only your own docs, field types and bounds, numbers that
 // never go down, numbers bounded by what the level set allows, at most one write per doc per 5 seconds, delete only
@@ -16,6 +17,17 @@ service cloud.firestore {
     function str(v, lo, hi) { return v is string && v.size() >= lo && v.size() <= hi; }
     function slow(oldDoc, newField) { return request.time > oldDoc.data[newField] + duration.value(5, 's'); }
 
+    // saves/{uid}: the player's whole progress save (cloud.js), so a Google profile plays on every device. Owner only.
+    // data and runs are JSON strings; rev counts writes (cloud.js reads it in a transaction and writes rev + 1).
+    match /saves/{uid} {
+      allow read, delete: if mine(uid);
+      allow create, update: if mine(uid)
+        && request.resource.data.keys().hasOnly(['v', 'data', 'runs', 'rev', 'app', 'at'])
+        && str(request.resource.data.data, 2, 700000) && str(request.resource.data.runs, 2, 300000)
+        && request.resource.data.rev is int
+        && request.resource.data.rev == (resource == null ? 1 : resource.data.rev + 1)
+        && request.resource.data.at == request.time;
+    }
     match /players/{uid} {
       allow read: if mine(uid);
       allow create, update: if mine(uid)

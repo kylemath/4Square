@@ -143,6 +143,7 @@
     $('.lb-x', root).onclick = close;
     root.addEventListener('keydown', e => { if (e.key === 'Escape') close(); });
     addEventListener('fth-acct', () => { if (root.classList.contains('on')) render(); });
+    addEventListener('fth-cloud', () => { if (root.classList.contains('on') && !(window.FTH_CLOUD && FTH_CLOUD.state().busy)) render(); });
   }
   function close() { root.classList.remove('on'); if (root._from && root._from.focus) root._from.focus(); }
   async function open(skinId) {
@@ -243,6 +244,9 @@
         <button class="lb-ib" id="lbSave" aria-label="Change name">✏️</button>
         <button class="lb-ib${s.linked ? ' on' : ''}" id="lbGoogle" ${s.hasGoogle && !s.linked ? '' : 'disabled'} aria-label="${s.linked ? 'Linked to Google' : 'Keep my progress with Google'}" title="${esc(s.linked ? 'Linked to Google' : s.hasGoogle ? 'Keep my progress with Google' : s.note)}">${GOOGLE}</button></div>
       <div class="lb-err" id="lbErr" role="alert">${esc(s.err)}</div>
+      ${(() => { const c = window.FTH_CLOUD ? FTH_CLOUD.state() : null; if (!c) return '';
+        const t = c.at ? new Date(c.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+        return `<p class="lb-note" aria-label="Cloud save">${c.busy ? '☁️ …' : c.err ? '☁️ ⚠️ ' + esc(c.err) : c.at ? '☁️ ✓ ' + t + (s.linked ? ' · every device' : ' · 🔗 Google to play anywhere') : '☁️'}</p>`; })()}
       ${s.queued ? `<p class="lb-note" aria-label="${s.queued} boards waiting to be sent">📤 ${s.queued}${s.online ? '' : ' · 📡✕'}</p>` : ''}
       <details><summary aria-label="Settings and your data">⚙️</summary>
         ${notice(s.submit)}
@@ -257,7 +261,7 @@
     $('#lbSub', el).onchange = e => A.setSubmit(e.target.checked);
     $('#lbGoogle', el).onclick = async e => { e.currentTarget.disabled = true; try { await google(err); } catch (x) { err('Google sign-in did not work (' + ((x && x.code) || 'error') + ').'); } render(); };
     $('#lbOut', el).onclick = async () => { await A.signOut(); render(); };
-    $('#lbDel', el).onclick = async () => { if (confirm('Delete your leaderboard entries and profile? Your game progress on this device is kept.')) { try { await A.deleteMine(); } catch (x) { err('Could not delete right now: ' + (x && x.code || 'error')); } render(); } };
+    $('#lbDel', el).onclick = async () => { if (confirm('Delete your leaderboard entries, profile and cloud save? Your game progress on this device is kept.')) { try { await A.deleteMine(); } catch (x) { err('Could not delete right now: ' + (x && x.code || 'error')); } render(); } };
     const cl = $('#lbClearLog', el); if (cl) cl.onclick = () => { FTH_INT.clear(); render(); };
   }
   window.FTH_LB = { open, close, render };

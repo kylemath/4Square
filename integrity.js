@@ -186,7 +186,7 @@
 
   let lbP = null;
   function openBoard(skin) {
-    if (!lbP) lbP = loadScripts(['account-config.js', 'account.js', 'leaderboard.js']).catch(e => { lbP = null; throw e; });
+    if (!lbP) lbP = loadAccount().then(() => window.FTH_LB || loadScripts(['leaderboard.js'])).catch(e => { lbP = null; throw e; });   // one account.js per page (cloud.js may have loaded it)
     return lbP.then(() => window.FTH_LB.open(skin)).catch(() => { alert('The leaderboard could not load. Check your connection and try again.'); });
   }
   window.FTH_INT = { log, logs: () => jget(LOGK, []), clear() { ls.del(LOGK); }, meta, check, seal, APP,

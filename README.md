@@ -46,7 +46,7 @@ starts their first level (🔒 while it is locked).
 - *Currency exchange* (`economy.js`: a graph of direct markets where coins convert along the cheapest route, with no
   arbitrage, `node tools/economy_check.js`). Off: no wallet button. `?feat=exchange` brings the button back.
 
-Accounts, per-skin leaderboards and the cheat-evidence log are described in [ACCOUNTS.md](ACCOUNTS.md); they work locally
+Accounts, per-skin leaderboards, cloud saves (sign in with Google and your progress follows you to every device) and the cheat-evidence log are described in [ACCOUNTS.md](ACCOUNTS.md); they work locally
 with no setup and go online once `account-config.js` is filled in.
 
 **Rat Maze and Candy** are on that title screen. [Rat Maze](lab/maze.html) draws the swap graph itself as a rat maze

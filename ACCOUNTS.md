@@ -37,10 +37,26 @@ only the chosen nickname and the uid). If the Google account is already linked t
 whether to switch to it; this device's verified runs are then merged into that profile's entry. `firestore.rules`
 caps at 64 levels (`MAX_LEVELS`); raise it if the level set grows past that.
 
+## Cloud saves (play on every device)
+
+`cloud.js` keeps a joined player's whole progress save (levels and stars, wallets, owned skins and tickets, charted maps,
+achievements) and their run proofs in `saves/{uid}` (owner only). Link Google on one device, sign in with Google on
+another, and the same progress is there. Every save write marks the device dirty and uploads a few seconds later (and at
+once when the page is hidden); a sync also runs at start and right after signing in or switching profile. Each write
+bumps `rev` inside a transaction, and each device remembers the rev it last saw: only this side changed -> upload; only
+the cloud changed -> take it (the page reloads, "☁️ Progress restored"); both changed, or a device that already has
+progress joins the profile -> **merge** (best stars and score per level, larger balance and lifetime total per wallet,
+owned skins united, the larger ticket counts, charted maps united, the better proof per skin and level; nothing is lost),
+"☁️ Progress merged". A restored save is sealed on the device that receives it, so it is not an edited save; leaderboards
+are still built only from replayed proofs, so a hand-edited cloud save changes nothing but its owner's own game.
+"Delete my leaderboard data" deletes the cloud save too. Local runs (localhost, the tools/ checks) stay in LOCAL mode
+unless `?online=1`. `node tools/cloud_check.js` tests the merge and the protocol across simulated devices.
+
 ## Data model (Firestore)
 
 | path | content | who |
 |---|---|---|
+| `saves/{uid}` | `v, data` (the save, JSON), `runs` (proofs, JSON), `rev`, `app`, `at` | owner only; `rev` must go up by one |
 | `players/{uid}` | `nick`, `linked`, `createdAt`, `v` | owner only |
 | `boards/{skinId}/entries/{uid}` | best per skin: `nick, stars, levels, pars, points, updatedAt, v, app, pr, int`; `pr` = map levelId -> proof (the compact verified run set), `int` = integrity summary `{tamper, sig}` | public read, owner write |
 | `runs/{uid}_{levelId}_{skinId}` | the full proof of the best run on that level + skin (below) plus `uid, at` | owner read/write; you export it with the Admin SDK |

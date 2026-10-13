@@ -60,11 +60,14 @@
       store: {
         putPlayer: async () => {},
         getPlayer: async () => null,
+        getSave: async uid => jget('fth-cloud-local', {})[uid] || null,
+        putSave: async (uid, doc, expect) => { const all = jget('fth-cloud-local', {}), cur = all[uid];
+          if ((cur ? cur.rev : 0) !== expect) return { ok: false, cur }; all[uid] = Object.assign({}, doc, { at: Date.now() }); jset('fth-cloud-local', all); return { ok: true }; },
         getEntry: async (skin, uid) => (boards()[skin] || {})[uid] || null,
         putEntry: async (skin, uid, entry) => { const b = boards(); (b[skin] = b[skin] || {})[uid] = Object.assign({}, entry, { updatedAt: Date.now() }); jset(BOARDK, b); },
         board: async (skin, n) => Object.entries(boards()[skin] || {}).map(([uid, e]) => Object.assign({ uid }, e)).sort(order).slice(0, n || TOP_N),
         top: async (skin, n) => Object.entries(boards()[skin] || {}).map(([uid, e]) => Object.assign({ uid }, e)).filter(e => e.coins > 0).sort(byCoins).slice(0, n || 12),
-        deleteMine: async (uid, skins) => { const b = boards(); skins.forEach(s => { if (b[s]) delete b[s][uid]; }); jset(BOARDK, b); },
+        deleteMine: async (uid, skins) => { const b = boards(); skins.forEach(s => { if (b[s]) delete b[s][uid]; }); jset(BOARDK, b); const c = jget('fth-cloud-local', {}); delete c[uid]; jset('fth-cloud-local', c); },
       },
     };
   }
@@ -115,6 +118,12 @@
         signOut: async () => { await A.signOut(auth); },
       },
       store: {
+        getSave: async uid => { const d = await F.getDoc(F.doc(db, 'saves', uid)); return d.exists() ? Object.assign({}, d.data(), { at: ts(d.data().at) }) : null; },
+        putSave: async (uid, doc, expect) => F.runTransaction(db, async tx => {
+          const ref = F.doc(db, 'saves', uid), d = await tx.get(ref), cur = d.exists() ? d.data() : null;
+          if ((cur ? cur.rev : 0) !== expect) return { ok: false, cur };
+          tx.set(ref, Object.assign({}, doc, { at: F.serverTimestamp() })); return { ok: true };
+        }),
         getPlayer: async uid => { const d = await F.getDoc(F.doc(db, 'players', uid)); return d.exists() ? d.data() : null; },
         putPlayer: async (uid, doc) => { await F.setDoc(F.doc(db, 'players', uid), Object.assign({}, doc, { createdAt: F.serverTimestamp() }), { merge: true }); },
         getEntry: async (skin, uid) => { const s = await F.getDoc(F.doc(db, 'boards', skin, 'entries', uid)); return s.exists() ? unpackEntry(s.data()) : null; },
@@ -138,6 +147,7 @@
             if (e.exists()) { const b = F.writeBatch(db); Object.keys(e.data().pr || {}).forEach(l => b.delete(F.doc(db, 'runs', uid + '_' + l + '_' + s))); b.delete(e.ref); await b.commit(); }
           }
           await F.deleteDoc(F.doc(db, 'players', uid));
+          await F.deleteDoc(F.doc(db, 'saves', uid));   // the cloud save too (cloud.js); progress on this device stays
         },
       },
     };
@@ -339,6 +349,8 @@
 
   const api = {
     podium, coinCap,
+    cloudGet: async () => { await init(); return user ? AD.store.getSave(user.uid) : null; },
+    cloudPut: async (doc, expect) => { await init(); if (!user) return { ok: false }; return AD.store.putSave(user.uid, doc, expect); },
     init, ensureIdentity, setNick, validateNick, randomNick, linkGoogle, useCredential, signOut, deleteMine, flush, board, verifyEntry, totals,
     setSubmit(on) { setPrefs({ submit: !!on }); if (on) { markDirty(skinIds()); flush(); } },
     state() { return { kind: AD ? AD.kind : 'local', hasGoogle: !!(AD && AD.hasGoogle), note: AD ? AD.note : '', uid: user && user.uid, anon: !user || user.anon, linked: !!(user && user.linked), nick: nick(), submit: !!prefs().submit, signedIn: !!user, err: lastErr, queued: Object.keys(dirty()).length, online: online() }; },

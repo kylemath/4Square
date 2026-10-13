@@ -22,3 +22,6 @@ window.FTH_FIREBASE = {           // project play4square (Kyle's Firebase consol
   projectId: 'play4square',
   appId: '1:529165401237:web:516188c734b55e4787ef9c',
 };
+// local runs (the tools/ checks, a dev server) stay in LOCAL mode: the API key only answers our published domains
+// (Google Cloud key restrictions). Add ?online=1 to try the real project from localhost.
+if (/^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname) && !/[?&]online=1/.test(location.search)) window.FTH_FIREBASE = null;

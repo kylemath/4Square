@@ -675,6 +675,7 @@
 <script src="skins/rimword.js"></script>
 <script src="skins/spheres.js"></script>
 <script src="eggs.js"></script>
+<script src="cloud.js"></script>
 <script>
 (function () {
   'use strict';
@@ -700,7 +701,12 @@
   let save = { best: {} };
   try { save = JSON.parse(localStorage.getItem(KEY)) || save; } catch (e) {}
   if (window.FTH_INT && !LABN) FTH_INT.check(KEY, save);       // integrity.js: was this progress save edited outside the game?
-  const persist = () => { try { localStorage.setItem(KEY, JSON.stringify(save)); } catch (e) {} if (window.FTH_INT && !LABN) FTH_INT.seal(KEY, save); };
+  let saveFrozen = false;                                        // cloud.js wrote a restored save and the page is reloading
+  const persist = () => { if (saveFrozen) return; try { localStorage.setItem(KEY, JSON.stringify(save)); } catch (e) {} if (window.FTH_INT && !LABN) FTH_INT.seal(KEY, save);
+    if (window.FTH_CLOUD && !LABN) FTH_CLOUD.dirty(); };
+  // cloud saves (cloud.js): the raw save to upload, and a way to write a restored one (sealed here, so it is not "edited")
+  if (!LABN) window.FTH_SAVE = { key: KEY, raw: () => JSON.parse(JSON.stringify(save)),
+    write(obj) { saveFrozen = true; try { localStorage.setItem(KEY, JSON.stringify(obj)); } catch (e) {} if (window.FTH_INT) FTH_INT.seal(KEY, obj); } };
   // progress is kept per level id (save.byId), so levels can be inserted or reordered in levels.json. Old saves were
   // keyed by position: v1 had no Level -1 (4 onboarding levels added in front), v2 matched G.legacy (the old 20 levels).
   save.byId = save.byId || {};
@@ -2317,6 +2323,11 @@
       const b = $('titleBadge'); b.style.transition = 'transform .25s'; b.style.transform = 'scale(1.25) rotate(' + (on ? -6 : 6) + 'deg)'; blip(on ? 880 : 330, .15, 'triangle', .05);
       setTimeout(() => location.reload(), 500); });
     if (devOn()) $('titleBadge').insertAdjacentHTML('afterbegin', '<span class="s" title="Dev mode: every level open">🛠️</span>'); }
+  { const n = window.FTH_CLOUD && FTH_CLOUD.note();             // cloud.js reloaded the page with a restored or merged save
+    if (n) { const d = document.createElement('div'); d.setAttribute('role', 'status');
+      d.style.cssText = 'position:fixed;top:calc(14px + env(safe-area-inset-top));left:50%;transform:translateX(-50%);z-index:999;background:#fff;color:#1c1640;border:3px solid #1c1640;border-radius:999px;padding:8px 16px;font:900 15px system-ui;box-shadow:0 4px 0 #1c1640;transition:opacity .4s';
+      d.textContent = n === 'merged' ? '☁️ Progress merged' : '☁️ Progress restored'; document.body.appendChild(d);
+      setTimeout(() => { d.style.opacity = 0; setTimeout(() => d.remove(), 450); }, 2800); } }
   { let taps = [];
     $('lvTitle').addEventListener('click', () => { const t = performance.now(); taps = taps.filter(x => t - x < 2000); taps.push(t); if (taps.length >= 5) { taps = []; devOpen(!$('devPanel')); } });
     const fromHash = () => { if (location.hash === '#dev') devOpen(true); };
