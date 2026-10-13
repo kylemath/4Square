@@ -371,7 +371,7 @@
     cloudPut: async (doc, expect) => { await init(); if (!user) return { ok: false }; return AD.store.putSave(user.uid, doc, expect); },
     init, ensureIdentity, setNick, validateNick, randomNick, linkGoogle, useCredential, signOut, deleteMine, flush, board, verifyEntry, totals, logPut,
     setSubmit(on) { setPrefs({ submit: !!on }); if (on) { markDirty(skinIds()); flush(); } },
-    state() { return { kind: AD ? AD.kind : 'local', hasGoogle: !!(AD && AD.hasGoogle), note: AD ? AD.note : '', uid: user && user.uid, anon: !user || user.anon, linked: !!(user && user.linked), nick: nick(), submit: !!prefs().submit, signedIn: !!user, err: lastErr, queued: Object.keys(dirty()).length, online: online() }; },
+    state() { return { kind: AD ? AD.kind : 'local', hasGoogle: !!(AD && AD.hasGoogle), note: AD ? AD.note : '', uid: user && user.uid, anon: !user || user.anon, linked: !!(user && user.linked), nick: nick(), submit: !!prefs().submit, signedIn: !!user, err: lastErr, queued: prefs().submit ? Object.keys(dirty()).length : 0, online: online() }; },
     // future hook: a board can rank by another currency; register { id, label, of: entry -> number }
     // (coins earned per skin are on the podium instead: see podium() above)
     metrics: [{ id: 'stars', label: 'Stars', of: e => e.stars }],
