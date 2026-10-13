@@ -22,10 +22,8 @@ stay on the device board). "Delete my leaderboard data" removes your entries.
 4. Build > Firestore Database > Create database > **Production mode** (pick a region).
 5. Project settings > Your apps > Web (`</>`): register; copy the config object into `account-config.js`
    (`window.FTH_FIREBASE = {...}`; these values are public identifiers, not secrets). Commit and push.
-6. Deploy rules and index: `npm i -g firebase-tools` (or `npx firebase-tools`), `firebase login`,
-   `firebase use --add` (pick the project), then from `docs/game/` with a `firebase.json` containing
-   `{"firestore":{"rules":"firestore.rules","indexes":"firestore.indexes.json"}}`:
-   `firebase deploy --only firestore`. (Or paste `firestore.rules` into Firestore > Rules, and create the composite index
+6. Deploy rules and index from the repo root (`firebase.json` is committed): `npx firebase-tools login`,
+   `npx firebase-tools use --add` (pick the project), `npx firebase-tools deploy --only firestore`. (Or paste `firestore.rules` into Firestore > Rules, and create the composite index
    `entries: stars desc, levels desc, points desc` when the console links it from the first failed query.)
 7. Open the game on kylemath.github.io, tap the trophy, join, win a level: the entry appears under
    Firestore > `boards/<skin>/entries`.
