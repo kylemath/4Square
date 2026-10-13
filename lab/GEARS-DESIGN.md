@@ -14,8 +14,10 @@ almost tooth to tooth.
 - **A gear is a region.** It sits at the centre of its cell; the faint cell plates behind it show who borders whom.
 - **Its element is its body colour**, plus the element icon on the hub, so the board can be read without colour.
 - **The hole is the drive hub.** It is an empty steel socket in the middle, toothed against the 5 rim gears.
-- **Gear size is fixed by the layout:** radius ≤ 0.46 × the distance to the nearest other centre, so no two gears ever
-  overlap, and neighbours nearly mesh.
+- **Gear size comes from the layout:** every pair keeps r_u + r_v ≤ 0.92 × the distance between their centres, so no
+  two gears ever overlap. Sizes are evened out (capped at the median, then small gears grow into free room), and
+  neighbours nearly mesh. A region whose layout centre almost touches another one still gets a very small gear (seen on
+  `heawoods-catch`); its tap target stays at least 20 px.
 
 ## Colour → rotation (the one rule the look rests on)
 
@@ -32,7 +34,8 @@ almost tooth to tooth.
 
 - **Choosing a chain:**
   - drag from a gear to a neighbour of another element: that pair's chain lights;
-  - or tap a gear: up to three partner chips pop out (one per other element), and pressing one lights its chain;
+  - or tap a gear: up to three partner chips pop out on a dark disc (one per other element; a web's chip is grey),
+    and pressing one lights its chain;
   - lifting the finger on the target swaps.
 - **The turn spreads** breadth-first through the chain's own edges from the touched gear, about 70 ms per layer (faster
   on long chains). Each gear starts when the wave reaches it, with a click whose pitch rises layer by layer. A glint
