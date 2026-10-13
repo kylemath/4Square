@@ -41,6 +41,20 @@
  */
 (function () {
   'use strict';
+  // The filler gallery (?filler=1) stores one combined graph and opens it in whichever skin is selected.
+  (function installFiller() {
+    if (typeof location === 'undefined' || !window.GAME) return;
+    if (new URLSearchParams(location.search).get('filler') !== '1') return;
+    let spec = null;
+    try { spec = JSON.parse(sessionStorage.getItem('spheres-filler-play') || 'null'); } catch (e) { spec = null; }
+    if (!spec || !spec.edges || !spec.col || spec.hole == null) return;
+    const key = 'filler-play';
+    GAME.graphs[key] = { name: spec.name || 'filler', n: spec.n, hole: spec.hole, link: spec.link, pos: spec.pos, edges: spec.edges, ncol: 4, goal: 3 };
+    const level = { id: key, num: 'filler', g: key, title: spec.title || 'Filler', start: spec.col };
+    const at = GAME.levels.findIndex(l => l.id === key);
+    if (at >= 0) GAME.levels[at] = level; else GAME.levels.push(level);
+    if (window.LAYOUT) LAYOUT[key] = { border: [], arcs: {}, centre: spec.pos, cells: spec.cells || null };
+  })();
   const ELEM = [
     { name: 'fire', hex: '#ef5a3c', dark: '#8e1c17', neon: '#ff7a52', pastel: '#f6a08a' },
     { name: 'water', hex: '#3d8fe8', dark: '#1b4f91', neon: '#5ab4ff', pastel: '#9cc6f4' },

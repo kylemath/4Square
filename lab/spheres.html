@@ -128,22 +128,9 @@ function rippleDepth(g, K, from) {
   return d;
 }
 if (typeof document === 'undefined') { module.exports = { buildLayout, chainFor, rippleDepth }; } else (function () {
-// A filler test (?filler=1) hands over one combined graph: the level's core plus the filler drawn around it.
-// The positions are already the picture, so the layout keeps them instead of pulling the map into a fresh triangle.
-(function installFiller() {
-  const q = new URLSearchParams(location.search);
-  if (q.get('filler') !== '1' || !window.GAME) return;
-  let spec = null;
-  try { spec = JSON.parse(sessionStorage.getItem('spheres-filler-play') || 'null'); } catch (e) { spec = null; }
-  if (!spec || !spec.edges || !spec.col || spec.hole == null) return;
-  const key = 'filler-play';
-  GAME.graphs[key] = { name: spec.name || 'filler', n: spec.n, hole: spec.hole, link: spec.link, pos: spec.pos, edges: spec.edges, ncol: 4, goal: 3 };
-  const level = { id: key, num: 'filler', g: key, title: spec.title || 'Filler', start: spec.col };
-  const at = GAME.levels.findIndex(l => l.id === key);
-  if (at >= 0) GAME.levels[at] = level; else GAME.levels.push(level);
-  if (window.LAYOUT) LAYOUT[key] = { border: [], arcs: {}, centre: spec.pos, cells: null };
-})();
 // ---------- page ----------
+// A filler gallery link (?filler=1) is installed by lab/core.js before LAB.game() runs. With no 3-region border the
+// layout keeps the stored positions instead of pulling the map into a fresh triangle.
 const g = LAB.game();
 const E = LAB.ELEM, ICONS = LAB.ICON.map(p => new Path2D(p));
 const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
