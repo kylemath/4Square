@@ -1,63 +1,167 @@
-// Dots: calm, minimal, airy. A dot is a region, a hairline is a border. See SKIN-SPEC.md.
+// Dots: calm, minimal, lo-fi. A dot is a region, a hairline is a border. Minimal in palette and pace, not in polish:
+// every dot in the art is a glossy ink bead (outline, shade, highlight, drop shadow). See SKIN-SPEC.md.
 (function () {
   const C = ['#ef5a3c', '#3d8fe8', '#e8c547', '#4caf50'];      // fire, water, air, earth (same as lab/dots.html)
+  const DK = ['#8e1c17', '#1b4f91', '#8a6510', '#1a6b2a'];     // their shade
   const INK = '#2d2a26', LINE = '#b9b3a6', PAPER = '#f5f1e8';
+  const f1 = v => Math.round(v * 10) / 10;
   const STY = '<style>.p{fill:none;stroke:' + INK + ';stroke-width:3;stroke-linecap:round;stroke-linejoin:round}' +
-    '.h{fill:none;stroke:' + LINE + ';stroke-width:1.2;stroke-dasharray:3 4}.l{stroke:' + LINE + ';stroke-width:1.2}' +
-    'text{font-family:Nunito,Quicksand,system-ui,sans-serif;fill:' + INK + ';font-size:13px;text-anchor:middle}' +
+    '.h{fill:none;stroke:' + INK + ';stroke-opacity:.45;stroke-width:1.6;stroke-dasharray:3 4}.l{stroke:' + INK + ';stroke-opacity:.22;stroke-width:1.3}' +
+    'text{font-family:Nunito,Quicksand,system-ui,sans-serif;fill:' + INK + ';font-size:13px;font-weight:600;text-anchor:middle;opacity:.6;letter-spacing:.06em}' +
     '@media (prefers-reduced-motion: no-preference){.br{animation:br 2.8s ease-in-out infinite;transform-box:fill-box;transform-origin:center}' +
-    '.fl{animation:fl 3s ease-in-out infinite}.dr{stroke-dasharray:200;animation:dr 3s ease-in-out infinite}' +
-    '@keyframes br{50%{transform:scale(1.18)}}@keyframes fl{0%,40%{opacity:0}60%,100%{opacity:1}}' +
-    '@keyframes dr{0%{stroke-dashoffset:200}60%,100%{stroke-dashoffset:0}}}</style>';
+    '.fl{animation:fl 3s ease-in-out infinite}.dr{stroke-dasharray:240;animation:dr 3s ease-in-out infinite}' +
+    '.bo{animation:bo 3s ease-in-out infinite;transform-box:fill-box;transform-origin:center}' +
+    '@keyframes br{50%{transform:scale(1.1)}}@keyframes fl{0%,40%{opacity:0}60%,100%{opacity:1}}' +
+    '@keyframes bo{0%,45%{transform:scale(0)}60%{transform:scale(1.2)}70%,100%{transform:scale(1)}}' +
+    '@keyframes dr{0%{stroke-dashoffset:240}60%,100%{stroke-dashoffset:0}}}</style>';
   const svg = b => '<svg viewBox="0 0 300 250" xmlns="http://www.w3.org/2000/svg">' + STY + b + '</svg>';
-  const dot = (x, y, e, r, x2) => '<circle cx="' + x + '" cy="' + y + '" r="' + (r || 11) + '" fill="' + C[e] + '"' + (x2 || '') + '/>';
-  const ln = (a, b) => '<line class="l" x1="' + a[0] + '" y1="' + a[1] + '" x2="' + b[0] + '" y2="' + b[1] + '"/>';
-  // a hole at (150,115) with a ring of five, colours given
+  // one glossy ink bead: drop shadow, colour with an ink outline, a shaded crescent, a highlight (no ids, no gradients)
+  const gloss = (x, y, r, e, extra) => {
+    const a0 = -0.3, a1 = 2.05, ri = r * 0.9, R2 = r * 1.18;
+    const A = [f1(ri * Math.cos(a0)), f1(ri * Math.sin(a0))], B = [f1(ri * Math.cos(a1)), f1(ri * Math.sin(a1))];
+    return '<g transform="translate(' + f1(x) + ' ' + f1(y) + ')"' + (extra || '') + '>' +
+      '<circle cx="' + f1(r * 0.14) + '" cy="' + f1(r * 0.22) + '" r="' + f1(r) + '" fill="' + INK + '" opacity=".22"/>' +
+      '<circle r="' + f1(r) + '" fill="' + C[e] + '" stroke="' + INK + '" stroke-width="' + f1(Math.max(1.4, r * 0.15)) + '"/>' +
+      '<path d="M' + A + 'A' + f1(ri) + ' ' + f1(ri) + ' 0 0 1 ' + B + 'A' + f1(R2) + ' ' + f1(R2) + ' 0 0 0 ' + A + 'Z" fill="' + DK[e] + '" opacity=".32"/>' +
+      '<ellipse cx="' + f1(-r * 0.36) + '" cy="' + f1(-r * 0.38) + '" rx="' + f1(r * 0.34) + '" ry="' + f1(r * 0.2) + '" transform="rotate(-38 ' + f1(-r * 0.36) + ' ' + f1(-r * 0.38) + ')" fill="#fff" opacity=".78"/>' +
+      '<circle cx="' + f1(r * 0.34) + '" cy="' + f1(-r * 0.5) + '" r="' + f1(r * 0.08) + '" fill="#fff" opacity=".6"/></g>';
+  };
+  const dot = (x, y, e, r, x2) => gloss(x, y, r || 11, e, x2);
+  const ln = (a, b) => '<line class="l" x1="' + f1(a[0]) + '" y1="' + f1(a[1]) + '" x2="' + f1(b[0]) + '" y2="' + f1(b[1]) + '"/>';
+  // a traced line through points: a dark outline, then the two colours half a segment each
+  const trace = (pts, cols, w) => {
+    const d = 'M' + pts.map(p => f1(p[0]) + ' ' + f1(p[1])).join('L');
+    let s = '<path d="' + d + '" transform="translate(' + f1(w * 0.25) + ' ' + f1(w * 0.4) + ')" fill="none" stroke="' + INK + '" stroke-opacity=".18" stroke-width="' + f1(w * 1.7) + '" stroke-linecap="round" stroke-linejoin="round"/>' +
+      '<path d="' + d + '" fill="none" stroke="' + INK + '" stroke-width="' + f1(w * 1.7) + '" stroke-linecap="round" stroke-linejoin="round"/>';
+    for (let i = 0; i + 1 < pts.length; i++) {
+      const p = pts[i], q = pts[i + 1], m = [(p[0] + q[0]) / 2, (p[1] + q[1]) / 2];
+      s += '<path d="M' + f1(p[0]) + ' ' + f1(p[1]) + 'L' + f1(m[0]) + ' ' + f1(m[1]) + '" stroke="' + C[cols[i]] + '" stroke-width="' + f1(w) + '" stroke-linecap="round"/>' +
+        '<path d="M' + f1(m[0]) + ' ' + f1(m[1]) + 'L' + f1(q[0]) + ' ' + f1(q[1]) + '" stroke="' + C[cols[i + 1]] + '" stroke-width="' + f1(w) + '" stroke-linecap="round"/>';
+    }
+    return s;
+  };
+  // a faint triangular lattice of paper dots over a box
+  const lattice = (x0, y0, x1, y1, s, op) => {
+    let d = ''; const h = s * Math.sqrt(3) / 2;
+    for (let j = 0, y = y0; y <= y1; j++, y += h) for (let x = x0 + (j % 2) * s / 2; x <= x1; x += s) d += 'M' + f1(x) + ' ' + f1(y) + 'h0';
+    return '<path d="' + d + '" stroke="' + INK + '" stroke-opacity="' + (op || 0.12) + '" stroke-width="2.2" stroke-linecap="round"/>';
+  };
+  // a hole at (cx, cy) with a ring of five, colours given
   const ring = (cx, cy, R, cols) => cols.map((e, i) => {
     const a = -Math.PI / 2 + i * 2 * Math.PI / 5; return [cx + R * Math.cos(a), cy + R * Math.sin(a), e];
   });
+  // the four seeds in the hole: hollow when a rim dot has that colour, full when it is free
+  const seeds = (cx, cy, so, used, r) => [[0, -so], [so, 0], [0, so], [-so, 0]].map(([dx, dy], e) => used.includes(e) ?
+    '<circle cx="' + f1(cx + dx) + '" cy="' + f1(cy + dy) + '" r="' + f1(r * 0.62) + '" fill="none" stroke="' + C[e] + '" stroke-width="' + f1(r * 0.3) + '" opacity=".7"/>' :
+    '<circle class="br" cx="' + f1(cx + dx) + '" cy="' + f1(cy + dy) + '" r="' + f1(r * 1.15) + '" fill="' + C[e] + '" stroke="' + INK + '" stroke-width="1.2"/>').join('');
   const ringSvg = (cols, hole, extra, cls) => {
-    const P = ring(150, 120, 62, cols); let s = '';
+    const P = ring(150, 120, 62, cols); let s = lattice(14, 16, 290, 210, 24, 0.09);
     P.forEach((p, i) => { s += ln([150, 120], p) + ln(p, P[(i + 1) % 5]); });
     s += hole;
-    P.forEach((p, i) => { s += dot(p[0].toFixed(1), p[1].toFixed(1), p[2], 13, cls && cls[i] ? ' class="' + cls[i] + '"' : ''); });
+    P.forEach((p, i) => { s += dot(p[0], p[1], p[2], 14, cls && cls[i] ? ' class="' + cls[i] + '"' : ''); });
     return s + (extra || '');
   };
-  const hole = '<circle class="h" cx="150" cy="120" r="14"/>';
-  const cap = t => '<text x="150" y="228">' + t + '</text>';
+  const hole = (used, cls) => '<circle class="h' + (cls ? ' ' + cls : '') + '" cx="150" cy="120" r="22" fill="' + PAPER + '"/>' + seeds(150, 120, 10, used, 3.4);
+  const cap = t => '<text x="150" y="232">' + t + '</text>';
+  const RP = ring(150, 120, 62, [0, 1, 2, 3, 1]);
 
-  const titleSvg = svg(ringSvg([0, 1, 2, 3, 1], hole.replace('class="h"', 'class="h br"'), '', ['', '', '', '', '']) +
-    '<text x="150" y="232" style="font-size:12px;opacity:.55;letter-spacing:.14em">FIVE DOTS ROUND AN EMPTY RING</text>');
+  // title: the ring of five round an empty, breathing hole, and a few quieter dots further out
+  const OUT = [[54, 54, 2], [246, 52, 3], [266, 160, 0], [150, 214, 2], [36, 168, 3]];
+  const titleSvg = svg(lattice(10, 14, 292, 238, 24, 0.09) +
+    OUT.map((o, i) => ln(o, RP[i]) + ln(o, RP[(i + 4) % 5])).join('') +
+    ringSvg([0, 1, 2, 3, 1], hole([0, 1, 2, 3], 'br')) + OUT.map(o => dot(o[0], o[1], o[2], 9)).join(''));
 
   const I = [
-    { title: 'Fill the hole', text: 'Five dots ring the empty spot, and they use all four colours. Make them use only three, and the hole can take the fourth.',
-      svg: svg(ringSvg([0, 1, 2, 3, 1], hole.replace('class="h"', 'class="h br"')) + cap('four colours round the ring')) },
-    { title: 'A chain of two', text: 'Dots of two colours that touch form a chain. Here the red and blue dots are joined by a line.',
-      svg: svg(ringSvg([0, 1, 2, 3, 1], hole) +
-        '<path class="p dr" d="M150 58 L211 102 L211 102" opacity=".0"/>' +
-        '<path class="p dr" d="M150 58 L150 120 L88 102" stroke="' + C[0] + '" opacity=".0"/>' +
-        '<ellipse class="br" cx="150" cy="58" rx="19" ry="19" fill="none" stroke="' + INK + '" stroke-width="1.6"/>' +
-        '<ellipse class="br" cx="88" cy="102" rx="19" ry="19" fill="none" stroke="' + INK + '" stroke-width="1.6"/>' + cap('red and blue touch: one chain')) },
-    { title: 'Draw to swap', text: 'Put one finger on a dot and drag along the line of two colours. Every dot you cross trades its colour with its partner.',
-      svg: svg('<path class="p" d="M44 140 L100 100 L156 140 L212 100 L262 140" stroke="' + LINE + '" stroke-width="1.4"/>' +
-        '<path class="p dr" d="M44 140 L100 100 L156 140 L212 100 L262 140" stroke="' + INK + '" opacity=".55"/>' +
-        dot(44, 140, 0) + dot(100, 100, 1) + dot(156, 140, 0) + dot(212, 100, 1) + dot(262, 140, 0) +
-        '<g class="fl">' + dot(44, 190, 1) + dot(100, 190, 0) + dot(156, 190, 1) + dot(212, 190, 0) + dot(262, 190, 1) + '</g>' +
-        '<text x="150" y="60">drag along red, blue, red, blue</text><text x="150" y="228" style="opacity:.6">every dot on the line trades colours</text>') },
-    { title: 'Locked in', text: 'A line that wraps the whole ring cannot help: swapping it only swaps names. Look for a chain that leaves a dot out.',
-      svg: svg(ringSvg([0, 1, 0, 1, 2], hole) +
-        '<path class="p" d="M150 58 L211 102 L188 174 L112 174 L89 102 Z" stroke="' + LINE + '" opacity=".0"/>' +
-        '<g transform="translate(150 120)"><rect x="-10" y="-4" width="20" height="15" rx="3" fill="' + INK + '" opacity=".75"/><path d="M-6 -4 v-5 a6 6 0 0 1 12 0 v5" fill="none" stroke="' + INK + '" stroke-width="2" opacity=".75"/></g>' +
-        cap('a closed loop just changes names')) },
-    { title: 'Three is enough', text: 'When the ring shows only three colours, the hole is free to take the fourth, and it fills with a quiet pop.',
-      svg: svg(ringSvg([0, 1, 2, 0, 1], '<circle cx="150" cy="120" r="14" fill="' + C[3] + '" class="br"/>') + cap('three round the ring: filled')) },
+    { title: 'Fill the ring', text: 'Get the five dots round the ring down to three colours.',
+      svg: svg(ringSvg([0, 1, 2, 3, 1], hole([0, 1, 2, 3], 'br')) + cap('four colours')) },
+    { title: 'A chain', text: 'Touching dots of two colours make one chain.',
+      svg: svg(ringSvg([0, 1, 2, 3, 1], hole([0, 1, 2, 3])) +
+        '<g class="fl">' + trace([RP[4], RP[0], RP[1]], [1, 0, 1], 4) + '</g>' +
+        dot(RP[4][0], RP[4][1], 1, 14) + dot(RP[0][0], RP[0][1], 0, 14) + dot(RP[1][0], RP[1][1], 1, 14) + cap('one chain')) },
+    { title: 'Draw to swap', text: 'Drag along a chain and all of it trades colours.',
+      svg: svg(lattice(14, 40, 290, 210, 24, 0.09) + '<path d="M44 110 L100 70 L156 110 L212 70 L262 110" fill="none" stroke="' + INK + '" stroke-opacity=".22" stroke-width="1.4"/>' +
+        '<path class="p dr" d="M44 110 L100 70 L156 110 L212 70 L262 110" stroke-width="5"/>' +
+        dot(44, 110, 0) + dot(100, 70, 1) + dot(156, 110, 0) + dot(212, 70, 1) + dot(262, 110, 0) +
+        '<path d="M150 136v22m-7 -7l7 7l7 -7" fill="none" stroke="' + INK + '" stroke-opacity=".45" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>' +
+        '<g class="fl">' + dot(44, 190, 1) + dot(100, 190, 0) + dot(156, 190, 1) + dot(212, 190, 0) + dot(262, 190, 1) + '</g>' + cap('all of it trades')) },
+    { title: 'Locked', text: 'A chain all round the ring only swaps names.',
+      svg: svg(ringSvg([0, 1, 0, 1, 2], '<circle class="h" cx="150" cy="120" r="22" fill="' + PAPER + '"/>') +
+        '<path d="M' + ring(150, 120, 62, [0, 0, 0, 0]).map(p => f1(p[0]) + ' ' + f1(p[1])).join('L') + '" fill="none" stroke="' + INK + '" stroke-opacity=".4" stroke-width="3" stroke-dasharray="2 7" stroke-linecap="round"/>' +
+        '<g transform="translate(150 121)"><rect x="-10" y="-4" width="20" height="15" rx="3.5" fill="' + INK + '"/><path d="M-6 -4 v-5 a6 6 0 0 1 12 0 v5" fill="none" stroke="' + INK + '" stroke-width="2.6"/><circle cy="3.5" r="2.2" fill="' + PAPER + '"/></g>' +
+        cap('just names')) },
+    { title: 'Filled', text: 'Three colours round the ring, and it fills.',
+      svg: svg(ringSvg([0, 1, 2, 0, 1], '<circle class="h" cx="150" cy="120" r="22" fill="' + PAPER + '"/>' + dot(150, 120, 3, 20, ' class="bo"')) + cap('filled')) },
   ];
+
+  // ---------- the icon, the reel card and the wordmark (SKIN-SPEC 13) ----------
+  const ICON_PTS = [[27, 82], [47, 46], [72, 76], [94, 40]];
+  const icon = '<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg"><defs>' +
+    '<linearGradient id="dots-icon-bg" x1="0" y1="0" x2=".4" y2="1"><stop offset="0" stop-color="#fdf9ef"/><stop offset="1" stop-color="#e8dcc2"/></linearGradient>' +
+    '<radialGradient id="dots-icon-sun" cx=".3" cy=".25" r=".8"><stop offset="0" stop-color="#fff" stop-opacity=".7"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient></defs>' +
+    '<rect width="120" height="120" rx="26" fill="url(#dots-icon-bg)"/><rect width="120" height="120" rx="26" fill="url(#dots-icon-sun)"/>' +
+    lattice(10, 10, 112, 112, 13, 0.13) +
+    '<rect x="2.5" y="2.5" width="115" height="115" rx="24" fill="none" stroke="' + INK + '" stroke-opacity=".14" stroke-width="2"/>' +
+    gloss(98, 92, 8, 3) + gloss(22, 26, 7, 2) +
+    trace(ICON_PTS, [0, 1, 0, 1], 6.5) +
+    ICON_PTS.map((p, i) => gloss(p[0], p[1], 13.5, i % 2)).join('') + '</svg>';
+
+  // the wordmark: "dots" in one round ink line, its o a red bead, and three more beads trailing off
+  const wordmark = (op) => {
+    const st = 'fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-width="9"';
+    const ink = '<circle cx="40" cy="46" r="13.5" ' + st + '/><path d="M53.5 14V60" ' + st + '/>' +
+      '<path d="M114 18V50q0 9 9 9" ' + st + '/><path d="M104 31H124" ' + st + '/>' +
+      '<path d="M157 36q-3 -6 -11 -6q-10 0 -10 7.5q0 6 10 7.5q11 1.6 11 8.5q0 8 -11 8q-8 0 -12 -6" ' + st + '/>';
+    return '<g opacity="' + (op || 1) + '"><g transform="translate(2 3)" stroke="' + INK + '" stroke-opacity=".2">' + ink + '</g>' +
+      '<g stroke="' + INK + '">' + ink + '</g>' +
+      gloss(86, 46, 15, 0) + gloss(180, 55, 6.5, 1) + gloss(199, 55, 6.5, 2) + gloss(218, 55, 6.5, 3) + '</g>';
+  };
+  const logo = '<svg viewBox="0 0 240 80" xmlns="http://www.w3.org/2000/svg">' + wordmark() + '</svg>';
+
+  // the card: a still of play (a red-blue chain being traced round the ring, "x3" drifting off its last dot)
+  const card = (function () {
+    const cx0 = 120, cy0 = 112, P = [];
+    for (let i = 0; i < 5; i++) { const a = -Math.PI / 2 + i * 2 * Math.PI / 5; P.push([cx0 + 56 * Math.cos(a), cy0 + 56 * Math.sin(a)]); }
+    const cols = [0, 1, 2, 1, 3];
+    const O = [[44, 44, 1], [196, 40, 2], [200, 152, 0], [168, 204, 0], [70, 200, 2], [20, 120, 0]];
+    const OE = [[0, 0], [1, 0], [1, 1], [2, 1], [2, 2], [3, 2], [3, 3], [4, 3], [5, 4], [5, 3]];
+    let s = '<svg viewBox="0 0 240 320" xmlns="http://www.w3.org/2000/svg"><defs>' +
+      '<linearGradient id="dots-card-bg" x1="0" y1="0" x2=".3" y2="1"><stop offset="0" stop-color="#fbf7ee"/><stop offset=".72" stop-color="#f1e9d8"/><stop offset="1" stop-color="#e6dac0"/></linearGradient></defs>' +
+      '<rect width="240" height="320" rx="20" fill="url(#dots-card-bg)"/>' + lattice(12, 12, 230, 236, 20, 0.11);
+    OE.forEach(([o, r]) => { s += '<line x1="' + O[o][0] + '" y1="' + O[o][1] + '" x2="' + f1(P[r][0]) + '" y2="' + f1(P[r][1]) + '" stroke="' + INK + '" stroke-opacity=".2" stroke-width="1.3"/>'; });
+    P.forEach((p, i) => {
+      const q = P[(i + 1) % 5];
+      s += '<line x1="' + f1(p[0]) + '" y1="' + f1(p[1]) + '" x2="' + f1(q[0]) + '" y2="' + f1(q[1]) + '" stroke="' + INK + '" stroke-opacity=".2" stroke-width="1.3"/>' +
+        '<line x1="' + f1(p[0]) + '" y1="' + f1(p[1]) + '" x2="' + f1(cx0 + (p[0] - cx0) * 0.4) + '" y2="' + f1(cy0 + (p[1] - cy0) * 0.4) + '" stroke="' + INK + '" stroke-opacity=".25" stroke-width="1.3" stroke-dasharray="2 4"/>';
+    });
+    s += '<circle cx="' + cx0 + '" cy="' + cy0 + '" r="21" fill="' + PAPER + '" stroke="' + INK + '" stroke-opacity=".45" stroke-width="1.6" stroke-dasharray="3 4"/>' + seeds(cx0, cy0, 10, [0, 1, 2, 3], 3.3);
+    // the traced line: blue -> red -> blue -> red, every dot of that chain: a full snake
+    s += trace([[O[0][0], O[0][1]], P[0], P[1], [O[2][0], O[2][1]]], [1, 0, 1, 0], 5);
+    // rings in the colour each traced dot will become
+    [[O[0], 0], [P[0], 1], [P[1], 0], [O[2], 1]].forEach(([p, e]) => { s += '<circle cx="' + f1(p[0]) + '" cy="' + f1(p[1]) + '" r="21" fill="none" stroke="' + C[e] + '" stroke-width="2.4" opacity=".75"/>'; });
+    O.forEach(o => { s += gloss(o[0], o[1], 10, o[2]); });
+    P.forEach((p, i) => { s += gloss(p[0], p[1], 14, cols[i]); });
+    s += '<circle cx="' + O[2][0] + '" cy="' + O[2][1] + '" r="22" fill="none" stroke="' + INK + '" stroke-opacity=".2" stroke-width="1.4"/>' +
+      '<text x="' + (O[2][0] + 14) + '" y="' + (O[2][1] - 30) + '" style="font-family:Nunito,\'Avenir Next\',system-ui,sans-serif;font-size:19px;font-weight:600;fill:' + INK + ';opacity:.62;text-anchor:middle">&#215;3</text>';
+    s += '<path d="M0 236H240V300a20 20 0 0 1 -20 20H20a20 20 0 0 1 -20 -20Z" fill="' + PAPER + '" opacity=".75"/><path d="M18 236H222" stroke="' + INK + '" stroke-opacity=".15" stroke-width="1.2"/>' +
+      '<g transform="translate(8 238)">' + wordmark() + '</g></svg>';
+    return s;
+  })();
 
   FTH_SKINS.register({
     id: 'dots', name: 'Dots', ic: '⚫', blurb: 'one finger, one line of dots',
+    icon, card, logo,
+    eggs: [
+      { id: 'snake-run', on: 'page', pays: true, note: 'trace through every dot of a chain (3 or more): x2, x3 ... up to x6 over consecutive full traces, paying x100 points each (page caps it at 1,800 a level)' },
+      { id: 'lava', on: 'page', pays: false, note: 'leave the board untouched for about half a minute: the dots drift slowly like a lava lamp' },
+    ],
     coin: { name: 'ink bead', plural: 'ink beads', glyph: '⚫', value: 1, pitch: 0.9,   // this skin's currency (SKIN-SPEC.md section 12)
       colors: { main: '#2d2a26', edge: '#b9b3a6' },
-      svg: FTH_SKINS.coinArt('<circle r="12" fill="none" stroke="#b9b3a6" stroke-width="1" stroke-dasharray="2 3"/><circle r="9.6" fill="#2d2a26"/><circle r="6.6" fill="none" stroke="#5c564d" stroke-width="1"/><circle r="2.7" fill="#f5f1e8"/><path d="M-6.4 -3.4A7.2 7.2 0 0 1 -2.4 -6.6" stroke="#f5f1e8" stroke-width="1.6" fill="none" stroke-linecap="round" opacity=".8"/>') },
+      svg: FTH_SKINS.coinArt('<circle cx="1.4" cy="1.9" r="10.8" fill="#2d2a26" opacity=".28"/>' +
+        '<circle r="10.8" fill="#433e37" stroke="#1c1a17" stroke-width="2"/>' +
+        '<path d="M9.3 -2.9A9.7 9.7 0 0 1 -4.6 8.5A11.6 11.6 0 0 0 9.3 -2.9Z" fill="#000" opacity=".35"/>' +
+        '<circle r="3.4" fill="#f5f1e8" stroke="#1c1a17" stroke-width="1.5"/>' +
+        '<ellipse cx="-4.4" cy="-5" rx="3.7" ry="2" transform="rotate(-38 -4.4 -5)" fill="#fff" opacity=".8"/>' +
+        '<circle cx="4.6" cy="-6" r="1.1" fill="#fff" opacity=".6"/>') },
     src: 'lab/dots.html', hud: 'minimal',
     theme: {
       '--sk-bg': PAPER,
@@ -122,12 +226,18 @@
       '.wtotal{background:#e0a93a;color:#2d2a26;border:1.5px solid #2d2a26;box-shadow:none;text-shadow:none}.wtotal::after{display:none}',
     title: { svg: titleSvg },
     intro: I,
+    // no bonus round: after a win the board fades out and the next level fades in, already started (an endless,
+    // lo-fi cycle). The coins a bonus would pay come from the snake-run egg instead (lab/dots.html).
     bonus: {
-      label: 'BONUS', board: '#f5f1e8', line: '#2d2a26',
-      tile(x, y, r, e, k) {
+      flow: 'fade', games: [],
+      label: '•', board: '#f5f1e8', line: '#2d2a26',
+      tile(x, y, r, e, k) {                       // a glossy bead (kept for any shell screen that draws gems)
+        const d = r * 0.62;
         return '<g class="tl e' + e + '" data-k="' + k + '" transform="translate(' + x + ' ' + y + ')"><g class="tin">' +
           '<circle class="rg" r="' + (r * 0.98).toFixed(1) + '" fill="none" stroke="' + C[e] + '"/>' +
-          '<circle class="d" r="' + (r * 0.58).toFixed(1) + '" fill="' + C[e] + '" opacity=".92"/></g></g>';
+          '<circle cx="' + (d * 0.14).toFixed(1) + '" cy="' + (d * 0.22).toFixed(1) + '" r="' + d.toFixed(1) + '" fill="' + INK + '" opacity=".2"/>' +
+          '<circle class="d" r="' + d.toFixed(1) + '" fill="' + C[e] + '" stroke="' + INK + '" stroke-width="' + Math.max(1.4, d * 0.14).toFixed(1) + '"/>' +
+          '<ellipse cx="' + (-d * 0.36).toFixed(1) + '" cy="' + (-d * 0.38).toFixed(1) + '" rx="' + (d * 0.34).toFixed(1) + '" ry="' + (d * 0.2).toFixed(1) + '" fill="#fff" opacity=".75"/></g></g>';
       },
     },
     map: {
@@ -317,6 +427,6 @@
         },
       };
     })(),
-    words: { win: 'Filled.', perfect: 'The shortest way, quietly done.', par: 'Par is {par}. Can you find it?', chart: 'ALL THE WAYS' },
+    words: { win: 'Filled.', perfect: 'Shortest way.', par: 'Par {par}', chart: 'ALL THE WAYS' },
   });
 })();

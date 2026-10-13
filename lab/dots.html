@@ -9,7 +9,9 @@
   dots, not numbers: inside the empty ring sit four little "seed" dots, one per colour. The ring may only take a colour
   that none of its neighbours (the 5 big dots) has, so every seed a neighbour already has is shown as a faint hollow
   ghost; a seed no neighbour has is drawn full and breathing (that is g.free()). At the start all four are ghosts.
-  One quiet line of text on top: "find a dot for the empty ring" (no maths words on screen).
+  No words on screen: the empty ring breathes slowly (it is the thing to fill), a seed that frees up bounces in, a rim
+  dot whose colour leaves the rim sends a small dot of it flying into its seed, and an armed winning chain makes the
+  ring glow in the colour it will take (that is "let go"). A dud chain (K.web) just wobbles.
 
   What the player does: press a dot and drag a single line from dot to dot along the faint lines. The line must
   alternate two colours. The first two dots fix the pair {a, b}; from then on the whole two-colour chain lights up and
@@ -23,11 +25,23 @@
     the pulsing dots are exactly K.vs; release with >= 2 traced dots, or covering all of K.vs  ->  g.swap(K)
     (the whole chain, not just the traced dots). A chain with K.web is a dud: the dots wobble, nothing changes.
     while a chain is armed, every dot of K gets a thin outer ring in the colour it will turn into, the rest fade, and
-    the seeds in the ring show g.preview(K): a seed that would be freed pops up full and the cue says "let go".
+    the seeds in the ring show g.preview(K): a seed that would be freed pops up full and the ring glows in its colour.
     Idle hint: after a few quiet seconds (and at once when the empty ring is tapped) a ghost fingertip traces the first
     step of a chain of g.good() while the whole chain glimmers (at most 3 times per quiet stretch; any touch stops it).
     (A one-dot chain, whose neighbours all have other colours, cannot be traced in this gesture; the hint never uses one.)
-  Win: g.won() -> the ring fills with g.free() and the whole board does a wave; tap to play again (g.reset()).
+  Juice (SKIN-SPEC 14, kept calm): the pressed dot glows at once and its candidate chains ring softly; each traced dot
+    plays the next note of a rising pentatonic line; the swap flips as a wave from the first dot (50 ms a step), each
+    dot with a soft pop; LAB.at(x, y) is called at the last dot so the shell's coins fly from there. All sound goes
+    through one warm low-pass (lo-fi).
+  Snake run (egg 'snake-run', skins/dots.js): a swap whose line went through EVERY dot of its chain (3 or more dots,
+    reaching a colouring not seen before on this level) grows a streak: x2, x3, ... up to x6, each paying streak x 100
+    points through LAB.egg, at most 1,800 a level. A small "xN" drifts up from the last dot and fades into the paper.
+    A partial swap of a chain that one line could have covered ends the streak; small chains, chains no single line
+    covers, revisits, undo and reset leave it alone. The streak carries over to the next level (sessionStorage, 15 min).
+  Idle egg 'lava': ~26 s without a touch, the dots start to drift slowly like a lava lamp; any touch settles them.
+  Win: g.won() -> the ring fills with g.free() in a small burst, two slow washes of that colour roll out over the board,
+    every dot swells as they pass, a slow pentatonic drift over a warm pad (about 3.6 s), then LAB.done(). The skin's
+    win flow is 'fade', so the shell fades the board into the next level. Standalone: tap afterwards to play again.
   Tiny glyphs bottom-left / bottom-right: undo (g.undo) and restart (g.reset).
 -->
 <html lang="en">
@@ -233,6 +247,38 @@ function traceStep(g, path, K, v) {
 const DOTS_CACHE = {"8cxvpa":[[0,0],[-1.5,-0.866],[1.5,-0.866],[0,-3.4641],[0,1.7321],[-2,3.4641],[2,3.4641]],"kq0icz":[[0,0],[0,-1.7321],[3,-1.7321],[1.5,0.866],[0,3.4641],[-1.5,0.866],[-3,-1.7321],[2,-3.4641],[2,3.4641],[-4,0]],"1lymo6y":[[0,0],[0,-1.7321],[2.5,-2.5981],[2,0],[2.5,2.5981],[0,1.7321],[-2.5,2.5981],[-2,0],[-2.5,-2.5981],[0.5,-4.3301],[-1.5,-6.0622],[2,-5.1962],[0.5,4.3301],[-2,5.1962],[2,5.1962]],"1u46zr0":[[0,0],[0,-1.7321],[2,0],[0,1.7321],[-2,0],[2.5,-2.5981],[2.5,2.5981],[-2.5,2.5981],[-2.5,-2.5981],[0,-3.4641],[4,0],[0,3.4641],[-4,0]],"hm4f9d":[[0,0],[-0.5,-2.5981],[-1.5,-0.866],[-1,-1.7321],[4.5,2.5981],[1.5,0.866],[-5,1.7321],[1,1.7321],[-1.5,0.866]],"gwvgky":[[-2,-3.4641],[-1,-1.7321],[0.5,-2.5981],[2.5,-2.5981],[1,-5.1962],[-3,-3.4641],[-6.5,0.866],[-3.5,-0.866],[-4.5,0.866],[-2,0],[0,0],[1.5,-0.866],[3.5,-0.866],[5.5,-0.866],[2,-10.3923],[-11,5.1962],[-6.5,2.5981],[-4.5,2.5981],[-2.5,2.5981],[0,1.7321],[1.5,0.866],[2.5,2.5981],[3.5,0.866],[4.5,2.5981],[5,5.1962],[10.5,9.5263],[0,6.9282],[-6,5.1962],[-4.5,4.3301],[-2.5,4.3301],[-1,3.4641],[1,3.4641],[2.5,4.3301],[-2,5.1962]],"l39iz6":[[0,0],[1.5,-0.866],[-1,-1.7321],[-2,0],[-1,1.7321],[1.5,0.866],[-1.5,-6.0622],[-3,-1.7321],[-3,1.7321],[-0.5,2.5981],[4.5,2.5981],[-6,3.4641]],"1spd2mn":[[-1.5,-0.866],[0,0],[1,-1.7321],[-0.5,-4.3301],[-3,-1.7321],[-4,1.7321],[-1.5,0.866],[1,1.7321],[2,0],[3,0],[3,-1.7321],[0,-6.9282],[-7.5,4.3301],[-3,3.4641],[-1.5,2.5981],[1.5,2.5981],[3,1.7321],[5,1.7321],[8,5.1962],[-1.5,4.3301],[1,3.4641],[3,3.4641]],"zcxh1p":[[-3.5,-2.5981],[0,-3.4641],[-2.5,-4.3301],[-5,-1.7321],[-4.5,0.866],[-3.5,-0.866],[-1,-1.7321],[1.5,-0.866],[2.5,-2.5981],[1.5,-4.3301],[-1,-6.9282],[0.5,-11.2583],[-13,10.3923],[-5,5.1962],[-3,3.4641],[-1.5,0.866],[0,0],[1.5,0.866],[4,1.7321],[5,0],[4.5,-2.5981],[11.5,9.5263],[-0.5,9.5263],[0,6.9282],[-0.5,4.3301],[0,1.7321],[2,3.4641],[3.5,4.3301],[5.5,4.3301],[7.5,4.3301],[7.5,7.7942],[5,8.6603],[4,6.9282],[1.5,6.0622]]};
 // </cache>
 
+// <snake>  (pure: can this chain be traced end to end in one line? also run by the node smoke test)
+// A full snake is a line through every dot of the chain, each step along a drawn line, so the chain's own lines must
+// carry a path through all of it (a Hamiltonian path of the chain). Small searches only; a chain too big to settle in the
+// budget counts as "not snakeable" (a partial swap of it never breaks a streak).
+function snakeable(g, K) {
+  const vs = K.vs, m = vs.length; if (m < 3) return false;
+  const nb = new Map(vs.map(u => [u, g.adj[u].filter(w => w !== g.hole && K.set.has(w))]));
+  if ([...nb.values()].some(a => !a.length)) return false;
+  if ([...nb.values()].filter(a => a.length === 1).length > 2) return false;   // three dead ends: no single line covers them
+  let budget = 40000; const seen = new Set();
+  const dfs = (u, k) => { if (k === m) return true; if (--budget < 0) return false;
+    for (const w of nb.get(u)) if (!seen.has(w)) { seen.add(w); if (dfs(w, k + 1)) return true; seen.delete(w); }
+    return false; };
+  const ends = vs.filter(u => nb.get(u).length === 1), starts = ends.length ? ends : vs;
+  for (const s of starts) { seen.clear(); seen.add(s); if (dfs(s, 1)) return true; if (budget < 0) return false; }
+  return false;
+}
+// The snake-run rule: a swap whose line went through every dot of a chain of 3 or more, reaching a colouring not seen
+// before on this level, grows the streak; it pays streak x 100 points (x2 first, up to x6) through LAB.egg, at most
+// SNAKE_CAP points a level. A partial swap of a chain that COULD have been snaked ends the streak; anything else
+// (small chains, chains no single line covers, revisits, undo, reset) leaves it as it is.
+const SNAKE_MAX = 6, SNAKE_CAP = 1800;
+function snakeRule(st, ev) {        // st: { streak, paid }; ev: { full, size, fresh, could } -> { mult, pts } and st updated
+  if (ev.full && ev.size >= 3 && ev.fresh) {
+    st.streak++; const mult = Math.min(SNAKE_MAX, st.streak + 1), pts = Math.max(0, Math.min(mult * 100, SNAKE_CAP - st.paid));
+    st.paid += pts; return { mult, pts };
+  }
+  if (!ev.full && ev.could) st.streak = 0;
+  return null;
+}
+// </snake>
+
 (function () {
   const g = LAB.game();
   const ELEM = LAB.ELEM, n = g.n, H = g.hole, RIM = new Set(g.rim);
@@ -241,19 +287,19 @@ const DOTS_CACHE = {"8cxvpa":[[0,0],[-1.5,-0.866],[1.5,-0.866],[0,-3.4641],[0,1.
   const reduce = () => RM.matches;
   const cv = document.getElementById('c'), cx = cv.getContext('2d');
   const PAPER = '#f5f1e8', INK = '#2d2a26';
-  // the shell frames this page with &hud=full|compact|minimal; this page draws no title or stars of its own, only the goal hint
-  const HUD = new URLSearchParams(location.search).get('hud');
-  const FONT = '"Avenir Next", "Helvetica Neue", "Segoe UI", system-ui, sans-serif';
+  const FONT = 'Nunito, "Avenir Next", "Helvetica Neue", "Segoe UI", system-ui, sans-serif';
   const COL = ELEM.map(e => e.hex);
   const ease = t => t < 0 ? 0 : t > 1 ? 1 : 1 - Math.pow(1 - t, 3);
   const back = t => { if (t <= 0) return 0; if (t >= 1) return 1; const c = 1.9; return 1 + (c + 1) * Math.pow(t - 1, 3) + c * Math.pow(t - 1, 2); };
   const now = () => performance.now();
+  const egg = (id, pts) => { try { LAB.egg && LAB.egg(id, pts); } catch (e) { /* shell without eggs */ } };
 
   // ---------- geometry ----------
-  let W = 0, Hh = 0, U = 20, Ux = 20, Uy = 20, ox = 0, oy = 0, DOT = 6, RIMDOT = 8, RING = 20, top = 0;
+  let W = 0, Hh = 0, U = 20, Ux = 20, Uy = 20, ox = 0, oy = 0, DOT = 6, RIMDOT = 8, RING = 20, top = 0, maxR = 1;
   const bx = [Math.min(...Q.map(q => q[0])), Math.max(...Q.map(q => q[0]))];
   const by = [Math.min(...Q.map(q => q[1])), Math.max(...Q.map(q => q[1]))];
-  const sp = u => [ox + Q[u][0] * Ux, oy + Q[u][1] * Uy];
+  const off = Array.from({ length: n }, () => [0, 0]);   // lava-lamp drift (the idle egg); zero otherwise
+  const sp = u => [ox + Q[u][0] * Ux + off[u][0], oy + Q[u][1] * Uy + off[u][1]];
   function resize() {
     const dpr = Math.min(window.devicePixelRatio || 1, 2.5);
     W = innerWidth; Hh = innerHeight;
@@ -268,6 +314,7 @@ const DOTS_CACHE = {"8cxvpa":[[0,0],[-1.5,-0.866],[1.5,-0.866],[0,-3.4641],[0,1.
     if (ah > aw) Uy = Math.min(ah, aw * 1.55); else Ux = Math.min(aw, ah * 1.25);
     ox = W / 2 - (bx[0] + bx[1]) / 2 * Ux; oy = top + (Hh - top - bottom) / 2 - (by[0] + by[1]) / 2 * Uy;
     DOT = Math.max(4, U * 0.31); RIMDOT = Math.max(5.5, U * 0.43); RING = U * 1.18;
+    maxR = 1; for (let u = 0; u < n; u++) maxR = Math.max(maxR, Math.hypot(Q[u][0] * Ux, Q[u][1] * Uy) + U);
     dirty();
   }
 
@@ -276,13 +323,16 @@ const DOTS_CACHE = {"8cxvpa":[[0,0],[-1.5,-0.866],[1.5,-0.866],[0,-3.4641],[0,1.
   const fade = Array.from({ length: n }, () => ({ from: 0, t0: -1e9, dur: 1 }));
   const bump = new Array(n).fill(-1e9), bumpDelay = new Array(n).fill(0);
   const wob = new Array(n).fill(-1e9);
-  let ripples = [];                               // { x, y, c, t0 }
-  let drag = null;                                // { path, K, px, py, shakeT, id }
+  let ripples = [];                               // { u, c, t0 }
+  let drag = null;                                // { path, K, px, py, shakeT, id, t0 }
   let glimmer = null;                             // { vs, t0 } hint
   let ghost = null;                               // { u, v, K, t0 } idle hint: a ghost fingertip traces u -> v
   let win = null;                                 // { c, t0 }
-  const note = { text: '', until: 0 };            // a transient cue line
-  let idleUntil = 0, raf = 0;
+  let drifts = [];                                // snake-run: { x, y, mult, t0 } a small "xN" rising from the last dot
+  let flyers = [];                                // an element leaving the rim: { x, y, e, t0 } flies into its seed
+  let lava = null;                                // the idle egg: { t0, end }
+  const seedT = [-1e9, -1e9, -1e9, -1e9];         // when each seed last changed (it bounces)
+  let idleUntil = 0, raf = 0, lastTouch = now();
   function dirty(ms) { idleUntil = Math.max(idleUntil, now() + (ms || 0)); if (!raf) raf = requestAnimationFrame(frame); }
   // a dot changing colour: the new colour blooms from the centre over the old one (no muddy blends)
   function paintDot(u, x, y, r, t, faded) {
@@ -293,9 +343,18 @@ const DOTS_CACHE = {"8cxvpa":[[0,0],[-1.5,-0.866],[1.5,-0.866],[0,-3.4641],[0,1.
     cx.globalAlpha = 1;
   }
 
-  // ---------- sound ----------
-  let AC = null;
-  const audio = () => { try { AC = AC || new (window.AudioContext || window.webkitAudioContext)(); if (AC.state === 'suspended') AC.resume(); } catch (e) { AC = null; } };
+  // ---------- sound: soft sines through one warm low-pass (lo-fi) ----------
+  let AC = null, OUT = null;
+  const audio = () => {
+    try {
+      if (!AC) {
+        AC = new (window.AudioContext || window.webkitAudioContext)();
+        const lp = AC.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 2400; lp.Q.value = 0.4;
+        OUT = AC.createGain(); OUT.gain.value = 0.9; OUT.connect(lp); lp.connect(AC.destination);
+      }
+      if (AC.state === 'suspended') AC.resume();
+    } catch (e) { AC = null; }
+  };
   function tone(freq, dur, vol, type, when, glide) {
     if (!AC) return;
     try {
@@ -303,15 +362,16 @@ const DOTS_CACHE = {"8cxvpa":[[0,0],[-1.5,-0.866],[1.5,-0.866],[0,-3.4641],[0,1.
       o.type = type || 'sine'; o.frequency.setValueAtTime(freq, t);
       if (glide) o.frequency.exponentialRampToValueAtTime(freq * glide, t + dur);
       gn.gain.setValueAtTime(0.0001, t); gn.gain.exponentialRampToValueAtTime(vol, t + 0.012); gn.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-      o.connect(gn); gn.connect(AC.destination); o.start(t); o.stop(t + dur + 0.03);
+      o.connect(gn); gn.connect(OUT || AC.destination); o.start(t); o.stop(t + dur + 0.03);
     } catch (e) {}
   }
   const PENTA = [0, 2, 4, 7, 9];
   const pitch = i => 392 * Math.pow(2, (PENTA[i % 5] + 12 * Math.floor(i / 5)) / 12);   // G4 upwards
-  const pluck = (f, when, vol) => { tone(f, 0.32, vol || 0.07, 'sine', when); tone(f * 2, 0.14, (vol || 0.07) * 0.25, 'triangle', when); };
-  const noteAt = i => pluck(pitch(Math.min(i, 14)));
-  const thud = () => { tone(150, 0.16, 0.08, 'triangle', 0, 0.6); };
-  const tick = () => tone(820, 0.05, 0.025, 'square');
+  const pluck = (f, when, vol) => { tone(f, 0.36, vol || 0.06, 'sine', when); tone(f * 2, 0.14, (vol || 0.06) * 0.22, 'triangle', when); };
+  const noteAt = i => pluck(pitch(Math.min(i, 14)), 0, 0.055);                            // a rising tone per traced dot
+  const pop = (when, f) => tone(f || 660, 0.07, 0.03, 'sine', when, 0.55);                 // a soft pop as a dot flips
+  const thud = () => { tone(150, 0.16, 0.07, 'triangle', 0, 0.6); };
+  const pad = (f, when, dur, vol) => { tone(f, dur, vol, 'sine', when); tone(f * 1.003, dur, vol * 0.7, 'sine', when); };
 
   // ---------- hit testing ----------
   function nearest(x, y, maxD) {
@@ -328,8 +388,9 @@ const DOTS_CACHE = {"8cxvpa":[[0,0],[-1.5,-0.866],[1.5,-0.866],[0,-3.4641],[0,1.
   cv.addEventListener('pointerdown', e => {
     audio();
     const x = e.clientX, y = e.clientY;
+    lastTouch = now(); if (lava && !lava.end) { lava.end = now(); dirty(500); }
     stopHint();
-    if (win) { if (!LAB.embedded && now() - win.t0 > 900) { win = null; g.reset(); } return; }   // in the app the shell owns the next step
+    if (win) { if (!LAB.embedded && now() - win.t0 > 3800) { win = null; g.reset(); } return; }   // in the app the shell owns the next step
     if (onBtn(btnUndo(), x, y)) { if (g.history.length) { g.undo(); tone(520, 0.12, 0.04, 'sine', 0, 0.7); } else thud(); return; }
     if (onBtn(btnReset(), x, y)) { if (g.history.length) { g.reset(); tone(440, 0.2, 0.04, 'sine', 0, 0.5); } return; }
     const u = nearest(x, y, hitR());
@@ -339,7 +400,7 @@ const DOTS_CACHE = {"8cxvpa":[[0,0],[-1.5,-0.866],[1.5,-0.866],[0,-3.4641],[0,1.
       return;
     }
     cv.setPointerCapture(e.pointerId);
-    drag = { path: [u], K: null, px: x, py: y, shakeT: -1e9, bad: null, id: e.pointerId };
+    drag = { path: [u], K: null, px: x, py: y, shakeT: -1e9, bad: null, id: e.pointerId, t0: now() };
     bump[u] = now(); bumpDelay[u] = 0; noteAt(0); dirty(400);
   });
   cv.addEventListener('pointermove', e => {
@@ -375,41 +436,71 @@ const DOTS_CACHE = {"8cxvpa":[[0,0],[-1.5,-0.866],[1.5,-0.866],[0,-3.4641],[0,1.
   cv.addEventListener('pointerup', end);
   cv.addEventListener('pointercancel', e => { if (drag && e.pointerId === drag.id) { drag = null; dirty(); } });
 
+  // ---------- snake run (egg 'snake-run'): trace every dot of a chain for a rising multiplier ----------
+  const SS_KEY = 'dots.snake';
+  const snake = { streak: 0, paid: 0 };
+  try { const s = JSON.parse(sessionStorage.getItem(SS_KEY) || 'null'); if (s && Date.now() - s.t < 15 * 60e3) snake.streak = Math.min(SNAKE_MAX, s.streak | 0); } catch (e) { /* no storage */ }
+  const keepStreak = () => { try { sessionStorage.setItem(SS_KEY, JSON.stringify({ streak: snake.streak, t: Date.now() })); } catch (e) { /* no storage */ } };
+  const seen = new Set([g.canon()]);
+  let pending = null;                             // what the line did, read by the swap handler
+
   function commit() {
     const { K, path } = drag; drag = null;
     armHint(7000);
     if (!K) return;
-    if (K.web) {                                  // the only {a,b} chain: swapping just renames two colours
-      const t = now(); K.vs.forEach(u => { wob[u] = t; }); thud(); setTimeout(thud, 120);
-      note.text = 'nothing changes'; note.until = t + 1600; dirty(1700); return;
+    if (K.web) {                                  // the only {a,b} chain: swapping just renames two colours: a soft wobble, no words
+      const t = now(); K.vs.forEach(u => { wob[u] = t; }); thud(); setTimeout(thud, 120); dirty(700); return;
     }
+    const tip = path[path.length - 1], [tx, ty] = sp(tip);
+    try { LAB.at && LAB.at(tx, ty); } catch (e) { /* older shell */ }   // the shell flies this swap's coins from the last dot
+    pending = { full: path.length >= K.size, tip, K, x: tx, y: ty };
     swapOrigin = path[0];
     g.swap(K);
+  }
+  function snakeAfter(p) {
+    const key = g.canon(), fresh = !seen.has(key); seen.add(key);
+    if (!p) return;
+    const r = snakeRule(snake, { full: p.full, size: p.K.size, fresh, could: !p.full && snakeable(g, p.K) });
+    keepStreak();
+    if (!r) return;
+    const t = now();
+    drifts.push({ x: p.x, y: p.y, mult: r.mult, t0: t + 120 });
+    pluck(pitch(7 + r.mult), 0.14, 0.035); pluck(pitch(9 + r.mult), 0.3, 0.025);
+    if (r.pts > 0) setTimeout(() => egg('snake-run', r.pts), reduce() ? 200 : 1100);   // quietly, as the "xN" fades
+    dirty(2200);
   }
 
   // ---------- reacting to the game ----------
   let swapOrigin = null;
+  const seedPos = e => { const so = RING * 0.5; return [[0, -so], [so, 0], [0, so], [-so, 0]][e].map((v, i) => v + (i ? oy : ox)); };
   g.on((G, info) => {
     const t = now();
-    // distance (in steps inside the chain) from where the line started, for the ripple order
+    // distance (in steps inside the chain) from where the line started, for the wave order
     const dist = new Map();
     if (info.type === 'swap' && swapOrigin != null && info.chain.set.has(swapOrigin)) {
       dist.set(swapOrigin, 0); let fr = [swapOrigin];
       while (fr.length) { const nx = []; for (const u of fr) for (const w of g.adj[u]) if (info.chain.set.has(w) && !dist.has(w)) { dist.set(w, dist.get(u) + 1); nx.push(w); } fr = nx; }
     }
-    const gap = reduce() ? 0 : 70;
+    const gap = reduce() ? 0 : 50;               // the flip wave: 50 ms a step
     let maxD = 0;
+    const before = new Set(g.rim.map(u => shown[u]));
     for (let u = 0; u < n; u++) {
       if (u === H || g.col[u] === shown[u]) continue;
       const d = dist.has(u) ? dist.get(u) : 0; maxD = Math.max(maxD, d);
-      fade[u] = { from: shown[u], t0: t + d * gap, dur: info.type === 'swap' ? 260 : 180 };
-      shown[u] = g.col[u];
+      fade[u] = { from: shown[u], t0: t + d * gap, dur: info.type === 'swap' ? 240 : 180 };
       if (info.type === 'swap') {
         bump[u] = t; bumpDelay[u] = d * gap;
         if (!reduce()) ripples.push({ u, c: g.col[u], t0: t + d * gap });
-        if (d < 12) pluck(pitch(d + 2), d * gap / 1000, 0.045);
+        if (d < 14) { pop(d * gap / 1000, 560 + d * 30); pluck(pitch(d + 2), d * gap / 1000 + 0.01, 0.03); }
       }
+      if (RIM.has(u) && info.type === 'swap' && !reduce()) {    // an element leaving the rim flies into its seed
+        const c0 = shown[u]; if (!g.rim.some(r => g.col[r] === c0)) { const [x, y] = sp(u); flyers.push({ x, y, e: c0, t0: t + d * gap }); }
+      }
+      shown[u] = g.col[u];
     }
+    const after = new Set(g.rim.map(u => g.col[u]));
+    for (let e = 0; e < 4; e++) if (before.has(e) !== after.has(e)) seedT[e] = t + (reduce() ? 0 : maxD * gap + 260);
+    if (info.type === 'swap') { snakeAfter(pending); pending = null; } else { seen.add(g.canon()); pending = null; }
     if (info.type === 'reset') { win = null; glimmer = null; }
     stopHint(); if (!g.won()) armHint(info.type === 'swap' ? 6000 : 5000);
     if (info.type !== 'undo' && info.type !== 'reset') glimmer = null;
@@ -417,19 +508,23 @@ const DOTS_CACHE = {"8cxvpa":[[0,0],[-1.5,-0.866],[1.5,-0.866],[0,-3.4641],[0,1.
       const at = maxD * gap + 380;
       setTimeout(() => { win = { c: g.free(), t0: now() }; celebrate(); }, at);
     }
-    dirty(maxD * gap + 900);
+    dirty(maxD * gap + 1200);
   });
+  // the win bloom (about 3.6 s): the ring fills with a little burst, two slow waves of the new colour wash over the
+  // board and every dot swells softly as they pass, a pentatonic drift and a warm pad, then the page hands over.
+  const BLOOM = 2300;
+  const arrive = u => 160 + Math.hypot(Q[u][0] * Ux, Q[u][1] * Uy) / maxR * BLOOM;
   function celebrate() {
     const t = win.t0, rm = reduce();
-    setTimeout(LAB.done, rm ? 300 : 2200);                 // inside the app: hand over to its win screen
-    [0, 2, 4, 5, 7].forEach((k, i) => pluck(pitch(k + 3), 0.08 * i, 0.06));
-    tone(pitch(10), 1.2, 0.03, 'sine', 0.5);
+    setTimeout(LAB.done, 3600);                    // inside the app: hand over (the 'fade' flow carries on to the next level)
+    pluck(pitch(5), 0, 0.06); pop(0.02, 880);
+    [0, 2, 4, 7, 9, 12].forEach((k, i) => pluck(pitch(k + 3), 0.35 + 0.34 * i, 0.04));
+    pad(pitch(0) / 2, 0.2, 3.2, 0.03); pad(pitch(4) / 2, 0.9, 2.6, 0.02);
     for (let u = 0; u < n; u++) {
       if (u === H) continue;
-      const d = Math.hypot(...Q[u]);
-      bump[u] = t + 260; bumpDelay[u] = rm ? 0 : d * 55;
+      bump[u] = t; bumpDelay[u] = rm ? 0 : arrive(u);
     }
-    dirty(2600);
+    dirty(4200);
   }
 
   // ---------- idle hint ----------
@@ -449,7 +544,7 @@ const DOTS_CACHE = {"8cxvpa":[[0,0],[-1.5,-0.866],[1.5,-0.866],[0,-3.4641],[0,1.
   function stopHint() { hintGen++; if (ghost) { ghost = null; dirty(); } }
   function armHint(ms, n) { stopHint(); hintsLeft = n === undefined ? 3 : n; const my = hintGen; setTimeout(() => { if (my === hintGen) showHint(); }, ms || 4500); }
   function showHint() {
-    if (drag || win || g.won() || hintsLeft <= 0) return;
+    if (drag || win || g.won() || hintsLeft <= 0 || lava) return;
     const h = hintMove(); if (!h) return;
     hintsLeft--; hintGen++;
     ghost = { u: h.u, v: h.v, K: h.K, t0: now(), gen: hintGen }; dirty();
@@ -459,17 +554,52 @@ const DOTS_CACHE = {"8cxvpa":[[0,0],[-1.5,-0.866],[1.5,-0.866],[0,-3.4641],[0,1.
     if (hintsLeft > 0) setTimeout(() => { if (gen === hintGen) showHint(); }, 9000);
   }
 
+  // ---------- the idle egg: leave the board alone and the dots drift like a lava lamp ----------
+  const PH = Array.from({ length: n }, (_, u) => [u * 2.39 % 6.283, u * 1.71 % 6.283, 0.8 + (u * 0.37) % 0.5]);
+  let lavaSeen = false;
+  setInterval(() => {
+    if (lava || drag || win || g.won() || ghost || reduce() || document.hidden || now() - lastTouch < 26000) return;
+    lava = { t0: now(), end: 0 }; dirty();
+    if (!lavaSeen) { lavaSeen = true; egg('lava', 0); }
+  }, 2000);
+  function lavaStep(t) {
+    if (!lava) return;
+    let amp = ease((t - lava.t0) / 6000);
+    if (lava.end) { const k = (t - lava.end) / 450; amp *= 1 - ease(k); if (k >= 1) { lava = null; for (const o of off) { o[0] = 0; o[1] = 0; } return; } }
+    const A = U * 0.13 * amp;
+    for (let u = 0; u < n; u++) {
+      if (u === H) continue;
+      const [a, b, s] = PH[u];
+      off[u][0] = A * (Math.sin(t / (2600 * s) + a) + 0.45 * Math.sin(t / 4100 + b));
+      off[u][1] = A * (Math.cos(t / (3100 * s) + b) + 0.45 * Math.cos(t / 3700 + a));
+    }
+  }
+
   // ---------- drawing ----------
   function frame() {
     raf = 0;
     const t = now();
     draw(t);
-    const live = drag || glimmer || ghost || win || t < idleUntil;
+    const live = drag || glimmer || ghost || win || lava || drifts.length || flyers.length || t < idleUntil;
     if (live) raf = requestAnimationFrame(frame);
   }
   function circle(x, y, r) { cx.beginPath(); cx.arc(x, y, Math.max(0, r), 0, Math.PI * 2); }
+  const rgba = (hex, a) => { const v = parseInt(hex.slice(1), 16); return 'rgba(' + (v >> 16) + ',' + ((v >> 8) & 255) + ',' + (v & 255) + ',' + a + ')'; };
+  function glow(x, y, r, c, a) {                  // a soft halo: a radial wash from the colour to nothing
+    if (!(a > 0.003)) return;
+    const gr = cx.createRadialGradient(x, y, 0, x, y, r);
+    gr.addColorStop(0, rgba(c, a)); gr.addColorStop(0.35, rgba(c, a * 0.75)); gr.addColorStop(0.7, rgba(c, a * 0.25)); gr.addColorStop(1, rgba(c, 0));
+    cx.fillStyle = gr; circle(x, y, r); cx.fill();
+  }
+  function wash(R, wd, c, a) {                    // a soft ring of colour at radius R, wd wide, fading both ways
+    if (!(a > 0.003)) return;
+    const r0 = Math.max(0, R - wd), r1 = R + wd, gr = cx.createRadialGradient(ox, oy, r0, ox, oy, r1);
+    gr.addColorStop(0, rgba(c, 0)); gr.addColorStop(0.5, rgba(c, a)); gr.addColorStop(1, rgba(c, 0));
+    cx.fillStyle = gr; circle(ox, oy, r1); cx.fill();
+  }
   function draw(t) {
     const rm = reduce();
+    lavaStep(t);
     cx.fillStyle = PAPER; cx.fillRect(0, 0, W, Hh);
     // faint lattice
     if (LAY.lattice) {
@@ -481,6 +611,13 @@ const DOTS_CACHE = {"8cxvpa":[[0,0],[-1.5,-0.866],[1.5,-0.866],[0,-3.4641],[0,1.
       }
     }
     const K = drag && drag.K, inK = u => !K || K.set.has(u);
+    const we = win ? t - win.t0 : -1;
+    // win: two slow washes of the new colour, from the ring out over the whole board
+    if (win && !rm) for (const w0 of [160, 1250]) {
+      const k = (we - w0) / BLOOM; if (k <= 0 || k >= 1.15) continue;
+      const R = RING + k * maxR, wd = U * (2.2 - k * 0.8);
+      wash(R, wd, COL[win.c], 0.24 * Math.sin(Math.PI * Math.min(1, k)) * (w0 > 200 ? 0.6 : 1));
+    }
     // edges
     cx.lineCap = 'round';
     for (const [a, b] of g.edges) {
@@ -497,22 +634,45 @@ const DOTS_CACHE = {"8cxvpa":[[0,0],[-1.5,-0.866],[1.5,-0.866],[0,-3.4641],[0,1.
     }
     // the hole: a big empty ring (filled with the free colour on a win)
     if (win) {
-      const k = rm ? 1 : back((t - win.t0) / 520);
+      const k = rm ? 1 : back(we / 560);
+      if (!rm && we < 1100) {                      // a little burst of seeds as it fills
+        const q = we / 1100;
+        for (let i = 0; i < 12; i++) {
+          const a = i * Math.PI / 6 + 0.26, d = RING * (1.05 + ease(q) * (1.4 + (i % 3) * 0.35));
+          cx.globalAlpha = (1 - q) * 0.85; cx.fillStyle = COL[win.c];
+          circle(ox + Math.cos(a) * d, oy + Math.sin(a) * d, RING * 0.11 * (1 - q * 0.6)); cx.fill();
+        }
+        cx.globalAlpha = 1;
+      }
+      glow(ox, oy, RING * (1.6 + 0.25 * Math.sin(we / 500)), COL[win.c], 0.35 * Math.min(1, we / 400));
       cx.fillStyle = COL[win.c]; circle(ox, oy, RING * k); cx.fill();
-      if (!rm) { const p = ((t - win.t0) / 1600) % 1; cx.strokeStyle = COL[win.c]; cx.globalAlpha = (1 - p) * 0.35; cx.lineWidth = 2; circle(ox, oy, RING * (1 + p * 0.6)); cx.stroke(); cx.globalAlpha = 1; }
+      cx.fillStyle = 'rgba(255,255,255,0.35)'; circle(ox - RING * 0.32 * k, oy - RING * 0.34 * k, RING * 0.24 * k); cx.fill();
+      if (!rm) { const p = (we / 1700) % 1; cx.strokeStyle = COL[win.c]; cx.globalAlpha = (1 - p) * 0.3; cx.lineWidth = 2; circle(ox, oy, RING * (1 + p * 0.7)); cx.stroke(); cx.globalAlpha = 1; }
     } else {
-      cx.strokeStyle = 'rgba(45,42,38,0.32)'; cx.lineWidth = 1.5; circle(ox, oy, RING); cx.stroke();
+      // the empty ring breathes very slowly: it is the thing to fill (no words needed)
+      const br = rm ? 0 : Math.sin(t / 1400);
+      cx.strokeStyle = 'rgba(45,42,38,' + (0.3 + 0.06 * br) + ')'; cx.lineWidth = 1.5; circle(ox, oy, RING * (1 + 0.015 * br)); cx.stroke();
       const pv = K && !K.web ? g.preview(K) : null;
-      if (pv && pv.won) {                          // the hole is about to open: show it breathing in the free colour
+      if (pv && pv.won) {                          // the hole is about to open: it glows in the free colour ("let go")
         const s = new Set(pv.col.filter((c, i) => RIM.has(i))); let f = 0; while (s.has(f)) f++;
-        cx.globalAlpha = 0.18 + 0.1 * Math.sin(t / 160); cx.fillStyle = COL[f]; circle(ox, oy, RING * 0.92); cx.fill(); cx.globalAlpha = 1;
+        glow(ox, oy, RING * 1.5, COL[f], 0.35 + 0.12 * Math.sin(t / 160));
+        cx.globalAlpha = 0.2 + 0.1 * Math.sin(t / 160); cx.fillStyle = COL[f]; circle(ox, oy, RING * 0.92); cx.fill(); cx.globalAlpha = 1;
       }
       // the four seeds: a colour a neighbour already has is a faint hollow ghost; a free one is a full, breathing dot
-      const used = new Set(g.rim.map(u => pv ? pv.col[u] : g.col[u])), sr = Math.max(2.6, RING * 0.2), so = RING * 0.5;
-      [[0, -so], [so, 0], [0, so], [-so, 0]].forEach(([dx, dy], e) => {
-        if (used.has(e)) { cx.strokeStyle = COL[e]; cx.globalAlpha = 0.6; cx.lineWidth = Math.max(1, sr * 0.28); circle(ox + dx, oy + dy, sr * 0.62); cx.stroke(); cx.globalAlpha = 1; }
-        else { cx.fillStyle = COL[e]; circle(ox + dx, oy + dy, sr * (1.25 + (rm ? 0 : 0.15 * Math.sin(t / 200)))); cx.fill(); }
-      });
+      const used = new Set(g.rim.map(u => pv ? pv.col[u] : g.col[u])), sr = Math.max(2.6, RING * 0.2);
+      for (let e = 0; e < 4; e++) {
+        const [sx, sy] = seedPos(e), bk = (t - seedT[e]) / 480, bb = bk > 0 && bk < 1 && !rm ? 1 + 0.7 * Math.sin(Math.PI * bk) * (1 - bk) : 1;
+        if (used.has(e)) { cx.strokeStyle = COL[e]; cx.globalAlpha = 0.6; cx.lineWidth = Math.max(1, sr * 0.28); circle(sx, sy, sr * 0.62 * bb); cx.stroke(); cx.globalAlpha = 1; }
+        else { cx.fillStyle = COL[e]; circle(sx, sy, sr * bb * (1.25 + (rm ? 0 : 0.15 * Math.sin(t / 200)))); cx.fill(); }
+      }
+    }
+    // an element leaving the rim: a small dot of it flies into its seed
+    flyers = flyers.filter(f => t - f.t0 < 600);
+    for (const f of flyers) {
+      const k = (t - f.t0) / 600; if (k < 0) continue;
+      const [sx, sy] = seedPos(f.e), m = ease(k), lift = Math.sin(Math.PI * k) * U * 0.5;
+      cx.fillStyle = COL[f.e]; cx.globalAlpha = 0.9 * (1 - k * 0.4);
+      circle(f.x + (sx - f.x) * m, f.y + (sy - f.y) * m - lift, Math.max(2.5, RING * 0.16) * (1 - k * 0.3)); cx.fill(); cx.globalAlpha = 1;
     }
     // ripples
     ripples = ripples.filter(r => t - r.t0 < 650);
@@ -521,6 +681,19 @@ const DOTS_CACHE = {"8cxvpa":[[0,0],[-1.5,-0.866],[1.5,-0.866],[0,-3.4641],[0,1.
       const [x, y] = sp(r.u), base = RIM.has(r.u) ? RIMDOT : DOT;
       cx.strokeStyle = COL[r.c]; cx.globalAlpha = (1 - k) * 0.6; cx.lineWidth = Math.max(1.5, base * 0.28 * (1 - k));
       circle(x, y, base * (1 + ease(k) * 1.6)); cx.stroke(); cx.globalAlpha = 1;
+    }
+    // touch: the pressed dot glows at once and its candidate chains light up softly
+    if (drag) {
+      const tip = drag.path[drag.path.length - 1], [gx, gy] = sp(tip), base = RIM.has(tip) ? RIMDOT : DOT;
+      glow(gx, gy, base * 3, COL[g.col[tip]], 0.42 * Math.min(1, (t - drag.t0) / 40 + 0.5));
+      if (!K) for (const C of g.chainsThrough(drag.path[0])) {
+        if (C.web || C.size < 2) continue;
+        for (const u of C.vs) {
+          if (u === drag.path[0]) continue;
+          const [x, y] = sp(u), b2 = RIM.has(u) ? RIMDOT : DOT, to = g.col[u] === C.pair[0] ? C.pair[1] : C.pair[0];
+          cx.strokeStyle = COL[to]; cx.globalAlpha = 0.32 + (rm ? 0 : 0.12 * Math.sin(t / 180)); cx.lineWidth = 1.4; circle(x, y, b2 * 1.5); cx.stroke(); cx.globalAlpha = 1;
+        }
+      }
     }
     // pulses ahead of the finger: the whole chain
     if (K && !rm) {
@@ -584,47 +757,51 @@ const DOTS_CACHE = {"8cxvpa":[[0,0],[-1.5,-0.866],[1.5,-0.866],[0,-3.4641],[0,1.
       if (u === H) continue;
       const [x, y] = sp(u);
       let r = RIM.has(u) ? RIMDOT : DOT;
+      if (lava) r *= 1 + 0.07 * Math.sin(t / (1700 * PH[u][2]) + PH[u][0]) * Math.hypot(off[u][0], off[u][1]) / (U * 0.13 + 1e-6);
       const bt = t - bump[u] - bumpDelay[u];
-      if (bt > 0 && bt < 380) r *= 1 + (rm ? 0 : 0.35 * Math.sin(Math.PI * bt / 380));
+      if (win && !rm && bt > -260 && bt < 520) glow(x, y, r * 3.2, COL[shown[u]], 0.3 * Math.sin(Math.PI * (bt + 260) / 780));
+      if (bt > 0 && bt < 380) r *= 1 + (rm ? 0 : (win ? 0.45 : 0.35) * Math.sin(Math.PI * bt / 380));
       let dx = 0;
       const wt = t - wob[u];
       if (wt > 0 && wt < 450) dx = rm ? 0 : Math.sin(wt / 22) * (1 - wt / 450) * U * 0.1;
-      const traced = drag && drag.path.includes(u);
-      paintDot(u, x + dx, y, r, t, (K && !inK(u)) || (rm && wt > 0 && wt < 450));
+      const traced = drag && drag.path.includes(u), faded = (K && !inK(u)) || (rm && wt > 0 && wt < 450);
+      if (!faded) { cx.fillStyle = 'rgba(45,42,38,0.13)'; circle(x + dx + r * 0.1, y + r * 0.2, r); cx.fill(); }   // a soft drop shadow
+      paintDot(u, x + dx, y, r, t, faded);
+      if (!faded) {                               // a thin shade rim and a small highlight: an ink bead, not a flat disc
+        cx.strokeStyle = 'rgba(45,42,38,0.28)'; cx.lineWidth = Math.max(1, r * 0.1); circle(x + dx, y, r - cx.lineWidth / 2); cx.stroke();
+        cx.fillStyle = 'rgba(255,255,255,0.5)'; cx.beginPath(); cx.ellipse(x + dx - r * 0.36, y - r * 0.38, r * 0.3, r * 0.17, -0.66, 0, Math.PI * 2); cx.fill();
+      }
       if (traced) { cx.fillStyle = 'rgba(255,255,255,0.85)'; circle(x + dx, y, r * 0.32); cx.fill(); }
     }
-    drawCue(t, K);
-    // tiny undo / restart glyphs
-    const can = g.history.length > 0 && !win;
+    // snake run: a small "xN" drifts up from the last dot and fades into the paper
+    drifts = drifts.filter(d => t - d.t0 < 1800);
+    for (const d of drifts) {
+      const k = (t - d.t0) / 1800; if (k < 0) continue;
+      const a = k < 0.12 ? k / 0.12 : Math.pow(1 - (k - 0.12) / 0.88, 1.6);
+      const y = d.y - RIMDOT * 1.6 - (rm ? 0 : ease(k) * U * 1.5), fs = Math.round(Math.max(14, U * 0.52) * (1 + (rm ? 0 : k * 0.12)));
+      if (!rm && k < 0.5) { cx.strokeStyle = INK; cx.globalAlpha = 0.22 * (1 - k * 2); cx.lineWidth = 1.2; circle(d.x, d.y, DOT * (1.2 + ease(k * 2) * 1.6)); cx.stroke(); }
+      cx.globalAlpha = 0.78 * a; cx.fillStyle = INK; cx.textAlign = 'center'; cx.textBaseline = 'middle';
+      cx.font = '600 ' + fs + 'px ' + FONT;
+      cx.fillText('\u00d7' + d.mult, d.x, y); cx.globalAlpha = 1;
+    }
+    // tiny undo / restart glyphs (quiet once the level is won: the shell owns what comes next)
+    const can = g.history.length > 0 && !win && !g.won();
     const bu = btnUndo(), br = btnReset(), tc = LAB.tok('--sk-ctl'), ti = LAB.tok('--sk-ctl-ink', INK);   // the skin's control tokens (lab/core.js); none standalone
-    if (tc) for (const b of [bu, br]) { cx.globalAlpha = can ? 1 : 0.5; circle(b.x, b.y, 18); cx.fillStyle = tc; cx.fill(); cx.strokeStyle = LAB.tok('--sk-ctl-edge', ti); cx.lineWidth = 1.5; cx.stroke(); }
-    cx.globalAlpha = can ? (tc ? 0.95 : 0.6) : (tc ? 0.45 : 0.2); cx.strokeStyle = ti; cx.lineWidth = 1.7; cx.lineJoin = 'round';
-    cx.beginPath(); cx.arc(bu.x, bu.y, 10, Math.PI * 1.15, Math.PI * 2.55); cx.stroke();
-    cx.beginPath(); cx.moveTo(bu.x - 13.5, bu.y - 7.5); cx.lineTo(bu.x - 8.6, bu.y - 1.2); cx.lineTo(bu.x - 2.5, bu.y - 6.2); cx.stroke();
-    circle(br.x, br.y, 10); cx.stroke(); circle(br.x, br.y, 2.5); cx.fillStyle = ti; cx.fill();
-    cx.globalAlpha = 1;
-  }
-  function drawCue(t, K) {
-    // one quiet line; the goal itself is drawn in the ring (the seeds)
-    const pv = K && !K.web ? g.preview(K) : null;
-    let msg, alpha = 0.6;
-    if (win) msg = (now() - win.t0 > 900 && !LAB.embedded) ? 'tap to play again' : 'filled!';
-    else if (pv && pv.won) { msg = 'let go'; alpha = 0.85; }
-    else if (K && K.web) msg = 'nothing changes';
-    else if (t < note.until) msg = note.text;
-    else msg = g.won() ? 'filled!' : 'find a dot for the empty ring';
-    cx.fillStyle = INK; cx.globalAlpha = alpha; cx.textAlign = 'center'; cx.textBaseline = 'middle';
-    let fs = Math.round(Math.max(12, Math.min(18, W / 24)));
-    cx.font = `300 ${fs}px ${FONT}`;
-    if ('letterSpacing' in cx) cx.letterSpacing = '0.06em';
-    while (fs > 10 && cx.measureText(msg).width > W - 24) { fs--; cx.font = `300 ${fs}px ${FONT}`; }   // never clip at tile width
-    cx.fillText(msg, W / 2, top * 0.55);
-    cx.globalAlpha = 1;
+    const fadeOut = win ? Math.max(0, 1 - we / 600) : 1;
+    if (fadeOut > 0) {
+      if (tc) for (const b of [bu, br]) { cx.globalAlpha = (can ? 1 : 0.5) * fadeOut; circle(b.x, b.y, 18); cx.fillStyle = tc; cx.fill(); cx.strokeStyle = LAB.tok('--sk-ctl-edge', ti); cx.lineWidth = 1.5; cx.stroke(); }
+      cx.globalAlpha = (can ? (tc ? 0.95 : 0.6) : (tc ? 0.45 : 0.2)) * fadeOut; cx.strokeStyle = ti; cx.lineWidth = 1.7; cx.lineJoin = 'round';
+      cx.beginPath(); cx.arc(bu.x, bu.y, 10, Math.PI * 1.15, Math.PI * 2.55); cx.stroke();
+      cx.beginPath(); cx.moveTo(bu.x - 13.5, bu.y - 7.5); cx.lineTo(bu.x - 8.6, bu.y - 1.2); cx.lineTo(bu.x - 2.5, bu.y - 6.2); cx.stroke();
+      circle(br.x, br.y, 10); cx.stroke(); circle(br.x, br.y, 2.5); cx.fillStyle = ti; cx.fill();
+      cx.globalAlpha = 1;
+    }
   }
 
   addEventListener('resize', resize);
   RM.addEventListener && RM.addEventListener('change', () => dirty());
   document.addEventListener('sk-tokens', () => dirty());   // the app changed the skin: redraw the controls
+  window.DOTS = { snake, sp: u => { const p = sp(u); return [p[0], p[1]]; }, snakeable: K => snakeable(g, K) };   // for tools (screenshots, smoke tests)
   resize(); armHint(4000);
 })();
 </script>
