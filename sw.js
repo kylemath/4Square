@@ -2,7 +2,7 @@
 // The game's own files: network first (a page, its levels and its skins always match), the cache when offline.
 // Google Fonts and the pinned three.js (Islands 3D): cache first.
 // Bump VERSION to drop old caches.
-const VERSION = 'fth-v22';
+const VERSION = 'fth-v23';
 const CORE = ['./', 'index.html', 'levels.js', 'layout.js', 'telemetry.js', 'manifest.webmanifest',
   'lab/core.js', 'lab/dots.html', 'lab/doodle.html', 'lab/blank.html',
   'skins/registry.js', 'skins/islands.js', 'skins/dots.js', 'skins/doodle.js', 'skins/blank.js',
