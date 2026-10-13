@@ -47,9 +47,9 @@ const SAVE = 'fill-the-hole-v2', LV = 'one-of-each';
       if (SH) { await P.shot(path.join(SH, 'win-' + id + '.png')); }
       // the bonus round: coins hidden, art from the same source
       if (id === 'dots' || id === 'ions') {
-        await P.eval('__game.bonus(4, 0)'); await sleep(300);
+        await P.eval("__game.bonus('chain', 0)"); await sleep(300);
         const b = await P.eval(`(() => { const c = [...document.querySelectorAll('#bonusSvg .bcoin')]; return { n: c.length, uses: c.every(x => x.querySelector('use[href="#coinG"]')), hidden: c.every(x => getComputedStyle(x).opacity === '0'), tileCoins: document.querySelectorAll('#bonusSvg .tl use[href="#coinG"], #bonusSvg .tl .coin').length }; })()`);
-        ok(b.n === 63 && b.uses && b.hidden && b.tileCoins === 0, id + ': bonus board has 63 hidden coin stacks through #coinG and no coins on tiles');
+        ok(b.n === 20 && b.uses && b.hidden && b.tileCoins === 0, id + ': chain bonus board has 20 hidden coin stacks through #coinG and no coins on tiles');
         if (SH) { await P.eval(`(() => { const g = __game.bz; })()`); }
       }
       if (SH && id !== 'islands') {                            // the counter in game (a fresh page)

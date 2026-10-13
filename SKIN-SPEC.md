@@ -195,6 +195,30 @@ classes `lit`, `glow` and `spent` to the outer `<g>`; style those in `css`). Dra
 coins are hidden: **a tile must not draw coins itself**. Gems are drawn big (r is about 2x what it used to be): give them
 a bold silhouette that reads at a glance, one element per shape as well as per colour.
 
+**Details the shell settles** (what `bonus/games.js` and the host in `index.html` actually do):
+
+- **Header.** Only `label` (default `★`; keep it a glyph or one short word), the pips, a timer ring and a round skip
+  button. No message line. Pips are chains left for `chain` and lives for the others (`snake` 2 runs, `hop` `stack`
+  `pop` 3 lives). The ring runs the round's clock (`chain`: each chain's 5 s clock, armed at 2 gems); its last 3 s
+  turn red, tick and count down big over the board.
+- **Gem classes.** Besides `lit`, `glow` and `spent`, the outer `<g>` of a gem gets `ok` (it may be taken now: the
+  shell bobs its `.tin`; also `glow`) and `no` (not now: the shell dims and desaturates it). Moving pieces are your
+  tile drawn at `(0, 0)` inside a `<g>` the shell moves, and `r` runs from about 20 (snake, hop) to 31 (pop).
+- **Pay.** Every payout pops a coin stack from `#coinG` where it was earned, floats `+N` (`×k` for a multiplier) and
+  flies the coins into the win total; the round ends with a `+total` burst, and NEXT / Retry unlock once the coins
+  have landed. `chain` keeps the hidden stacks (1 / 3 / 5 coins) and shows the ones you missed at the end.
+- **Rules settled here:** `snake` wraps at the edges, waits for the first touch (and after a crash), stops growing at
+  14; `hop` ends a life on a gap, a wrong gem or riding off the edge, and a crossing pays 5 coins; `stack`: a full
+  row that is *not* two alternating elements also clears, for 1 coin, so the well never jams; `pop`: a wrong tap
+  breaks the run and costs a life, letting a gem go is free.
+- **Economy.** A coin of a stack is 20 points (the old 9 x 7 board paid 10 a coin over three times the gems). Each
+  game's typical and best pay sit within 60-140% / 60-150% of the old round's (`node tools/bonus_boards.js` prints
+  and checks the table), so tickets stay balanced whichever game rolls.
+- **Design review and tests:** `?bonus=<id>` forces a game (`index.html?skin=dots&view=win&bonus=hop`).
+- **The fade flow** keeps everything else of a win: progress, stars, the run proof (`FTH_RUN.win`), the research-log
+  record and the ticket dots are written exactly as in the card flow. The GO button's NEXT skips the wait; after the
+  last level it fades to the level map. `bonus.intro` and `games` are ignored by `'fade'`.
+
 ## 7. Exploration map
 
 Every swap in every skin charts colouring space: the hexes you visit (lit) and see one swap away (glimpsed), and the

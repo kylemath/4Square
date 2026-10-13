@@ -256,8 +256,8 @@
   body:not([data-skin="islands"]) #brief .card h2, body:not([data-skin="islands"]) .rtitle { color: var(--sk-card-ink); text-shadow: none; }
   body:not([data-skin="islands"]) #win .card p, body:not([data-skin="islands"]) #bonus .bhead { color: var(--sk-card-ink); }
   body:not([data-skin="islands"]) #bonus .btag { background: var(--sk-accent); color: var(--sk-btn-ink); border-color: transparent; box-shadow: none; }
-  body:not([data-skin="islands"]) #bonus .bskip { background: transparent; color: var(--sk-card-ink); border-color: color-mix(in srgb, var(--sk-card-ink) 40%, transparent); }
-  body:not([data-skin="islands"]) #bonus .bwrap { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sk-card-ink) 25%, transparent); }
+  body:not([data-skin="islands"]) #bonus .bskip { color: var(--sk-chip-ink, var(--sk-card-ink)); }
+  body:not([data-skin="islands"]) #bonus .bwrap { box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--sk-card-ink) 25%, transparent), inset 0 6px 0 rgba(0,0,0,.08); }
   body:not([data-skin="islands"]) .htdots button { background: color-mix(in srgb, var(--sk-ink) 25%, transparent); }
   body:not([data-skin="islands"]) .htdots button.on { background: var(--sk-accent); }
   body:not([data-skin="islands"]) .htnum { background: var(--sk-accent); color: var(--sk-btn-ink); box-shadow: none; }
@@ -447,35 +447,75 @@
   @keyframes wbtns { from { transform: translateY(26px) scale(.7); opacity: 0; } }
   #winNext { font-size: 1.6rem; padding: 12px 26px; border: 3px solid #fff; flex: 1; max-width: 220px; }
   #winRetry { font-size: 1.05rem; padding: 12px 16px; }
-  /* bonus round on the reward screen: a coin-pancake chain dash */
+  /* bonus round on the win card (bonus/games.js): a header of symbols (label, pips, timer ring, skip) over a chunky play area */
   #bonus { margin: 0 0 12px; } #bonus:empty { display: none; }
-  #bonus .bhead { display: flex; flex-wrap: wrap; align-items: center; gap: 3px 8px; margin-bottom: 5px; font-weight: 900; font-size: .92rem; }
-  #bonus .btag { background: #ffd84a; color: #4a2a00; border: 2px solid #fff; border-radius: 999px; padding: 1px 9px; font-size: .78rem; letter-spacing: .08em; box-shadow: 0 3px 0 #b06a00; }
-  #bonusMsg { order: 1; flex: 1 0 100%; text-align: left; height: 2.6em; line-height: 1.25; display: flex; align-items: center; overflow: hidden; }   /* fixed height: the board must not jump mid-drag */
-  #bonus .bskip { background: rgba(18,22,70,.55); color: #fff; border: 2px solid #fff; border-radius: 999px; padding: 2px 11px; font-weight: 900; font-size: .8rem; cursor: pointer; }
+  #bonus .bhead { display: flex; align-items: center; gap: 8px; margin-bottom: 7px; font-weight: 900; min-height: 34px; }
+  #bonus .btag { background: linear-gradient(180deg, #ffe680, #ffb31a); color: #4a2a00; border: 3px solid #fff; border-radius: 999px; padding: 2px 12px; font-size: .95rem; line-height: 1.2; letter-spacing: .06em; box-shadow: 0 4px 0 #b06a00; white-space: nowrap; }
+  @media (prefers-reduced-motion: no-preference) { #bonus .btag { animation: btag 1.8s ease-in-out infinite; } @keyframes btag { 50% { transform: rotate(-4deg) scale(1.07); } } }
+  #bonus .bpips { display: inline-flex; gap: 6px; align-items: center; flex: none; }
+  #bonus .bpips i { width: 18px; height: 18px; border-radius: 50%; box-sizing: border-box; background: var(--sk-chip, rgba(18,22,70,.55)); border: 3px solid var(--sk-edge, #fff); box-shadow: 0 3px 0 rgba(0,0,0,.25); transition: background .2s, opacity .3s, transform .3s cubic-bezier(.3, 1.8, .5, 1); }
+  #bonus .bpips i.on { background: var(--sk-accent, #ffd84a); box-shadow: 0 3px 0 rgba(0,0,0,.25), 0 0 0 3px color-mix(in srgb, var(--sk-accent, #ffd84a) 35%, transparent); }
+  #bonus .bpips i.done { background: transparent; opacity: .35; transform: scale(.75); box-shadow: none; }
+  #bonus .bring { margin-left: auto; width: 36px; height: 36px; flex: none; }
+  #bonus .bring svg { width: 100%; height: 100%; display: block; transform: rotate(-90deg); overflow: visible; }
+  #bonus .bring .rb { fill: var(--sk-chip, rgba(18,22,70,.6)); stroke: var(--sk-edge, #fff); stroke-width: 3; }
+  #bonus .bring .rf { fill: none; stroke: var(--sk-accent, #ffd84a); stroke-width: 5.5; stroke-linecap: round; transition: stroke .2s, opacity .2s; }
+  #bonus .bring:not(.run) .rf { opacity: .3; }
+  #bonus .bring.warn .rf { stroke: #ff4d5e; }
+  @media (prefers-reduced-motion: no-preference) { #bonus .bring.warn { animation: cbump .5s cubic-bezier(.3, 1.8, .5, 1) infinite; } }
+  #bonus .bskip { flex: none; width: 36px; height: 36px; border-radius: 50%; padding: 5px 4px 5px 6px; display: flex; align-items: center; justify-content: center; background: var(--sk-chip, rgba(18,22,70,.6)); color: #fff; border: 3px solid var(--sk-edge, #fff); box-shadow: 0 4px 0 rgba(0,0,0,.3); cursor: pointer; }
+  #bonus .bskip svg { width: 100%; height: 100%; display: block; }
+  #bonus .bskip:active { transform: translateY(3px); box-shadow: 0 1px 0 rgba(0,0,0,.3); }
   #bonus.over .bskip { visibility: hidden; }
-  #bonus .bwrap { position: relative; border-radius: 18px; background: rgba(18,22,70,.45); box-shadow: inset 0 0 0 2px rgba(255,255,255,.35); padding: 4px; }
-  #bonusSvg { display: block; width: 100%; height: auto; max-height: 40vh; touch-action: none; user-select: none; -webkit-user-select: none; overflow: visible; cursor: pointer; }
-  #bonusSvg:not(.live) { opacity: .55; filter: saturate(.6); }
-  #bonusSvg .tl, #bonusSvg .bcoin, #bonusSvg polyline { pointer-events: none; }
-  #bonusSvg .bglow { fill: none; stroke: #fff; stroke-width: 16; stroke-linecap: round; stroke-linejoin: round; stroke-opacity: .3; }
-  #bonusSvg .bline { fill: none; stroke: #fff; stroke-width: 6; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 1 11; filter: drop-shadow(0 0 4px #fff); animation: bdash .6s linear infinite; }
-  @keyframes bdash { to { stroke-dashoffset: -12; } }
-  #bonusSvg .bcoin { opacity: 0; } #bonusSvg .bcoin.show { opacity: 1; } #bonusSvg .bcoin.gone { opacity: 0; transition: opacity .15s; }   /* coins are hidden until a chain reveals them */
+  #bonus .bwrap { position: relative; border-radius: 20px; background: rgba(18,22,70,.45); box-shadow: inset 0 0 0 3px rgba(255,255,255,.35), inset 0 7px 0 rgba(0,0,0,.18); padding: 6px; }
+  #bonus .bwrap.pre { visibility: hidden; }
+  #win .wbag { transition: height .35s cubic-bezier(.3, 1.3, .5, 1); } #win .wbag.gone { height: 0; }   /* the loot bag's room goes to the bonus board once the bag has burst */
+  @media (max-height: 720px) { #win .rtitle { font-size: 1.7rem; margin-bottom: 4px; } #win .stars { height: 58px; } #win .stars .ws { width: 48px; height: 48px; } #win .stars .ws:nth-child(2) { width: 58px; height: 58px; } #bonusSvg { max-height: 38vh; } }
+  #bonusSvg { display: block; width: 100%; height: auto; max-height: min(44vh, 360px); margin: 0 auto; touch-action: none; user-select: none; -webkit-user-select: none; overflow: visible; cursor: pointer; }
+  #bonusSvg .tl, #bonusSvg .bcoin, #bonusSvg polyline, #bonusSvg .pc, #bonusSvg .bfx { pointer-events: none; }
+  #bonusSvg .tl.ok .tin { animation: bbob .8s ease-in-out infinite; }
+  @keyframes bbob { 50% { transform: translateY(-3px) scale(1.1); } }
+  #bonusSvg .tl.no { opacity: .38; transition: opacity .15s; }   /* opacity only: no filters on many moving pieces */
+  #bonusSvg .bglow { fill: none; stroke: #fff; stroke-width: 20; stroke-linecap: round; stroke-linejoin: round; stroke-opacity: .35; }
+  #bonusSvg .bline { fill: none; stroke: #fff; stroke-width: 7; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 1 13; filter: drop-shadow(0 0 4px #fff); animation: bdash .6s linear infinite; }
+  @keyframes bdash { to { stroke-dashoffset: -14; } }
+  #bonusSvg .bcoin { opacity: 0; } #bonusSvg .bcoin.show { opacity: 1; } #bonusSvg .bcoin.gone { opacity: 0; transition: opacity .15s; }   /* chain: coins are hidden until a chain reveals them */
   #bonusSvg .bcoin.ghost { opacity: .85; transition: opacity .5s; }   /* the ones you did not find, shown once the round is over */
-  #bonusSvg .tl.spent { opacity: .5; }
-  #bonus .bskip { margin-left: auto; }
-  #bonus .bpips { display: inline-flex; gap: 4px; align-items: center; flex: none; }
-  #bonus .bpips i { width: 13px; height: 13px; border-radius: 50%; box-sizing: border-box; background: var(--sk-chip, rgba(18,22,70,.55)); border: 2px solid var(--sk-edge, #fff); transition: background .2s, opacity .2s, transform .2s; }
-  #bonus .bpips i.on { background: var(--sk-accent, #ffd84a); transform: scale(1.2); box-shadow: 0 0 0 2px color-mix(in srgb, var(--sk-accent, #ffd84a) 38%, transparent); }
-  #bonus .bpips i.done { background: transparent; opacity: .35; }
+  #bonusSvg .tl.spent { opacity: .45; }
+  /* the games' furniture: filled, outlined, quiet behind the gems */
+  #bonusSvg .bgrid .c0 { fill: rgba(255,255,255,.07); } #bonusSvg .bgrid .c1 { fill: rgba(255,255,255,.14); }
+  #bonusSvg .bbank { fill: rgba(92, 220, 120, .38); } #bonusSvg .bbank.top { fill: rgba(255, 216, 74, .42); }
+  #bonusSvg .bflag { fill: #fff; opacity: .85; }
+  #bonusSvg .blane.l0 { fill: rgba(0, 10, 40, .26); } #bonusSvg .blane.l1 { fill: rgba(0, 10, 40, .14); }
+  #bonusSvg .bchev { fill: none; stroke: var(--sk-accent, #ffd84a); stroke-width: 5; stroke-linecap: round; stroke-linejoin: round; paint-order: stroke; }
+  @media (prefers-reduced-motion: no-preference) { #bonusSvg .bchev { animation: bchev .7s ease-in-out infinite; } @keyframes bchev { 50% { transform: translateY(-4px); opacity: .6; } } }
+  #bonusSvg .bwell { fill: rgba(0, 10, 40, .25); stroke: rgba(255,255,255,.55); stroke-width: 3; }
+  #bonusSvg .bcol { fill: transparent; transition: fill .15s; } #bonusSvg .bcol.ok { fill: rgba(255,255,255,.16); stroke: var(--sk-accent, #ffd84a); stroke-width: 2.5; stroke-opacity: .85; } #bonusSvg .bcol.no { fill: rgba(255, 50, 70, .22); }
+  #bonusSvg .bside { fill: rgba(0, 10, 40, .22); stroke: rgba(255,255,255,.45); stroke-width: 2.5; }
+  @media (prefers-reduced-motion: no-preference) { #bonusSvg .bgoal { animation: bgoal 1.4s ease-in-out infinite; } @keyframes bgoal { 50% { opacity: .55; } } }
+  #bonusSvg .bhole { fill: #1c1640; opacity: .6; } #bonusSvg .bhole2 { fill: #000; opacity: .45; }
+  #bonusSvg .beyes { pointer-events: none; }
+  #bonusSvg .btube0, #bonusSvg .btube { fill: none; stroke-linecap: round; stroke-linejoin: round; } #bonusSvg .btube0 { stroke: #1c1640; } #bonusSvg .btube { stroke: color-mix(in srgb, var(--sk-accent, #ffd84a) 70%, #fff); }
+  #bonusSvg .seg .tl.spent { opacity: .6; }
+  .bghost { position: absolute; left: 0; top: 0; width: 0; height: 0; pointer-events: none; z-index: 3; transform-origin: 0 0; }
+  .bghost svg { position: absolute; left: -19px; top: -4px; width: 60px; height: 74px; overflow: visible; filter: drop-shadow(0 0 8px rgba(255,255,255,.7)); }
+  .bghost .rip { transform-origin: 14px 3px; animation: brip 1s ease-out infinite; }
+  @keyframes brip { from { transform: scale(.3); opacity: .9; } to { transform: scale(1.7); opacity: 0; } }
   .bcd { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; font-size: 5.5rem; font-weight: 900; color: #ffd84a; opacity: .9;
     text-shadow: 4px 0 #1c1640, -4px 0 #1c1640, 0 4px #1c1640, 0 -4px #1c1640, 3px 3px #1c1640, -3px 3px #1c1640, 3px -3px #1c1640, -3px -3px #1c1640, 0 8px 0 #1c1640; }
-  .bcd.burst { font-size: 2.5rem; color: #fff; opacity: 1; }
-  .bfl { position: absolute; pointer-events: none; font-weight: 900; font-size: 1.15rem; color: #ffd84a; transform: translate(-50%, -50%); animation: bfl .9s ease-out forwards; text-shadow: 2px 0 #1c1640, -2px 0 #1c1640, 0 2px #1c1640, 0 -2px #1c1640; }
-  @keyframes bfl { to { transform: translate(-50%, -160%); opacity: 0; } }
+  .bcd.burst { font-size: 3.4rem; color: #fff; opacity: 1; }
+  .bfl { position: absolute; pointer-events: none; font-weight: 900; font-size: 1.3rem; color: #ffd84a; white-space: nowrap; transform: translate(-50%, -50%); animation: bfl .9s ease-out forwards; text-shadow: 2px 0 #1c1640, -2px 0 #1c1640, 0 2px #1c1640, 0 -2px #1c1640, 0 4px 0 #1c1640; z-index: 2; }
+  @keyframes bfl { 0% { transform: translate(-50%, -30%) scale(.5); } 25% { transform: translate(-50%, -70%) scale(1.25); } to { transform: translate(-50%, -170%) scale(1); opacity: 0; } }
   #win.bonusing .wbtns button { opacity: .4; filter: grayscale(.7); }
-  @media (prefers-reduced-motion: reduce) { #bonusSvg .bline, .bfl { animation: none !important; } #bonusSvg .bcoin.gone, #bonusSvg .bcoin.ghost, #bonus .bpips i { transition: none; } }
+  @media (prefers-reduced-motion: reduce) { #bonusSvg .bline, .bfl, #bonusSvg .tl.ok .tin, .bghost .rip { animation: none !important; } #bonusSvg .bcoin.gone, #bonusSvg .bcoin.ghost, #bonus .bpips i { transition: none; } }
+  /* the win card's own line: chips, not sentences */
+  #winText { display: flex; justify-content: center; gap: 8px; flex-wrap: wrap; }
+  #winText .wchip { display: inline-flex; align-items: center; gap: 5px; border-radius: 999px; background: rgba(18,22,70,.55); border: 2px solid #fff; padding: 2px 12px; font-size: 1rem; font-weight: 900; color: #fff; box-shadow: 0 3px 0 rgba(0,0,0,.2); white-space: nowrap; }
+  #winText .wchip.gold { background: linear-gradient(180deg, #ffe066, #ffab1a); color: #4a2a00; box-shadow: 0 3px 0 #b06a00; }
+  body:not([data-skin="islands"]) #winText .wchip { background: var(--sk-chip, rgba(0,0,0,.25)); color: var(--sk-chip-ink, var(--sk-card-ink)); border-color: var(--sk-edge, currentColor); }
+  body:not([data-skin="islands"]) #winText .wchip.gold { background: var(--sk-accent); color: var(--sk-btn-ink); }
+  /* the fade flow (bonus.flow 'fade'): the board drifts out and the next level drifts in; nothing to tap meanwhile */
+  #game.fading #board, #game.fading #skinFrame { pointer-events: none; }
   #confetti { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 11; }
   @media (prefers-reduced-motion: reduce) { .breathe, .pop, .wob, .hintpulse, .train, .card, .float, #wheel .disc, #wheel .opt, .goalbar .tin, .say, .say .pinm, .ccard, .ccard .stamp, .coins, .wtotal, .toast, #btnGo, #btnHint, #win.on .wbtns, .starbar { animation: none !important; transition: none !important; } .stars .ws { transform: none; } .ccard .liq { transition: none; } }
   .consent { position: relative; z-index: 3; margin: 6px auto 0; max-width: 340px; background: #fff; color: #33285c; border-radius: 18px; padding: 10px 12px; box-shadow: 0 4px 0 rgba(0,0,0,.25); font-weight: 700; font-size: .85rem; text-align: center; }
@@ -596,7 +636,7 @@
   <div><div class="wtotal" id="winTotal" aria-label="Points"><svg class="coin" viewBox="-13 -13 26 26" aria-hidden="true"><use href="#coinG"/></svg><b id="winScore">0</b></div></div>
   <p id="winText"></p>
   <div id="bonus"></div>
-  <button class="tribbon" id="winTicket" hidden>🎟️ A skin ticket is ready! <b>Open ▶</b></button>
+  <button class="tribbon" id="winTicket" aria-label="A skin ticket is ready: open the skins" hidden>🎟️ <b>Open ▶</b></button>
   <div class="wbtns"><button class="btn3d white" id="winRetry" aria-label="Retry this level">↺ Retry</button><button class="btn3d green" id="winNext">NEXT ▶</button></div>
 </div></div>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs><g id="coinG"><circle cy="1.8" r="11" fill="#c27a00" stroke="#1c1640" stroke-width="2"/><circle r="11" fill="#ffd84a" stroke="#1c1640" stroke-width="2"/><circle r="7.4" fill="none" stroke="#f0a91c" stroke-width="1.8"/><path d="M0 -4.8L1.4 -1.4 4.8 0 1.4 1.4 0 4.8-1.4 1.4-4.8 0-1.4-1.4Z" fill="#fff6c8" stroke="#c27a00" stroke-width=".8"/><path d="M-6.5 -6A9 9 0 0 1 1 -9.2" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round" opacity=".85"/></g></defs></svg>
@@ -613,6 +653,7 @@
 <script src="integrity.js"></script>
 <script src="layout.js"></script>
 <script src="sfx.js"></script>
+<script src="bonus/games.js"></script>
 <script src="skins/registry.js"></script>
 <script src="board/island.js"></script>
 <script src="skins/islands.js"></script>
@@ -1992,19 +2033,23 @@
     const stars = starsNow(), bonus = 300 + 150 * stars;
     if (window.FTH_RUN && !LABN) FTH_RUN.win({ stars, flips, hints: hintsUsed, score, pending, shown, points: score + bonus, own: !!ACT.own });
     if (window.FTH_LOG) FTH_LOG.end('win', { flips, stars, hints: hintsUsed, coin: ACT.id });
-    gain(bonus); pending += bonus;           // the bonus is paid out on the reward screen
+    gain(bonus); pending += bonus;           // the bonus is paid out on the reward screen (or quietly into the HUD: the fade flow)
     const prev = save.best[levelIdx];
     save.best[levelIdx] = { score: Math.max(score, prev ? prev.score : 0), stars: Math.max(stars, prev ? prev.stars : 0) };
     persist(); updateHud();
+    if ((ACT.bonus || {}).flow === 'fade') { winFade(free, stars, bonus); return; }
     const gen = lootGen, later = (ms, fn) => setTimeout(() => { if (gen === lootGen) fn(); }, reduced ? 0 : ms);
-    (ACT.src ? (f, a, b) => b() : holeCeremony)(free, () => { drawHoleFill(); wsfx.thunk(); arp(523, 6, 28); msg('<b>You did it!</b> The hole takes ' + NAMES[free] + '!'); },
+    (ACT.src ? (f, a, b) => b() : holeCeremony)(free, () => { drawHoleFill(); wsfx.thunk(); arp(523, 6, 28); msg('🎉 <b>' + NAMES[free][0].toUpperCase() + NAMES[free].slice(1) + '!</b>'); },
       () => { confetti(); wsfx.cheer(); later(250, () => {
       $('winStars').innerHTML = [0, 1, 2].map(() => '<span class="ws">' + starSvg + '</span>').join('');
       const ws = [...$('winStars').children];
       let total = score - bonus; winPts = total; $('winScore').textContent = cfmt(total);
-      const WD = ACT.words || {};
-      document.querySelector('#win .rtitle').textContent = WD.win || (ACT.own ? 'Coloured!' : 'Hole filled!');
-      $('winText').textContent = ACT.own ? (WD.perfect || 'Every piece coloured, and no two neighbours match!') : flips <= L.par ? (WD.perfect || 'Perfect route! No shorter way exists.') : (WD.par ? WD.par.replace('{par}', L.par) : 'Par is ' + L.par + ' swap' + (L.par > 1 ? 's' : '') + '. Can you get ★★★?');
+      const WD = ACT.words || {}, short = (t, d) => t && t.length <= 18 ? String(t).replace(/[<>&]/g, '') : d;
+      document.querySelector('#win .rtitle').textContent = short(WD.win, ACT.own ? 'Coloured!' : 'Hole filled!');
+      // one line of chips, no sentences: a perfect route gets the crown; otherwise your swaps beside par
+      $('winText').innerHTML = ACT.own ? '<span class="wchip gold">✓ ' + short(WD.perfect, 'Perfect!') + '</span>'
+        : (flips <= L.par ? '<span class="wchip gold">👑 ' + short(WD.perfect, 'Perfect!') + '</span><span class="wchip">⇄ ' + flips + '</span>' : '<span class="wchip">⇄ ' + flips + '</span><span class="wchip">par ' + L.par + '</span>');
+      $('winText').setAttribute('aria-label', flips + ' swaps, par ' + L.par);
       $('winNext').textContent = levelIdx + 1 < G.levels.length ? 'NEXT ▶' : 'LEVELS ▶';
       const t1 = 100 + 3 * 90 + 60;
       $('win').style.setProperty('--wd', (reduced ? 0 : (t1 + 1700) / 1000) + 's');
@@ -2017,51 +2062,55 @@
       later(t1, () => { loot(bonus, () => centerOf($('winBag')), { bag: true, held: true, to: $('winTotal'), onCoin: sh => { total += sh; winPts = total; $('winScore').textContent = cfmt(total); } }); later(1500, () => wsfx.flourish()); });
     }); });
   }
+  // bonus.flow 'fade' (SKIN-SPEC.md section 6), for chill endless skins: no card and no bonus. The stars pop and the pay rolls into
+  // the HUD quietly, the board (or the play page) drifts out over ~1.5 s, and the next level drifts in already started (no brief).
+  // win() has already saved the progress, sealed it (persist), sent the run proof and closed the research-log record, exactly as
+  // in the card flow. NEXT (the GO button's 'next' mode clicks it) skips the wait.
+  let fadeT = null;
+  const fadeEl = () => ACT.src ? $('skinFrame') : $('board');
+  function winFade(free, stars, bonus) {
+    const gen = lootGen, later = (ms, fn) => setTimeout(() => { if (gen === lootGen) fn(); }, reduced ? 0 : ms), gm = $('game');
+    const els = () => [$('skinFrame'), $('board')];
+    let done = false;
+    const next = () => {
+      if (done) return; done = true; fadeT = null;
+      els().forEach(el => el.getAnimations().forEach(a => a.cancel())); gm.classList.remove('fading');
+      if (gen !== lootGen) return;                     // the player left meanwhile
+      if (levelIdx + 1 >= G.levels.length) { showMenu(); return; }
+      startLevel(levelIdx + 1, false);
+      const el = fadeEl(); if (!reduced && el.animate) el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 900, delay: ACT.src ? 250 : 0, easing: 'ease-out', fill: 'backwards' });
+    };
+    fadeT = { next }; $('winNext').disabled = false; ticketDots(); winPts = score; $('winScore').textContent = cfmt(score);   // the (hidden) card total stays true
+    (ACT.src ? (f, a, b) => b() : holeCeremony)(free, () => { drawHoleFill(); wsfx.thunk(); }, () => {
+      later(150, () => { pending = Math.max(0, pending - bonus); hudRoll(); bumpEl($('coinBox')); clink(); });
+      [...$('starMeter').children].forEach((s, i) => later(250 + i * 140, () => { if (i >= stars) return; wsfx.star(i, true); if (!reduced && s.animate) s.animate([{ transform: 'scale(1)' }, { transform: 'scale(1.55) rotate(-10deg)' }, { transform: 'scale(1)' }], { duration: 420, easing: 'cubic-bezier(.3,1.6,.5,1)' }); }));
+      later(800, () => {
+        if (done) return; gm.classList.add('fading'); const el = fadeEl();
+        if (reduced || !el.animate) { next(); return; }
+        el.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 1500, easing: 'ease-in-out', fill: 'forwards' }).onfinish = next;
+      });
+    });
+  }
   $('winRetry').onclick = () => startLevel(levelIdx, false);
-  $('winNext').onclick = () => { if (levelIdx + 1 < G.levels.length) startLevel(levelIdx + 1, true); else showMenu(); };
+  $('winNext').onclick = () => { if (fadeT) { fadeT.next(); return; } if (levelIdx + 1 < G.levels.length) startLevel(levelIdx + 1, true); else showMenu(); };
 
   // ---------------- bonus round ----------------
-  // A reward mini-game on the win screen: a hex plane coloured in an interleaved pattern. The tiles are BARE: nobody knows where the
-  // coins are. Drag along a path that alternates two elements; the moment it is a chain (2+ tiles) coins pop into view tile by tile
-  // (the first two together, then one per step) and cha-ching into the counter (BCOIN.pts points a coin). THREE chains per round:
-  //   - a chain ENDS when the finger lifts (with 2+ tiles on the path; a lone tile is just a touch and costs nothing), at a dead end,
-  //     or when its clock runs out. A wrong step only shakes (and the path stays), it never breaks the chain.
-  //   - tiles of an ended chain are SPENT: dimmed, they pay nothing again and cannot be walked over. Coins stay collected.
-  //   - a 5-4-3-2-1 clock arms per chain when that chain reaches 3 tiles and runs while it grows; at 0 it cuts that chain (the next
-  //     chain starts with no clock until IT reaches 3 tiles). Lifting stops the clock at once (no waiting it out).
-  //   - the round ends when the 3rd chain ends, or on Skip. Then a jingle, the unclaimed coins fade in faintly (what you missed),
-  //     and NEXT / Retry unlock. Header pips show chains left (.bpips, drawn from the skin's --sk-* tokens).
-  // Boards (9 x 7 = 63 hex tiles, 6 neighbours inside): 3 or 4 elements, picked by level (see bonusPick). Board data, old and new, is
-  // validated offline by tools/bonus_boards.js (node tools/bonus_boards.js prints the stats table).
-  const BX = { cols: 9, rows: 7, s: 40 }, BCHAINS = 3;
-  // the coin economy lives here: stack sizes (the art is bonusStack), their odds (cumulative) and points per coin; payouts go through loot()
-  const BCOIN = { stacks: [1, 3, 5], odds: [.78, .95, 1], pts: 10, roll() { const x = Math.random(); return this.stacks[this.odds.findIndex(o => x < o)]; } };
-  // 4-element patterns, found offline by annealing over proper colourings of this grid: every inner tile touches all
-  // three other elements, and every one of the 6 element pairs has a chain of 12-21 tiles somewhere on the board.
-  const BPAT4 = ["323021321102102030031323121120102032201321310132030231320121310", "303202102210130231132302312201231030132310321210232103102101031", "212032132303213210012130103230212310312303102030120231321201302", "102303132230210213012132302203010131132123202010310130123202301", "212301312301232031212310320030232132121310320032021031210130212", "131031210023120321231031210123203023030131210212023032030310120", "020102103313210212202032303131210120320302303132130121021321203", "032031030203103123031021201123130323030201210213123021132030213"];
-  // REGULAR boards (designed, tools/bonus_boards.js --gen): a 3-colour honeycomb cut into territories with a regular shape; 4 elements:
-  // proper, every pair has a chain of 12+; 3 elements: touching equal tiles only along the territory borders, every pair has 30+.
-  const BREG4 = {"spiral":"201301201120130123303201201120320123303201201120123123303231231","rings":"203201301120320130231201301123120130231201301120320130203201301","chevrons":"012032013303201301012013012201201231312312312231231203012012032","pinwheel":"032312012201231201032012012201231301013012013301203201013032013","ribbons":"312032013203201301312013012203201301312013012203201231032012312"};
-  const BREG3 = {"blades":"021021020102102102021021021102102102021021020102102112021021020","bands":"102102102210210210102102102210210210102102102210210210102012102"};
-  const bonusRecent = [];                           // ids of the last few boards: a player sees variety
-  function bonusPick(ncol) {                        // -> {id, pat}: early levels lean on the easy regular boards, later ones on the annealed ones
-    const reg = ncol === 3 ? BREG3 : BREG4, old = ncol === 3 ? { hc: 0 } : BPAT4, pReg = Math.max(.3, (ncol === 3 ? .85 : .9) - levelIdx * (ncol === 3 ? .025 : .02));
-    const ids = Object.keys(reg).map(k => 'r' + ncol + ':' + k), oids = Array.isArray(old) ? old.map((_, i) => 'a4:' + i) : ['hc'];
-    let pool = Math.random() < pReg ? ids : oids; pool = pool.filter(id => !bonusRecent.includes(id)).length ? pool.filter(id => !bonusRecent.includes(id)) : pool;
-    const id = pool[Math.floor(Math.random() * pool.length)]; bonusRecent.push(id); if (bonusRecent.length > 3) bonusRecent.shift();
-    if (id === 'hc') { const off = Math.floor(Math.random() * 3); return { id, pat: Array.from({ length: BX.cols * BX.rows }, (_, i) => { const [q, r] = bonusAx(i); return ((q - r + off) % 3 + 3) % 3; }).join('') }; }
-    return { id, pat: id[0] === 'a' ? BPAT4[+id.slice(3)] : reg[id.slice(3)] };
-  }
-  let bz = null, me0 = null;                        // the live round
-  const bonusAx = i => { const c = i % BX.cols, r = (i / BX.cols) | 0; return [c - (r >> 1), r]; };   // odd rows shifted right
-  const BNB = (() => {
-    const at = new Map(), N = BX.cols * BX.rows, out = [];
-    for (let i = 0; i < N; i++) at.set(bonusAx(i).join(), i);
-    for (let i = 0; i < N; i++) { const [q, r] = bonusAx(i); out.push([[1, 0], [-1, 0], [0, 1], [0, -1], [1, -1], [-1, 1]].map(([a, b]) => at.get((q + a) + ',' + (r + b))).filter(j => j !== undefined)); }
-    return out;
-  })();
-  function bonusHex(i) { const c = i % BX.cols, r = (i / BX.cols) | 0; return [BX.s / 2 + 4 + (c + (r & 1) / 2) * BX.s, BX.s / 2 + 7 + r * BX.s * .866]; }
-  function bonusAdj(i, j) { return BNB[i].includes(j); }
+  // The win card's mini-game: one of the five games in bonus/games.js (window.FTH_BONUS: chain, snake, hop, stack, pop; their rules,
+  // pay and the host API H are documented at the top of that file, SKIN-SPEC.md section 6). This section is the HOST: it picks a
+  // game from the skin's bonus.games (default all five, never the same one twice in a row; [] = no game), builds the header (the
+  // skin's bonus.label, pips from --sk-chip/--sk-edge/--sk-accent, a timer ring, skip) and the play area, plays the skin's
+  // bonus.intro arrival ('drop' 'spin' 'curtain' 'zoom'), and hands the game its helpers: the skin's gem art (bonus.tile, else
+  // bonusTile), coin stacks (#coinG), input in viewBox units, a frame loop, the clock ring, the ghost finger, sounds, and pay(),
+  // which credits the points (gain), keeps the level's best score and flies the coins into the win total through loot().
+  // NEXT / Retry stay locked until the round is over. Each round is its own research-log record (FTH_LOG; map 'bonus3'/'bonus4'
+  // for chain, 'bonus-<id>' for the others). ?bonus=<id> forces a game (design review, tests); bonusStart(delay, 'snake') too,
+  // and bonusStart(delay, 3 | 4) forces chain's element count.
+  let bz = null, bonusLast = '';
+  const BSKIP = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 5.5l8.5 6.5-8.5 6.5zM12 5.5l8.5 6.5-8.5 6.5z" fill="currentColor" stroke="#1c1640" stroke-width="1.8" stroke-linejoin="round"/></svg>';
+  const BFSH = '<rect x="9.5" y="1" width="9" height="28" rx="4.5"/><rect x="7" y="19" width="28" height="27" rx="9"/><rect x="18" y="15" width="8.5" height="13" rx="4.2"/><rect x="25.5" y="17" width="8.5" height="13" rx="4.2"/><ellipse cx="8.5" cy="31" rx="5" ry="7.5" transform="rotate(-28 8.5 31)"/>';
+  const BFINGER = '<svg viewBox="0 0 44 54" width="44" height="54" aria-hidden="true"><circle class="rip" cx="14" cy="3" r="10" fill="none" stroke="#fff" stroke-width="3.5"/><g fill="#1c1640" opacity=".3" transform="translate(2.5 3.5)">' + BFSH + '</g>' +
+    '<g fill="#1c1640" stroke="#1c1640" stroke-width="5.5" stroke-linejoin="round">' + BFSH + '</g><g fill="#fff">' + BFSH + '</g><path d="M18.4 22v5M25.8 24v4M12 6.5a3 3 0 0 1 3.5-2.6" stroke="#c9c2e8" stroke-width="1.8" fill="none" stroke-linecap="round"/></svg>';
+  const BRC = 2 * Math.PI * 11;                       // the timer ring's circumference (r = 11)
   function bonusTile(x, y, h, e, k) {               // uiTile's cartoon look (shadow, body, neon rim, black plate, icon) as a hexagon
     const hx = a => 'points="' + [0, 1, 2, 3, 4, 5].map(q => { const t = Math.PI / 3 * q - Math.PI / 2; return q1(a * Math.cos(t)) + ',' + q1(a * Math.sin(t)); }).join(' ') + '" stroke-linejoin="round"', sw = q1(h * .1), sc = h * .58 / 12;
     return '<g class="tl e' + e + '" data-k="' + k + '" transform="translate(' + q1(x) + ' ' + q1(y) + ')"><g class="tin">' +
@@ -2071,174 +2120,172 @@
       '<polygon class="tp" ' + hx(h * .64) + '/>' +
       '<path class="ti ti' + e + '" d="' + IPATH[e] + '" transform="translate(' + q1(-12 * sc) + ' ' + q1(-12 * sc) + ') scale(' + q1(sc * 100) / 100 + ')"/></g></g>';
   }
-  function bonusStack(k) { let s = ''; for (let q = 0; q < k; q++) s += '<g transform="translate(0 ' + q1(5 - q * 3.6) + ') scale(.62)"><use href="#coinG"/></g>'; return s; }
-  function bonusStop() { if (bz) { bz.t.forEach(clearTimeout); bz.ct.forEach(clearTimeout); bz.dead = true; if (!bz.done && window.FTH_LOG) FTH_LOG.end('bonus_left', { n: bz.path.length, got: bz.got, ch: bz.ch, chains: bz.chains }); } bz = null; }
+  function bonusStack(k) { let s = ''; for (let q = 0; q < k; q++) s += '<g transform="translate(0 ' + q1(7 - q * 5) + ') scale(.9)"><use href="#coinG"/></g>'; return s; }   // k coins, drawn big (the gems are)
+  function bonusStop() {
+    const me = bz; if (!me) return; bz = null;
+    me.t.forEach(clearTimeout); cancelAnimationFrame(me.raf); if (me.ghost) me.ghost.remove();
+    if (!me.done) { try { if (me.inst) me.inst.halt(); } catch (_) {} if (window.FTH_LOG) FTH_LOG.end('bonus_left', { game: me.id, got: me.got }); }
+  }
   function bonusUnlock() { $('winNext').disabled = $('winRetry').disabled = false; $('win').classList.remove('bonusing'); $('winTicket').hidden = !ticketDots(); }
-  function bonusSay(t) { const m = $('bonusMsg'); if (m) m.innerHTML = '<span>' + t + '</span>'; }   // one flex item, so the words wrap as text
-  function bonusPips(me) { const p = $('bonusPips'); if (!p) return; [...p.children].forEach((d, i) => { d.className = me.done || i < me.ch - 1 ? 'done' : i === me.ch - 1 ? 'on' : ''; }); p.setAttribute('aria-label', me.done ? 'all chains used' : 'chain ' + me.ch + ' of ' + BCHAINS); }
+  function bonusRing(f, cls) { const r = $('bonusRing'); if (!r) return; r.querySelector('.rf').style.strokeDashoffset = q1(BRC * (1 - Math.max(0, Math.min(1, f)))); if (cls !== undefined) r.setAttribute('class', 'bring' + (cls ? ' ' + cls : '')); }
   function bonusStart(delay, force) {
-    bonusStop();
-    const box = $('bonus'); if (!box) { bonusUnlock(); return; }
-    const N = BX.cols * BX.rows, E = [], C = [];
-    // Colourings where every tile's neighbours offer a next colour:  3 elements: the honeycomb (q - r) mod 3 (each pair a whole honeycomb,
-    //                 chains of 36-42, easy) or a regular territory board;  4 elements: annealed BPAT4 (every pair 12-22, dead ends: read ahead)
-    //                 or a regular one (BREG4). Boards are flipped top-to-bottom at random (rows = 7: same parity, so the grid is kept).
-    const ncol = force || (levelIdx < 8 ? 3 : (levelIdx % 2 ? 4 : 3)), perm = [0, 1, 2, 3].sort(() => Math.random() - .5), flip = Math.random() < .5;
-    const bd = bonusPick(ncol), pat = bd.pat;
-    for (let i = 0; i < N; i++) {
-      const r = bonusAx(i)[1], c = i % BX.cols, fr = flip ? BX.rows - 1 - r : r;
-      E.push(perm[+pat[fr * BX.cols + c]]); C.push(BCOIN.roll());
-    }
-    me0 = { ncol, board: bd.id };
-    // research log: the bonus is its own record (map 'bonus3'/'bonus4', the grid as the start state, row by row); events carry the chain number
-    if (window.FTH_LOG) FTH_LOG.start({ num: String(L.num || levelIdx + 1) + '+bonus', map: 'bonus' + ncol, par: 0, state: E.join('') });
-    LOG('b_board', { id: bd.id, flip });
-    const me = bz = { E, C, N, path: [], pair: null, got: 0, cgot: 0, t: [], ct: [], down: false, cd: -1, live: false, done: false, ended: false, bad: -1, ch: 1, chains: [], used: new Set() };
-    const W = (BX.cols + .5) * BX.s + 8, H = (BX.rows - 1) * BX.s * .866 + BX.s + 16;
-    let s = '<svg id="bonusSvg" viewBox="0 0 ' + W + ' ' + H + '" aria-label="Bonus: drag a two-colour chain to find coins">';
-    const BS = ACT.bonus || {}, tileFn = typeof BS.tile === 'function' ? BS.tile : bonusTile;
-    for (let i = 0; i < N; i++) { const [x, y] = bonusHex(i); let t; try { t = tileFn(Math.round(x * 10) / 10, Math.round(y * 10) / 10, BX.s * .47, E[i], i); } catch (_) { t = bonusTile(x, y, BX.s * .47, E[i], i); } s += t; }
-    s += '<polyline class="bglow" points=""/><polyline class="bline" points=""/>';
-    for (let i = 0; i < N; i++) { const [x, y] = bonusHex(i); s += '<g class="bcoin" data-c="' + i + '" transform="translate(' + q1(x) + ' ' + q1(y) + ')"><g class="bcin">' + bonusStack(C[i]) + '</g></g>'; }   // hidden until a chain reveals them
-    box.innerHTML = '<div class="bhead"><span class="btag">' + (BS.label || 'BONUS') + '</span><span class="bpips" id="bonusPips" role="img">' + '<i></i>'.repeat(BCHAINS) + '</span><span id="bonusMsg">Get ready…</span><button class="bskip" id="bonusSkip">Skip ▸</button></div>' +
-      '<div class="bwrap"' + (BS.board ? ' style="background:' + String(BS.board).replace(/"/g, "'") + '"' : '') + '>' + s + '</svg><div class="bcd" id="bonusCd" aria-live="polite"></div></div>';
-    box.classList.remove('over'); bonusPips(me);
+    bonusStop(); $('winBag').classList.remove('gone');
+    const box = $('bonus'), FB = window.FTH_BONUS, BS = ACT.bonus || {};
+    const list = Array.isArray(BS.games) ? BS.games : FB ? FB.ids : [], fq = PVQ.get('bonus');
+    const id = !FB ? null : typeof force === 'string' ? force : fq && FB.games[fq] ? fq : FB.pick(list, bonusLast);
+    if (!box || !id || !FB.games[id]) { if (box) box.innerHTML = ''; bonusUnlock(); return; }
+    bonusLast = id;
+    const GM = FB.games[id], ncol = typeof force === 'number' ? force : (levelIdx < 8 ? 3 : (levelIdx % 2 ? 4 : 3)), perm = [0, 1, 2, 3].sort(() => Math.random() - .5);
+    const label = String(BS.label || '★').replace(/[<>&"]/g, '');
+    box.className = 'b-' + id;
+    box.innerHTML = '<div class="bhead"><span class="btag">' + label + '</span><span class="bpips" id="bonusPips" role="img"></span>' +
+      '<span class="bring" id="bonusRing" role="timer"><svg viewBox="0 0 30 30" aria-hidden="true"><circle class="rb" cx="15" cy="15" r="13"/><circle class="rf" cx="15" cy="15" r="11" stroke-dasharray="' + q1(BRC) + '"/></svg></span>' +
+      '<button class="bskip" id="bonusSkip" aria-label="Skip the bonus">' + BSKIP + '</button></div>' +
+      '<div class="bwrap pre" id="bonusWrap"' + (BS.board ? ' style="background:' + String(BS.board).replace(/"/g, "'") + '"' : '') + '><svg id="bonusSvg" class="g-' + id + '" viewBox="0 0 ' + GM.w + ' ' + GM.h + '" aria-label="Bonus game"><g class="bstage"></g><g class="bfx"></g></svg><div class="bcd" id="bonusCd" aria-live="polite"></div></div>';
     $('winNext').disabled = $('winRetry').disabled = true; $('win').classList.add('bonusing');
     $('bonusSkip').onclick = () => bonusEnd(true);
-    const svg = $('bonusSvg');
-    const hit = e => {
-      const m = svg.getScreenCTM(); if (!m) return -1;
-      const p = new DOMPoint(e.clientX, e.clientY).matrixTransform(m.inverse());
-      let best = -1, bd = BX.s * .45;                // inside a tile (not the gap between two)
-      for (let i = 0; i < N; i++) { const [x, y] = bonusHex(i), d = Math.hypot(x - p.x, y - p.y); if (d < bd) { bd = d; best = i; } }
-      return best;
+    const svg = $('bonusSvg'), stage = svg.querySelector('.bstage'), fx = svg.querySelector('.bfx'), wrap = $('bonusWrap');
+    const me = bz = { id, t: [], raf: 0, done: false, live: false, got: 0, onP: null, onK: null, loopFn: null, clk: null, ghost: null, inst: null, log: null, H: null };
+    const alive = () => bz === me && !me.done;
+    const later = (fn, ms) => { const h = setTimeout(() => { if (bz === me) fn(); }, ms || 0); me.t.push(h); return h; };
+    const toScr = (x, y) => { const m = svg.getScreenCTM(); if (!m) return null; const p = new DOMPoint(x, y).matrixTransform(m); return [p.x, p.y]; };
+    const toSvg = e => { const m = svg.getScreenCTM(); if (!m) return null; const p = new DOMPoint(e.clientX, e.clientY).matrixTransform(m.inverse()); return { x: p.x, y: p.y }; };
+    const inWrap = (x, y) => { const s = toScr(x, y), wr = wrap.getBoundingClientRect(); return s ? [s[0] - wr.left, s[1] - wr.top] : [0, 0]; };
+    const tileFn = typeof BS.tile === 'function' ? BS.tile : bonusTile;
+    const H = me.H = {
+      root: stage, w: GM.w, h: GM.h, ncol, perm, rnd: Math.random, reduced, line: BS.line, neon: NEONH,
+      gem(x, y, r, e, k) { try { const s = tileFn(x, y, r, e, k); if (typeof s === 'string') return s; } catch (_) { /* the skin's art failed: the shell's */ } return bonusTile(x, y, r, e, k); },
+      stack: bonusStack,
+      put(parent, s) { parent.insertAdjacentHTML('beforeend', s); return parent.lastElementChild; },
+      on(fn) { me.onP = fn; }, key(fn) { me.onK = fn; }, loop(fn) { me.loopFn = fn; }, later, alive,
+      clock(sec, onEnd) {
+        if (!sec) { me.clk = null; bonusRing(1, ''); const el = $('bonusCd'); if (el && !me.done) el.textContent = ''; return; }
+        me.clk = { t0: performance.now(), dur: sec * 1000, onEnd, last: 0 }; bonusRing(1, 'run');
+      },
+      pips(st) {
+        const p = $('bonusPips'); if (!p) return;
+        while (p.children.length < st.length) p.appendChild(document.createElement('i'));
+        while (p.children.length > st.length) p.lastChild.remove();
+        [...p.children].forEach((d, i) => { if (d.className !== st[i]) { d.className = st[i]; if (st[i] === 'done' && !reduced && d.animate) d.animate([{ transform: 'scale(1.6)' }, { transform: 'scale(.75)' }], { duration: 320, easing: 'cubic-bezier(.3,1.6,.5,1)' }); } });
+        p.setAttribute('aria-label', st.filter(s => s === 'on').length + ' of ' + st.length);
+      },
+      pay(pts, x, y, o) {
+        o = o || {}; if (!alive() || !(pts > 0)) return;
+        me.got += pts; gain(pts);
+        const b = save.best[levelIdx]; if (b) { b.score = Math.max(b.score, score); persist(); }
+        let cg = o.el; const tmp = !cg;
+        if (tmp) cg = H.put(fx, '<g class="bcoin show" transform="translate(' + q1(x) + ' ' + q1(y) + ')"><g class="bcin">' + bonusStack(Math.max(1, Math.min(5, o.k || 1))) + '</g></g>');
+        else cg.classList.add('show');
+        const cin = cg.firstElementChild; if (!reduced && cin && cin.animate) cin.animate([{ transform: 'scale(.2)', opacity: 0 }, { transform: 'scale(1.35)', opacity: 1, offset: .55 }, { transform: 'scale(1)', opacity: 1 }], { duration: 260, easing: 'ease-out' });
+        const n = Math.min(o.n || 1, 30); setTimeout(() => { blip(1760 * Math.pow(1.04, n), .07, 'square', .018); blip(2640 * Math.pow(1.04, n), .16, 'triangle', .03); }, 45);   // cha-ching, higher as the run grows
+        H.float(x, y - 8, '+' + cfl(pts) + (o.mult ? ' ×' + o.mult : ''));
+        const from = toScr(x, y);
+        later(() => { cg.classList.add('gone'); if (tmp) setTimeout(() => cg.remove(), 220); loot(pts, from, { to: $('winTotal'), onCoin: sh => { winPts += sh; $('winScore').textContent = cfmt(winPts); } }); }, 200);
+      },
+      float(x, y, t) {
+        if (!alive() && !me.done) return;
+        const [l, tp] = inWrap(x, y), f = document.createElement('div'); f.className = 'bfl'; f.textContent = t; f.style.left = l + 'px'; f.style.top = tp + 'px';
+        wrap.appendChild(f); setTimeout(() => f.remove(), 950);
+      },
+      burst(x, y, c, n) { if (bz === me) uiBurst(fx, x, y, c || '#ffd84a', n); },
+      pop: (el, s) => uiPop(el, s),
+      shake(px) { if (reduced || !wrap.animate) return; const d = px || 5; wrap.animate([{ transform: 'none' }, { transform: 'translate(' + -d + 'px,' + d * .4 + 'px)' }, { transform: 'translate(' + d + 'px,' + -d * .3 + 'px)' }, { transform: 'translate(' + -d * .5 + 'px,0)' }, { transform: 'none' }], { duration: 260, easing: 'ease-out' }); },
+      sfx: {
+        step: n => note(n),                                         // the Shepard ladder: one step higher per piece, forever
+        pop: n => { blip(520 * Math.pow(1.06, Math.min(n, 24)), .09, 'triangle', .05); note(n); },
+        bad: () => { wsfx.nope(); },
+        land: () => { wsfx.thump(); blip(392, .06, 'triangle', .03); },
+        chime: () => blip(660, .1, 'triangle', .035),
+        whoosh: () => blip(300, .12, 'sine', .035),
+        combo: n => arp(523 * Math.pow(1.06, Math.min(n, 12)), 5, 45),
+        tick: s => { blip(s === 1 ? 1046 : 784, .08, 'square', .035); blip(s === 1 ? 523 : 392, .05, 'sine', .03); },
+      },
+      ghost(kind, pts) {                                            // the one teaching cue: a cartoon finger that taps, swipes or drags
+        H.ghostOff(); if (!pts || !pts.length || !alive()) return;
+        const f = document.createElement('div'); f.className = 'bghost'; f.innerHTML = BFINGER; wrap.appendChild(f); me.ghost = f;
+        const P = pts.map(([x, y]) => inWrap(x, y)), tr = (p, s) => 'translate(' + q1(p[0]) + 'px,' + q1(p[1]) + 'px) scale(' + s + ')';
+        f.style.transform = tr(P[0], 1);
+        if (reduced || !f.animate) return;
+        let kf;
+        if (kind === 'tap') kf = [{ transform: tr(P[0], 1.15), opacity: 0, offset: 0 }, { transform: tr(P[0], 1.15), opacity: 1, offset: .2 }, { transform: tr(P[0], .82), offset: .32 }, { transform: tr(P[0], 1.05), offset: .46 }, { transform: tr(P[0], .82), offset: .58 }, { transform: tr(P[0], 1.15), opacity: 1, offset: .78 }, { transform: tr(P[0], 1.15), opacity: 0, offset: 1 }];
+        else {
+          kf = [{ transform: tr(P[0], 1.15), opacity: 0, offset: 0 }, { transform: tr(P[0], 1.15), opacity: 1, offset: .12 }, { transform: tr(P[0], .88), opacity: 1, offset: .24 }];
+          P.slice(1).forEach((p, i, a) => kf.push({ transform: tr(p, .88), opacity: 1, offset: .24 + .5 * (i + 1) / a.length }));
+          kf.push({ transform: tr(P[P.length - 1], 1.15), opacity: 1, offset: .84 }, { transform: tr(P[P.length - 1], 1.15), opacity: 0, offset: 1 });
+        }
+        f.animate(kf, { duration: kind === 'tap' ? 1500 : kind === 'swipe' ? 1300 : 2100, iterations: Infinity, easing: 'ease-in-out' });
+      },
+      ghostOff() { const g = me.ghost; if (!g) return; me.ghost = null; if (g.animate && !reduced) { g.getAnimations().forEach(a => a.pause()); g.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 160, fill: 'forwards' }).onfinish = () => g.remove(); } else g.remove(); },
+      log: (t, d) => LOG(t, d),
+      end: info => bonusEnd(false, info),
     };
-    svg.addEventListener('pointerdown', e => {
-      if (bz !== me || !me.live || me.done || me.ended) return;
-      e.preventDefault(); try { svg.setPointerCapture(e.pointerId); } catch (_) {}
-      me.down = true; me.bad = -1; const i = hit(e); if (i < 0) return;
-      if (me.used.has(i)) { bonusShake(me, i); bonusSay('Already collected! Pick a <b>fresh</b> tile'); return; }
-      bonusAdd(me, i);
-    });
-    svg.addEventListener('pointermove', e => { if (bz === me && me.down && !me.done && !me.ended && me.path.length) { const i = hit(e); if (i >= 0) bonusTry(me, i); } });
-    const up = () => {
-      if (bz !== me || !me.down) return; me.down = false;
-      LOG('b_lift', { n: me.path.length, ch: me.ch });
-      if (me.done || me.ended) return;
-      if (me.path.length >= 2) bonusChainEnd(me, 'lift');
-      else if (me.path.length) { me.path.forEach(i => bonusMark(i, false)); me.path = []; bonusLine(me); bonusSay('Drag across to a <b>neighbour</b> to make a chain!'); }   // a lone touch costs nothing
-    };
+    try { me.inst = GM.create(H); } catch (err) { console.warn('bonus ' + id + ' failed', err); box.innerHTML = ''; bz = null; bonusUnlock(); return; }
+    me.log = me.inst.log || {};
+    // research log: the round is its own record (the board or the elements in play as the start state); events carry the game's own fields
+    if (window.FTH_LOG) FTH_LOG.start({ num: String((L && L.num) || levelIdx + 1) + '+bonus', map: me.log.map || 'bonus-' + id, par: 0, state: me.log.state || '' });
+    LOG('b_board', { game: id, id: me.log.board || id });
+    bonusRing(1, '');
+    // input, in viewBox units; any touch retires the ghost finger
+    svg.addEventListener('pointerdown', e => { if (bz !== me || !me.live || me.done) return; e.preventDefault(); try { svg.setPointerCapture(e.pointerId); } catch (_) {} H.ghostOff(); const p = toSvg(e); if (p && me.onP) me.onP('down', p, e); });
+    svg.addEventListener('pointermove', e => { if (bz !== me || !me.live || me.done || !me.onP) return; const p = toSvg(e); if (p) me.onP('move', p, e); });
+    const up = e => { if (bz !== me || !me.onP) return; const p = toSvg(e) || { x: 0, y: 0 }; me.onP('up', p, e); };
     svg.addEventListener('pointerup', up); svg.addEventListener('pointercancel', up);
-    me.t.push(setTimeout(() => {
-      if (bz !== me || me.done) return;
-      me.live = true; svg.classList.add('live');
-      bonusSay(CN.plural[0].toUpperCase() + CN.plural.slice(1) + ' are <b>hidden</b>! Drag a 2-colour chain');
-      if (!reduced) bonusDemo(me);
-    }, delay));
-  }
-  function bonusDemo(me) {                          // a little snake of tiles bobs once to invite a drag (no coins are shown)
-    const svg = $('bonusSvg'); if (!svg) return;
-    const a = me.E[0], b = me.E[BNB[0].find(j => me.E[j] !== a)], snake = [0];   // bob the start of a real chain from the corner
-    while (snake.length < 6) { const u = snake[snake.length - 1], v = BNB[u].find(j => !snake.includes(j) && (me.E[j] === a || me.E[j] === b) && me.E[j] !== me.E[u]); if (v === undefined) break; snake.push(v); }
-    snake.forEach((k, q) => setTimeout(() => { if (bz === me && !me.path.length) uiPop(svg.querySelector('.tl[data-k="' + k + '"]'), 1.25); }, q * 90));
-  }
-  function bonusOk(me, end, j) { return !me.used.has(j) && !me.path.includes(j) && bonusAdj(end, j) && me.E[j] !== me.E[end] && (!me.pair || me.pair.includes(me.E[j])); }
-  function bonusMoves(me) { const end = me.path[me.path.length - 1]; return BNB[end].some(j => bonusOk(me, end, j)); }
-  function bonusMark(i, on) { const g = $('bonusSvg').querySelector('.tl[data-k="' + i + '"]'); if (g) { g.classList.toggle('lit', on); g.classList.toggle('glow', on); } }
-  function bonusShake(me, i) {
-    const g = $('bonusSvg').querySelector('.tl[data-k="' + i + '"] .tin');
-    if (g && !reduced && g.animate) g.animate([{ transform: 'translateX(0)' }, { transform: 'translateX(-5px)' }, { transform: 'translateX(5px)' }, { transform: 'translateX(-3px)' }, { transform: 'translateX(0)' }], { duration: 260 });
-    blip(150, .12, 'sawtooth', .022);
-  }
-  function bonusTry(me, i) {
-    const p = me.path, end = p[p.length - 1];
-    if (i === end || p.includes(i)) { me.bad = -1; return; }
-    if (bonusOk(me, end, i)) { bonusAdd(me, i); return; }
-    if (me.bad === i) return; me.bad = i;          // wrong tile: shake + buzz once per visit, then ignore it (the chain is not broken)
-    LOG('b_refuse', { i, e: me.E[i], adj: bonusAdj(end, i), ch: me.ch, spent: me.used.has(i) });
-    bonusShake(me, i);
-    if (me.used.has(i)) bonusSay('Already collected!');
-    else if (me.pair) bonusSay('Only <b>' + NAMES[me.pair[0]] + '</b> and <b>' + NAMES[me.pair[1]] + '</b>, next to the end!');
-  }
-  function bonusLine(me) {
-    const pts = me.path.length > 1 ? me.path.map(i => bonusHex(i).map(q1).join(',')).join(' ') : '';
-    const svg = $('bonusSvg'); svg.querySelector('.bglow').setAttribute('points', pts); svg.querySelector('.bline').setAttribute('points', pts);
-    if (me.pair) svg.querySelector('.bglow').style.stroke = (ACT.bonus && ACT.bonus.line) || NEONH[me.pair[0]];
-  }
-  // reveal tile i's coins (they pop into view), then they fly into the counter; the amounts are secret until this moment
-  function bonusPay(me, i, n) {
-    const svg = $('bonusSvg'), cg = svg.querySelector('.bcoin[data-c="' + i + '"]'), k = me.C[i], pts = BCOIN.pts * k, from = centerOf(cg);
-    cg.classList.add('show'); me.got += pts; me.cgot += pts;
-    const cin = cg.firstChild; if (!reduced && cin.animate) cin.animate([{ transform: 'scale(.2)', opacity: 0 }, { transform: 'scale(1.3)', opacity: 1, offset: .55 }, { transform: 'scale(1)', opacity: 1 }], { duration: 260, easing: 'ease-out' });
-    note(n - 1); setTimeout(() => { blip(1760 * Math.pow(1.04, n), .07, 'square', .018); blip(2640 * Math.pow(1.04, n), .16, 'triangle', .03); }, 45);   // cha-ching
-    gain(pts);
-    const b = save.best[levelIdx]; if (b) { b.score = Math.max(b.score, score); persist(); }
-    const wrap = svg.parentNode, wr = wrap.getBoundingClientRect(), f = document.createElement('div');
-    f.className = 'bfl'; f.textContent = '+' + cfl(pts) + (k > 1 ? ' ×' + k : ''); f.style.left = (from[0] - wr.left) + 'px'; f.style.top = (from[1] - wr.top) + 'px';
-    wrap.appendChild(f); setTimeout(() => f.remove(), 950);
-    me.t.push(setTimeout(() => {
-      cg.classList.add('gone');
-      loot(pts, from, { to: $('winTotal'), onCoin: sh => { winPts += sh; $('winScore').textContent = cfmt(winPts); } });
-    }, reduced ? 0 : 200));
-  }
-  function bonusAdd(me, i) {
-    const p = me.path; p.push(i); me.bad = -1; LOG('b_step', { i, e: me.E[i], n: p.length, ch: me.ch });
-    const svg = $('bonusSvg'), g = svg.querySelector('.tl[data-k="' + i + '"]');
-    svg.querySelectorAll('.tl.glow').forEach(t => t.classList.remove('glow'));
-    g.classList.add('lit', 'glow'); uiPop(g, 1.35);
-    if (p.length === 1) { bonusSay('Now drag to a <b>neighbour</b>!'); return; }   // one tile is not a chain yet: nothing revealed
-    if (p.length === 2) { me.pair = [me.E[p[0]], me.E[p[1]]]; bonusPay(me, p[0], 1); me.t.push(setTimeout(() => { if (bz === me) bonusPay(me, p[1], 2); }, reduced ? 0 : 110)); }   // it IS a chain: both tiles reveal
-    else bonusPay(me, i, p.length);
-    bonusLine(me);
-    bonusSay(p.length < 3 ? 'A chain! One more to start the clock!' : 'Chain <b>' + p.length + '</b> · +' + cfl(me.cgot));
-    if (p.length === 3 && me.cd < 0) bonusCountdown(me);
-    if (!bonusMoves(me)) { me.ended = true; me.down = false; bonusSay('Chain of <b>' + p.length + '</b> · no more moves!'); me.t.push(setTimeout(() => bonusChainEnd(me, 'dead'), 600)); }
-  }
-  function bonusCountdown(me) {
-    me.cd = 5; const ch = me.ch;
-    const tick = () => {
-      if (bz !== me || me.done || me.ch !== ch || me.cd < 0) return;
+    let tPrev = 0;
+    const frame = now => {
+      if (bz !== me) return; me.raf = requestAnimationFrame(frame);
       if (!$('win').classList.contains('on')) { bonusStop(); return; }
-      if (me.cd === 0) { bonusChainEnd(me, 'time'); return; }
-      const el = $('bonusCd'); el.className = 'bcd'; el.textContent = me.cd;
-      if (!reduced && el.animate) el.animate([{ transform: 'scale(2.2)', opacity: 0 }, { transform: 'scale(.9)', opacity: 1, offset: .25 }, { transform: 'scale(1)', opacity: .85, offset: .4 }, { transform: 'scale(1)', opacity: .35 }], { duration: 1000, easing: 'ease-out', fill: 'forwards' });
-      blip(me.cd === 1 ? 1046 : 784, .08, 'square', .035); blip(me.cd === 1 ? 523 : 392, .05, 'sine', .03);
-      me.cd--; me.ct.push(setTimeout(tick, 1000));
+      const dt = tPrev ? Math.min(.05, (now - tPrev) / 1000) : 0; tPrev = now;
+      const c = me.clk;
+      if (c && me.live && !me.done) {
+        const left = c.dur - (performance.now() - c.t0), s = Math.ceil(left / 1000);
+        bonusRing(left / c.dur);
+        if (s <= 3 && s > 0 && s !== c.last) {                   // the last three seconds: the ring turns red, ticks and counts down big
+          c.last = s; bonusRing(left / c.dur, 'run warn'); H.sfx.tick(s);
+          const el = $('bonusCd'); el.className = 'bcd'; el.textContent = s;
+          if (!reduced && el.animate) el.animate([{ transform: 'scale(2.2)', opacity: 0 }, { transform: 'scale(.9)', opacity: .9, offset: .25 }, { transform: 'scale(1)', opacity: .7, offset: .4 }, { transform: 'scale(1)', opacity: .15 }], { duration: 1000, easing: 'ease-out', fill: 'forwards' });
+        }
+        if (left <= 0) { me.clk = null; bonusRing(0, ''); $('bonusCd').textContent = ''; if (c.onEnd) c.onEnd(); }
+      }
+      if (me.loopFn) { try { me.loopFn(dt, now); } catch (err) { console.warn('bonus ' + id, err); me.loopFn = null; bonusEnd(false, { error: 1 }); } }
     };
-    tick();
+    me.raf = requestAnimationFrame(frame);
+    // the arrival: the play area comes in with the skin's bonus.intro, the gems pop in a wave, then play starts
+    later(() => {
+      if (me.done) return;
+      wrap.classList.remove('pre'); blip(330, .14, 'sine', .035); $('winBag').classList.add('gone');
+      const K = {
+        drop: [[{ transform: 'translateY(-70px) scale(.92)', opacity: 0 }, { transform: 'translateY(10px) scale(1.02,.96)', opacity: 1, offset: .55 }, { transform: 'translateY(-4px)', offset: .78 }, { transform: 'none', opacity: 1 }], 620],
+        spin: [[{ transform: 'rotate(-220deg) scale(.1)', opacity: 0 }, { transform: 'rotate(12deg) scale(1.06)', opacity: 1, offset: .7 }, { transform: 'none', opacity: 1 }], 720],
+        curtain: [[{ clipPath: 'inset(0 50% 0 50% round 20px)' }, { clipPath: 'inset(0 0 0 0 round 20px)' }], 620],
+        zoom: [[{ transform: 'scale(.05)', opacity: 0 }, { transform: 'scale(1.12)', opacity: 1, offset: .62 }, { transform: 'scale(.97)', offset: .84 }, { transform: 'none', opacity: 1 }], 620],
+      }[BS.intro] || null;
+      const [kf, ms] = K || [[{ transform: 'translateY(-70px) scale(.92)', opacity: 0 }, { transform: 'translateY(10px) scale(1.02,.96)', opacity: 1, offset: .55 }, { transform: 'translateY(-4px)', offset: .78 }, { transform: 'none', opacity: 1 }], 620];
+      if (!reduced && wrap.animate) wrap.animate(kf, { duration: ms, easing: 'cubic-bezier(.3,1.2,.5,1)' });
+      if (!reduced) [...stage.querySelectorAll('.tl')].slice(0, 30).forEach((g, i) => later(() => uiPop(g, 1.3), ms * .5 + i * 22));
+      later(() => { if (me.done) return; me.live = true; svg.classList.add('live'); me.inst.go(); }, reduced ? 0 : ms * .6 + 200);
+    }, delay);
   }
-  // a chain is over (lift / dead end / clock): its tiles are spent; the next chain starts after a short pause, or the round ends
-  function bonusChainEnd(me, why) {
-    if (bz !== me || me.done) return;
-    me.ct.forEach(clearTimeout); me.ct = []; me.cd = -1; me.down = false; me.ended = true;
-    const n = me.path.length, got = me.cgot, ch = me.ch, el = $('bonusCd'); if (el) { el.className = 'bcd'; el.textContent = ''; }
-    me.chains.push({ n, got, why }); LOG('b_chain', { ch, n, got, why, coin: ACT.id });
-    me.path.forEach(i => { me.used.add(i); const g = $('bonusSvg').querySelector('.tl[data-k="' + i + '"]'); if (g) { g.classList.remove('glow'); g.classList.add('lit', 'spent'); } });
-    me.path = []; me.pair = null; me.cgot = 0; bonusLine(me);
-    const what = why === 'time' ? 'Time! ' : why === 'dead' ? 'Dead end! ' : '';
-    if (ch >= BCHAINS) { bonusSay(what + 'Chain <b>' + ch + '</b>: +' + cfl(got) + '. That was the last!'); me.t.push(setTimeout(() => bonusEnd(), 800)); return; }
-    me.ch++; bonusPips(me); blip(660, .1, 'triangle', .035);
-    bonusSay(what + 'Chain <b>' + ch + '</b>: +' + cfl(got) + '. Now chain <b>' + me.ch + '</b> of ' + BCHAINS);
-    me.t.push(setTimeout(() => { if (bz === me && !me.done) { me.ended = false; bonusSay('Chain <b>' + me.ch + '</b> of ' + BCHAINS + ': start on a fresh tile'); } }, 750));
-  }
-  function bonusEnd(skip) {
+  function bonusEnd(skip, info) {
     const me = bz; if (!me || me.done) return;
-    if (me.path.length >= 2 && !me.ended) { me.chains.push({ n: me.path.length, got: me.cgot, why: skip ? 'skip' : 'end' }); LOG('b_chain', { ch: me.ch, n: me.path.length, got: me.cgot, why: skip ? 'skip' : 'end' }); }
-    me.done = true; me.down = false; me.t.forEach(clearTimeout); me.t = []; me.ct.forEach(clearTimeout); me.ct = []; bonusPips(me);
-    if (window.FTH_LOG) FTH_LOG.end(skip ? 'bonus_skip' : 'bonus_done', { n: me.path.length, got: me.got, path: me.path, ncol: me0 && me0.ncol, board: me0 && me0.board, chains: me.chains });
+    if (skip) { try { if (me.inst) me.inst.halt(); } catch (_) {} }
+    me.done = true; me.live = false; me.clk = null; if (me.H) me.H.ghostOff(); bonusRing(skip ? 1 : 0, '');
+    if (window.FTH_LOG) FTH_LOG.end(skip ? 'bonus_skip' : 'bonus_done', Object.assign({ game: me.id, got: me.got }, me.log || {}, info || {}));
     $('bonus').classList.add('over'); $('bonusSvg').classList.remove('live');
-    const el = $('bonusCd'), n = me.chains.reduce((a, c) => a + c.n, 0);
-    const ghosts = () => { const svg = $('bonusSvg'); if (svg) svg.querySelectorAll('.bcoin').forEach(c => { if (!c.classList.contains('show')) c.classList.add('ghost'); }); };   // the coins you did not find
-    if (!me.got) { el.textContent = ''; bonusSay(skip ? 'Skipped.' : 'Done!'); ghosts(); bonusUnlock(); return; }
+    const el = $('bonusCd'); el.textContent = '';
+    if (!me.got) { if (!skip) me.H.shake(4); bonusUnlock(); return; }
     [523, 659, 784, 1047, 1319, 1568].forEach((f, i) => setTimeout(() => blip(f, i === 5 ? .4 : .14, 'triangle', .05), i * 85));   // happy jingle
     setTimeout(() => { blip(1047, .45, 'sine', .035); blip(1319, .45, 'sine', .03); }, 6 * 85);
-    el.className = 'bcd burst'; el.textContent = '+' + cfl(me.got) + ' bonus!';
+    el.className = 'bcd burst'; el.textContent = '+' + cfl(me.got);
     if (!reduced && el.animate) el.animate([{ transform: 'scale(.2) rotate(-8deg)', opacity: 0 }, { transform: 'scale(1.25) rotate(4deg)', opacity: 1, offset: .5 }, { transform: 'scale(1)', opacity: 1 }], { duration: 600, easing: 'cubic-bezier(.3,1.6,.5,1)', fill: 'forwards' });
-    const svg = $('bonusSvg'), vb = svg.viewBox.baseVal; uiBurst(svg, vb.width / 2, vb.height / 2, '#ffd84a', 14);
-    bonusSay(me.chains.length + (me.chains.length === 1 ? ' chain' : ' chains') + ', <b>' + n + '</b> tiles! ' + CN.plural[0].toUpperCase() + CN.plural.slice(1) + ' in the bank.');
-    setTimeout(ghosts, reduced ? 0 : 900); setTimeout(() => { if (bz === me) el.textContent = ''; }, reduced ? 1200 : 2200);   // then the board shows what you missed
+    const svg = $('bonusSvg'), vb = svg.viewBox.baseVal; uiBurst(svg.querySelector('.bfx'), vb.width / 2, vb.height / 2, '#ffd84a', 16); me.H.shake(5);
+    setTimeout(() => { if (bz === me) el.textContent = ''; }, reduced ? 1200 : 2200);
     setTimeout(() => { if (bz === me) { bonusUnlock(); bumpEl($('winTotal')); } }, reduced ? 0 : 1300);   // after the last coins land
   }
+  addEventListener('keydown', e => {                    // arrow keys (and space: up) for the bonus games that steer
+    const me = bz; if (!me || !me.live || me.done || !me.onK) return;
+    const d = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1], ' ': [0, -1] }[e.key]; if (!d) return;
+    e.preventDefault(); me.onK(d);
+  });
   $('winNext').addEventListener('click', bonusStop); $('winRetry').addEventListener('click', bonusStop);
 
   function confetti() {
