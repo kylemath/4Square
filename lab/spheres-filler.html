@@ -11,7 +11,10 @@
     1. one ring outside the outer triangle
     2. a second ring around that
     3. a third ring
-    4. a filler island off to one side, joined to a single border sphere by a two-sphere neck
+    4. a filler island off to one side, still joined by a two-sphere neck
+  Most other joins tie the outer triangles' own vertices together, with no spheres in between,
+  so a chain can step from one subgraph into the next. One side of the ring of four, and one
+  flower bud, keep a longer chain.
 
   Each ring is the outer triangle moved straight out from its edges, then split into more
   pieces, so the filler sits outside the coloured graph and the next ring sits outside that.
@@ -76,7 +79,7 @@
 <header>
   <div>
     <h1>Spheres · filler <a href="spheres.html">the game</a> <a href="index.html">lab</a></h1>
-    <p>Same idea, several maps: filler rings, a narrow channel, and rings of graphs the game already uses, joined by a short neck. The core keeps its colouring. Click a country or a sphere to light a chain. Play opens that whole map in the spheres game.</p>
+    <p>Same idea, several maps: filler rings, a narrow channel, and rings of graphs the game already uses. Most of those graphs meet at the vertices of their outer triangles, so a chain can step straight across. A few joins are still a chain of spheres. The core keeps its colouring. Click a country or a sphere to light a chain. Play opens that whole map in the look selected above.</p>
     <div class="legend">
       <span><i class="sw" style="background:radial-gradient(circle at 35% 30%, #ffd0c8, #ef5a3c 55%, #8e1c17)"></i>fire</span>
       <span><i class="sw" style="background:radial-gradient(circle at 35% 30%, #d6e8ff, #3d8fe8 55%, #1b4f91)"></i>water</span>
@@ -393,15 +396,7 @@ function cellsOf(pos, edges) {
     const angV = Math.atan2(pos[v][1] - pos[u][1], pos[v][0] - pos[u][0]);
     const angW = Math.atan2(pos[w][1] - pos[u][1], pos[w][0] - pos[u][0]);
     let span = angW - angV; if (span <= 1e-6) span += Math.PI * 2;
-    const bis = angV + span / 2, cth = Math.cos(bis), sth = Math.sin(bis);
-    let reach = Infinity, S = 0.98;
-    if (cth > 1e-8) reach = Math.min(reach, (S - pos[u][0]) / cth);
-    if (cth < -1e-8) reach = Math.min(reach, (-S - pos[u][0]) / cth);
-    if (sth > 1e-8) reach = Math.min(reach, (S - pos[u][1]) / sth);
-    if (sth < -1e-8) reach = Math.min(reach, (-S - pos[u][1]) / sth);
-    if (!isFinite(reach) || reach < 0) reach = gap * 0.35;
-    reach = Math.min(reach, gap * 1.4);
-    const outPt = [pos[u][0] + cth * reach, pos[u][1] + sth * reach];
+    const bis = angV + span / 2, outPt = [pos[u][0] + Math.cos(bis) * gap * 1.4, pos[u][1] + Math.sin(bis) * gap * 1.4];
     const opts = [faceOf.get(u + ',' + v), faceOf.get(v + ',' + u), faceOf.get(u + ',' + w), faceOf.get(w + ',' + u)].filter(x => x != null);
     for (const fi of opts) {
       if (fi === outer) return outPt;
@@ -451,9 +446,119 @@ function loadPiece(levelId, keepHole) {
   const pos = [], col = [], kind = [], edges = [];
   for (let i = 0; i < base.pos.length; i++) if (i !== h) { pos.push(base.pos[i].slice()); col.push(base.col[i] < 0 ? 0 : base.col[i]); kind.push('core'); }
   for (const [a, b] of base.edges) if (map[a] >= 0 && map[b] >= 0) edges.push([map[a], map[b]]);
-  return { pos, edges, col, kind, hole: -1, rim: [], gap: base.gap, level: base.level, border: [] };
+  return { pos, edges, col, kind, hole: -1, rim: [], gap: base.gap, level: base.level, border: base.border.map(v => map[v]).filter(v => v >= 0) };
+}
+function segCross(a, b, c, d) {
+  const side = (p, q, r) => (q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0]);
+  const ab = side(a, b, c), ac = side(a, b, d), cd = side(c, d, a), ce = side(c, d, b);
+  if (ab === 0 || ac === 0 || cd === 0 || ce === 0) return false;
+  return (ab > 0) !== (ac > 0) && (cd > 0) !== (ce > 0);
+}
+function graphsCross(a, b) {
+  for (const [i, j] of a.edges) for (const [k, l] of b.edges) if (segCross(a.pos[i], a.pos[j], b.pos[k], b.pos[l])) return true;
+  return false;
+}
+function rotPiece(p, ang) {
+  const c = Math.cos(ang), s = Math.sin(ang);
+  p.pos = p.pos.map(([x, y]) => [c * x - s * y, s * x + c * y]);
+}
+function aimBorderVertex(p, dir) {
+  const v = p.border && p.border.length ? p.border[0] : 0;
+  rotPiece(p, dir - Math.atan2(p.pos[v][1], p.pos[v][0]));
+}
+function aimBorderEdge(p, dir) {
+  let nx = 1, ny = 0, best = -Infinity;
+  for (let i = 0; i < p.border.length; i++) {
+    const A = p.pos[p.border[i]], B = p.pos[p.border[(i + 1) % p.border.length]];
+    let dx = B[0] - A[0], dy = B[1] - A[1], L = Math.hypot(dx, dy) || 1, ox = -dy / L, oy = dx / L;
+    const mx = (A[0] + B[0]) / 2, my = (A[1] + B[1]) / 2;
+    if (mx * ox + my * oy < 0) { ox = -ox; oy = -oy; }
+    const dot = ox * Math.cos(dir) + oy * Math.sin(dir);
+    if (dot > best) { best = dot; nx = ox; ny = oy; }
+  }
+  rotPiece(p, dir - Math.atan2(ny, nx));
+}
+function nearestBorder(p, target) {
+  const vs = p.border && p.border.length ? p.border : p.pos.map((_, i) => i);
+  let best = vs[0], bd = Infinity;
+  vs.forEach(i => {
+    if (i === p.hole) return;
+    const d = Math.hypot(p.pos[i][0] - target[0], p.pos[i][1] - target[1]);
+    if (d < bd) { bd = d; best = i; }
+  });
+  return best;
+}
+// Every pair of outer-triangle vertices that can see each other. A chain crosses on one step wherever one of these sticks lands.
+function seamPairs(A, B) {
+  const cand = [];
+  for (const va of A.border) for (const vb of B.border) {
+    if (va === A.hole || vb === B.hole) continue;
+    const pa = A.pos[va], pb = B.pos[vb];
+    let bad = false;
+    for (const [x, y] of A.edges) if (segCross(pa, pb, A.pos[x], A.pos[y])) { bad = true; break; }
+    if (!bad) for (const [x, y] of B.edges) if (segCross(pa, pb, B.pos[x], B.pos[y])) { bad = true; break; }
+    const d = Math.hypot(pa[0] - pb[0], pa[1] - pb[1]);
+    if (d > Math.max(A.gap || 0.4, B.gap || 0.4) * 2.5) continue;
+    if (!bad) cand.push([va, vb, d]);
+  }
+  cand.sort((p, q) => p[2] - q[2]);
+  const pairs = [];
+  for (const [va, vb] of cand) {
+    const pa = A.pos[va], pb = B.pos[vb];
+    if (pairs.some(([x, y]) => segCross(pa, pb, A.pos[x], B.pos[y]))) continue;
+    pairs.push([va, vb]);
+  }
+  if (!pairs.length && A.border.length && B.border.length) pairs.push([nearestBorder(A, B._c || [0, 0]), nearestBorder(B, A._c || [0, 0])]);
+  return pairs;
+}
+const PERMS = (() => {
+  const out = [], a = [0, 1, 2, 3];
+  (function rec(i) {
+    if (i === 4) { out.push(a.slice()); return; }
+    for (let j = i; j < 4; j++) { const t = a[i]; a[i] = a[j]; a[j] = t; rec(i + 1); a[j] = a[i]; a[i] = t; }
+  })(0);
+  return out;
+})();
+function colorSeams(pieces, necks, holePiece) {
+  const done = new Set([holePiece]);
+  const pending = necks.filter(nk => !(nk.n > 0) && nk.pairs && nk.pairs.length);
+  let guard = 0;
+  while (pending.length && guard++ < pieces.length + 2) {
+    let moved = false;
+    for (let i = pending.length - 1; i >= 0; i--) {
+      const nk = pending[i];
+      const aDone = done.has(nk.ia), bDone = done.has(nk.ib);
+      if (!aDone && !bDone) continue;
+      if (aDone && bDone) {
+        const A = pieces[nk.ia], B = pieces[nk.ib];
+        nk.pairs = nk.pairs.filter(([va, vb]) => A.col[va] < 0 || B.col[vb] < 0 || A.col[va] !== B.col[vb]);
+        pending.splice(i, 1); moved = true; continue;
+      }
+      const flex = aDone ? nk.ib : nk.ia;
+      const rel = [];
+      pending.forEach(s => {
+        if (!(s.pairs && s.pairs.length)) return;
+        const flexIsB = s.ib === flex && done.has(s.ia), flexIsA = s.ia === flex && done.has(s.ib);
+        if (!flexIsB && !flexIsA) return;
+        s.pairs.forEach(([va, vb]) => { if (flexIsB) rel.push([s.ia, va, vb]); else rel.push([s.ib, vb, va]); });
+      });
+      let best = [0, 1, 2, 3], score = -1;
+      for (const perm of PERMS) {
+        let s = 0;
+        for (const [fp, fv, xv] of rel) {
+          const ca = pieces[fp].col[fv], raw = pieces[flex].col[xv], cb = raw < 0 ? -1 : perm[raw];
+          if (ca < 0 || cb < 0 || ca !== cb) s++;
+        }
+        if (s > score) { score = s; best = perm; }
+      }
+      pieces[flex].col = pieces[flex].col.map(c => c < 0 ? c : best[c]);
+      done.add(flex); moved = true;
+    }
+    if (!moved) break;
+  }
 }
 function compose(pieces, necks, holePiece) {
+  colorSeams(pieces, necks, holePiece);
   const pos = [], kind = [], col = [], edges = [], off = [];
   pieces.forEach(p => {
     off.push(pos.length);
@@ -464,16 +569,30 @@ function compose(pieces, necks, holePiece) {
     p.edges.forEach(([a, b]) => edges.push([a + o, b + o]));
   });
   const neck = [];
-  necks.forEach(({ ia, va, ib, vb, n }) => {
-    const A = pos[off[ia] + va], B = pos[off[ib] + vb];
-    let prev = off[ia] + va;
-    for (let i = 1; i <= n; i++) {
-      const t = i / (n + 1), id = pos.length;
-      pos.push([A[0] + (B[0] - A[0]) * t, A[1] + (B[1] - A[1]) * t]);
-      kind.push('channel'); col.push(-1); edges.push([prev, id]); prev = id; neck.push(id);
+  necks.forEach(({ ia, ib, pairs, va, vb, n }) => {
+    const list = pairs || [[va, vb]];
+    if (n > 0) {
+      const [va0, vb0] = list[0];
+      const A = pos[off[ia] + va0], B = pos[off[ib] + vb0];
+      let prev = off[ia] + va0;
+      for (let i = 1; i <= n; i++) {
+        const t = i / (n + 1), id = pos.length;
+        pos.push([A[0] + (B[0] - A[0]) * t, A[1] + (B[1] - A[1]) * t]);
+        kind.push('channel'); col.push(-1); edges.push([prev, id]); prev = id; neck.push(id);
+      }
+      edges.push([prev, off[ib] + vb0]);
+      neck.push(off[ia] + va0, off[ib] + vb0);
+    } else {
+      list.slice().sort((p, q) => {
+        const dp = Math.hypot(pos[off[ia] + p[0]][0] - pos[off[ib] + p[1]][0], pos[off[ia] + p[0]][1] - pos[off[ib] + p[1]][1]);
+        const dq = Math.hypot(pos[off[ia] + q[0]][0] - pos[off[ib] + q[1]][0], pos[off[ia] + q[0]][1] - pos[off[ib] + q[1]][1]);
+        return dp - dq;
+      }).forEach(([va0, vb0]) => {
+        const a = off[ia] + va0, b = off[ib] + vb0, A = pos[a], B = pos[b];
+        if (edges.some(([c, d]) => segCross(A, B, pos[c], pos[d]))) return;
+        edges.push([a, b]);
+      });
     }
-    edges.push([prev, off[ib] + vb]);
-    neck.push(off[ia] + va, off[ib] + vb);
   });
   const hp = pieces[holePiece], o0 = off[holePiece];
   const rim = (hp.rim || []).map(v => v + o0);
@@ -487,154 +606,95 @@ function compose(pieces, necks, holePiece) {
     coreEdges, rimEdge,
   };
 }
-function layoutRing(pieces) {
-  const med = pieces[0].gap || 0.45;
-  pieces.forEach(p => { recenterPiece(p); scalePiece(p, med); });
-  const rad = Math.max(...pieces.map(radiusOf));
-  const k = pieces.length, R = rad / Math.sin(Math.PI / k) + rad * 0.85;
+function separatePair(a, b, extra) {
+  const dx = b._c[0] - a._c[0], dy = b._c[1] - a._c[1], L = Math.hypot(dx, dy) || 1, s = extra / 2;
+  a.pos = a.pos.map(([x, y]) => [x - dx / L * s, y - dy / L * s]);
+  b.pos = b.pos.map(([x, y]) => [x + dx / L * s, y + dy / L * s]);
+  a._c = [a._c[0] - dx / L * s, a._c[1] - dy / L * s];
+  b._c = [b._c[0] + dx / L * s, b._c[1] + dy / L * s];
+}
+// longAt >= 0 keeps that one join as a chain of longN spheres. The other joins tie the outer triangles together directly.
+function layoutRing(pieces, longAt, longN) {
+  const med = pieces[0].gap || 0.45, k = pieces.length;
   pieces.forEach((p, i) => {
-    const a = -Math.PI / 2 + i * 2 * Math.PI / k, cx = Math.cos(a) * R, cy = Math.sin(a) * R;
-    p.pos = p.pos.map(([x, y]) => [x + cx, y + cy]); p._c = [cx, cy];
+    recenterPiece(p); scalePiece(p, med);
+    aimBorderVertex(p, -Math.PI / 2 + i * 2 * Math.PI / k);
+    p._local = p.pos.map(q => q.slice());
   });
+  const rad = Math.max(...pieces.map(radiusOf));
+  const place = scale => {
+    const R = rad / Math.sin(Math.PI / k) * scale;
+    pieces.forEach((p, i) => {
+      const ang = -Math.PI / 2 + i * 2 * Math.PI / k, cx = Math.cos(ang) * R, cy = Math.sin(ang) * R;
+      p.pos = p._local.map(([x, y]) => [x + cx, y + cy]);
+      p._c = [cx, cy];
+    });
+  };
+  let lo = 0.9, hi = 1.8;
+  for (let it = 0; it < 14; it++) {
+    const mid = (lo + hi) / 2;
+    place(mid);
+    let hit = false;
+    for (let i = 0; i < k; i++) for (let j = i + 1; j < k; j++) if (graphsCross(pieces[i], pieces[j])) hit = true;
+    if (hit) lo = mid; else hi = mid;
+  }
+  place(hi + 0.03);
+  if (longAt >= 0) separatePair(pieces[longAt], pieces[(longAt + 1) % k], med * ((longN || 2) + 0.85));
   const necks = [];
   for (let i = 0; i < k; i++) {
     const j = (i + 1) % k;
-    necks.push({ ia: i, va: nearestTo(pieces[i], pieces[j]._c, true), ib: j, vb: nearestTo(pieces[j], pieces[i]._c, true), n: 2 });
+    if (i === longAt) necks.push({ ia: i, ib: j, pairs: [[nearestBorder(pieces[i], pieces[j]._c), nearestBorder(pieces[j], pieces[i]._c)]], n: longN || 2 });
+    else necks.push({ ia: i, ib: j, pairs: seamPairs(pieces[i], pieces[j]), n: 0 });
   }
   return compose(pieces, necks, 0);
 }
 function layoutTwin(a, b) {
-  recenterPiece(a); recenterPiece(b); scalePiece(b, a.gap || 0.45); scalePiece(a, a.gap || 0.45);
-  const ra = radiusOf(a), rb = radiusOf(b), gap = (a.gap || 0.4) * 3.4;
-  a.pos = a.pos.map(([x, y]) => [x - ra - gap * 0.15, y]);
-  b.pos = b.pos.map(([x, y]) => [x + rb + gap, y]);
-  a._c = [-ra, 0]; b._c = [rb + gap, 0];
-  return compose([a, b], [{ ia: 0, va: nearestTo(a, b._c, true), ib: 1, vb: nearestTo(b, a._c, true), n: 2 }], 0);
+  const med = a.gap || 0.45;
+  recenterPiece(a); recenterPiece(b); scalePiece(b, med); scalePiece(a, med);
+  aimBorderEdge(a, 0); aimBorderEdge(b, Math.PI);
+  let ma = [0, 0], mb = [0, 0], da = Infinity, db = Infinity;
+  for (let i = 0; i < a.border.length; i++) {
+    const A = a.pos[a.border[i]], B = a.pos[a.border[(i + 1) % a.border.length]], mx = (A[0] + B[0]) / 2, my = (A[1] + B[1]) / 2;
+    const d = Math.hypot(mx - 8, my);
+    if (d < da) { da = d; ma = [mx, my]; }
+  }
+  for (let i = 0; i < b.border.length; i++) {
+    const A = b.pos[b.border[i]], B = b.pos[b.border[(i + 1) % b.border.length]], mx = (A[0] + B[0]) / 2, my = (A[1] + B[1]) / 2;
+    const d = Math.hypot(mx + 8, my);
+    if (d < db) { db = d; mb = [mx, my]; }
+  }
+  const sep = med * 1.2;
+  a.pos = a.pos.map(([x, y]) => [x - ma[0] - sep / 2, y - ma[1]]);
+  b.pos = b.pos.map(([x, y]) => [x - mb[0] + sep / 2, y - mb[1]]);
+  a._c = [-sep / 2, 0]; b._c = [sep / 2, 0];
+  return compose([a, b], [{ ia: 0, ib: 1, pairs: seamPairs(a, b), n: 0 }], 0);
 }
 function layoutFlower(core, budId) {
-  const buds = [0, 1, 2].map(() => { const b = loadPiece(budId, false); recenterPiece(b); scalePiece(b, (core.gap || 0.45) * 0.9); return b; });
-  const R = radiusOf(core) + radiusOf(buds[0]) + (core.gap || 0.4) * 3.3;
+  const med = core.gap || 0.45;
+  const buds = [0, 1, 2].map(() => { const b = loadPiece(budId, false); recenterPiece(b); scalePiece(b, med * 0.9); return b; });
+  const longI = 2;
   const necks = core.border.map((v, i) => {
-    const p = core.pos[v], L = Math.hypot(p[0], p[1]) || 1, cx = p[0] / L * R, cy = p[1] / L * R;
-    buds[i].pos = buds[i].pos.map(([x, y]) => [x + cx, y + cy]);
-    buds[i]._c = [cx, cy];
-    return { ia: 0, va: v, ib: i + 1, vb: nearestTo(buds[i], p, false), n: 2 };
+    const p = core.pos[v], L = Math.hypot(p[0], p[1]) || 1, ux = p[0] / L, uy = p[1] / L;
+    const bud = buds[i];
+    aimBorderVertex(bud, Math.atan2(-uy, -ux));
+    const local = bud.pos.map(q => q.slice());
+    let dist = L + radiusOf(bud) + (i === longI ? med * 3.2 : med * 0.45);
+    for (let s = 0; s < 6; s++) {
+      bud.pos = local.map(([x, y]) => [x + ux * dist, y + uy * dist]);
+      if (!graphsCross(core, bud)) break;
+      dist += med;
+    }
+    bud._c = [ux * dist, uy * dist];
+    if (i === longI) return { ia: 0, ib: i + 1, pairs: [[v, nearestBorder(bud, p)]], n: 2 };
+    return { ia: 0, ib: i + 1, pairs: seamPairs(core, bud), n: 0 };
   });
   return compose([core, ...buds], necks, 0);
-}
-// The puzzle skins draw whatever sits in the square. Islands Free is the picture of a graph that fills that square:
-// same-size bubbles, no walls, the coast as the only boundary. These maps keep their necks and rings, then the
-// same idea settles them: the outline goes to the coast, and bubbles inside spread until they cover the square.
-function convexHull(pos) {
-  const idx = pos.map((_, i) => i).sort((a, b) => pos[a][0] - pos[b][0] || pos[a][1] - pos[b][1]);
-  const turn = (o, a, b) => (pos[a][0] - pos[o][0]) * (pos[b][1] - pos[o][1]) - (pos[a][1] - pos[o][1]) * (pos[b][0] - pos[o][0]);
-  const lower = [], upper = [];
-  for (const i of idx) { while (lower.length >= 2 && turn(lower[lower.length - 2], lower[lower.length - 1], i) <= 0) lower.pop(); lower.push(i); }
-  for (let k = idx.length - 1; k >= 0; k--) { const i = idx[k]; while (upper.length >= 2 && turn(upper[upper.length - 2], upper[upper.length - 1], i) <= 0) upper.pop(); upper.push(i); }
-  lower.pop(); upper.pop();
-  return lower.concat(upper);
-}
-function squareCoast(t) {
-  const s = 0.94, u = ((t % 1) + 1) % 1 * 4, e = Math.floor(u), f = u - e;
-  if (e === 0) return [-s + 2 * s * f, -s];
-  if (e === 1) return [s, -s + 2 * s * f];
-  if (e === 2) return [s - 2 * s * f, s];
-  return [-s, s - 2 * s * f];
-}
-function affineFill(pos) {
-  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
-  pos.forEach(([x, y]) => { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); });
-  const sx = 1.84 / Math.max(x1 - x0, 1e-6), sy = 1.84 / Math.max(y1 - y0, 1e-6), cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
-  return pos.map(([x, y]) => [(x - cx) * sx, (y - cy) * sy]);
-}
-function incidentCross(pos, edges, u, neu) {
-  const side = (p, q, r) => (q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0]);
-  const hit = (a, b, c, d) => {
-    if (a === c || a === d || b === c || b === d) return false;
-    const A = a === u ? neu : pos[a], B = b === u ? neu : pos[b], C = pos[c], D = pos[d];
-    const ab = side(A, B, C), ac = side(A, B, D), cd = side(C, D, A), ce = side(C, D, B);
-    if (ab === 0 || ac === 0 || cd === 0 || ce === 0) return false;
-    return (ab > 0) !== (ac > 0) && (cd > 0) !== (ce > 0);
-  };
-  for (let i = 0; i < edges.length; i++) {
-    const [a, b] = edges[i];
-    if (a !== u && b !== u) continue;
-    for (let j = 0; j < edges.length; j++) {
-      if (i === j) continue;
-      const [c, d] = edges[j];
-      if (hit(a, b, c, d)) return true;
-    }
-  }
-  return false;
-}
-function packFree(m) {
-  const n = m.pos.length;
-  if (n < 4) return;
-  m.pos = affineFill(m.pos);
-  const hull = convexHull(m.pos);
-  const pin = new Set(hull);
-  const seg = []; let per = 0;
-  for (let i = 0; i < hull.length; i++) {
-    seg.push(per);
-    const a = m.pos[hull[i]], b = m.pos[hull[(i + 1) % hull.length]];
-    per += Math.hypot(b[0] - a[0], b[1] - a[1]);
-  }
-  let k0 = 0, bestA = Infinity;
-  hull.forEach((v, k) => {
-    const d = Math.abs(Math.atan2(Math.sin(Math.atan2(m.pos[v][1], m.pos[v][0]) - Math.PI), Math.cos(Math.atan2(m.pos[v][1], m.pos[v][0]) - Math.PI)));
-    if (d < bestA) { bestA = d; k0 = k; }
-  });
-  const origin = seg[k0] / per;
-  const goal = hull.map((_, k) => squareCoast(0.875 + ((seg[k] / per - origin) % 1 + 1) % 1));
-  const start = m.pos.map(p => p.slice());
-  for (let s = 1; s <= 16; s++) {
-    const t = s / 16;
-    hull.forEach((v, k) => {
-      const neu = [start[v][0] + (goal[k][0] - start[v][0]) * t, start[v][1] + (goal[k][1] - start[v][1]) * t];
-      if (!incidentCross(m.pos, m.edges, v, neu)) m.pos[v] = neu;
-    });
-  }
-  const ls = m.edges.map(([a, b]) => Math.hypot(m.pos[a][0] - m.pos[b][0], m.pos[a][1] - m.pos[b][1])).sort((a, b) => a - b);
-  const gap = ls[Math.max(0, Math.floor(ls.length * 0.35))] || 0.2;
-  const neckE = new Set();
-  m.edges.forEach(([a, b], i) => { if (m.kind[a] === 'channel' || m.kind[b] === 'channel') neckE.add(i); });
-  const vel = m.pos.map(() => [0, 0]);
-  for (let step = 0; step < 160; step++) {
-    const F = m.pos.map(() => [0, 0]), P = m.pos;
-    for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) {
-      const dx = P[j][0] - P[i][0], dy = P[j][1] - P[i][1], d = Math.hypot(dx, dy) || 1e-6;
-      if (d >= gap) continue;
-      const f = 0.35 * (gap - d) / d;
-      if (!pin.has(i)) { F[i][0] -= dx * f; F[i][1] -= dy * f; }
-      if (!pin.has(j)) { F[j][0] += dx * f; F[j][1] += dy * f; }
-    }
-    m.edges.forEach(([a, b], ei) => {
-      const dx = P[b][0] - P[a][0], dy = P[b][1] - P[a][1], d = Math.hypot(dx, dy) || 1e-6;
-      const lim = gap * (neckE.has(ei) ? 1.15 : 1.45);
-      if (d <= lim) return;
-      const f = 0.18 * (d - lim) / d;
-      if (!pin.has(a)) { F[a][0] += dx * f; F[a][1] += dy * f; }
-      if (!pin.has(b)) { F[b][0] -= dx * f; F[b][1] -= dy * f; }
-    });
-    for (let u = 0; u < n; u++) {
-      if (pin.has(u)) continue;
-      const v = vel[u];
-      v[0] = (v[0] + F[u][0]) * 0.55; v[1] = (v[1] + F[u][1]) * 0.55;
-      const sp = Math.hypot(v[0], v[1]), cap = gap * 0.22;
-      if (sp > cap) { v[0] *= cap / sp; v[1] *= cap / sp; }
-      const neu = [P[u][0] + v[0], P[u][1] + v[1]];
-      neu[0] = Math.max(-0.92, Math.min(0.92, neu[0])); neu[1] = Math.max(-0.92, Math.min(0.92, neu[1]));
-      if (incidentCross(P, m.edges, u, neu)) { v[0] = v[1] = 0; continue; }
-      P[u] = neu;
-    }
-  }
 }
 function seal(m, i) {
   if (!m.set || !m.set.size) m.set = new Set(m.edges.map(([a, b]) => ek(a, b)));
   if (!m.borderEdge) m.borderEdge = new Set();
   if (!m.rimEdge) m.rimEdge = new Set();
   if (!m.coreEdges) m.coreEdges = new Set();
-  packFree(m);
   paintPanel(m, i);
   m.cells = cellsOf(m.pos, m.edges);
   m.cross = crossings(m);
@@ -645,12 +705,12 @@ function seal(m, i) {
 function buildPanels(levelId) {
   const specs = [
     { title: 'One ring', blurb: 'One band of filler around the chosen graph.' },
-    { title: 'Three rings', blurb: 'Three bands of filler. The bubbles spread until the map fills the square.' },
+    { title: 'Three rings', blurb: 'Three bands. The core draws smaller only because the frame fits the picture.' },
     { title: 'Narrow channel', blurb: 'A filler island. A chain crosses only along the two-sphere neck.' },
-    { title: 'Twin bridge', blurb: 'The chosen graph joined to a second copy by a two-sphere neck. Only the first keeps the hole.' },
-    { title: 'Ring of four', blurb: 'Four copies in a circle, each linked to the next by a neck.' },
-    { title: 'Necklace', blurb: 'Three maps the game already uses — icosahedron, tidy trap, round and round — linked in a ring.' },
-    { title: 'Flower', blurb: 'The chosen graph, with an icosahedron budded off each corner of its old outer triangle.' },
+    { title: 'Twin seam', blurb: 'The two outer triangles are tied vertex to vertex, so a chain crosses in one step. Only the first keeps the hole.' },
+    { title: 'Ring of four', blurb: 'Four copies. Three joins tie the outer triangles together. The fourth is still a three-sphere chain.' },
+    { title: 'Necklace', blurb: 'Three maps the game already uses — icosahedron, tidy trap, round and round — outer triangles linked vertex to vertex.' },
+    { title: 'Flower', blurb: 'Buds tied straight onto the corners of the outer triangle. One bud is still a two-sphere chain away.' },
   ];
   return specs.map((s, i) => {
     let m;
@@ -663,12 +723,12 @@ function buildPanels(levelId) {
       m = cloneCore(levelId);
       addChannel(m, 4);
       dropBorderEdges(m);
-    } else if (s.title === 'Twin bridge') {
+    } else if (s.title === 'Twin seam') {
       m = layoutTwin(loadPiece(levelId, true), loadPiece(levelId, false));
     } else if (s.title === 'Ring of four') {
-      m = layoutRing([loadPiece(levelId, true), loadPiece(levelId, false), loadPiece(levelId, false), loadPiece(levelId, false)]);
+      m = layoutRing([loadPiece(levelId, true), loadPiece(levelId, false), loadPiece(levelId, false), loadPiece(levelId, false)], 0, 3);
     } else if (s.title === 'Necklace') {
-      m = layoutRing([loadPiece('first-flip', true), loadPiece('tidy-trap', false), loadPiece('round-and-round', false)]);
+      m = layoutRing([loadPiece('first-flip', true), loadPiece('tidy-trap', false), loadPiece('round-and-round', false)], -1, 0);
     } else {
       m = layoutFlower(cloneCore(levelId), 'first-flip');
     }
