@@ -1,9 +1,12 @@
-// End-to-end check of skin tickets and the coin podium in the real shell (headless Chrome, no npm packages):
+// End-to-end check of the skin reel, the shop, the ticket deli and the coin podium in the real shell (headless Chrome, no npm packages):
 //   node docs/game/tools/shop_check.js [--shots dir]
-//   - a fresh player owns Islands only: one open chip, every other skin locked; a locked chip opens the shop on that skin;
+//   - a fresh player owns Islands only: one card in colour on the title reel, every other card locked; a locked card opens
+//     the shop on that skin, where the deli shows the level gate as a padlock;
+//   - the reel swipes (drag with momentum, keys), and coming to rest on an owned card selects that skin;
 //   - the currency exchange is benched: no wallet button (it comes back with ?feat=exchange);
-//   - winning the first level (Islands, at par) pays enough for ticket 1: the win card says so, the shop sells it,
-//     the ticket unlocks Dots, the picker opens it, a reload keeps it with a clean seal;
+//   - winning the first level (Islands, at par) pays enough for ticket 1: the win card says so, the deli sells it for doubloons
+//     (sign -> zoom -> PURCHASE), the ticket unlocks Dots in the shop, ▶ plays it, a reload keeps it with a clean seal;
+//   - the shop's live preview plays itself (&demo=1) and never reports to the shell;
 //   - a hand-edited list of owned skins is flagged by the integrity seal;
 //   - the leaderboard is one list of every skin with its top 3 by coins earned there; after joining you are 1st in Islands.
 const fs = require('fs'), path = require('path'), { serve, launch, sleep } = require('./cdp');
@@ -12,24 +15,54 @@ let bad = 0; const ok = (m, c, x) => { console.log((c ? '  ok   ' : '  FAIL ') +
 const nap = async (P, ms) => { for (let t = 0; t < ms; t += 300) { await sleep(300); await P.eval('1'); } };
 const until = async (P, expr, ms) => { for (let t = 0; t < (ms || 15000); t += 200) { if (await P.eval(expr)) return true; await sleep(200); } return false; };
 const SAVE = 'fill-the-hole-v2';
+// the reel under a selector: which card is centred, which are owned
+const reel = sel => `(() => { const r = document.querySelector('${sel} .rl'); if (!r) return null; const c = [...r.querySelectorAll('.rl-card')];
+  return { n: c.length, own: c.filter(x => x.classList.contains('own')).map(x => x.dataset.s), lock: c.filter(x => x.classList.contains('lock')).length,
+    at: (c.find(x => x.getAttribute('aria-selected') === 'true') || {}).dataset?.s, role: r.getAttribute('role'), act: r.getAttribute('aria-activedescendant') }; })()`;
+const key = (sel, k) => `document.querySelector('${sel} .rl').dispatchEvent(new KeyboardEvent('keydown', { key: '${k}', bubbles: true }))`;
 (async () => {
   if (SH) fs.mkdirSync(SH, { recursive: true });
   const srv = await serve(ROOT), B = await launch();
   const P = await B.page(390, 844, 1);
-  await P.addScript(`try { if (!sessionStorage.getItem('fresh')) { sessionStorage.setItem('fresh', '1'); localStorage.clear(); } } catch (e) {} window.__errs = []; addEventListener('error', e => __errs.push(e.message));`);
+  await P.addScript(`try { if (!sessionStorage.getItem('fresh')) { sessionStorage.setItem('fresh', '1'); localStorage.clear(); } } catch (e) {} window.__errs = []; addEventListener('error', e => __errs.push(e.message));
+    window.__fromShop = 0; addEventListener('message', e => { const f = document.querySelector('#shop .sh-live'); if (e.data && e.data.fth && f && e.source === f.contentWindow) __fromShop++; });`);
   const go = async q => { await P.goto(srv.url + 'index.html' + q); await sleep(700); };
   const shot = async n => { if (SH) { await sleep(250); await P.shot(path.join(SH, n + '.png')); } };
+  const toCard = async (sel, id) => { for (let i = 0; i < 20; i++) { const r = await P.eval(reel(sel)); if (r.at === id) break; await P.eval(key(sel, 'ArrowRight')); await sleep(80); } await sleep(1300); };
   try {
     await go('');
-    const pick = await P.eval(`({ open: [...document.querySelectorAll('#skinPick button:not(.lock)')].map(b => b.dataset.s), locked: document.querySelectorAll('#skinPick button.lock').length,
-      n: FTH_SKINS.list.length, wallet: !!document.getElementById('btnWalletTitle'), hudWallet: getComputedStyle(document.getElementById('btnWallet')).display })`);
-    ok('a new player owns Islands only', pick.open.join() === 'islands' && pick.locked === pick.n - 1, pick);
-    ok('the exchange is benched: no wallet buttons', !pick.wallet && pick.hudWallet === 'none');
-    await shot('title-locked');
-    await P.eval(`document.querySelector('#skinPick button[data-s="dots"]').click()`);
-    const s1 = await P.eval(`({ on: document.getElementById('shop').classList.contains('on'), focus: (document.querySelector('#shop .sh-skin.focus .nm') || {}).textContent, unlock: [...document.querySelectorAll('#shop [data-use]')].every(b => b.disabled), gate: /Beat 1 level/.test(document.getElementById('shop').textContent) })`);
-    ok('a locked chip opens the shop on that skin; nothing to unlock yet', s1.on && /Dots/.test(s1.focus) && s1.unlock && s1.gate, s1);
-    await shot('shop-start');
+    const t0 = await P.eval(reel('#skinPick')), n = await P.eval('FTH_SKINS.list.length');
+    const wal = await P.eval(`({ wallet: !!document.getElementById('btnWalletTitle'), hudWallet: getComputedStyle(document.getElementById('btnWallet')).display })`);
+    ok('the title reel is a listbox of every skin', t0 && t0.n === n && t0.role === 'listbox' && /dots|islands/.test(t0.act || ''), t0);
+    ok('a new player owns Islands only', t0.own.join() === 'islands' && t0.lock === n - 1, t0.own);
+    ok('the exchange is benched: no wallet buttons', !wal.wallet && wal.hudWallet === 'none');
+    await shot('title-reel');
+    // drag the reel: momentum carries it a few cards, it comes to rest on a card; a locked card leaves the skin alone
+    const box = await P.eval(`(() => { const r = document.querySelector('#skinPick .rl').getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height * .4]; })()`);
+    await P.S('Input.dispatchMouseEvent', { type: 'mousePressed', x: box[0], y: box[1], button: 'left', buttons: 1, clickCount: 1 });
+    for (let i = 1; i <= 6; i++) { await P.S('Input.dispatchMouseEvent', { type: 'mouseMoved', x: box[0] - i * 30, y: box[1], button: 'left', buttons: 1 }); await sleep(16); }
+    await P.S('Input.dispatchMouseEvent', { type: 'mouseReleased', x: box[0] - 180, y: box[1], button: 'left', buttons: 0, clickCount: 1 });
+    await sleep(1400);
+    const t1 = await P.eval(reel('#skinPick')), sk1 = await P.eval('document.body.dataset.skin');
+    ok('a flick moves the reel on and it settles on a card', t1.at && t1.at !== 'islands', t1.at);
+    ok('resting on a locked card keeps the skin', sk1 === 'islands', sk1);
+    await P.eval(key('#skinPick', 'Home')); await sleep(800);
+    ok('Home brings Islands back to the centre', (await P.eval(reel('#skinPick'))).at === 'islands');
+    // a locked card: tap (Enter) opens the shop there; no ticket yet, so the preview offers the deli, which is padlocked
+    await toCard('#skinPick', 'dots');
+    await P.eval(key('#skinPick', 'Enter')); await sleep(900);
+    const s1 = await P.eval(`({ on: document.getElementById('shop').classList.contains('on'), lock: !!document.querySelector('#shop .sh-pv.lock'), deli: !!document.querySelector('#shop .sh-big.deli'), use: !!document.querySelector('#shop .sh-big.use') })`);
+    const r1 = await P.eval(reel('#shop'));
+    ok('a locked card opens the shop on that skin, with the deli on offer', s1.on && r1.at === 'dots' && s1.lock && s1.deli && !s1.use, Object.assign(s1, { at: r1.at }));
+    await shot('shop-locked');
+    const words = await P.eval(`(() => { const c = document.getElementById('shop').cloneNode(true); c.querySelectorAll('.rl-art, .sh-art, iframe').forEach(x => x.remove()); document.body.appendChild(c); const t = c.innerText; c.remove(); return t.replace(/\\s+/g, ' ').trim(); })()`);
+    ok('the shop has no sentences', !/[a-z]{3,} [a-z]{3,} [a-z]{3,}/i.test(words), words.slice(0, 80));
+    await P.eval(`document.querySelector('#shop .sh-big.deli').click()`); await sleep(900);
+    const d1 = await P.eval(`({ on: document.getElementById('deli').classList.contains('on'), signs: document.querySelectorAll('#deli .dl-sign').length, ok: document.querySelectorAll('#deli .dl-sign.ok').length, lock: (document.querySelector('#deli .dl-lock') || {}).textContent })`);
+    ok('the deli hangs a price sign per currency, padlocked at 0/1 levels', d1.on && d1.signs === n && d1.ok === 0 && /0\/1/.test(d1.lock || ''), d1);
+    await shot('deli-locked');
+    await P.eval(`document.querySelector('#deli .dl-x').click()`); await sleep(300);
+    await P.eval(`document.querySelector('#shop .sh-x').click()`); await sleep(300);
 
     // win the first level at par on Islands
     await go('?view=game&lvl=splash');
@@ -40,23 +73,42 @@ const SAVE = 'fill-the-hole-v2';
     ok('after the bonus round, the win card says a ticket is ready', await until(P, `!document.getElementById('winTicket').hidden`, 8000));
     const bal = await P.eval(`JSON.parse(localStorage.getItem('${SAVE}')).wallet.islands.bal`);
     await shot('win-ticket');
-    await P.eval(`document.getElementById('winTicket').click()`);
-    const buy = await P.eval(`(() => { const b = document.querySelector('#shop [data-buy="islands"]'); return { there: !!b, dis: b && b.disabled, text: document.querySelector('#shop').textContent.match(/(\\d[\\d,]*) \\/ (\\d[\\d,]*) doubloons/) }; })()`);
-    ok('ticket 1 is for sale for doubloons', buy.there && !buy.dis, { bal, m: buy.text && buy.text[0] });
-    await P.eval(`document.querySelector('#shop [data-buy="islands"]').click()`);
-    ok('buying asks to confirm first', await P.eval(`/Sure\\?/.test(document.querySelector('#shop [data-buy="islands"]').textContent)`));
-    await P.eval(`document.querySelector('#shop [data-buy="islands"]').click()`);
+    await P.eval(`document.getElementById('winTicket').click()`); await sleep(500);
+    ok('the shop has the deli marked', await P.eval(`!document.querySelector('#shop .sh-deli .tdot').hidden`));
+    await P.eval(`document.querySelector('#shop .sh-deli').click()`); await sleep(900);
+    const sign = await P.eval(`(() => { const b = document.querySelector('#deli .dl-sign.ok .dl-face[data-w="islands"]'); return b && b.getAttribute('aria-label'); })()`);
+    ok('the deli sells ticket 1 for 225 doubloons', /^225 doubloons/.test(sign || ''), { bal, sign });
+    await shot('deli');
+    await P.eval(`document.querySelector('#deli .dl-face[data-w="islands"]').click()`); await sleep(500);
+    const z = await P.eval(`(() => { const b = document.querySelector('#deli .dl-zoom .dl-buy'); return b && { dis: b.disabled, label: b.getAttribute('aria-label') }; })()`);
+    ok('a sign zooms forward with a PURCHASE button', z && !z.dis && /225/.test(z.label), z);
+    await shot('deli-zoom');
+    await P.eval(`document.querySelector('#deli .dl-buy').click()`);
+    await sleep(1000); await shot('deli-purchase');
     const after = await P.eval(`(() => { const s = JSON.parse(localStorage.getItem('${SAVE}')); return { bal: s.wallet.islands.bal, earned: s.wallet.islands.earned, skins: s.skins }; })()`);
     ok('the ticket is paid from the Islands wallet', after.skins.tickets === 1 && after.skins.bought === 1 && after.bal === bal - 225 && after.earned >= bal, after);
+    ok('the deli closes after its animation, back in the shop', await until(P, `!document.getElementById('deli').classList.contains('on') && document.getElementById('shop').classList.contains('on')`, 8000));
+    ok('the shop counts the ticket', await P.eval(`/×1/.test(document.querySelector('#shop .sh-tks').textContent)`));
+    await toCard('#shop', 'dots');
+    ok('a locked skin now offers [🎟️ × 1]', await P.eval(`!!document.querySelector('#shop .sh-pv.lock .sh-big.use')`));
+    // the live preview of Dots plays itself and never talks to the shell
+    ok('the preview frame runs the page in demo mode', await until(P, `(() => { const f = document.querySelector('#shop .sh-live'); return f && /demo=1/.test(f.src) && f.classList.contains('on'); })()`, 8000));
+    await sleep(2600);
+    const demo = await P.eval(`(() => { const W = document.querySelector('#shop .sh-live').contentWindow; return { demo: W.LAB.demo, moves: W.LAB.last().moves + W.LAB.last().history.length, from: __fromShop }; })()`);
+    ok('demo swaps happen, no message reaches the shell', demo.demo && demo.moves > 0 && demo.from === 0, demo);
     await shot('shop-ticket');
-    await P.eval(`document.querySelector('#shop [data-use="dots"]').click()`); await P.eval(`document.querySelector('#shop [data-use="dots"]').click()`);
-    const un = await P.eval(`(() => { const s = JSON.parse(localStorage.getItem('${SAVE}')); return { own: s.skins.own, t: s.skins.tickets, play: !!document.querySelector('#shop [data-play="dots"]') }; })()`);
-    ok('the ticket unlocks Dots', un.own.includes('dots') && un.t === 0 && un.play, un);
-    await shot('shop-unlocked');
-    await P.eval(`document.querySelector('#shop [data-play="dots"]').click()`);
+    await P.eval(`document.querySelector('#shop .sh-big.use').click()`); await sleep(400); await shot('shop-unlocking');
+    const un = await P.eval(`(() => { const s = JSON.parse(localStorage.getItem('${SAVE}')); return { own: s.skins.own, t: s.skins.tickets }; })()`);
+    ok('the ticket unlocks Dots', un.own.includes('dots') && un.t === 0, un);
+    ok('Dots turns to colour on the reel and ▶ shows', await until(P, `!!document.querySelector('#shop .sh-pv.own') && document.querySelector('#shop .rl-card[data-s="dots"]').classList.contains('own') && document.body.dataset.skin === 'dots'`, 4000));
+    await sleep(1500); await shot('shop-owned');
+    await P.eval(`document.querySelector('#shop .sh-play').click()`); await sleep(600);
+    ok('▶ closes the shop and plays', await P.eval(`!document.getElementById('shop').classList.contains('on') && (!!document.querySelector('.howto.on') || document.getElementById('menu').classList.contains('on'))`));
     await go('');
-    const p2 = await P.eval(`({ open: [...document.querySelectorAll('#skinPick button:not(.lock)')].map(b => b.dataset.s), sel: (document.querySelector('#skinPick [aria-checked="true"]') || {}).dataset, skin: document.body.dataset.skin })`);
-    ok('after a reload Dots is open and selected', p2.open.join() === 'islands,dots' && p2.skin === 'dots', p2);
+    const p2 = await P.eval(reel('#skinPick')), sk2 = await P.eval('document.body.dataset.skin');
+    ok('after a reload Dots is owned, selected and centred', p2.own.join() === 'islands,dots' && sk2 === 'dots' && p2.at === 'dots', Object.assign(p2, { sk2 }));
+    await P.eval(key('#skinPick', 'Home')); await sleep(900);
+    ok('resting on an owned card selects it', await P.eval(`document.body.dataset.skin === 'islands' && JSON.parse(localStorage.getItem('${SAVE}')).skin === 'islands'`));
     const int1 = await P.eval(`(window.FTH_INT && FTH_INT.meta().tamper) || 0`);
     ok('a legitimate purchase leaves the seal clean', int1 === 0, int1);
 

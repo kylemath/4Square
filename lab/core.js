@@ -110,8 +110,9 @@
     g.on = fn => { g.subs.push(fn); return g; };
     g.canon = () => canon(g.col);
     compute();
+    if (DEMO) demo(g);
     if (EMBED) {
-      const post = type => parent.postMessage({ fth: 1, type, id: L.id, num: String(L.num), moves: g.moves, won: g.won(), free: g.free(), col: g.col.slice() }, '*');
+      const post = type => DEMO ? 0 : parent.postMessage({ fth: 1, type, id: L.id, num: String(L.num), moves: g.moves, won: g.won(), free: g.free(), col: g.col.slice() }, '*');
       g.post = post; LAST = g;
       g.on((_, info) => { g.doneSent = false; post(info.type); });
       addEventListener('message', e => { const d = e.data; if (!d || !d.fth || e.source !== parent) return; if (d.cmd === 'undo') g.undo(); else if (d.cmd === 'reset') g.reset(); });
@@ -121,13 +122,30 @@
   }
   // inside the app (?embed=1 in a frame): report to the parent; LAB.done() says the skin's win celebration is over
   const EMBED = new URLSearchParams(location.search).get('embed') === '1' && window.parent !== window;
+  // ?demo=1 (the skin shop's live preview): the page plays itself. Every ~1.6 s it swaps a chain from g.good() (any chain
+  // when none is known), resets ~2 s after a win, and never reports to the parent (no swap/ready/done/error message, so
+  // the shell's win flow and the research log never see a demo). Only the swap and reset go through g, so a page redraws
+  // them the way it redraws a swap from outside (the embed check's swaps).
+  const DEMO = new URLSearchParams(location.search).get('demo') === '1';
+  function demo(g) {
+    let n = 0;
+    const tick = () => {
+      if (g.won() || n >= 14) { n = 0; setTimeout(() => { g.reset(); setTimeout(tick, 1200); }, 2000); return; }
+      const all = g.chains.filter(K => !K.web), good = g.good();
+      const K = good.length ? good[0] : all[Math.floor(Math.random() * all.length)];
+      if (K) { g.swap(K); n++; }
+      setTimeout(tick, 1600);
+    };
+    setTimeout(tick, 1400);
+  }
   // a skin that throws (for example on a map it cannot draw) tells the app, which falls back to its own board
-  if (EMBED) addEventListener('error', e => /ResizeObserver/.test(e.message) ? 0 : parent.postMessage({ fth: 1, type: 'error', lvl: new URLSearchParams(location.search).get('lvl'), message: String(e.message) }, '*'));
+  if (DEMO) addEventListener('error', () => { window.LAB_DEMO_ERROR = true; });   // the shop then shows the skin's card instead
+  if (EMBED && !DEMO) addEventListener('error', e => /ResizeObserver/.test(e.message) ? 0 : parent.postMessage({ fth: 1, type: 'error', lvl: new URLSearchParams(location.search).get('lvl'), message: String(e.message) }, '*'));
   let LAST = null;
   // posted once per win: a repeat call (or a second timer) is ignored until the game changes again
   const done = () => { if (LAST && LAST.won() && !LAST.doneSent) { LAST.doneSent = true; LAST.post('done'); } };
   // a skin with its own goal (Blank Doodle: colour every piece) says it is finished; moves = its swap count
-  const finish = moves => { if (EMBED && LAST) parent.postMessage({ fth: 1, type: 'done', id: LAST.level.id, num: String(LAST.level.num), moves: moves || 0, won: true, own: true }, '*'); };
+  const finish = moves => { if (EMBED && !DEMO && LAST) parent.postMessage({ fth: 1, type: 'done', id: LAST.level.id, num: String(LAST.level.num), moves: moves || 0, won: true, own: true }, '*'); };
   // Skin tokens in the frame: the app passes its --sk-* tokens (SKIN-SPEC 3b) so a page's own controls (undo, restart,
   // hints...) can wear the skin: use var(--sk-ctl, <your colour>) in CSS or LAB.tok('--sk-ctl', '<your colour>') in canvas
   // code. Standalone nothing is set, so every fallback applies. Kept in sync when the skin changes (event 'sk-tokens').
@@ -145,5 +163,5 @@
     addEventListener('message', e => { const d = e.data; if (d && d.fth && d.cmd === 'tokens' && e.source === parent) setTokens(d.vars); });
   }
   const tok = (name, fallback) => TOK[name] || fallback;
-  window.LAB = { game, ELEM, ICON, embedded: EMBED, done, finish, last: () => LAST, tokens: () => Object.assign({}, TOK), tok, TOKEN_NAMES };
+  window.LAB = { game, ELEM, ICON, embedded: EMBED, demo: DEMO, done, finish, last: () => LAST, tokens: () => Object.assign({}, TOK), tok, TOKEN_NAMES };
 })();
