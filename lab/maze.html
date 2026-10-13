@@ -87,53 +87,53 @@
   #hud { position: fixed; left: 0; right: 0; top: 0; display: flex; align-items: center; gap: 5px;
     padding: max(6px, env(safe-area-inset-top)) 8px 6px; box-sizing: border-box; z-index: 3; pointer-events: none; }
   #hud > * { pointer-events: auto; }
-  .chip, .btn { height: 32px; border-radius: 10px; border: 1px solid var(--line); background: var(--chip); color: var(--ink);
-    font: inherit; box-shadow: 0 2px 6px rgba(0,0,0,.35); cursor: pointer; display: inline-flex; align-items: center;
-    justify-content: center; gap: 5px; padding: 0 9px; box-sizing: border-box; -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
-  .btn { width: 34px; padding: 0; flex: none; }
-  .btn svg, .chip svg { width: 18px; height: 18px; flex: none; }
-  .btn.on { background: #f7d77a; color: #2a1d08; border-color: #f7d77a; }
-  .btn:active, .chip:active { transform: translateY(1px); }
-  .btn:disabled { opacity: .4; }
+  /* the page's own controls wear the skin's control tokens (--sk-ctl*, lab/core.js): chunky, outlined, a 3D bottom edge */
+  .chip, .btn { height: 36px; border-radius: 12px; border: 2px solid var(--sk-ctl-edge, #ffd36a); background: var(--sk-ctl, #2a261f); color: var(--sk-ctl-ink, #f6efe2);
+    font: inherit; font-weight: 800; box-shadow: 0 3px 0 rgba(0,0,0,.6), 0 6px 10px rgba(0,0,0,.3); cursor: pointer; display: inline-flex; align-items: center;
+    justify-content: center; gap: 5px; padding: 0 9px; box-sizing: border-box; transition: transform .06s, box-shadow .06s; }
+  .btn { width: 38px; padding: 0; flex: none; font-size: 18px; }
+  .btn svg, .chip svg { width: 20px; height: 20px; flex: none; }
+  .btn.on { background: var(--sk-ctl-edge, #ffd36a); color: var(--sk-ctl, #2a261f); border-color: var(--sk-ctl-edge, #ffd36a); }
+  .btn:active, .chip:active { transform: translateY(2px); box-shadow: 0 1px 0 rgba(0,0,0,.6), 0 2px 4px rgba(0,0,0,.3); }
+  .btn:disabled { opacity: .45; }
+  .bdg { display: inline-flex; align-items: center; gap: 4px; height: 32px; padding: 0 10px 0 6px; border-radius: 16px; box-sizing: border-box;
+    background: var(--sk-ctl, #2a261f); color: var(--sk-ctl-ink, #f6efe2); border: 2px solid rgba(0,0,0,.55); box-shadow: 0 3px 0 rgba(0,0,0,.5), inset 0 2px 0 rgba(255,255,255,.12); }
+  .bdg b { font-size: 18px; font-weight: 900; color: var(--sk-ctl-edge, #ffd36a); }
+  .bdg.goal { border-color: var(--sk-ctl-edge, #ffd36a); }
+  .bdg.pop { animation: pop .5s cubic-bezier(.3, 1.8, .5, 1); }
+  @keyframes pop { 0% { transform: scale(1); } 35% { transform: scale(1.35) rotate(-4deg); } 100% { transform: scale(1); } }
+  @media (prefers-reduced-motion: reduce) { .bdg.pop { animation-duration: .01s; } }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; opacity: 0; pointer-events: none; }
   #mode { flex: none; font-weight: 800; }
-  #mode .car { opacity: .7; font-size: 10px; }
-  #stat { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; padding: 0 4px; white-space: nowrap;
-    overflow: hidden; text-shadow: 0 1px 2px #000; font-variant-numeric: tabular-nums; }
-  #stat svg { width: 16px; height: 16px; flex: none; }
-  #stat b { color: var(--acc); }
-  #stat .dim { opacity: .75; font-weight: 600; }
-  #rail { position: fixed; right: 8px; top: calc(max(6px, env(safe-area-inset-top)) + 40px); display: flex; flex-direction: column; gap: 6px; z-index: 3; }
-  #stat .sm { font-size: 11px; font-weight: 600; opacity: .8; margin-left: -2px; }
+  #mode .car { opacity: .8; font-size: 9px; }
+  #stat { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; padding: 3px 4px 5px; white-space: nowrap;
+    overflow: hidden; font-variant-numeric: tabular-nums; }
+  #stat svg { width: 22px; height: 22px; flex: none; }
+  #rail { position: fixed; right: 8px; top: calc(max(6px, env(safe-area-inset-top)) + 46px); display: flex; flex-direction: column; gap: 8px; z-index: 3; }
   #trainBox { position: fixed; left: 50%; transform: translateX(-50%); bottom: max(10px, env(safe-area-inset-bottom)); z-index: 4; display: none;
-    width: min(420px, calc(100vw - 24px)); box-sizing: border-box; padding: 9px 12px; border-radius: 12px; background: rgba(16, 30, 38, .92);
-    border: 1px solid rgba(63, 208, 234, .45); color: #dff6fb; box-shadow: 0 6px 18px rgba(0,0,0,.45); font-variant-numeric: tabular-nums; }
+    width: min(420px, calc(100vw - 24px)); box-sizing: border-box; padding: 9px 12px; border-radius: 14px; background: rgba(16, 30, 38, .94);
+    border: 2px solid rgba(63, 208, 234, .6); color: #dff6fb; box-shadow: 0 6px 18px rgba(0,0,0,.45); font-variant-numeric: tabular-nums; }
   #trainBox.on { display: block; }
   #trainBox b { color: #3fd0ea; }
   #trainBox .bar { height: 5px; border-radius: 3px; background: rgba(255,255,255,.12); margin: 6px 0 2px; overflow: hidden; }
   #trainBox .bar i { display: block; height: 100%; background: linear-gradient(90deg, #ff7a59, #3fd0ea); }
   #trainBox .row { display: flex; gap: 8px; justify-content: flex-end; margin-top: 6px; }
-  #trainBox button { height: 30px; padding: 0 12px; border-radius: 8px; border: 1px solid rgba(63,208,234,.5); background: rgba(63,208,234,.12); color: #dff6fb; font: 700 13px system-ui, sans-serif; cursor: pointer; }
-  #trainBox.on ~ #toast { bottom: calc(max(10px, env(safe-area-inset-bottom)) + 110px); }
+  #trainBox button { height: 32px; min-width: 44px; padding: 0 10px; border-radius: 10px; border: 2px solid var(--sk-ctl-edge, #ffd36a); background: var(--sk-ctl, #2a261f); color: var(--sk-ctl-ink, #f6efe2); font: 800 14px system-ui, sans-serif; cursor: pointer; box-shadow: 0 3px 0 rgba(0,0,0,.55); }
   #trainBox.on ~ #peekBox { display: none; }
-  #menu { position: fixed; top: 46px; left: 8px; z-index: 4; display: none; flex-direction: column; gap: 4px; padding: 6px;
-    background: rgba(30, 26, 22, .96); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,.5); min-width: 220px; }
+  #menu { position: fixed; top: 50px; left: 8px; z-index: 4; display: none; flex-direction: column; gap: 4px; padding: 6px;
+    background: var(--sk-ctl, #2a261f); border: 2px solid var(--sk-ctl-edge, #ffd36a); border-radius: 14px; box-shadow: 0 4px 0 rgba(0,0,0,.55), 0 10px 24px rgba(0,0,0,.5); min-width: 150px; }
   #menu.on { display: flex; }
-  #menu button { text-align: left; background: none; border: 0; color: var(--ink); font: inherit; padding: 8px 10px; border-radius: 8px; cursor: pointer; }
-  #menu button small { display: block; font-weight: 500; opacity: .65; margin-top: 2px; }
+  #menu button { display: flex; align-items: center; gap: 8px; text-align: left; background: none; border: 0; color: var(--sk-ctl-ink, #f6efe2); font: 800 15px system-ui, sans-serif; padding: 8px 10px; border-radius: 10px; cursor: pointer; }
+  #menu button svg { width: 24px; height: 24px; flex: none; }
+  #menu button b { color: var(--sk-ctl-edge, #ffd36a); font-size: 17px; }
   #menu button:hover, #menu button.cur { background: rgba(255, 220, 140, .14); }
   #menu button:disabled { opacity: .4; cursor: default; }
-  #menu hr { border: 0; border-top: 1px solid var(--line); margin: 2px 4px; width: auto; }
-  #peekBox { position: fixed; left: 8px; bottom: max(8px, env(safe-area-inset-bottom)); z-index: 3; width: 128px; height: 140px;
-    background: rgba(250, 246, 236, .95); border-radius: 10px; box-shadow: 0 4px 14px rgba(0,0,0,.5); display: none; color: #4a3d2a;
-    border: 1px solid #c9b996; }
+  #menu hr { border: 0; border-top: 2px solid rgba(255, 211, 106, .25); margin: 2px 4px; width: auto; }
+  #peekBox { position: fixed; left: 8px; bottom: max(8px, env(safe-area-inset-bottom)); z-index: 3; width: 128px; height: 128px;
+    background: #fbf6ea; border-radius: 14px; box-shadow: 0 4px 0 rgba(0,0,0,.5), 0 8px 16px rgba(0,0,0,.4); display: none; color: #4a3d2a;
+    border: 3px solid #2a1d10; }
   #peekBox.on { display: block; }
-  #peekBox canvas { width: 128px; height: 124px; display: block; }
-  #peekBox div { font: 700 10px/14px system-ui, sans-serif; text-align: center; letter-spacing: .06em; text-transform: uppercase; }
-  #toast { position: fixed; left: 50%; bottom: max(14px, env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 3;
-    max-width: calc(100vw - 32px); padding: 8px 14px; border-radius: 12px; background: rgba(24, 20, 16, .88); color: var(--ink);
-    border: 1px solid var(--line); text-align: center; opacity: 0; transition: opacity .3s; pointer-events: none; box-sizing: border-box; }
-  #toast.on { opacity: 1; }
-  #peekBox.on ~ #toast { left: calc(50% + 68px); max-width: calc(100vw - 160px); }
+  #peekBox canvas { width: 100%; height: 100%; display: block; }
   #card { position: fixed; inset: 0; z-index: 5; display: none; align-items: flex-end; justify-content: center; padding-bottom: max(18px, env(safe-area-inset-bottom));
     box-sizing: border-box; background: linear-gradient(transparent 55%, rgba(8, 8, 12, .45)); }
   #card.on { display: flex; }
@@ -141,42 +141,42 @@
     box-shadow: 0 16px 40px rgba(0,0,0,.5); text-align: center; border: 2px solid #e2cf9f; box-sizing: border-box;
     background-image: repeating-linear-gradient(#fbf6ea 0 21px, #d7e6f2 21px 22px); }
   #card h2 { margin: 0 0 6px; font-size: 22px; color: #3a2e1c; }
-  #card p { margin: 4px 0; font-weight: 600; }
+  #card p { margin: 4px 0; font-weight: 800; font-size: 20px; display: flex; align-items: center; justify-content: center; gap: 6px; }
+  #card p svg { width: 26px; height: 26px; }
   #card .stars { font-size: 30px; letter-spacing: 4px; color: #e7a91c; margin: 4px 0; }
   #card .stars i { color: #d8ccb2; font-style: normal; }
   #card .row { display: flex; gap: 8px; justify-content: center; margin-top: 12px; flex-wrap: wrap; }
   #card button { height: 38px; padding: 0 16px; border-radius: 10px; border: 0; font: 800 14px system-ui, sans-serif; cursor: pointer;
     background: #3f7d3a; color: #fff; box-shadow: 0 3px 0 #24501f; }
   #card button.alt { background: #e6dcc4; color: #3a2e1c; box-shadow: 0 3px 0 #bba980; }
-  @media (max-width: 440px) { #stat .dim { display: none; } }
-  @media (min-width: 700px) and (min-height: 560px) { #peekBox { width: 190px; height: 200px; } #peekBox canvas { width: 190px; height: 184px; } }
-  @media (max-width: 380px) { .btn { width: 31px; } .chip { padding: 0 7px; } #hud { gap: 4px; padding-left: 6px; padding-right: 6px; } }
+  @media (min-width: 700px) and (min-height: 560px) { #peekBox { width: 190px; height: 184px; } }
+  @media (max-width: 380px) { .btn { width: 34px; } .bdg { padding-right: 7px; } .chip { padding: 0 7px; } #hud { gap: 4px; padding-left: 6px; padding-right: 6px; } }
 </style>
 </head>
 <body>
 <canvas id="cv" tabindex="0" aria-label="Rat maze. Arrow keys walk the rat."></canvas>
 <div id="hud">
-  <button class="chip" id="mode" aria-haspopup="true" title="Game mode"><span id="modeTxt">Coins</span><span class="car">&#9660;</span></button>
-  <div id="stat" aria-live="polite"></div>
+  <button class="chip" id="mode" aria-haspopup="true" aria-label="Game mode" title="Mode"><span id="modeTxt"></span><span class="car">&#9660;</span></button>
+  <div id="stat"></div>
   <button class="btn" id="undo" title="Walk back (U)" aria-label="Undo">&#8630;</button>
   <button class="btn" id="again" title="Start over (R)" aria-label="Start over">&#8634;</button>
 </div>
 <div id="rail">
-  <button class="btn" id="lights" title="Lab lights (L)" aria-label="Lights" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3z"/></svg></button>
+  <button class="btn" id="lights" title="Lights (L)" aria-label="Lights" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3z"/></svg></button>
   <button class="btn" id="peek" title="Peek at the map (P)" aria-label="Peek" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="7" r="2.2"/><circle cx="18" cy="6" r="2.2"/><circle cx="12" cy="17" r="2.2"/><path d="M8 7.5l7.9-1.2M7.2 9l3.8 6M16.9 8l-3.8 7"/></svg></button>
   <button class="btn" id="memory" title="The rat's memory: learned steps to a fill (M)" aria-label="Memory" aria-pressed="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19c3 0 3-6 7-6s3-6 7-6"/><path d="M15 4h4v4"/><circle cx="4.5" cy="19" r="1.5" fill="currentColor"/></svg></button>
   <button class="btn" id="train" title="Train a rat by Q-learning (T)" aria-label="Train" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 20h18"/><path d="M4 17c3-1 4-9 7-9s3 5 5 5 3-6 4-8"/></svg></button>
 </div>
-<div id="trainBox"><div id="trainTxt"></div><div class="row"><button id="tSpeed">Slow</button><button id="tStop">Stop</button></div></div>
+<div id="trainBox"><div id="trainTxt"></div><div class="row"><button id="tSpeed" aria-label="Speed">&#9654;</button><button id="tStop" aria-label="Stop">&#9632;</button></div></div>
 <div id="menu" role="menu">
-  <button id="mCoins" role="menuitem">Coins<small>Visit every room, grab every coin</small></button>
-  <button id="mCheese" role="menuitem">Find the cheese<small>Shortest route to the cheese</small></button>
-  <button id="mFar" role="menuitem">Farther cheese<small></small></button>
+  <button id="mCoins" role="menuitem" aria-label="Coins: visit every room" title="Coins"></button>
+  <button id="mCheese" role="menuitem" aria-label="Find the cheese" title="Cheese"></button>
+  <button id="mFar" role="menuitem" aria-label="Farther cheese" title="Farther"></button>
   <hr>
-  <button id="mForget" role="menuitem">Forget map and memory<small>Lights out on every room you have seen</small></button>
+  <button id="mForget" role="menuitem" aria-label="Forget map and memory" title="Forget"></button>
 </div>
-<div id="peekBox"><canvas id="pk" width="380" height="368"></canvas><div>the map now</div></div>
-<div id="toast"></div>
+<div id="peekBox" aria-label="The map now"><canvas id="pk" width="380" height="368"></canvas></div>
+<div id="toast" class="sr" role="status" aria-live="polite"></div>
 <div id="card"><div class="in"><h2 id="cardH"></h2><div class="stars" id="cardS"></div><p id="cardP"></p><div class="row" id="cardB"></div></div></div>
 <script src="../levels.js"></script>
 <script src="core.js"></script>
@@ -467,6 +467,44 @@
   const cv = $('cv'), ctx = cv.getContext('2d');
   const now = () => performance.now(), clamp = (v, a, b) => Math.max(a, Math.min(b, v)), ease = t => t < .5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
 
+  // ---------------------------------------------------------------- sound: a tiny WebAudio synth, created on the first gesture
+  let AC = null;
+  function audioOn() {   // called from a user gesture; never throws
+    if (AC === false) return;
+    try { if (!AC) { const C = window.AudioContext || window.webkitAudioContext; if (!C) { AC = false; return; } AC = new C(); } if (AC.state === 'suspended') AC.resume().catch(() => {}); } catch (_) { AC = false; }
+  }
+  function tone(f, dur, type, vol, f2, delay) {
+    if (!AC) return;
+    try {
+      const t = AC.currentTime + (delay || 0), o = AC.createOscillator(), gn = AC.createGain();
+      o.type = type || 'sine'; o.frequency.setValueAtTime(f, t); if (f2) o.frequency.exponentialRampToValueAtTime(f2, t + dur);
+      gn.gain.setValueAtTime(0.0001, t); gn.gain.exponentialRampToValueAtTime(vol || 0.06, t + 0.008); gn.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      o.connect(gn); gn.connect(AC.destination); o.start(t); o.stop(t + dur + 0.03);
+    } catch (_) {}
+  }
+  const SND = {
+    squeak: () => { tone(1500, 0.08, 'sine', 0.05, 2600); tone(2100, 0.07, 'sine', 0.035, 3100, 0.09); },
+    tick: (k, loud) => tone(440 * Math.pow(2, k * 2 / 12), 0.08, 'triangle', loud ? 0.09 : 0.05, null, k * 0.045),
+    chain: k => tone(523 * Math.pow(2, k * 2 / 12), 0.06, 'sine', 0.04, null, k * 0.04),
+    hop: () => tone(330, 0.06, 'square', 0.02, 520),
+    nope: () => { tone(220, 0.12, 'sawtooth', 0.03, 170); tone(200, 0.12, 'sawtooth', 0.03, 150, 0.13); },
+    ding: () => { tone(880, 0.18, 'sine', 0.06); tone(1320, 0.22, 'sine', 0.04, null, 0.06); },
+    out: () => tone(700, 0.25, 'triangle', 0.05, 1400),
+    nibble: () => { for (let k = 0; k < 4; k++) tone(900 + k * 120, 0.04, 'square', 0.025, 600, k * 0.09); tone(1568, 0.3, 'sine', 0.04, 2093, 0.4); },
+    win: () => { [523, 659, 784, 1046, 784, 1046, 1318].forEach((f, k) => tone(f, 0.22, 'triangle', 0.07, null, k * 0.12)); tone(2093, 0.5, 'sine', 0.03, 2637, 0.9); },
+  };
+
+  // ---------------------------------------------------------------- juice state
+  let tileFx = null;          // { room, t0, old: [elem per tile], order: [rank per tile], lost: Set(elem) }: the floor tiles flip in a wave
+  let flyouts = [];           // rim tiles whose element left the rim: { col, x, y (world), t0, vx }
+  let shakeT = 0;             // the rat shakes its head (no progress)
+  let hoverE = -1, pressE = -1, litFor = -1, litT = 0;   // the door under the mouse / finger; the chain it swaps lights up
+  let firstInput = false, lastIn = 0;                    // the ghost finger shows until the first input
+  let crumb = null, nibble = null, eggPaid = false;      // easter egg 'cheese-crumb'
+  let winT = 0, winD = null, winCam = null;              // the win sequence
+  let sparks = [];                                        // world-space sparkles
+  const OUT = '#2a1d10';      // the cartoon outline
+
   // room identity
   const TINTS = [   // acrylic wall tints: top, face
     ['#cfe8f4', '#8fb9cf'], ['#f6d9a6', '#c99a55'], ['#cdeccc', '#88b98a'], ['#f3c9cf', '#c48a95'], ['#ddd3f0', '#a092c4'], ['#e9e3d6', '#b4a88f'],
@@ -520,8 +558,21 @@
     const c = NODES.map((v, i) => i).filter(i => NODES[i].won && NODES[i].d === cheeseN);
     c.sort((p, q) => hashStr(NODES[p].key + 'cheese') - hashStr(NODES[q].key + 'cheese'));
     cheese = c.length ? c[0] : -1;
+    cheeseDist();
   }
+  // steps from every room to the cheese (won rooms are dead ends, so routes run through unwon rooms only)
+  let DC = new Array(NN).fill(Infinity);
+  function cheeseDist() {
+    DC = new Array(NN).fill(Infinity); if (cheese < 0) return;
+    DC[cheese] = 0; const q = [cheese];
+    for (let h = 0; h < q.length; h++) for (const { to } of SG.nb[q[h]]) if (!NODES[to].won && DC[to] === Infinity) { DC[to] = DC[q[h]] + 1; q.push(to); }
+  }
+  const goalD = i => mode === 'cheese' ? DC[i] : DF[i];
   pickCheese();
+  // the page's own changes to the hidden game are marked, so a change from outside (the app's undo / reset, a test) is followed
+  let selfOp = false;
+  const own = fn => { const was = selfOp; selfOp = true; try { return fn(); } finally { selfOp = was; } };
+  const locked = () => !!LAB.embedded && (finished || g.won());   // after a win inside the app nothing restarts or undoes
 
   // ---------------------------------------------------------------- keeping LAB.game in sync
   function chainTo(j) {
@@ -530,8 +581,10 @@
     return null;
   }
   function syncTo(j) {   // put the hidden game into room j: back to the start, then down the BFS tree
-    g.reset(); const P = []; for (let x = j; x > 0; x = tpar[x]) P.unshift(x);
-    for (const x of P) { const K = chainTo(x); if (!K) { console.error('maze: cannot reach', NODES[x].key); return; } g.swap(K); }
+    own(() => {
+      g.reset(); const P = []; for (let x = j; x > 0; x = tpar[x]) P.unshift(x);
+      for (const x of P) { const K = chainTo(x); if (!K) { console.error('maze: cannot reach', NODES[x].key); return; } g.swap(K); }
+    });
   }
   function permToRoom() { const rep = NODES[cur].c, p = [0, 1, 2, 3]; for (let u = 0; u < g.n; u++) if (u !== g.hole) p[g.col[u]] = rep[u]; return p; }
 
@@ -573,20 +626,25 @@
 
   // ---------------------------------------------------------------- drawing
   function poly(P, h) { ctx.beginPath(); P.forEach((p, i) => { const x = SX(p[0]), y = SY(p[1], h); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }); }
-  function box(x0, y0, x1, y1, h, top, face) {   // a wall piece: front face + top
+  const OLW = () => Math.max(1.6, cam.z * 0.011);   // the cartoon outline width
+  function rr(x, y, w, h, r) { r = Math.max(0, Math.min(r, w / 2, h / 2)); ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); }
+  function box(x0, y0, x1, y1, h, top, face) {   // a wall piece: front face + top, outlined, lit from the top left
     const a = SX(x0), b = SX(x1), yb = SY(y1, 0), yt = SY(y1, h), yt0 = SY(y0, h);
     ctx.fillStyle = face; ctx.fillRect(a, yt, b - a, yb - yt);
     ctx.fillStyle = top; ctx.fillRect(a, yt0, b - a, yt - yt0);
+    ctx.fillStyle = 'rgba(255,255,255,.6)'; ctx.fillRect(a, yt0, b - a, Math.max(1, (yt - yt0) * 0.35));
+    ctx.strokeStyle = OUT; ctx.lineWidth = OLW(); ctx.strokeRect(a, yt0, b - a, yb - yt0);
+    ctx.lineWidth = OLW() * 0.5; ctx.beginPath(); ctx.moveTo(a, yt); ctx.lineTo(b, yt); ctx.stroke();
   }
-  const CW = 0.05, CT = 0.014, CH = 0.04, WT = 0.03, WH = 0.14, DW = 0.036;
+  const CW = 0.06, CT = 0.016, CH = 0.04, WT = 0.035, WH = 0.15, DW = 0.05;
   function corridorStroke(P, alpha, glow, lift) {
-    const z = cam.z, h0 = lift || 0, wAll = (CW + CT * 2) * z;
-    ctx.save(); ctx.globalAlpha = alpha; ctx.lineJoin = 'miter'; ctx.lineCap = 'butt';
-    ctx.lineWidth = wAll + (h0 ? 0.03 * z : 0);
-    ctx.strokeStyle = h0 ? 'rgba(60,40,20,.22)' : 'rgba(70,45,20,.18)'; ctx.save(); ctx.translate(0.015 * z, (0.025 + h0) * z); poly(P, 0); ctx.stroke(); ctx.restore();
-    ctx.lineWidth = wAll + 2; ctx.strokeStyle = 'rgba(70,80,90,.55)'; poly(P, h0 + CH * 0.5); ctx.stroke();
-    ctx.lineWidth = wAll; ctx.strokeStyle = glow ? '#fff4cc' : '#f4f8fa'; poly(P, h0 + CH * 0.5); ctx.stroke();
-    ctx.lineWidth = CW * z; ctx.strokeStyle = glow ? '#f6dc95' : '#f1e2bf'; poly(P, h0 + CH * 0.2); ctx.stroke();
+    const z = cam.z, h0 = lift || 0, wAll = (CW + CT * 2) * z, ol = OLW();
+    ctx.save(); ctx.globalAlpha = alpha; ctx.lineJoin = 'round'; ctx.lineCap = 'butt';
+    ctx.lineWidth = wAll + 2 * ol;
+    ctx.strokeStyle = 'rgba(50,28,8,.38)'; ctx.save(); ctx.translate(0.03 * z, (0.04 + h0) * z); poly(P, 0); ctx.stroke(); ctx.restore();   // offset drop shadow
+    ctx.strokeStyle = OUT; poly(P, h0 + CH * 0.5); ctx.stroke();
+    ctx.lineWidth = wAll; ctx.strokeStyle = glow ? '#fff1b8' : '#fbfcfd'; poly(P, h0 + CH * 0.5); ctx.stroke();
+    ctx.lineWidth = CW * z; ctx.strokeStyle = glow ? '#ffd36a' : '#f6e6c2'; poly(P, h0 + CH * 0.2); ctx.stroke();
     ctx.restore();
   }
   function bridge(c, alpha) {   // the east-west corridor hops over the other one
@@ -597,37 +655,72 @@
     corridorStroke([[x0, c.y], [x1, c.y]], alpha, false, 0.02);
   }
   function wallPieces(lo, hi, gaps) { const out = []; let s = lo; gaps.sort((a, b) => a - b).forEach(g0 => { if (g0 - DW > s) out.push([s, g0 - DW]); s = Math.max(s, g0 + DW); }); if (hi > s) out.push([s, hi]); return out; }
-  function roomFloor(i, alpha) {
-    const [cx, cy] = cell[i], z = cam.z, v = NODES[i];
+  function roomShadow(i, alpha) {   // the offset darker copy under the whole room
+    const [cx, cy] = cell[i], z = cam.z, x = SX(cx - RH), y0 = SY(cy - RH, WH), y1 = SY(cy + RH, 0);
+    ctx.save(); ctx.globalAlpha = alpha; ctx.fillStyle = 'rgba(50,28,8,.42)'; rr(x + 0.05 * z, y0 + 0.065 * z, 2 * RH * z, y1 - y0, 0.03 * z); ctx.fill(); ctx.restore();
+  }
+  function roomFloor(i, alpha, t) {
+    const [cx, cy] = cell[i], z = cam.z, v = NODES[i], ol = OLW();
     ctx.save(); ctx.globalAlpha = alpha;
-    ctx.fillStyle = 'rgba(60,40,20,.28)'; ctx.fillRect(SX(cx - RH) + 0.05 * z, SY(cy - RH) + 0.06 * z, 2 * RH * z, 2 * RH * z * KY);
-    // floor: pale plywood with faint boards
+    // floor: bright cream boards, outlined
     const fx = SX(cx - RH), fy = SY(cy - RH), fw = 2 * RH * z, fh = 2 * RH * z * KY;
-    ctx.fillStyle = v.won ? '#efe6c8' : '#f2e3c2'; ctx.fillRect(fx, fy, fw, fh);
-    ctx.strokeStyle = 'rgba(160,120,70,.18)'; ctx.lineWidth = 1; ctx.beginPath();
+    ctx.fillStyle = v.won ? '#fff0bf' : '#fff6e0'; ctx.fillRect(fx, fy, fw, fh);
+    const gl = ctx.createLinearGradient(fx, fy, fx + fw, fy + fh); gl.addColorStop(0, 'rgba(255,255,255,.55)'); gl.addColorStop(0.5, 'rgba(255,255,255,0)'); gl.addColorStop(1, 'rgba(150,100,40,.12)');
+    ctx.fillStyle = gl; ctx.fillRect(fx, fy, fw, fh);
+    ctx.strokeStyle = 'rgba(170,120,60,.25)'; ctx.lineWidth = Math.max(1, ol * 0.45); ctx.beginPath();
     for (let k = 1; k < 4; k++) { const yy = fy + fh * k / 4; ctx.moveTo(fx, yy); ctx.lineTo(fx + fw, yy); } ctx.stroke();
-    // mosaic: the rim's five elements in rim order
-    const ts = 0.06, my = cy - RH + WT + 0.03;
-    for (let k = 0; k < v.rimCols.length; k++) {
-      const tx = cx + (k - (v.rimCols.length - 1) / 2) * (ts + 0.008) - ts / 2;
-      ctx.fillStyle = 'rgba(70,50,30,.5)'; ctx.fillRect(SX(tx) - 1, SY(my) - 1, ts * z + 2, ts * z * KY + 2);
-      ctx.fillStyle = ELEM[v.rimCols[k]].hex; ctx.fillRect(SX(tx), SY(my), ts * z, ts * z * KY);
-      ctx.fillStyle = 'rgba(255,255,255,.28)'; ctx.fillRect(SX(tx), SY(my), ts * z, ts * z * KY * 0.35);
-    }
+    ctx.strokeStyle = OUT; ctx.lineWidth = ol; ctx.strokeRect(fx, fy, fw, fh);
+    drawTiles(i, z, t);
     if (i === 0) {   // the nest: a straw mat
-      ctx.fillStyle = 'rgba(214,170,80,.55)'; ctx.beginPath(); ctx.ellipse(SX(cx), SY(cy + 0.06), 0.15 * z, 0.1 * z * KY, 0, 0, 7); ctx.fill();
-      ctx.strokeStyle = 'rgba(150,105,40,.6)'; ctx.lineWidth = Math.max(1, z * .01); ctx.beginPath();
+      ctx.fillStyle = '#e8bf62'; ctx.strokeStyle = OUT; ctx.lineWidth = ol * 0.7; ctx.beginPath(); ctx.ellipse(SX(cx), SY(cy + 0.06), 0.15 * z, 0.1 * z * KY, 0, 0, 7); ctx.fill(); ctx.stroke();
+      ctx.strokeStyle = 'rgba(150,105,40,.75)'; ctx.lineWidth = Math.max(1, z * .01); ctx.beginPath();
       for (let k = 0; k < 7; k++) { const a = k * 0.9; ctx.moveTo(SX(cx + Math.cos(a) * .12), SY(cy + .06 + Math.sin(a) * .07)); ctx.lineTo(SX(cx + Math.cos(a + 2.4) * .09), SY(cy + .06 + Math.sin(a + 2.4) * .06)); } ctx.stroke();
     }
     if (v.won) {   // goal pad
-      const t = now() / 600, pul = RM ? 0.5 : 0.5 + 0.5 * Math.sin(t);
+      const pul = RM ? 0.5 : 0.5 + 0.5 * Math.sin(t / 600);
       const isC = mode === 'cheese' && i === cheese;
-      ctx.fillStyle = isC ? `rgba(255,214,90,${0.35 + 0.25 * pul})` : `rgba(92,214,120,${0.25 + 0.2 * pul})`;
-      ctx.beginPath(); ctx.ellipse(SX(cx), SY(cy + 0.05), 0.15 * z, 0.115 * z * KY, 0, 0, 7); ctx.fill();
-      ctx.strokeStyle = isC ? '#d9a21c' : '#3c9a52'; ctx.lineWidth = Math.max(1.2, z * 0.014); ctx.setLineDash([z * 0.03, z * 0.025]);
-      ctx.beginPath(); ctx.ellipse(SX(cx), SY(cy + 0.05), 0.13 * z, 0.095 * z * KY, 0, 0, 7); ctx.stroke(); ctx.setLineDash([]);
+      ctx.fillStyle = isC ? `rgba(255,205,70,${0.55 + 0.3 * pul})` : `rgba(92,214,120,${0.45 + 0.25 * pul})`;
+      ctx.beginPath(); ctx.ellipse(SX(cx), SY(cy + 0.05), 0.16 * z, 0.12 * z * KY, 0, 0, 7); ctx.fill();
+      ctx.strokeStyle = OUT; ctx.lineWidth = ol * 0.8; ctx.stroke();
+      ctx.strokeStyle = isC ? '#fff3b0' : '#c9f5d2'; ctx.lineWidth = Math.max(1.2, z * 0.012); ctx.setLineDash([z * 0.03, z * 0.025]);
+      ctx.beginPath(); ctx.ellipse(SX(cx), SY(cy + 0.05), 0.12 * z, 0.088 * z * KY, 0, 0, 7); ctx.stroke(); ctx.setLineDash([]);
     }
     ctx.restore();
+  }
+  // the rim strip: five floor tiles, the rim's elements in rim order; they flip in a wave when the rat comes in
+  let litCache = null;
+  function litTiles(e) {   // the floor tiles of the rat's room that the chain behind door e would flip, and its two elements
+    if (litCache && litCache.e === e && litCache.cur === cur) return litCache.v;
+    const r = routes[e], j = r.a === cur ? r.b : r.a, K = chainTo(j); let v = null;
+    if (K) { const perm = permToRoom(), set = new Set(); g.rim.forEach((u, k) => { if (K.set.has(u)) set.add(k); }); v = { set, a: perm[K.pair[0]], b: perm[K.pair[1]] }; }
+    litCache = { e, cur, v }; return v;
+  }
+  const TS = 0.075, TG = 0.013;
+  function tilePos(i, k) { const n = NODES[i].rimCols.length; return [cell[i][0] + (k - (n - 1) / 2) * (TS + TG), cell[i][1] - RH + WT + 0.022 + TS / 2]; }
+  function drawTiles(i, z, t) {
+    const v = NODES[i], n = v.rimCols.length, ol = Math.max(1.2, z * 0.008);
+    const F = tileFx && tileFx.room === i ? tileFx : null;
+    const lit = i === cur && !anim && !finished && litFor >= 0 ? litTiles(litFor) : null;
+    const wv = winT && winD && !RM ? Math.max(0, Math.sin((t - winT) / 140 - (winD[i] || 0))) * 0.05 : 0;
+    for (let k = 0; k < n; k++) {
+      const [tx, ty] = tilePos(i, k);
+      let col = v.rimCols[k], sy = 1, sc = 1, lift = wv * Math.abs(Math.sin(k + t / 200));
+      if (F) {
+        const p = (t - F.t0 - F.order[k] * 45) / (RM ? 120 : 280);
+        if (p < 0) col = F.old[k];
+        else if (p < 1) { if (p < 0.5) col = F.old[k]; if (!RM) { sy = Math.abs(Math.cos(Math.PI * p)); sc = 1 + 0.4 * Math.sin(Math.PI * p); lift = 0.04 * Math.sin(Math.PI * p); } }
+      }
+      if (lit && lit.set.has(k) && !RM) lift = 0.012 + 0.012 * Math.sin(t / 120 + k);
+      const w = TS * z * sc, h = TS * z * KY * sc * Math.max(0.08, sy), x = SX(tx) - w / 2, y = SY(ty, lift) - h / 2, rad = Math.min(w, h) * 0.22;
+      ctx.fillStyle = 'rgba(40,20,5,.45)'; rr(x + ol, y + ol * 1.3, w, h, rad); ctx.fill();
+      ctx.fillStyle = ELEM[col].hex; rr(x, y, w, h, rad); ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,.42)'; rr(x + w * 0.12, y + h * 0.1, w * 0.45, h * 0.28, rad * 0.6); ctx.fill();
+      ctx.strokeStyle = OUT; ctx.lineWidth = ol; rr(x, y, w, h, rad); ctx.stroke();
+      if (lit && lit.set.has(k)) {   // the chain this door swaps: pulses in its two element colours
+        const pc = (((t - litT) / 220) | 0) % 2 ? lit.a : lit.b;
+        ctx.strokeStyle = ELEM[pc].neon; ctx.lineWidth = ol * 2.2; rr(x - ol * 1.6, y - ol * 1.6, w + ol * 3.2, h + ol * 3.2, rad + ol); ctx.stroke();
+      }
+    }
   }
   function roomWalls(i, alpha, back) {
     const [cx, cy] = cell[i], D = M.doors[i], tn = ROOM[i].tint;
@@ -639,19 +732,26 @@
       wallPieces(-RH, RH, offs(SIDE_E)).forEach(([p, q]) => box(cx + RH - WT, cy + p, cx + RH, cy + q, WH, tn[0], tn[1]));
     } else {
       wallPieces(-RH, RH, offs(SIDE_S)).forEach(([p, q]) => box(cx + p, cy + RH - WT, cx + q, cy + RH, WH, tn[0], tn[1]));
-      // a bright edge on the acrylic
-      ctx.strokeStyle = 'rgba(255,255,255,.55)'; ctx.lineWidth = 1;
-      ctx.strokeRect(SX(cx - RH) + .5, SY(cy - RH, WH) + .5, 2 * RH * cam.z - 1, (2 * RH) * cam.z * KY - 1);
     }
     ctx.restore();
   }
-  function doorGlows(i) {   // the open doors of the rat's room
-    const t = now() / 400, z = cam.z;
+  function bestDoor() {   // the door that brings the rat closest to its goal (the first of them, clockwise)
+    let best = null, bd = Infinity;
+    for (const x of doorOrder(cur)) { const d = goalD(x.to) + (mode === 'cheese' && NODES[x.to].won && x.to !== cheese ? 99 : 0); if (d < bd) { bd = d; best = x; } }
+    return best;
+  }
+  function doorGlows(i, t) {   // the open doors of the rat's room: glowing, pulsing gold pads; the touched one lifts
+    const z = cam.z, ol = OLW();
     incident(i).forEach(({ e, r }) => {
-      const p = doorPt(r, r.a === i ? 'a' : 'b'), pul = RM ? .7 : .55 + .45 * Math.sin(t + e);
-      const sel1 = sel === e;
-      ctx.fillStyle = sel1 ? `rgba(255,120,60,${.6 + .3 * pul})` : `rgba(255,214,90,${.35 + .4 * pul})`;
-      ctx.beginPath(); ctx.ellipse(SX(p[0]), SY(p[1], 0.02), (sel1 ? 0.07 : 0.055) * z, (sel1 ? 0.07 : 0.055) * z * KY, 0, 0, 7); ctx.fill();
+      const p = doorPt(r, r.a === i ? 'a' : 'b'), pul = RM ? .7 : .5 + .5 * Math.sin(t / 260 + e * 1.7);
+      const up = e === hoverE || e === pressE || e === sel, rad = (up ? 0.075 : 0.052 + 0.01 * pul) * z, lift = up ? 0.06 : 0;
+      const x = SX(p[0]), y0 = SY(p[1], 0.02), y = SY(p[1], 0.02 + lift), R2 = rad * (up ? 2.6 : 2.1);
+      const gr = ctx.createRadialGradient(x, y, 0, x, y, R2); gr.addColorStop(0, `rgba(255,214,90,${up ? .85 : .45 + .35 * pul})`); gr.addColorStop(1, 'rgba(255,214,90,0)');
+      ctx.fillStyle = gr; ctx.fillRect(x - R2, y - R2, 2 * R2, 2 * R2);
+      if (lift) { ctx.fillStyle = 'rgba(40,20,5,.35)'; ctx.beginPath(); ctx.ellipse(x + 0.01 * z, y0 + 0.01 * z, rad * 0.9, rad * 0.9 * KY * 0.7, 0, 0, 7); ctx.fill(); }
+      ctx.fillStyle = up ? '#ff9a3c' : '#ffd36a'; ctx.strokeStyle = OUT; ctx.lineWidth = ol;
+      ctx.beginPath(); ctx.ellipse(x, y, rad, rad * KY, 0, 0, 7); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = 'rgba(255,255,255,.65)'; ctx.beginPath(); ctx.ellipse(x - rad * 0.3, y - rad * 0.3 * KY, rad * 0.38, rad * 0.22, -0.5, 0, 7); ctx.fill();
     });
   }
 
@@ -715,7 +815,7 @@
   function drawCoin(x, y, s, t) {
     const b = RM ? 0 : Math.sin(t / 300 + x * 0.05) * 0.02 * s, w = RM ? 1 : Math.abs(Math.cos(t / 700 + y * 0.03)) * 0.7 + 0.3;
     ctx.fillStyle = 'rgba(60,40,10,.25)'; ctx.beginPath(); ctx.ellipse(x, y, 0.06 * s, 0.025 * s, 0, 0, 7); ctx.fill();
-    ctx.fillStyle = '#e3a514'; ctx.beginPath(); ctx.ellipse(x, y - 0.11 * s + b, 0.065 * s * w, 0.065 * s, 0, 0, 7); ctx.fill();
+    ctx.fillStyle = '#e3a514'; ctx.strokeStyle = OUT; ctx.lineWidth = Math.max(1.2, s * 0.008); ctx.beginPath(); ctx.ellipse(x, y - 0.11 * s + b, 0.065 * s * w, 0.065 * s, 0, 0, 7); ctx.fill(); ctx.stroke();
     ctx.fillStyle = '#ffd95a'; ctx.beginPath(); ctx.ellipse(x - 0.008 * s, y - 0.115 * s + b, 0.05 * s * w, 0.05 * s, 0, 0, 7); ctx.fill();
     ctx.fillStyle = '#fff3b8'; ctx.fillRect(x - 0.01 * s * w, y - 0.14 * s + b, 0.012 * s * w, 0.035 * s);
   }
@@ -723,22 +823,27 @@
     const b = RM ? 0 : Math.sin(t / 350) * 0.012 * s;
     ctx.save(); ctx.translate(x, y + b);
     ctx.fillStyle = 'rgba(60,40,10,.3)'; ctx.beginPath(); ctx.ellipse(0.01 * s, 0, 0.13 * s, 0.04 * s, 0, 0, 7); ctx.fill();
-    ctx.lineJoin = 'round'; ctx.strokeStyle = '#a8740c'; ctx.lineWidth = Math.max(1, s * 0.008);
+    ctx.lineJoin = 'round'; ctx.strokeStyle = OUT; ctx.lineWidth = Math.max(1.4, s * 0.011);
     ctx.fillStyle = '#e9b52a'; ctx.beginPath(); ctx.moveTo(-0.12 * s, -0.01 * s); ctx.lineTo(0.12 * s, -0.01 * s); ctx.lineTo(0.12 * s, -0.08 * s); ctx.lineTo(-0.12 * s, -0.08 * s); ctx.closePath(); ctx.fill(); ctx.stroke();
     ctx.fillStyle = '#ffd659'; ctx.beginPath(); ctx.moveTo(-0.12 * s, -0.08 * s); ctx.lineTo(0.12 * s, -0.08 * s); ctx.lineTo(0.06 * s, -0.17 * s); ctx.closePath(); ctx.fill(); ctx.stroke();
     ctx.fillStyle = '#d39a1a'; [[-0.07, -0.045, .018], [0.02, -0.05, .014], [0.08, -0.035, .012]].forEach(([hx, hy, r]) => { ctx.beginPath(); ctx.arc(hx * s, hy * s, r * s, 0, 7); ctx.fill(); });
+    ctx.fillStyle = 'rgba(255,255,255,.55)'; ctx.beginPath(); ctx.moveTo(-0.1 * s, -0.085 * s); ctx.lineTo(0.02 * s, -0.085 * s); ctx.lineTo(0.05 * s, -0.13 * s); ctx.closePath(); ctx.fill();
     ctx.restore();
   }
-  function drawRat(x, y, a, s, t, moving) {
-    const k = s * 0.0105, wob = moving && !RM ? Math.sin(t / 45) : 0;
+  function drawRat(x, y, a, s, t, moving, head, nose) {   // head: a head turn (radians, the shake); nose: a sniff push
+    const k = s * 0.0105, wob = moving && !RM ? Math.sin(t / 45) : 0, hd = head || 0, ns = nose || 0;
     ctx.save(); ctx.translate(x, y); ctx.scale(1, KY); ctx.rotate(a); ctx.scale(k, k);
-    ctx.fillStyle = 'rgba(30,20,10,.3)'; ctx.beginPath(); ctx.ellipse(-1, 3, 11, 7, 0, 0, 7); ctx.fill();
-    ctx.strokeStyle = '#e7a3a7'; ctx.lineWidth = 1.6; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(-9, 0); ctx.bezierCurveTo(-15, 2 + wob * 3, -19, -4 - wob * 3, -24, -2); ctx.stroke();
-    ctx.fillStyle = '#f7f4ef'; ctx.strokeStyle = '#8e8a84'; ctx.lineWidth = .8;
+    ctx.fillStyle = 'rgba(30,15,5,.35)'; ctx.beginPath(); ctx.ellipse(1.5, 4.5, 12, 7.5, 0, 0, 7); ctx.fill();
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = OUT; ctx.lineWidth = 3.4; ctx.beginPath(); ctx.moveTo(-9, 0); ctx.bezierCurveTo(-15, 2 + wob * 3, -19, -4 - wob * 3, -24, -2); ctx.stroke();
+    ctx.strokeStyle = '#f1a3aa'; ctx.lineWidth = 1.8; ctx.stroke();
+    ctx.fillStyle = '#fbf8f2'; ctx.strokeStyle = OUT; ctx.lineWidth = 1.5;
     ctx.beginPath(); ctx.ellipse(-1, 0, 10, 6.5, 0, 0, 7); ctx.fill(); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(6, -4.5); ctx.quadraticCurveTo(15, 0, 6, 4.5); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,.9)'; ctx.beginPath(); ctx.ellipse(-3, -2.6, 5, 2, -0.2, 0, 7); ctx.fill();
+    ctx.translate(6, 0); ctx.rotate(hd); ctx.translate(-6 + ns, 0);
+    ctx.fillStyle = '#fbf8f2';
     ctx.beginPath(); ctx.ellipse(10, 0, 5.5, 4, 0, 0, 7); ctx.fill(); ctx.stroke();
-    ctx.fillStyle = '#f1b5ba'; ctx.beginPath(); ctx.arc(7, -4.2, 2.6, 0, 7); ctx.arc(7, 4.2, 2.6, 0, 7); ctx.fill();
+    ctx.fillStyle = '#f1b5ba'; ctx.beginPath(); ctx.arc(7, -4.2, 2.6, 0, 7); ctx.fill(); ctx.stroke(); ctx.beginPath(); ctx.arc(7, 4.2, 2.6, 0, 7); ctx.fill(); ctx.stroke();
     ctx.fillStyle = '#e88a95'; ctx.beginPath(); ctx.arc(15.4, 0, 1.4, 0, 7); ctx.fill();
     ctx.fillStyle = '#c0323f'; ctx.beginPath(); ctx.arc(11.5, -2.1, 1, 0, 7); ctx.arc(11.5, 2.1, 1, 0, 7); ctx.fill();
     ctx.strokeStyle = 'rgba(80,70,60,.6)'; ctx.lineWidth = .4; ctx.beginPath(); ctx.moveTo(14, -1); ctx.lineTo(18, -4); ctx.moveTo(14, 1); ctx.lineTo(18, 4); ctx.moveTo(14, 0); ctx.lineTo(19, 0); ctx.stroke();
@@ -747,14 +852,15 @@
   function drawBench(t) {
     const z = cam.z;
     // black epoxy lab bench
-    ctx.fillStyle = lights ? '#2a2d33' : '#16181c'; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = lights ? '#3a3027' : '#2a231c'; ctx.fillRect(0, 0, W, H);
     // the base board
     const x0 = SX(BX0), x1 = SX(BX1), y0 = SY(BY0), y1 = SY(BY1), th = 0.12 * z * HK;
     ctx.fillStyle = 'rgba(0,0,0,.45)'; ctx.fillRect(x0 + 0.1 * z, y0 + 0.12 * z, x1 - x0, y1 - y0 + th);
-    ctx.fillStyle = '#a07c4c'; ctx.fillRect(x0, y1 - th * 0.01, x1 - x0, th);
-    const gr = ctx.createLinearGradient(x0, y0, x1, y1); gr.addColorStop(0, lights ? '#dcbf8e' : '#b99b6c'); gr.addColorStop(1, lights ? '#cfae78' : '#a98b5e');
+    ctx.fillStyle = '#b07a3e'; ctx.fillRect(x0, y1 - th * 0.01, x1 - x0, th);
+    const gr = ctx.createLinearGradient(x0, y0, x1, y1); gr.addColorStop(0, lights ? '#f4cf8c' : '#e6b872'); gr.addColorStop(1, lights ? '#e3b46e' : '#d29e58');
     ctx.fillStyle = gr; ctx.fillRect(x0, y0 - th, x1 - x0, y1 - y0);
-    ctx.strokeStyle = 'rgba(120,85,40,.12)'; ctx.lineWidth = 1; ctx.beginPath();
+    ctx.strokeStyle = OUT; ctx.lineWidth = OLW(); ctx.strokeRect(x0, y0 - th, x1 - x0, y1 - y0 + th);
+    ctx.strokeStyle = 'rgba(140,85,30,.22)'; ctx.lineWidth = Math.max(1, OLW() * 0.6); ctx.beginPath();
     for (let yy = BY0; yy < BY1; yy += 0.5) { const sy = SY(yy) - th; if (sy < -10 || sy > H + 10) continue; ctx.moveTo(x0, sy); ctx.lineTo(x1, sy); } ctx.stroke();
     // grid pencil marks (the lab's own room numbers would go here)
     // clipboard on the bench, top-right of the board
@@ -808,72 +914,98 @@
     if (!trainer) return;
     const m = trainer.match(), ok = Math.round(m * trainer.starts.length);
     const pct = (m * 100).toFixed(m === 1 ? 0 : 1);
-    $('trainTxt').innerHTML = (tDoneAt ? `<b>Learned.</b> After ${tDoneAt.toLocaleString()} episodes the rat's best door is a shortest-route door in <b>every</b> room (${ok}/${trainer.starts.length}). It memorised a table: no rule that carries over to another map.`
-      : `${training ? 'Training' : 'Paused'}: <b>${trainer.episodes.toLocaleString()}</b> episodes, ${trainer.steps.toLocaleString()} corridors. Its best door is a shortest-route door in <b>${pct}%</b> of rooms (${ok}/${trainer.starts.length}).`)
+    $('trainTxt').innerHTML = `${tDoneAt ? '&#10003; ' : ''}<b>${(tDoneAt || trainer.episodes).toLocaleString()}</b> runs &middot; <b>${pct}%</b> <span class="sr">${ok} of ${trainer.starts.length} rooms take a shortest door</span>`
       + `<div class="bar"><i style="width:${(m * 100).toFixed(1)}%"></i></div>`;
-    $('tStop').textContent = tDoneAt ? 'Close' : training ? 'Stop' : 'Go on';
-    $('tSpeed').textContent = 'Speed: ' + ['slow', 'fast', 'max'][tSpeed];
+    $('tStop').innerHTML = tDoneAt ? '&#10005;' : training ? '&#9632;' : '&#9654;';
+    $('tStop').setAttribute('aria-label', tDoneAt ? 'Close' : training ? 'Stop' : 'Go on');
+    $('tSpeed').innerHTML = ['&#9654;', '&#9654;&#9654;', '&#9654;&#9654;&#9654;'][tSpeed];
+    $('tSpeed').setAttribute('aria-label', 'Speed ' + ['slow', 'fast', 'max'][tSpeed]);
   }
   function startTraining() {
+    if (locked()) return;
     if (!trainer || tDoneAt) { trainer = qTrainer(SG, DF, (Math.random() * 4294967296) >>> 0); tDoneAt = 0; }
     training = true; memView = 'rat'; gstep = null;
     if (!lights) { lights = true; }
     if (!cam.free) recentreOverview();
     $('trainBox').classList.add('on'); trainReadout(); hud();
-    toast('A second rat learns by trial and error (Q-learning). Arrows: its best door; blue = a shortest route, orange = not yet.', 3200);
+    toast('A second rat learns by trial and error.');
   }
-  function stopTraining(done) { training = false; ghost = null; gstep = null; trainReadout(); hud(); if (done) toast('Every room learned.', 1600); }
+  function stopTraining(done) { training = false; ghost = null; gstep = null; trainReadout(); hud(); if (done) toast('Every room learned.'); }
 
   function draw() {
     const t = now();
     trainTick(t);
-    // camera
-    if (!cam.free) { const k = RM ? 1 : 0.14; cam.x += (rat.x - cam.x) * k; cam.y += (rat.y - cam.y) * k; }
+    // the touched / hovered / highlighted door: its chain lights up, a rising tone per floor tile it would flip
+    const lf = anim || finished ? -1 : pressE >= 0 ? pressE : hoverE >= 0 ? hoverE : sel;
+    if (lf !== litFor) { litFor = lf; litT = t; if (lf >= 0) { const Lt = litTiles(lf); if (Lt) [...Lt.set].forEach((k, n) => SND.chain(n)); } }
+    // camera: follows the rat; in the win it pulls back so the maze lights up round the cheese
+    if (winCam) {
+      const p = ease(clamp((t - winCam.t0) / winCam.dur, 0, 1));
+      cam.z = winCam.z0 + (winCam.z1 - winCam.z0) * p; cam.x = winCam.x0 + (winCam.x1 - winCam.x0) * p; cam.y = winCam.y0 + (winCam.y1 - winCam.y0) * p;
+    } else if (!cam.free) { const k = RM ? 1 : 0.14; cam.x += (rat.x - cam.x) * k; cam.y += (rat.y - cam.y) * k; }
     ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    // easter egg 'cheese-crumb': a quiet board for a while and the rat sniffs out a crumb
+    if (!crumb && !nibble && !finished && !anim && !hand && !training && t - lastIn > 12000) {
+      const [cx, cy] = cell[cur]; crumb = { room: cur, x: cx + (ROOM[cur].side ? -0.16 : 0.16), y: cy - 0.09, t0: t };
+    }
+    if (crumb && crumb.room !== cur) crumb = null;
+    if (tileFx && t - tileFx.t0 > 45 * 6 + 400) tileFx = null;
     drawBench(t);
     const z = cam.z, pad = 1.2, wx0 = cam.x - W / 2 / z - pad, wx1 = cam.x + W / 2 / z + pad, wy0 = cam.y - (H / 2) / (z * KY) - pad - 0.3, wy1 = cam.y + (H / 2) / (z * KY) + pad + 0.3;
     const inView = (x, y) => x > wx0 && x < wx1 && y > wy0 && y < wy1;
     const routeInView = r => { const A = cell[r.a], B = cell[r.b]; return Math.max(A[0], B[0]) > wx0 && Math.min(A[0], B[0]) < wx1 && Math.max(A[1], B[1]) > wy0 && Math.min(A[1], B[1]) < wy1; };
+    const waveAt = i => winD && winD[i] !== undefined ? winT + winWave.t0 + winD[i] * winWave.step : Infinity;
+    const lit = i => isLit(i) || t >= waveAt(i);
     // corridors
+    const hot = !anim && !finished && litFor >= 0 ? routes[litFor] : null;
     for (const r of routes) {
       if (!routeInView(r)) continue;
-      if (corrKnown(r)) { corridorStroke(r.pts, lights && !(mapped.has(r.a) || mapped.has(r.b)) ? 0.75 : 1, false); continue; }
-      [r.a, r.b].forEach(v => {
+      if (corrKnown(r) || (t >= waveAt(r.a) && t >= waveAt(r.b))) { corridorStroke(r.pts, 1, r === hot); continue; }
+      [r.a, r.b].forEach(v => {   // a corridor not walked yet: only its first stretch shows, the way out of a known room
         if (!mapped.has(v)) return;
         const P = v === r.a ? r.pts : r.pts.slice().reverse(), isCur = v === cur && !anim && !finished;
-        const len = polyLen(P), d = Math.min(len, isCur ? 0.42 : 0.2);
-        corridorStroke(polyCut(P, d), isCur ? 0.95 : 0.5, isCur);
-        if (isCur) corridorStroke(polyCut(P, Math.min(len, d + 0.14)).slice(-2), 0.35, true);
+        const len = polyLen(P), d = Math.min(len, isCur ? (r === hot ? 0.62 : 0.45) : 0.22);
+        corridorStroke(polyCut(P, d), 1, isCur);
       });
     }
     if (z >= 30) for (const c of M.cross) { const r = routes[c.over], u = routes[c.under]; if (!inView(c.x, c.y)) continue; if (corrKnown(r) && corrKnown(u)) bridge(c, 1); }
     // rooms, back to front
     const vis = [];
-    for (let i = 0; i < NN; i++) if (isLit(i) && inView(cell[i][0], cell[i][1])) vis.push(i);
+    for (let i = 0; i < NN; i++) if (lit(i) && inView(cell[i][0], cell[i][1])) vis.push(i);
     vis.sort((p, q) => cell[p][1] - cell[q][1] || cell[p][0] - cell[q][0]);
+    for (const i of vis) roomShadow(i, mapped.has(i) ? 1 : 0.85);
     for (const i of vis) {
-      const a = mapped.has(i) ? 1 : 0.82, [cx, cy] = cell[i];
-      roomFloor(i, a);
+      const a = mapped.has(i) ? 1 : 0.88, [cx, cy] = cell[i];
+      roomFloor(i, a, t);
       roomWalls(i, a, true);
-      if (i === cur && !anim && !finished) doorGlows(i);
+      if (i === cur && !anim && !finished) doorGlows(i, t);
       ctx.save(); ctx.globalAlpha = a;
       const rm = ROOM[i], ox = cx + (rm.side ? 0.15 : -0.15), oy = cy + 0.14;
       if (z >= 30) drawObj(rm.obj, SX(ox), SY(oy), z, rm.hue);
       if (mode === 'coins' && !coins.has(i)) drawCoin(SX(cx), SY(cy + 0.08), z, t);
-      if (mode === 'cheese' && i === cheese) { const ate = finished && cur === cheese; drawCheese(SX(cx + (ate ? 0.12 : 0)), SY(cy + (ate ? 0.12 : 0.06)), z * (ate ? 0.75 : 1), t); }
+      if (mode === 'cheese' && i === cheese) { const ate = finished && cur === cheese; if (!ate || t - winT < 500) drawCheese(SX(cx + (ate ? 0.12 : 0)), SY(cy + (ate ? 0.12 : 0.06)), z * (ate ? 0.75 * (1 - clamp((t - winT) / 500, 0, 1)) + 0.01 : 1), t); }
+      if (crumb && crumb.room === i) drawCrumb(t);
       ctx.restore();
       roomWalls(i, a, false);
+      const tw = waveAt(i);
+      if (t >= tw) {   // the win: rooms light up in a wave from the cheese
+        const k = clamp((t - tw) / 300, 0, 1), pul = RM ? 0.5 : 0.5 + 0.5 * Math.sin((t - tw) / 160);
+        ctx.save(); ctx.globalAlpha = k * (0.25 + 0.25 * pul); ctx.fillStyle = '#ffe27a';
+        ctx.fillRect(SX(cx - RH), SY(cy - RH, WH), 2 * RH * z, SY(cy + RH) - SY(cy - RH, WH));
+        ctx.globalAlpha = k; ctx.strokeStyle = '#ffd36a'; ctx.lineWidth = Math.max(2, z * 0.02);
+        ctx.strokeRect(SX(cx - RH) - 2, SY(cy - RH, WH) - 2, 2 * RH * z + 4, SY(cy + RH) - SY(cy - RH, WH) + 4); ctx.restore();
+      }
       if (memView !== 'off') memoryMark(i, z);
       if (i === cur && !anim && !finished && z >= 40) doorNumbers(i, z);
     }
     // unknown cheese room glow in the dark
     if (mode === 'cheese' && cheese >= 0 && !lights && !mapped.has(cheese)) {
       const [cx, cy] = cell[cheese], gx = SX(cx), gy = SY(cy), r = 0.9 * z;
-      const gr = ctx.createRadialGradient(gx, gy, 0, gx, gy, r); gr.addColorStop(0, 'rgba(255,214,90,.35)'); gr.addColorStop(1, 'rgba(255,214,90,0)');
+      const gr = ctx.createRadialGradient(gx, gy, 0, gx, gy, r); gr.addColorStop(0, 'rgba(255,214,90,.45)'); gr.addColorStop(1, 'rgba(255,214,90,0)');
       ctx.fillStyle = gr; ctx.fillRect(gx - r, gy - r, 2 * r, 2 * r);
     }
     // the rat
-    let moving = false;
+    let moving = false, hop = 0, head = 0, nose = 0;
     if (anim && anim.kind === 'hand') {
       const p = clamp((t - anim.t0) / anim.dur, 0, 1), { A, B } = anim;
       const ph = (a, b) => clamp((p - a) / (b - a), 0, 1);
@@ -887,22 +1019,81 @@
       const p = clamp((t - anim.t0) / anim.dur, 0, 1), d = (anim.back ? (p < .5 ? p * 2 : 2 - p * 2) : RM ? p : ease(p)) * anim.len;
       const q = polyAt(anim.pts, Math.min(d, anim.len - 1e-6));
       rat.x = q.x; rat.y = q.y; rat.a = anim.back && p >= .5 ? q.a + Math.PI : q.a; moving = true;
+      hop = RM ? 0 : Math.abs(Math.sin(d / 0.17 * Math.PI)) * 0.035;   // a scurry: little hops
       if (p >= 1) finishAnim();
+    } else if (winT) {   // the happy dance
+      const w = t - winT;
+      if (!RM) { hop = Math.abs(Math.sin(w / 130)) * 0.07; rat.a = winA + Math.sin(w / 110) * 0.6 + (w > 500 && w < 1300 ? (w - 500) / 800 * 2 * Math.PI : 0); head = Math.sin(w / 70) * 0.25; }
+    } else if (nibble) {
+      const w = t - nibble.t0, go = ease(clamp(w / 300, 0, 1)) * (1 - ease(clamp((w - 900) / 300, 0, 1)));
+      rat.x = nibble.x0 + (nibble.cx - nibble.x0) * 0.55 * go; rat.y = nibble.y0 + (nibble.cy - nibble.y0) * 0.55 * go;
+      if (w > 300 && w < 900) nose = Math.sin(w / 35) * 1.6;
+      if (w >= 1200) { nibble = null; crumb = null; const h = nibble0(); rat.x = h.x; rat.y = h.y; lastIn = t; }
+    } else if (crumb) {   // sniff: turn to the crumb, the nose twitching
+      const ta = Math.atan2(crumb.y - rat.y, crumb.x - rat.x); let da = ta - rat.a; while (da > Math.PI) da -= 2 * Math.PI; while (da < -Math.PI) da += 2 * Math.PI;
+      rat.a += da * (RM ? 1 : 0.06); nose = RM ? 0 : Math.max(0, Math.sin(t / 60)) * 1.4;
     }
+    if (shakeT && t - shakeT < 600) { const p = (t - shakeT) / 600; head = Math.sin((t - shakeT) / 38) * (RM ? 0.15 : 0.55) * (1 - p); }
     if (rat.lift) { ctx.fillStyle = 'rgba(20,12,4,.25)'; ctx.beginPath(); ctx.ellipse(SX(rat.x), SY(rat.y), 0.12 * z, 0.05 * z, 0, 0, 7); ctx.fill(); }
     if (ghost && training) drawGhost(t, z);
-    drawRat(SX(rat.x), SY(rat.y, 0.02 + (rat.lift || 0)), rat.a + (rat.lift ? Math.sin(t / 160) * 0.25 : 0), z, t, moving);
+    drawRat(SX(rat.x), SY(rat.y, 0.02 + (rat.lift || 0) + hop), rat.a + (rat.lift ? Math.sin(t / 160) * 0.25 : 0), z, t, moving, head, nose);
     if (hand) drawHand(SX(hand.x), SY(hand.y, hand.lift), z, hand.grip);
     drawFloaters(t);
-    // lab lights off: darkness except round the rat
+    // lab lights off: darkness except round the rat (it lifts in the win)
     if (!lights) {
-      const gx = SX(rat.x), gy = SY(rat.y), r0 = 0.8 * z, r1 = Math.max(3.2 * z, Math.min(W, H) * 0.7);
-      const gr = ctx.createRadialGradient(gx, gy, r0, gx, gy, r1); gr.addColorStop(0, 'rgba(10,12,22,.08)'); gr.addColorStop(1, 'rgba(10,12,22,.66)');
-      ctx.fillStyle = gr; ctx.fillRect(0, 0, W, H);
+      const fade = winT ? 1 - clamp((t - winT - winWave.t0) / 900, 0, 1) : 1;
+      if (fade > 0) {
+        const gx = SX(rat.x), gy = SY(rat.y), r0 = 1.1 * z, r1 = Math.max(3.4 * z, Math.min(W, H) * 0.8);
+        const gr = ctx.createRadialGradient(gx, gy, r0, gx, gy, r1); gr.addColorStop(0, 'rgba(20,12,6,0)'); gr.addColorStop(1, `rgba(20,12,6,${0.5 * fade})`);
+        ctx.fillStyle = gr; ctx.fillRect(0, 0, W, H);
+      }
     }
-    if (mode === 'cheese' && cheese >= 0 && !(finished && cur === cheese)) cheeseCompass(t);
+    if (mode === 'cheese' && cheese >= 0 && !finished) cheeseCompass(t);
+    drawFlyouts(t);
     drawFx(t);
+    if (!firstInput && !finished && !anim && !hand && !training && !nibble) drawFinger(t);
     requestAnimationFrame(draw);
+  }
+  let winA = 0, winWave = { t0: 1100, step: 120 };
+  const nibble0 = () => ({ x: cell[cur][0], y: cell[cur][1] + REST });
+  function drawCrumb(t) {   // a little wedge of cheese crumb on the floor, with a twinkle
+    const z = cam.z, k = nibble ? 1 - clamp((t - nibble.t0 - 300) / 600, 0, 1) : clamp((t - crumb.t0) / 400, 0, 1);
+    if (k <= 0) return;
+    const pop = nibble ? k : 1 + (RM ? 0 : 0.3 * Math.sin(Math.PI * Math.min(1, (t - crumb.t0) / 400))), s = z * 0.05 * Math.max(0.01, k) * pop;
+    const x = SX(crumb.x), y = SY(crumb.y, 0.01);
+    ctx.save(); ctx.translate(x, y);
+    ctx.fillStyle = 'rgba(40,20,5,.35)'; ctx.beginPath(); ctx.ellipse(s * 0.2, s * 0.35, s * 1.1, s * 0.4, 0, 0, 7); ctx.fill();
+    ctx.fillStyle = '#ffd659'; ctx.strokeStyle = OUT; ctx.lineWidth = Math.max(1.2, z * 0.007); ctx.lineJoin = 'round';
+    ctx.beginPath(); ctx.moveTo(-s, 0.2 * s); ctx.lineTo(s, 0.2 * s); ctx.lineTo(0.4 * s, -0.9 * s); ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#d39a1a'; ctx.beginPath(); ctx.arc(-0.2 * s, -0.05 * s, 0.18 * s, 0, 7); ctx.fill();
+    if (!nibble && !RM) { const tw = Math.max(0, Math.sin(t / 300)); ctx.fillStyle = `rgba(255,255,255,${tw})`; star(0.6 * s, -1.1 * s, 0.5 * s * tw); }
+    ctx.restore();
+  }
+  function star(x, y, r) { ctx.beginPath(); for (let k = 0; k < 8; k++) { const a = k * Math.PI / 4, l = k % 2 ? r * 0.35 : r; ctx[k ? 'lineTo' : 'moveTo'](x + Math.cos(a) * l, y + Math.sin(a) * l); } ctx.closePath(); ctx.fill(); }
+  function drawFinger(t) {   // the ghost finger: taps the best door until the first input
+    const b = bestDoor(); if (!b) return;
+    const p = doorPt(b.r, b.r.a === cur ? 'a' : 'b'), z = cam.z, x = SX(p[0]), y = SY(p[1], 0.02);
+    const c = (t % 1500) / 1500, press = RM ? 0.5 : c < .45 ? 0 : c < .6 ? (c - .45) / .15 : c < .75 ? 1 - (c - .6) / .15 : 0;
+    const s = clamp(z / 230, 0.6, 1.4), off = (1 - press) * 16 * s;
+    if (c > .55 && !RM) { const rp = (c - .55) / .45; ctx.strokeStyle = `rgba(255,255,255,${0.9 * (1 - rp)})`; ctx.lineWidth = 3 * s; ctx.beginPath(); ctx.ellipse(x, y, (8 + 26 * rp) * s, (8 + 26 * rp) * s * KY, 0, 0, 7); ctx.stroke(); }
+    ctx.save(); ctx.translate(x + off * 0.5, y + off); ctx.rotate(-0.4); ctx.scale(s, s); ctx.globalAlpha = 0.95;
+    const shape = () => { ctx.beginPath(); rr(-5, 0, 10, 30, 5); ctx.fill(); ctx.stroke(); rr(-10, 22, 26, 26, 9); ctx.fill(); ctx.stroke(); ctx.beginPath(); ctx.ellipse(-10, 30, 5, 9, -0.6, 0, 7); ctx.fill(); ctx.stroke(); };
+    ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(30,15,5,.3)'; ctx.fillStyle = 'rgba(30,15,5,.3)'; ctx.save(); ctx.translate(4, 5); shape(); ctx.restore();
+    ctx.strokeStyle = OUT; ctx.fillStyle = '#ffffff'; shape();
+    ctx.fillStyle = 'rgba(255,211,106,.9)'; rr(-3, 3, 4, 10, 2); ctx.fill();
+    ctx.restore();
+  }
+  function drawFlyouts(t) {   // a rim element that left: its tile pops out of the floor and flies off
+    flyouts = flyouts.filter(f => t - f.t0 < 1100);
+    flyouts.forEach(f => {
+      const w = (t - f.t0) / 1000; if (w < 0) return;
+      const z = cam.z, x = SX(f.x) + f.vx * w * z, y = SY(f.y) - (1.6 * w - 1.9 * w * w) * z * 0.6, sc = (1 + 0.6 * Math.sin(Math.PI * Math.min(1, w * 2))) * TS * z, a = 1 - clamp((w - 0.6) / 0.5, 0, 1);
+      ctx.save(); ctx.globalAlpha = a; ctx.translate(x, y); ctx.rotate(f.vx * w * 6);
+      ctx.fillStyle = ELEM[f.col].hex; ctx.strokeStyle = OUT; ctx.lineWidth = Math.max(1.4, z * 0.009);
+      rr(-sc / 2, -sc / 2, sc, sc, sc * 0.22); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = 'rgba(255,255,255,.45)'; rr(-sc * 0.38, -sc * 0.4, sc * 0.45, sc * 0.25, sc * 0.1); ctx.fill();
+      ctx.restore();
+    });
   }
 
   // ---------------------------------------------------------------- memory, door numbers, the hand, the training ghost
@@ -942,7 +1133,8 @@
     D.slice(0, 9).forEach((x, k) => {
       const p = doorPt(x.r, x.r.a === i ? 'a' : 'b'), l = Math.hypot(...x.d) || 1, ox = p[0] + x.d[0] / l * 0.085, oy = p[1] + x.d[1] / l * 0.085;
       const px = SX(ox), py = SY(oy, 0.12), rr = Math.max(7, 0.042 * z), on = sel === x.e;
-      ctx.fillStyle = on ? '#ff7a3c' : 'rgba(26,22,18,.86)'; ctx.strokeStyle = on ? '#fff' : '#ffd36a'; ctx.lineWidth = 1.5;
+      ctx.fillStyle = 'rgba(30,15,5,.4)'; ctx.beginPath(); ctx.arc(px + 1.5, py + 2, rr, 0, 7); ctx.fill();
+      ctx.fillStyle = on ? '#ff7a3c' : LAB.tok('--sk-ctl', '#2a261f'); ctx.strokeStyle = on ? '#fff' : LAB.tok('--sk-ctl-edge', '#ffd36a'); ctx.lineWidth = 2;
       ctx.beginPath(); ctx.arc(px, py, rr, 0, 7); ctx.fill(); ctx.stroke();
       ctx.fillStyle = '#fff'; ctx.fillText(String(k + 1), px, py + 0.5);
     });
@@ -991,27 +1183,49 @@
     ctx.save(); ctx.translate(bx, by);
     ctx.fillStyle = 'rgba(255,214,90,.25)'; ctx.beginPath(); ctx.arc(0, 0, 22 + pul, 0, 7); ctx.fill();
     ctx.save(); ctx.rotate(a); ctx.fillStyle = '#ffd36a'; ctx.beginPath(); ctx.moveTo(25 + pul, 0); ctx.lineTo(15, -7); ctx.lineTo(15, 7); ctx.closePath(); ctx.fill(); ctx.restore();
-    ctx.fillStyle = 'rgba(28,24,20,.9)'; ctx.strokeStyle = '#ffd36a'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(0, 0, 16, 0, 7); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = 'rgba(30,15,5,.45)'; ctx.beginPath(); ctx.arc(2, 3, 18, 0, 7); ctx.fill();
+    ctx.fillStyle = LAB.tok('--sk-ctl', '#2a261f'); ctx.strokeStyle = LAB.tok('--sk-ctl-edge', '#ffd36a'); ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(0, 0, 18, 0, 7); ctx.fill(); ctx.stroke();
     drawCheese(0, 8, 85, 0);
     ctx.restore();
   }
 
   // ---------------------------------------------------------------- confetti
   let fx = [];
-  function burst(x, y, n) { if (RM) return; for (let k = 0; k < n; k++) { const a = Math.random() * 6.283, v = 2 + Math.random() * 6; fx.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 5, c: ['#ffd36a', '#ef5a3c', '#3d8fe8', '#4caf50', '#fff'][k % 5], r: Math.random() * 6.283, life: 1 }); } }
-  function drawFx() { if (!fx.length) return; fx = fx.filter(p => p.life > 0); fx.forEach(p => { p.x += p.vx; p.y += p.vy; p.vy += 0.25; p.r += 0.2; p.life -= 0.012; ctx.save(); ctx.globalAlpha = Math.min(1, p.life * 2); ctx.translate(p.x, p.y); ctx.rotate(p.r); ctx.fillStyle = p.c; ctx.fillRect(-4, -2, 8, 4); ctx.restore(); }); }
+  const CONF = ['#ffd36a', '#ef5a3c', '#3d8fe8', '#4caf50', '#fff'], CHEESE = ['#ffd659', '#e9b52a', '#fff3b0', '#ffb347'];
+  function burst(x, y, n, cols, kind) {   // kind: 'star' for sparkles; reduced motion: a few slow ones
+    const N = RM ? Math.min(6, n) : n, C = cols || CONF;
+    for (let k = 0; k < N; k++) { const a = Math.random() * 6.283, v = (RM ? 0.5 : 2) + Math.random() * (RM ? 1 : 6); fx.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v - (RM ? 1 : 5), c: C[k % C.length], r: Math.random() * 6.283, life: 1, star: kind === 'star', g: kind === 'star' ? 0.08 : 0.25 }); }
+  }
+  function drawFx() {
+    if (!fx.length) return; fx = fx.filter(p => p.life > 0);
+    fx.forEach(p => {
+      p.x += p.vx; p.y += p.vy; p.vy += p.g; p.r += 0.2; p.life -= p.star ? 0.022 : 0.012;
+      ctx.save(); ctx.globalAlpha = Math.min(1, p.life * 2); ctx.translate(p.x, p.y); ctx.rotate(p.r); ctx.fillStyle = p.c;
+      if (p.star) star(0, 0, 7 * p.life + 2); else { ctx.strokeStyle = 'rgba(42,29,16,.7)'; ctx.lineWidth = 1; ctx.fillRect(-5, -2.5, 10, 5); ctx.strokeRect(-5, -2.5, 10, 5); }
+      ctx.restore();
+    });
+  }
 
-  // ---------------------------------------------------------------- HUD
+  // ---------------------------------------------------------------- HUD: icons and numbers, no sentences
   const ICO = {
-    coin: '<svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="8" fill="#e3a514"/><circle cx="9.4" cy="9.6" r="6.2" fill="#ffd95a"/><rect x="8.6" y="5.5" width="1.6" height="8" fill="#fff3b8"/></svg>',
-    cheese: '<svg viewBox="0 0 20 20"><path d="M2 14h16v-5H2z" fill="#e9b52a" stroke="#a8740c"/><path d="M2 9h16L13 3z" fill="#ffd659" stroke="#a8740c" stroke-linejoin="round"/><circle cx="6" cy="11.5" r="1.4" fill="#d39a1a"/><circle cx="12.5" cy="12" r="1" fill="#d39a1a"/></svg>',
-    feet: '<svg viewBox="0 0 20 20" fill="#f1b5ba"><ellipse cx="6" cy="12" rx="2.6" ry="3.4"/><ellipse cx="13" cy="7" rx="2.6" ry="3.4"/><circle cx="4" cy="7.4" r="1"/><circle cx="6.6" cy="7" r="1"/><circle cx="11" cy="2.6" r="1"/><circle cx="13.6" cy="2.2" r="1"/></svg>',
+    coin: '<svg viewBox="0 0 20 20"><circle cx="10.6" cy="10.8" r="8" fill="#2a1d10" opacity=".45"/><circle cx="10" cy="10" r="8" fill="#e3a514" stroke="#2a1d10" stroke-width="1.6"/><circle cx="9.4" cy="9.6" r="5.6" fill="#ffd95a"/><rect x="8.6" y="5.5" width="1.6" height="8" rx=".8" fill="#fff3b8"/></svg>',
+    cheese: '<svg viewBox="0 0 20 20"><path d="M2.8 15h16v-5h-16z" fill="#2a1d10" opacity=".45"/><path d="M2 14h16v-5H2z" fill="#e9b52a" stroke="#2a1d10" stroke-width="1.5" stroke-linejoin="round"/><path d="M2 9h16L13 3z" fill="#ffd659" stroke="#2a1d10" stroke-width="1.5" stroke-linejoin="round"/><path d="M4 8.2h6l2-3.4z" fill="#fff3b0" opacity=".8"/><circle cx="6" cy="11.5" r="1.4" fill="#c98a12"/><circle cx="12.5" cy="12" r="1" fill="#c98a12"/></svg>',
+    cheese2: '<svg viewBox="0 0 28 20"><g transform="translate(9 3) scale(.8)"><path d="M2 14h16v-5H2z" fill="#e9b52a" stroke="#2a1d10" stroke-width="1.6"/><path d="M2 9h16L13 3z" fill="#ffd659" stroke="#2a1d10" stroke-width="1.6" stroke-linejoin="round"/></g><path d="M2 15h14v-4.4H2z" fill="#e9b52a" stroke="#2a1d10" stroke-width="1.5"/><path d="M2 10.6h14L11.6 5.4z" fill="#ffd659" stroke="#2a1d10" stroke-width="1.5" stroke-linejoin="round"/></svg>',
+    feet: '<svg viewBox="0 0 20 20" fill="#f6a8b0" stroke="#2a1d10" stroke-width="1.1"><ellipse cx="6" cy="13" rx="2.8" ry="3.6"/><ellipse cx="13.5" cy="7.5" rx="2.8" ry="3.6"/><circle cx="3.8" cy="8" r="1.2"/><circle cx="6.8" cy="7.4" r="1.2"/><circle cx="11.2" cy="2.6" r="1.2"/><circle cx="14.4" cy="2.2" r="1.2"/></svg>',
+    room: '<svg viewBox="0 0 20 20"><rect x="3" y="4" width="15" height="14" rx="2" fill="#2a1d10" opacity=".45"/><rect x="2" y="3" width="15" height="14" rx="2" fill="#fff6e0" stroke="#2a1d10" stroke-width="1.5"/><rect x="4.5" y="5" width="2.4" height="2.4" fill="#ef5a3c"/><rect x="7.6" y="5" width="2.4" height="2.4" fill="#3d8fe8"/><rect x="10.7" y="5" width="2.4" height="2.4" fill="#e8c547"/><circle cx="9.5" cy="12" r="2.6" fill="#ffd95a" stroke="#2a1d10" stroke-width="1"/></svg>',
+    erase: '<svg viewBox="0 0 24 24"><path d="M4 16l8-9 7 6-6 7H8z" fill="#f6a8b0" stroke="#2a1d10" stroke-width="1.6" stroke-linejoin="round"/><path d="M4 16l4 4h5l-6-6z" fill="#fff6e0" stroke="#2a1d10" stroke-width="1.6" stroke-linejoin="round"/><path d="M13 20h7" stroke="#f6efe2" stroke-width="2" stroke-linecap="round"/></svg>',
   };
+  let hudPrev = {};
+  function badge(key, ico, val, label, cls) {
+    const v = String(val), pop = hudPrev[key] !== undefined && hudPrev[key] !== v ? ' pop' : ''; hudPrev[key] = v;
+    return `<span class="bdg${cls ? ' ' + cls : ''}${pop}" role="img" aria-label="${label}">${ico}<b>${v}</b></span>`;
+  }
   function hud() {
-    $('modeTxt').textContent = mode === 'coins' ? 'Coins' : 'Cheese';
+    $('modeTxt').innerHTML = mode === 'coins' ? ICO.coin : ICO.cheese;
     let s;
-    if (mode === 'coins') s = `${ICO.coin}<b>${bank}</b><span class="sm">${NN - coins.size} left</span>${ICO.feet}<b>${runSteps}</b><span class="sm">best ${DF[runStart] === Infinity ? '-' : DF[runStart]}</span>`;
-    else s = `${ICO.cheese}<b>${cheese < 0 ? '-' : cheeseN}</b><span class="dim">away</span>${ICO.feet}<b>${steps}</b><span class="dim">steps</span>`;
+    const gd = goalD(cur), gtxt = gd === Infinity ? '-' : gd;
+    if (mode === 'coins') s = badge('bank', ICO.coin, bank, bank + ' coins', 'goal') + badge('left', ICO.room, NN - coins.size, (NN - coins.size) + ' coins left') + badge('run', ICO.feet, runSteps, runSteps + ' steps this run');
+    else s = badge('dist', ICO.cheese, cheese < 0 ? '-' : gtxt, 'cheese ' + gtxt + ' rooms away', 'goal') + badge('steps', ICO.feet, steps, steps + ' steps');
     $('stat').innerHTML = s;
     $('lights').classList.toggle('on', lights); $('lights').setAttribute('aria-pressed', lights);
     $('peek').classList.toggle('on', peek); $('peek').setAttribute('aria-pressed', peek);
@@ -1019,11 +1233,12 @@
     $('memory').style.color = memView === 'rat' ? '#12424d' : ''; $('memory').style.background = memView === 'rat' ? '#3fd0ea' : '';
     $('train').classList.toggle('on', training); $('train').setAttribute('aria-pressed', training);
     $('undo').disabled = !path.length || finished;
+    $('again').disabled = locked();
     $('peekBox').classList.toggle('on', peek);
     if (peek) drawPeek();
   }
-  let toastT = 0;
-  function toast(msg, ms) { const el = $('toast'); el.textContent = msg; el.classList.add('on'); clearTimeout(toastT); toastT = setTimeout(() => el.classList.remove('on'), ms || 2200); }
+  // spoken only (a polite live region, visually hidden): the screen shows icons, numbers and motion
+  function toast(msg) { const el = $('toast'); if (el.textContent === msg) el.textContent = ''; el.textContent = msg; }
   function drawPeek() {
     const c = $('pk'), x = c.getContext('2d'), Wp = c.width, Hp = c.height, P = g.pos, perm = permToRoom();
     x.clearRect(0, 0, Wp, Hp);
@@ -1044,6 +1259,7 @@
   function startAnim(r, from, back, done) {
     const pts = walkPts(r, from), len = polyLen(pts);
     const end = back ? pts[0] : pts[pts.length - 1];
+    SND.squeak();
     anim = { r, pts, len, back, t0: now(), dur: back ? walkDur(len * 0.55) * 2 : walkDur(len), done: () => { rat.x = end[0]; rat.y = end[1]; done(); } };
   }
   function startHand(from, to, done) {   // the scientist's gloved hand lifts the rat out and drops it elsewhere
@@ -1052,11 +1268,36 @@
     anim = { kind: 'hand', A, B, t0: now(), dur: RM ? 200 : clamp(1500 + len * 120, 1600, 3200), done: () => { rat.x = B[0]; rat.y = B[1]; rat.lift = 0; hand = null; done(); } };
   }
   function finishAnim() { if (anim) { const f = anim.done; anim = null; f(); } }
+  function noProgress() { shakeT = now(); SND.nope(); }
+  // the rat comes into room j: its floor tiles flip in a wave from the door it came through (the chain's tiles change
+  // element); an element that left the rim pops out of the strip and flies off
+  function roomWave(j, before, entry) {
+    if (!before || SG.idx.get(g.canon()) !== j || cur !== j) return;
+    const perm = permToRoom(), nw = NODES[j].rimCols, old = g.rim.map(u => perm[before[u]]), n = nw.length;
+    if (old.some(c => c === undefined || c < 0)) return;
+    const ex = entry ? entry[0] : cell[j][0], ranks = [...Array(n).keys()].sort((p, q) => Math.abs(tilePos(j, p)[0] - ex) - Math.abs(tilePos(j, q)[0] - ex));
+    const order = new Array(n); ranks.forEach((k, r) => { order[k] = r; });
+    tileFx = { room: j, t0: now(), old, order };
+    for (let k = 0; k < n; k++) SND.tick(order[k], old[k] !== nw[k]);
+    const lost = new Set(old.filter(c => !nw.includes(c)));
+    if (lost.size) {
+      old.forEach((c, k) => { if (lost.has(c)) { const [tx, ty] = tilePos(j, k); flyouts.push({ col: c, x: tx, y: ty, vx: (k - (n - 1) / 2) * 0.3 || 0.25, t0: now() + order[k] * 45 + 140 }); } });
+      setTimeout(SND.out, 200);
+    }
+  }
+  function arrive(j, from, e, before, quiet) {
+    const r = routes[e], entry = r ? doorPt(r, r.a === j ? 'a' : 'b') : null, d0 = goalD(from), had = coins.has(j);
+    cur = j; mapped.add(j); litCache = null;
+    roomWave(j, before, entry);
+    if (quiet || (mode === 'cheese' && j === cheese)) return;
+    if (goalD(j) < d0) SND.ding(); else if (mode === 'cheese' || had) noProgress();
+  }
+  function cancelNibble() { if (nibble) { nibble = null; const h = nibble0(); rat.x = h.x; rat.y = h.y; } crumb = null; }
   function walk(e) {
     if (anim || finished || e < 0) return;
     const r = routes[e]; if (r.a !== cur && r.b !== cur) return;
     const j = r.a === cur ? r.b : r.a, v = NODES[j];
-    sel = -1; cyc = null; cam.free = false;
+    sel = -1; cyc = null; cam.free = false; hoverE = pressE = -1; cancelNibble(); lastIn = now();
     if (v.won && mode === 'coins') {
       // a fill: the cheese bonus, then the scientist's hand moves the rat to another room for a new run
       steps++; runSteps++; walked.add(e); found.add(j); mapped.add(j);
@@ -1066,8 +1307,8 @@
         const best = DF[runStart], bonus = Math.max(10, 10 + 10 * best - 5 * (runSteps - best));
         bank += bonus; runs++;
         recomputeMem(); save();
-        floater('+' + bonus, '#ffd36a'); burst(SX(rat.x), SY(rat.y), 40);
-        toast(`Filled! ${runSteps} step${runSteps === 1 ? '' : 's'} this run, best possible ${best}. Cheese bonus +${bonus}.`, 2600);
+        floater('+' + bonus, '#ffd36a'); burst(SX(rat.x), SY(rat.y), 40, CHEESE); burst(SX(rat.x), SY(rat.y), 12, CHEESE, 'star'); SND.ding();
+        toast('Filled. Bonus ' + bonus + '.');
         hud();
         if (window.__mazeNoDrop) { cur = from; rat.x = cell[from][0]; rat.y = cell[from][1] + REST; return; }   // test hook: no drop, the rat stays put (g never left this room)
         dropRat(j);
@@ -1075,19 +1316,21 @@
       hud(); return;
     }
     if (v.won && !(mode === 'cheese' && j === cheese)) {
-      // cheese mode, a fill without the cheese: the rat pops in and backs out; the puzzle state never changes
+      // cheese mode, a fill without the cheese: the rat pops in and backs out (shaking its head); the puzzle state never changes
       steps += 2;
-      startAnim(r, cur, true, () => { mapped.add(j); found.add(j); walked.add(e); recomputeMem(); toast('The hole is filled here, but no cheese.'); save(); hud(); });
+      startAnim(r, cur, true, () => { mapped.add(j); found.add(j); walked.add(e); recomputeMem(); noProgress(); toast('No cheese here.'); save(); hud(); });
       hud(); return;
     }
     const K = chainTo(j);
     if (!K) { console.error('maze: no chain from', NODES[cur].key, 'to', v.key); return; }
-    const from = cur;
-    g.swap(K);
+    const from = cur, before = g.col.slice(), dp = doorPt(r, r.a === cur ? 'a' : 'b');
+    try { if (LAB.at) LAB.at(SX(dp[0]), SY(dp[1], 0.02)); } catch (_) {}   // the shell flies this swap's coins from the door
+    own(() => g.swap(K));
     path.push({ e, from, to: j });
     steps++; runSteps++; walked.add(e);
     startAnim(r, from, false, () => {
-      cur = j; mapped.add(j); if (mode === 'coins' && !coins.has(j)) { coins.add(j); bank++; }
+      arrive(j, from, e, before);
+      if (mode === 'coins' && !coins.has(j)) { coins.add(j); bank++; }
       if (mode === 'cheese' && j === cheese) found.add(j);
       recomputeMem(); save(); hud();
       if (mode === 'cheese' && j === cheese) win(); else checkCoins();
@@ -1100,59 +1343,100 @@
     if (!pool.length) pool = [0];
     const to = pool[Math.floor(Math.random() * pool.length)];
     startHand(fillRoom, to, () => {
-      cur = to; syncTo(to); path = []; runStart = to; runSteps = 0;
+      cur = to; syncTo(to); path = []; runStart = to; runSteps = 0; litCache = null;
       mapped.add(to); if (!coins.has(to)) { coins.add(to); bank++; }
       save(); hud();
-      toast(`New run from here: the best route to a fill is ${DF[to]} step${DF[to] === 1 ? '' : 's'}.`, 2400);
+      toast('New run. Best ' + DF[to] + '.');
       checkCoins();
     });
   }
   function undo() {
     if (anim || finished) return;
-    if (!path.length) { toast(runStart ? 'This is where the hand dropped the rat.' : 'Back at the nest.'); return; }
-    const last = path.pop();
-    g.undo();
+    cancelNibble();
+    if (!path.length) { noProgress(); toast(runStart ? 'Drop room.' : 'At the nest.'); return; }
+    const last = path.pop(), before = g.col.slice();
+    own(() => g.undo());
     steps += mode === 'coins' ? 1 : -1; if (mode === 'coins') runSteps++;
     sel = -1; cyc = null; cam.free = false;
-    startAnim(routes[last.e], last.to, false, () => { cur = last.from; hud(); });
+    startAnim(routes[last.e], last.to, false, () => { arrive(last.from, last.to, last.e, before, true); hud(); });
     hud();
   }
   function restart(silent) {
+    if (locked()) return;   // inside the app the shell owns what follows a win
     anim = null; hand = null; finished = false; path = []; steps = 0; cur = 0; coins = new Set([0]); sel = -1; cyc = null; cam.free = false;
-    bank = 0; runStart = 0; runSteps = 0; runs = 0;
-    g.reset(); rat.x = cell[0][0]; rat.y = cell[0][1] + REST; rat.a = Math.PI / 2; rat.lift = 0;
+    bank = 0; runStart = 0; runSteps = 0; runs = 0; litCache = null;
+    tileFx = null; flyouts = []; crumb = null; nibble = null; winT = 0; winD = null; winCam = null; shakeT = 0; cam.z = zBase || cam.z; lastIn = now();
+    own(() => g.reset()); rat.x = cell[0][0]; rat.y = cell[0][1] + REST; rat.a = Math.PI / 2; rat.lift = 0;
     $('card').classList.remove('on'); fx = [];
     hud();
-    if (!silent) toast(mode === 'coins' ? `Grab the coins. A filled room pays a cheese bonus, bigger for a shorter route.` : cheese < 0 ? 'No cheese in this maze.' : `The cheese is ${cheeseN} rooms away. Shortest route wins.`);
+    if (!silent) toast(mode === 'coins' ? 'Grab the coins.' : cheese < 0 ? 'No cheese.' : 'Cheese ' + DC[0] + ' rooms away.');
   }
-  function setMode(m) { mode = m; save(); closeMenu(); restart(); }
+  function setMode(m) { if (locked()) return; mode = m; save(); closeMenu(); restart(); }
   function checkCoins() {
     if (mode !== 'coins' || coins.size < NN || finished || window.__mazeNoEnd) return;
-    finished = true; hud(); burst(W / 2, H / 2, 90);
-    card('All ' + NN + ' coins!', '', `You explored the whole maze in ${steps} steps and banked ${bank} coins over ${runs} fill${runs === 1 ? '' : 's'}. Now find the cheese.`,
-      [['Find the cheese', () => setMode('cheese')], ['Again', () => restart(), true]]);
+    finished = true; hud(); burst(W / 2, H / 2, 90); SND.win();
+    card('All ' + NN + '!', '', `${ICO.coin}<b>${bank}</b> ${ICO.feet}<b>${steps}</b>`, [['Cheese', () => setMode('cheese')], ['Again', () => restart(), true]]);
   }
   function win() {
-    finished = true; hud();
+    if (winT) return;
+    finished = true; sel = -1; hoverE = pressE = -1; crumb = null; nibble = null; hud();
+    winT = now(); winA = rat.a;
+    // the light wave: rooms light up by corridors from the cheese
+    winD = new Array(NN); winD[cur] = 0; const q = [cur];
+    for (let h = 0; h < q.length; h++) for (const { to } of SG.nb[q[h]]) if (winD[to] === undefined) { winD[to] = winD[q[h]] + 1; q.push(to); }
+    const maxD = Math.max(1, ...q.map(i => winD[i]));
+    winWave = { t0: RM ? 150 : 1100, step: RM ? 0 : Math.min(150, 1700 / maxD) };
+    // the camera pulls back over the maze
+    const zO = clamp(Math.min((W - 20) / (BX1 - BX0 + 1.2), (H - TOP - 20) / ((BY1 - BY0 + 1.4) * KY)), 12, zBase), zMin = zBase * 0.34;
+    cam.free = true;
+    winCam = zO >= zMin ? { z1: zO, x1: (BX0 + BX1) / 2, y1: (BY0 + BY1) / 2 } : { z1: zMin, x1: rat.x, y1: rat.y };
+    Object.assign(winCam, { t0: winT + (RM ? 100 : 1250), dur: RM ? 300 : 1600, z0: cam.z, x0: cam.x, y0: cam.y });
+    SND.win();
+    const bx = SX(rat.x), by = SY(rat.y);
+    burst(bx, by, 70, CHEESE); burst(bx, by, 26, CHEESE, 'star');
+    if (!RM) { setTimeout(() => burst(SX(rat.x), SY(rat.y) - 20, 50), 700); setTimeout(() => burst(W * 0.3, H * 0.4, 60), 1800); setTimeout(() => burst(W * 0.7, H * 0.45, 60, null, 'star'), 2500); }
+    toast('Cheese! ' + steps + ' steps.');
     const n = cheeseN, st = steps <= n ? 3 : steps <= n + 2 ? 2 : 1;
-    burst(SX(rat.x), SY(rat.y), 120);
-    const stars = '★'.repeat(st) + '<i>' + '★'.repeat(3 - st) + '</i>';
-    const deeper = wonDepths.find(d => d > cheeseN);
-    const btns = [['Again', () => restart()]];
-    if (deeper !== undefined && !IN_APP) btns.push(['Farther', () => farther(), true]);
-    setTimeout(() => card('Cheese!', IN_APP ? '' : stars, `${steps} step${steps === 1 ? '' : 's'}; the shortest route is ${n}.` + (st === 3 ? ' Perfect run.' : ''), IN_APP ? [] : btns), RM ? 100 : 700);
-    if (LAB.embedded) setTimeout(LAB.done, 2200);
+    setTimeout(() => {
+      if (!IN_APP) {
+        const deeper = wonDepths.find(d => d > cheeseN), btns = [['Again', () => restart()]];
+        if (deeper !== undefined) btns.push(['Farther', () => farther(), true]);
+        card('Cheese!', '★'.repeat(st) + '<i>' + '★'.repeat(3 - st) + '</i>', `${ICO.feet}<b>${steps}</b> / ${n}`, btns);
+      }
+      if (LAB.embedded) LAB.done();
+    }, RM ? 1500 : 3800);
   }
   function farther() {
+    if (locked()) return;
     const deeper = wonDepths.find(d => d > cheeseN);
     cheeseN = deeper !== undefined ? deeper : wonDepths[0];
     pickCheese(); mode = 'cheese'; save(); closeMenu(); restart();
   }
   function card(h, stars, p, btns) {
-    $('cardH').textContent = h; $('cardS').innerHTML = stars; $('cardS').style.display = stars ? '' : 'none'; $('cardP').textContent = p;
+    $('cardH').textContent = h; $('cardS').innerHTML = stars; $('cardS').style.display = stars ? '' : 'none'; $('cardP').innerHTML = p;
     const B = $('cardB'); B.innerHTML = '';
     btns.forEach(([t, fn, alt]) => { const b = document.createElement('button'); b.textContent = t; if (alt) b.className = 'alt'; b.onclick = fn; B.appendChild(b); });
     $('card').classList.add('on');
+  }
+  // a change to the hidden game that did not come from this page (the app's undo / reset, a test driving g): follow it
+  function extSync(info) {
+    if (anim) finishAnim();
+    const j = SG.idx.get(g.canon());
+    if (j === undefined) { if (g.won() && !winT) win(); return; }
+    const from = cur, e = edgeOf.get(from + ',' + j);
+    if (info.type === 'reset') { path = []; steps = 0; } else if (info.type === 'undo') { path.pop(); steps = Math.max(0, steps - 1); } else { steps++; if (e !== undefined) path.push({ e, from, to: j }); else path = []; }
+    if (mode === 'cheese' && NODES[j].won && cheese !== j) { cheese = j; cheeseDist(); }   // whichever fill the shell walked into
+    const before = info.type === 'swap' && g.history.length ? g.history[g.history.length - 1] : null;
+    const walkIn = e !== undefined && from !== j && !finished;
+    if (g.won()) finished = true;   // won from outside: input goes quiet at once, the rat still walks in to celebrate
+    const done = () => {
+      const here = SG.idx.get(g.canon()) === j;
+      arrive(j, from, e, here ? before : null, info.type !== 'swap'); mapped.add(j); recomputeMem(); hud();
+      if (here && g.won() && !winT) win();
+    };
+    if (walkIn) { cancelNibble(); startAnim(routes[e], from, false, done); }
+    else { rat.x = cell[j][0]; rat.y = cell[j][1] + REST; done(); }
+    hud();
   }
 
   // ---------------------------------------------------------------- input
@@ -1167,13 +1451,13 @@
   function dirPress(name, dx, dy) {
     if (anim || finished) return;
     const L2 = doorsInDir(dx, dy);
-    if (!L2.length) { sel = -1; cyc = null; toast('No door that way.', 900); return; }
+    if (!L2.length) { sel = -1; cyc = null; noProgress(); toast('No door that way.'); return; }
     if (L2.length === 1) { walk(L2[0].e); return; }
     let k = 0;
     if (cyc && cyc.dir === name && cyc.at === cur) k = (L2.findIndex(x => x.e === sel) + 1) % L2.length;
     cyc = { dir: name, at: cur }; sel = L2[k].e;
     const num = doorOrder(cur).findIndex(x => x.e === sel) + 1;
-    toast(`Door ${num} (${k + 1} of ${L2.length} that way): press ${name} again for the next, Enter or tap to walk.`, 1800);
+    toast(`Door ${num}, ${k + 1} of ${L2.length}.`);
   }
   function hitEdge(px, py) {
     const w = toWorld(px, py), tol = Math.max(0.1, 16 / cam.z);
@@ -1187,45 +1471,58 @@
     }
     return best;
   }
+  function hitCrumb(px, py) { if (!crumb || nibble) return false; const w = toWorld(px, py); return Math.hypot(w.x - crumb.x, (w.y - crumb.y) * KY) < Math.max(0.07, 22 / cam.z); }
+  function startNibble() {   // the rat nibbles the crumb, with a sparkle; the egg pays once per level
+    nibble = { t0: now(), x0: rat.x, y0: rat.y, cx: crumb.x, cy: crumb.y };
+    SND.nibble();
+    const cx = crumb.x, cy = crumb.y;
+    setTimeout(() => burst(SX(cx), SY(cy), 18, ['#fff', '#ffd36a', '#fff3b0'], 'star'), RM ? 0 : 750);
+    if (!eggPaid) { eggPaid = true; try { if (LAB.egg) LAB.egg('cheese-crumb', 100); } catch (_) {} }
+  }
+  function touched() { audioOn(); firstInput = true; lastIn = now(); }
   const ptrs = new Map(); let gest = null, lastTap = 0;
   cv.addEventListener('pointerdown', ev => {
-    cv.focus({ preventScroll: true }); closeMenu();
+    cv.focus({ preventScroll: true }); closeMenu(); touched();
     cv.setPointerCapture(ev.pointerId);
     ptrs.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
-    if (ptrs.size === 1) gest = { x0: ev.clientX, y0: ev.clientY, t0: now(), cx: cam.x, cy: cam.y, moved: false, pinch: false };
-    else if (ptrs.size === 2) { const [a, b] = [...ptrs.values()]; gest = { pinch: true, d0: Math.hypot(a.x - b.x, a.y - b.y), z0: cam.z, moved: true }; }
+    if (ptrs.size === 1) { gest = { x0: ev.clientX, y0: ev.clientY, t0: now(), cx: cam.x, cy: cam.y, moved: false, pinch: false }; pressE = !anim && !finished ? hitEdge(ev.clientX, ev.clientY) : -1; }
+    else if (ptrs.size === 2) { const [a, b] = [...ptrs.values()]; gest = { pinch: true, d0: Math.hypot(a.x - b.x, a.y - b.y), z0: cam.z, moved: true }; pressE = -1; }
   });
   cv.addEventListener('pointermove', ev => {
-    if (!ptrs.has(ev.pointerId) || !gest) return;
+    if (!ptrs.has(ev.pointerId)) { if (ev.pointerType === 'mouse' && !anim && !finished) hoverE = hitEdge(ev.clientX, ev.clientY); return; }
+    if (!gest) return;
     ptrs.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
-    if (gest.pinch && ptrs.size >= 2) { const [a, b] = [...ptrs.values()]; cam.z = clamp(gest.z0 * Math.hypot(a.x - b.x, a.y - b.y) / (gest.d0 || 1), 12, 220); return; }
+    if (gest.pinch && ptrs.size >= 2) { const [a, b] = [...ptrs.values()]; cam.z = clamp(gest.z0 * Math.hypot(a.x - b.x, a.y - b.y) / (gest.d0 || 1), 12, 340); return; }
     if (gest.pinch) return;
     const dx = ev.clientX - gest.x0, dy = ev.clientY - gest.y0;
-    if (!gest.moved && Math.hypot(dx, dy) > 8) gest.moved = true;
-    if (gest.moved) { cam.free = true; cam.x = gest.cx - dx / cam.z; cam.y = gest.cy - dy / (cam.z * KY); }
+    if (!gest.moved && Math.hypot(dx, dy) > 8) { gest.moved = true; pressE = -1; }
+    if (gest.moved && !winCam) { cam.free = true; cam.x = gest.cx - dx / cam.z; cam.y = gest.cy - dy / (cam.z * KY); }
   });
+  cv.addEventListener('pointerleave', () => { hoverE = -1; });
   function endPtr(ev) {
     if (!ptrs.has(ev.pointerId)) return;
-    ptrs.delete(ev.pointerId);
+    ptrs.delete(ev.pointerId); pressE = -1;
     if (!gest || ptrs.size) return;
     const G = gest; gest = null;
     if (G.pinch) return;
     const dx = ev.clientX - G.x0, dy = ev.clientY - G.y0, dt = now() - G.t0, dist = Math.hypot(dx, dy);
     if (G.moved && dt < 280 && dist > 30) {   // a flick: walk that way, undo the pan
-      cam.x = G.cx; cam.y = G.cy; cam.free = false;
+      if (!winCam) { cam.x = G.cx; cam.y = G.cy; cam.free = false; }
       const nm = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : (dy > 0 ? 'down' : 'up');
       dirPress(nm, dx / dist, dy / dist / KY); return;
     }
     if (G.moved) return;
-    const e = hitEdge(ev.clientX, ev.clientY);
+    const e = finished ? -1 : hitEdge(ev.clientX, ev.clientY);
     if (e >= 0) { walk(e); return; }
+    if (!finished && hitCrumb(ev.clientX, ev.clientY)) { startNibble(); return; }
     if (now() - lastTap < 320) { recentre(); lastTap = 0; return; }
     lastTap = now();
   }
   cv.addEventListener('pointerup', endPtr);
-  cv.addEventListener('pointercancel', ev => { ptrs.delete(ev.pointerId); gest = null; });
-  cv.addEventListener('wheel', ev => { ev.preventDefault(); cam.z = clamp(cam.z * Math.exp(-ev.deltaY * 0.0015), 12, 220); }, { passive: false });
+  cv.addEventListener('pointercancel', ev => { ptrs.delete(ev.pointerId); gest = null; pressE = -1; });
+  cv.addEventListener('wheel', ev => { ev.preventDefault(); if (!winCam) cam.z = clamp(cam.z * Math.exp(-ev.deltaY * 0.0015), 12, 340); }, { passive: false });
   function recentre() {   // toggles between the rat's close-up and the whole board
+    if (winCam) return;
     if (Math.abs(cam.z - zBase) > 1 || cam.free) { cam.free = false; cam.z = zBase; return; }
     recentreOverview();
   }
@@ -1235,13 +1532,15 @@
   }
   addEventListener('keydown', ev => {
     if (ev.target && ev.target.tagName === 'BUTTON' && (ev.key === 'Enter' || ev.key === ' ')) return;
+    touched();
     const k = ev.key, dirs = { ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0], w: [0, -1], s: [0, 1], a: [-1, 0], d: [1, 0] };
     if ($('card').classList.contains('on')) { if (k === 'Enter') { const b = $('cardB').querySelector('button'); if (b) b.click(); } return; }
     if (dirs[k]) { ev.preventDefault(); const nm = { ArrowUp: 'up', w: 'up', ArrowDown: 'down', s: 'down', ArrowLeft: 'left', a: 'left', ArrowRight: 'right', d: 'right' }[k]; dirPress(nm, ...dirs[k]); return; }
-    if (/^[1-9]$/.test(k)) { const D = doorOrder(cur), x = D[+k - 1]; if (x) walk(x.e); else toast('This room has ' + D.length + ' doors.', 900); return; }
+    if (/^[1-9]$/.test(k)) { const D = doorOrder(cur), x = D[+k - 1]; if (x) walk(x.e); else if (!finished) { noProgress(); toast(D.length + ' doors.'); } return; }
     if (k === 'Escape') { sel = -1; cyc = null; return; }
-    if (k === 'Tab') { ev.preventDefault(); const L2 = incident(cur); if (!L2.length) return; const i = L2.findIndex(x => x.e === sel); sel = L2[(i + (ev.shiftKey ? L2.length - 1 : 1)) % L2.length].e; return; }
+    if (k === 'Tab') { ev.preventDefault(); if (finished) return; const L2 = incident(cur); if (!L2.length) return; const i = L2.findIndex(x => x.e === sel); sel = L2[(i + (ev.shiftKey ? L2.length - 1 : 1)) % L2.length].e; return; }
     if ((k === 'Enter' || k === ' ') && sel >= 0) { ev.preventDefault(); walk(sel); return; }
+    if (k === 'c' && crumb && !finished) { startNibble(); return; }
     if (k === 'u' || k === 'z' || k === 'Backspace') { ev.preventDefault(); undo(); }
     else if (k === 'r') restart();
     else if (k === 'l') toggleLights();
@@ -1249,17 +1548,17 @@
     else if (k === 'm') toggleMemory();
     else if (k === 't') (training ? stopTraining() : startTraining());
     else if (k === '0') recentre();
-    else if (k === '+' || k === '=') cam.z = clamp(cam.z * 1.2, 24, 200);
-    else if (k === '-') cam.z = clamp(cam.z / 1.2, 24, 200);
+    else if (k === '+' || k === '=') { if (!winCam) cam.z = clamp(cam.z * 1.2, 24, 340); }
+    else if (k === '-') { if (!winCam) cam.z = clamp(cam.z / 1.2, 24, 340); }
   });
-  function toggleLights() { lights = !lights; hud(); toast(lights ? 'Lab lights on: the whole maze.' : 'Lights off: only rooms you have seen.', 1400); }
+  function toggleLights() { lights = !lights; hud(); toast(lights ? 'Lights on.' : 'Lights off.'); }
   function togglePeek() { peek = !peek; hud(); }
   function toggleMemory() {
     const order = trainer ? ['mine', 'rat', 'off'] : ['mine', 'off'];
     memView = order[(order.indexOf(memView) + 1) % order.length]; save(); hud();
-    toast(memView === 'off' ? 'Memory hidden.' : memView === 'mine' ? 'Your rat\'s memory: steps to a fill it has found, and the door it took.' : 'The trained rat\'s table: its best door and learned steps (blue = a shortest route).', 2200);
+    toast(memView === 'off' ? 'Memory hidden.' : memView === 'mine' ? 'Your rat\'s memory.' : 'The trained rat\'s table.');
   }
-  const stopP = el => el.addEventListener('pointerdown', ev => ev.stopPropagation());
+  const stopP = el => el.addEventListener('pointerdown', ev => { ev.stopPropagation(); audioOn(); });
   ['lights', 'peek', 'undo', 'again', 'mode', 'memory', 'train', 'tSpeed', 'tStop'].forEach(id => stopP($(id)));
   $('memory').onclick = toggleMemory;
   $('train').onclick = () => (training ? stopTraining() : startTraining());
@@ -1267,37 +1566,48 @@
   $('tStop').onclick = () => { if (tDoneAt) { $('trainBox').classList.remove('on'); cam.free = false; cam.z = zBase; return; } training ? stopTraining() : startTraining(); };
   $('lights').onclick = toggleLights; $('peek').onclick = togglePeek; $('undo').onclick = undo; $('again').onclick = () => { closeMenu(); restart(); };
   function closeMenu() { $('menu').classList.remove('on'); }
+  $('mCoins').innerHTML = ICO.coin + 'Coins';
+  $('mForget').innerHTML = ICO.erase + 'Forget';
+  function menuCounts() {
+    const deeper = wonDepths.find(d => d > cheeseN);
+    $('mCheese').innerHTML = ICO.cheese + '<b>' + (cheeseN === undefined ? '-' : cheeseN) + '</b>';
+    $('mFar').innerHTML = ICO.cheese2 + '<b>' + (deeper !== undefined ? deeper : '-') + '</b>';
+    $('mFar').disabled = IN_APP || deeper === undefined;
+    $('mCheese').setAttribute('aria-label', `Find the cheese, ${cheeseN} rooms from the nest`);
+    $('mFar').setAttribute('aria-label', deeper !== undefined ? `Farther cheese, ${deeper} rooms from the nest` : 'No farther cheese');
+  }
+  menuCounts();
   $('mode').onclick = () => {
     const m = $('menu'); if (m.classList.contains('on')) return closeMenu();
+    if (locked()) return;
     $('mCoins').classList.toggle('cur', mode === 'coins'); $('mCheese').classList.toggle('cur', mode === 'cheese');
-    const deeper = wonDepths.find(d => d > cheeseN);
-    $('mFar').disabled = IN_APP || deeper === undefined;
-    $('mFar').querySelector('small').textContent = deeper !== undefined ? `Cheese ${deeper} rooms from the nest` : 'No deeper goal room in this maze';
-    $('mCheese').querySelector('small').textContent = `Cheese ${cheeseN} rooms from the nest`;
+    menuCounts();
     m.classList.add('on');
   };
   $('mCoins').onclick = () => setMode('coins');
   $('mCheese').onclick = () => setMode('cheese');
   $('mFar').onclick = farther;
-  $('mForget').onclick = () => { mapped = new Set([0]); [...path.map(p => p.to), cur].forEach(i => mapped.add(i)); walked = new Set(); found = new Set(); recomputeMem(); save(); closeMenu(); hud(); toast('Map and memory forgotten.'); };
+  $('mForget').onclick = () => { if (locked()) return; mapped = new Set([0]); [...path.map(p => p.to), cur].forEach(i => mapped.add(i)); walked = new Set(); found = new Set(); recomputeMem(); save(); closeMenu(); hud(); toast('Map forgotten.'); };
 
   // ---------------------------------------------------------------- size
   function resize() {
     DPR = Math.min(2, window.devicePixelRatio || 1); W = innerWidth; H = innerHeight;
     cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR);
-    TOP = 44; zBase = clamp(Math.min(W / 3.4, (H - TOP) / 4.6), 64, 170); cam.z = zBase;
+    TOP = 50; zBase = clamp(Math.min(W / 1.3, (H - TOP) / 2.3), 80, 320); if (!winCam) cam.z = zBase;
   }
   addEventListener('resize', resize);
   resize();
   cam.x = rat.x; cam.y = rat.y;
   restart(true);
-  toast((mode === 'coins' ? `Lab rat, ${NN} rooms; every corridor is one swap. Coins everywhere, a cheese bonus in every filled room. ` : `The cheese is ${cheeseN} rooms away. `)
-    + 'Tap a door, swipe or use the arrows (again: the next door that way, Enter walks), or keys 1-9.', 5200);
+  toast(mode === 'coins' ? 'Grab the coins.' : 'Cheese ' + DC[0] + ' rooms away.');
+  lastIn = now();
+  g.on((_, info) => { if (!selfOp) extSync(info); });
   window.__maze = {
     g, M, state: () => ({ cur, key: NODES[cur].key, gcanon: g.canon(), steps, mode, cheese, cheeseN, finished, anim: !!anim, coins: coins.size, mapped: mapped.size, path: path.length }),
     walk, undo, restart, setMode, farther, startTraining, stopTraining, toggleMemory, dirPress, doorOrder: () => doorOrder(cur).map(x => ({ e: x.e, to: x.to })),
     doorsInDir: (dx, dy) => doorsInDir(dx, dy).map(x => x.e), trainer: () => trainer, run: () => ({ bank, runStart, runSteps, runs, best: DF[runStart], memKnown: mem.filter(x => x < Infinity).length, sel, memView, training, tDoneAt }), DF, setSpeed: v => { tSpeed = v; }, incident: () => incident(cur).map(x => ({ e: x.e, to: x.to })), toggleLights, togglePeek,
     finishAnim, NODES, routes, dbg: () => ({ cam, rat, cell: cell[cur] }), proj: (x, y) => [SX(x), SY(y)], cell,
+    juice: () => ({ crumb, nibble: !!nibble, eggPaid, winT, tileFx: !!tileFx, flyouts: flyouts.length, firstInput, DC: DC[cur] }), idle: ms => { lastIn = now() - ms; }, crumbAt: () => crumb && [SX(crumb.x), SY(crumb.y)],
   };
   requestAnimationFrame(draw);
 })();

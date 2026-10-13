@@ -2,26 +2,30 @@
 <!--
   Spheres: a remake of the very first test of Fill the Hole, the plain graph drawn as a ball-and-stick model.
 
-  What the player sees: every region of the map is a glossy shaded sphere in its element colour (fire, water, air,
-  earth), and every pair of neighbouring regions is joined by a stick, so the picture is the triangulation itself,
-  laid out as one big triangle (the 3 far "border" regions g.border sit at the corners; everything else starts from the
-  planar drawing g.pos mapped affinely into the triangle, then is spread out by a planarity-preserving relaxation). The hole is a hollow glass sphere with a "?". Its 5 neighbours (the rim) are joined by a glowing
-  ring of sticks, and a row of small balls at the top shows which elements the ring uses (4, need 3).
+  What the player sees: every region of the map is a glossy toy marble in its element colour (fire, water, air, earth;
+  thick dark outline, top-left highlight, offset drop shadow), and every pair of neighbouring regions is joined by a
+  chunky stick, so the picture is the triangulation itself, laid out as one big triangle (the 3 far "border" regions
+  g.border sit at the corners; everything else starts from the planar drawing g.pos mapped affinely into the triangle,
+  then is spread out by a planarity-preserving relaxation). The hole is a hollow glass sphere with a "?". Its 5
+  neighbours (the rim) are joined by a glowing ring of sticks. The goal indicator at the top is a glass bubble ringed by
+  5 little marbles (the rim's colours, live) with a big number (how many elements the rim uses; the goal is g.goal).
+  When an element leaves the rim the bubble bounces and a marble of that colour flies out. No words on screen.
 
   What the player does, and how it maps to the puzzle:
+    - Press a sphere: it swells at once and its candidate chains (one per neighbouring element) glow softly.
     - Trace: press a sphere u and drag along a stick onto a neighbour v of a different element. That picks the chain
-      g.chainAt(u, col[v]) (the connected run of col[u]/col[v] spheres through u). The whole chain lights up with
-      glowing sticks; keep dragging through its spheres to trace it. Releasing once every sphere of the chain has been
-      traced swaps it (g.swap(K)); releasing early leaves the chain selected.
-    - Tap-tap: tap sphere u (it gets a dashed halo), then tap a sphere v of another element that lies in u's chain
-      with that element (normally a neighbour): the chain g.chainAt(u, col[v]) is selected in one go.
-    - With a chain selected, tapping any sphere of it swaps it (g.swap(K)); a ripple runs out along the sticks from
-      the sphere you started on, each sphere flipping a<->b as it arrives. Tapping elsewhere starts over.
-    - Duds: a chain with K.web === true (the only {a,b} chain on the map) only renames two elements everywhere, so it
-      is refused with a gentle shake. Dragging onto a sphere outside the chain, or onto the hole, wobbles it.
-    - Tapping the glass hole flashes a hint (a chain from g.good()). Undo / restart are the two tiny corner buttons.
-  Win: when the ring uses 3 elements (g.won()), the glass sphere fills with g.free(). Standalone, a tap plays again
-  (g.reset()). Inside the app the shell owns the next step, so the page calls LAB.done() and does not restart.
+      g.chainAt(u, col[v]). The chain pulses in its two colours; keep dragging through its spheres (a rising glassy
+      chime per sphere). Releasing once every sphere has been traced swaps it (g.swap(K)), calling LAB.at() at the
+      release point; the spheres flip in a wave from that point, 30-60 ms apart, each with a pop.
+    - Tap-tap: tap sphere u (dashed halo), then a sphere v of another element in u's chain with it: selects the chain.
+      With a chain selected, tapping any sphere of it swaps it.
+    - Duds (a web chain, a drag off the chain or onto the hole): the spheres jiggle on their sticks. Never a text error.
+    - Tapping the glass hole flashes a hint chain (g.good()). Undo / restart are the two chunky corner buttons.
+    - A ghost finger drags from a sphere along a stick until the first touch.
+  Win: the glass hole fills with g.free() in a burst, then a light show runs out along the sticks (about 3.6 s), then
+  LAB.done(). Standalone, a tap after that plays again (g.reset()); embedded, the page idles (the shell owns next).
+  Easter egg 'cradle': 5 taps on the glass hole within ~3 s swing the rim spheres like a Newton's cradle, with clicks,
+  and post LAB.egg('cradle', 60) once per level.
 -->
 <html lang="en">
 <head>
@@ -33,31 +37,24 @@
   :root { --bg: #0d1117; --fg: #e6edf3; --dim: #8b949e; --line: #30363d; }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body { margin: 0; width: 100vw; height: 100vh; overflow: hidden; overscroll-behavior: none; }
-  body { background: radial-gradient(120% 90% at 50% 10%, #1a2130 0%, var(--bg) 62%); background-color: var(--bg);
+  body { background: radial-gradient(120% 90% at 50% 10%, #1d2638 0%, var(--bg) 62%); background-color: var(--bg);
     color: var(--fg); font: 600 14px/1.2 ui-rounded, "SF Pro Rounded", system-ui, -apple-system, "Segoe UI", sans-serif;
     -webkit-user-select: none; user-select: none; touch-action: none; }
   canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; touch-action: none; }
-  #cue { position: fixed; left: 0; right: 0; top: max(8px, env(safe-area-inset-top)); display: flex; justify-content: center;
-    align-items: center; gap: 7px; pointer-events: none; font-size: clamp(12px, 3.6vw, 15px); color: var(--dim); white-space: nowrap; }
-  #cue .ball { width: 13px; height: 13px; border-radius: 50%; display: inline-block; box-shadow: 0 1px 3px rgba(0,0,0,.6);
-    transition: transform .25s, opacity .25s; }
-  #cue b { color: var(--fg); font-variant-numeric: tabular-nums; }
-  #cue .q { display: inline-grid; place-items: center; width: 17px; height: 17px; border-radius: 50%; font-size: 11px; color: #cfe0ff;
-    border: 1px solid rgba(190,215,255,.55); background: radial-gradient(circle at 35% 30%, rgba(255,255,255,.25), rgba(120,140,180,.08)); }
-  #cue .pv { color: #ffd84a; }
-  #toast { position: fixed; left: 0; right: 0; top: calc(max(8px, env(safe-area-inset-top)) + 24px); text-align: center; pointer-events: none;
-    font-size: 12px; color: #c9d1d9; opacity: 0; transition: opacity .3s; }
-  .tb { position: fixed; bottom: max(8px, env(safe-area-inset-bottom)); width: 40px; height: 40px; border-radius: 50%;
-    border: 1px solid var(--sk-ctl-edge, var(--line)); background: var(--sk-ctl, rgba(22,27,34,.75)); color: var(--sk-ctl-ink, var(--dim)); font-size: 18px; display: grid; place-items: center;
-    cursor: pointer; padding: 0; touch-action: manipulation; }
-  .tb:active { background: #21262d; color: var(--fg); }
-  #undo { left: 10px; } #reset { right: 10px; }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
+  .tb { position: fixed; bottom: calc(max(8px, env(safe-area-inset-bottom)) + 4px); width: 48px; height: 46px; border-radius: 15px;
+    border: 2.5px solid #05070b; background: var(--sk-ctl, #161b22); color: var(--sk-ctl-ink, #c9d1d9);
+    box-shadow: 0 5px 0 var(--sk-ctl-edge, #8b9bb3), 0 7px 0 #05070b, 0 10px 14px rgba(0,0,0,.45), inset 0 2px 0 rgba(255,255,255,.14);
+    font: 900 22px/1 ui-rounded, system-ui, sans-serif; display: grid; place-items: center;
+    cursor: pointer; padding: 0; touch-action: manipulation; transition: transform .07s, box-shadow .07s; }
+  .tb:active { transform: translateY(4px); box-shadow: 0 1px 0 var(--sk-ctl-edge, #8b9bb3), 0 3px 0 #05070b, 0 4px 6px rgba(0,0,0,.4), inset 0 2px 0 rgba(255,255,255,.1); }
+  .tb:focus-visible { outline: 3px solid #ffe066; outline-offset: 3px; }
+  #undo { left: 12px; } #reset { right: 12px; }
 </style>
 </head>
 <body>
-<canvas id="cv"></canvas>
-<div id="cue"></div>
-<div id="toast"></div>
+<canvas id="cv" role="img" aria-label="Ball-and-stick puzzle board"></canvas>
+<div id="sr" class="sr" aria-live="polite"></div>
 <button class="tb" id="undo" aria-label="Undo">&#8630;</button>
 <button class="tb" id="reset" aria-label="Restart">&#10227;</button>
 <script src="../levels.js"></script>
@@ -133,16 +130,16 @@ if (typeof document === 'undefined') { module.exports = { buildLayout, chainFor,
 // layout keeps the stored positions instead of pulling the map into a fresh triangle.
 const g = LAB.game();
 const E = LAB.ELEM, ICONS = LAB.ICON.map(p => new Path2D(p));
-const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
-const cueEl = document.getElementById('cue'), toastEl = document.getElementById('toast');
+const cv = document.getElementById('cv'), ctx = cv.getContext('2d'), srEl = document.getElementById('sr');
 const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const L = buildLayout(g);
-let W = 0, H = 0, DPR = 1, S = [], R = 12, stick = 4;
+let W = 0, H = 0, DPR = 1, S = [], R = 12, stick = 4, IND = { x: 0, y: 0 };
+const TOP = 92;
 
 function fit() {
   DPR = Math.min(3, window.devicePixelRatio || 1); W = innerWidth; H = innerHeight;
   cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR);
-  const top = 40, bot = 54, side = 10;
+  const top = TOP, bot = 66, side = 10;
   let pad = Math.max(14, Math.min(W, H) * 0.06);
   for (let pass = 0; pass < 2; pass++) {
     const bw = W - 2 * (side + pad), bh = H - top - bot - 2 * pad;
@@ -153,51 +150,65 @@ function fit() {
     const ls = g.edges.map(([a, b]) => Math.hypot(S[a][0] - S[b][0], S[a][1] - S[b][1])).sort((a, b) => a - b);
     const med = ls[ls.length >> 1], mn = ls[0];
     R = Math.max(7, Math.min(med * 0.36, mn * 0.46, 30));
-    stick = Math.max(2.2, R * 0.3);
-    pad = R + 6;
+    stick = Math.max(3, R * 0.4);
+    pad = R + 8;
   }
+  IND = { x: W / 2, y: 48 };
 }
 
 // ---------- colour helpers ----------
 const hexRgb = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
 const mix = (a, b, t) => { const A = hexRgb(a), B = hexRgb(b); return 'rgb(' + A.map((x, i) => Math.round(x + (B[i] - x) * t)).join(',') + ')'; };
 const rgba = (h, a) => 'rgba(' + hexRgb(h).join(',') + ',' + a + ')';
+const INK = '#06080d';
 
-// ---------- sound (after first gesture) ----------
+// ---------- sound (AudioContext made on the first gesture; never throws) ----------
 let AC = null;
-function audio() { if (AC) return; try { AC = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { AC = null; } }
+function audio() { if (AC) { try { if (AC.state === 'suspended') AC.resume(); } catch (e) {} return; }
+  try { AC = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { AC = null; } }
 function tone(f, dur = 0.12, type = 'sine', gain = 0.08, when = 0) {
-  if (!AC) return; const t = AC.currentTime + when, o = AC.createOscillator(), gn = AC.createGain();
-  o.type = type; o.frequency.setValueAtTime(f, t); gn.gain.setValueAtTime(0.0001, t);
-  gn.gain.exponentialRampToValueAtTime(gain, t + 0.01); gn.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-  o.connect(gn); gn.connect(AC.destination); o.start(t); o.stop(t + dur + 0.02);
+  if (!AC) return;
+  try {
+    const t = AC.currentTime + Math.max(0, when), o = AC.createOscillator(), gn = AC.createGain();
+    o.type = type; o.frequency.setValueAtTime(f, t); gn.gain.setValueAtTime(0.0001, t);
+    gn.gain.exponentialRampToValueAtTime(gain, t + 0.008); gn.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(gn); gn.connect(AC.destination); o.start(t); o.stop(t + dur + 0.02);
+  } catch (e) {}
 }
-const PENTA = [392, 440, 523, 587, 659, 784, 880, 1047, 1175, 1319, 1568];
+const chime = (f, when = 0) => { tone(f, 0.32, 'sine', 0.05, when); tone(f * 2.76, 0.14, 'sine', 0.018, when); tone(f * 5.4, 0.06, 'sine', 0.008, when); };
+const pop = (f, when = 0) => { tone(f, 0.07, 'triangle', 0.05, when); tone(f * 3, 0.025, 'square', 0.012, when); };
+const click = (when = 0) => { tone(2400, 0.03, 'square', 0.025, when); tone(1200, 0.05, 'triangle', 0.03, when); };
+const bonk = () => { tone(170, 0.18, 'sine', 0.07); tone(120, 0.22, 'triangle', 0.04, 0.03); };
+const PENTA = [392, 440, 523, 587, 659, 784, 880, 1047, 1175, 1319, 1568, 1760, 2093];
+const pent = i => PENTA[Math.max(0, Math.min(PENTA.length - 1, i))];
 
 // ---------- state ----------
 let sel = null;      // { K, anchor, traced: Set }
 let pend = null;     // a tapped sphere waiting for its partner
-let drag = null;     // { start, cur, K, moved }
-let anim = null;     // swap ripple { t0, depth, old, K, maxD }
-let winT = 0, hint = null, wob = {}, toastT = 0;
-const STEP = RM ? 0 : 95;
+let drag = null;     // { start, cur, K, bad }
+let press = null;    // { u, t0, cands: [K] } while a finger is down on a sphere
+let anim = null;     // swap wave { t0, delay: {u: ms}, old, K, end }
+let winT = 0, hint = null, wob = {}, touched = false, parts = [], lastT = 0, burstDone = false;
+let cradle = null, holeTaps = [], eggSent = false;
+const WIN_MS = RM ? 1500 : 3600;
 const now = () => performance.now();
+const ind = { cols: null, n: -1, t0: -1e9 }, lsHit = {};
+if (!CanvasRenderingContext2D.prototype.roundRect) CanvasRenderingContext2D.prototype.roundRect = function (x, y, w, h) { this.rect(x, y, w, h); };
 
-function toast(msg) { toastEl.textContent = msg; toastEl.style.opacity = 1; clearTimeout(toastT); toastT = setTimeout(() => { toastEl.style.opacity = 0; }, 1600); }
-function wobble(u) { wob[u] = now(); }
+// BFS distance from the hole over the whole graph: the win light show runs out along the sticks in this order
+const HD = (() => { const d = new Array(g.n).fill(-1); d[g.hole] = 0; let fr = [g.hole];
+  while (fr.length) { const nx = []; for (const u of fr) for (const v of g.adj[u]) if (d[v] < 0) { d[v] = d[u] + 1; nx.push(v); } fr = nx; }
+  return d; })();
+const HDMAX = Math.max(1, ...HD);
 
-function cue() {
-  const rc = [...new Set(g.rimColours())].sort((a, b) => a - b);
-  const balls = rc.map(c => `<span class="ball" style="background:radial-gradient(circle at 35% 30%, ${E[c].pastel}, ${E[c].hex} 55%, ${E[c].dark})"></span>`).join('');
-  if (g.won()) {
-    const f = g.free();
-    const again = LAB.embedded ? '' : ' tap to play again';
-    cueEl.innerHTML = `${balls}<span class="q" style="background:${E[f].hex};color:#fff;border-color:#fff">&#10003;</span><b>${E[f].name}!</b>${again}`;
-    return;
-  }
-  let pv = '';
-  if (sel && !sel.K.web) { const p = g.preview(sel.K); pv = `<span class="pv">&middot; swap &rarr; ${p.rimCount}</span>`; }
-  cueEl.innerHTML = `<span class="q">?</span> ring ${balls}<b>${rc.length}</b> need <b>${g.goal}</b>${pv}`;
+function say() {
+  if (g.won()) { const f = g.free(); srEl.textContent = 'Solved. The hole is ' + (f >= 0 ? E[f].name : '') + '.'; return; }
+  srEl.textContent = 'The ring uses ' + new Set(g.rimColours()).size + ' elements; goal ' + g.goal + '.';
+}
+function wobble(u, delay = 0) {
+  if (u == null) return; const o = g.adj[u].filter(v => v !== g.hole), v = o.length ? o[(Math.random() * o.length) | 0] : u;
+  const dx = S[v][0] - S[u][0], dy = S[v][1] - S[u][1], l = Math.hypot(dx, dy) || 1;
+  wob[u] = { t0: now() + delay, dx: dx / l, dy: dy / l };
 }
 
 // ---------- gestures ----------
@@ -206,57 +217,77 @@ function hit(x, y, tight) {
   for (let u = 0; u < g.n; u++) { const d = Math.hypot(S[u][0] - x, S[u][1] - y); if (d < bd) { bd = d; best = u; } }
   return bd <= lim ? best : null;
 }
+function candidates(u) {
+  const out = [], seen = new Set();
+  for (const v of g.adj[u]) { if (v === g.hole) continue; const c = g.col[v]; if (c === g.col[u] || seen.has(c)) continue; seen.add(c);
+    const K = g.chainAt(u, c); if (K && K.size > 1) out.push(K); }
+  return out;
+}
 function select(K, anchor, traced) {
-  sel = { K, anchor, traced: new Set(traced) }; pend = null;
-  tone(K.web ? 220 : 523, 0.1, 'triangle', 0.06); cue();
-  if (K.web) toast('this pair is one big web: swapping only renames');
+  sel = { K, anchor, traced: new Set(traced) }; pend = null; press = null;
+  if (K.web) { K.vs.forEach((u, i) => wobble(u, i * 12)); bonk(); }
+  else { chime(pent(0)); chime(pent(1), 0.05); }
+  say();
 }
-function doSwap(K, from) {
-  if (K.web) {
-    K.vs.forEach(wobble); tone(150, 0.25, 'sine', 0.07);
-    toast('one web of these two: a swap would just rename them'); sel = null; cue(); return;
-  }
-  const depth = rippleDepth(g, K, from), old = {}; K.vs.forEach(u => { old[u] = g.col[u]; });
-  const maxD = Math.max(...Object.values(depth));
-  sel = null; pend = null;
+function doSwap(K, from, x, y) {
+  if (K.web) { K.vs.forEach((u, i) => wobble(u, i * 15)); bonk(); sel = null; say(); return; }
+  const old = {}; K.vs.forEach(u => { old[u] = g.col[u]; });
+  // the wave: spheres flip in order of distance from the touch point, 30-60 ms apart
+  if (x == null) { x = S[from][0]; y = S[from][1]; }
+  const order = K.vs.slice().sort((a, b) => Math.hypot(S[a][0] - x, S[a][1] - y) - Math.hypot(S[b][0] - x, S[b][1] - y));
+  const step = RM ? 0 : Math.max(30, Math.min(60, 900 / order.length)), delay = {};
+  order.forEach((u, i) => { delay[u] = i * step; });
+  const end = (order.length - 1) * step;
+  sel = null; pend = null; press = null;
+  LAB.at && LAB.at(x, y);
   g.swap(K);
-  anim = { t0: now(), depth, old, K, maxD };
-  if (AC) for (let d = 0; d <= maxD; d++) tone(PENTA[Math.min(PENTA.length - 1, d + 2)], 0.14, 'sine', 0.05, d * STEP / 1000);
+  anim = { t0: now(), delay, old, K, end };
+  order.forEach((u, i) => pop(pent(2 + Math.floor(i * 8 / order.length)), delay[u] / 1000));
   if (g.won()) {
-    winT = now() + (maxD + 1) * STEP + 120;
-    if (AC) [523, 659, 784, 1047].forEach((f, i) => tone(f, 0.5, 'triangle', 0.06, (winT - now()) / 1000 + i * 0.09));
-    setTimeout(cue, winT - now());
+    winT = now() + end + 220;
+    if (AC) [523, 659, 784, 1047, 1319].forEach((f, i) => chime(f, (winT - now()) / 1000 + i * 0.08));
   }
-  cue();
+  say();
 }
-function tap(u) {
-  if (u == null) { sel = null; pend = null; cue(); return; }
-  if (u === g.hole) { wobble(u); const gd = g.good(); if (gd.length) { hint = { K: gd[0], t0: now() }; tone(330, 0.15, 'sine', 0.05); } return; }
-  if (sel && sel.K.set.has(u)) { doSwap(sel.K, sel.anchor); return; }
+function tap(u, x, y) {
+  if (u == null) { sel = null; pend = null; return; }
+  if (u === g.hole) {
+    wobble(u); const t = now(); holeTaps = holeTaps.filter(s => t - s < 3000); holeTaps.push(t);
+    if (holeTaps.length >= 5 && !cradle) { holeTaps = []; startCradle(); return; }
+    const gd = g.good(); if (gd.length) { hint = { K: gd[0], t0: t }; chime(330); } return;
+  }
+  if (sel && sel.K.set.has(u)) { doSwap(sel.K, u, x, y); return; }
   if (pend != null && pend !== u) {
     const K = chainFor(g, pend, u);
     if (K) { select(K, pend, [pend, u]); return; }
   }
-  if (pend === u) { pend = null; cue(); return; }
-  pend = u; sel = null; tone(440, 0.06, 'sine', 0.04); cue();
+  if (pend === u) { pend = null; return; }
+  pend = u; sel = null; chime(pent(1));
+}
+// easter egg: Newton's cradle on the rim
+function startCradle() {
+  cradle = { t0: now() };
+  if (AC) { click(0); for (let i = 1; i <= 4; i++) click(i * 0.25 * (RM ? 0.6 : 1)); }
+  if (!eggSent) { eggSent = true; LAB.egg && LAB.egg('cradle', 60); }
 }
 let doneSent = false;
 function armDone() {
   if (!LAB.embedded || doneSent || !g.won()) return;
   doneSent = true;
   setTimeout(() => { // doSwap assigns winT after g.swap returns, so read it on the next turn
-    setTimeout(() => { if (g.won()) LAB.done(); else doneSent = false; }, Math.max(500, (winT || 0) - now() + 700));
+    setTimeout(() => { if (g.won()) LAB.done(); else doneSent = false; }, Math.max(500, (winT || 0) - now() + WIN_MS));
   }, 0);
 }
 cv.addEventListener('pointerdown', e => {
-  audio(); e.preventDefault();
-  if (g.won()) { if (!LAB.embedded && now() > winT + 300) g.reset(); return; }
+  audio(); e.preventDefault(); touched = true;
+  if (g.won()) { if (!LAB.embedded && now() > winT + WIN_MS) g.reset(); return; }
   const u = hit(e.clientX, e.clientY);
   try { cv.setPointerCapture(e.pointerId); } catch (_) {}
   drag = { id: e.pointerId, start: u, cur: u, K: null, bad: null };
+  if (u != null && u !== g.hole) { press = { u, t0: now(), cands: candidates(u) }; pop(pent(3)); }
 });
 cv.addEventListener('pointermove', e => {
-  if (!drag || drag.id !== e.pointerId || drag.start == null || drag.start === g.hole) return;
+  if (!drag || drag.id !== e.pointerId || drag.start == null || drag.start === g.hole || g.won()) return;
   const v = hit(e.clientX, e.clientY, true);
   if (v == null || v === drag.cur) return;
   if (!drag.K) {
@@ -267,127 +298,226 @@ cv.addEventListener('pointermove', e => {
     return;
   }
   if (drag.K.set.has(v)) {
-    if (!sel.traced.has(v)) { sel.traced.add(v); tone(PENTA[Math.min(PENTA.length - 1, sel.traced.size)], 0.08, 'sine', 0.045); }
+    if (!sel.traced.has(v)) { sel.traced.add(v); chime(pent(sel.traced.size)); }
     drag.cur = v;
   } else if (g.adj[drag.cur].includes(v) && drag.bad !== v) { drag.bad = v; wobble(v); tone(180, 0.08, 'sine', 0.04); }
 });
 function up(e) {
   if (!drag || drag.id !== e.pointerId) return;
-  const d = drag; drag = null;
-  if (d.K) { if (sel && sel.K === d.K && sel.traced.size === d.K.size) doSwap(d.K, sel.anchor); return; }
-  if (d.start === g.hole || d.start == null || hit(e.clientX, e.clientY) === d.start) tap(d.start);
+  const d = drag; drag = null; press = null;
+  if (g.won()) return;
+  if (d.K) { if (sel && sel.K === d.K && sel.traced.size === d.K.size) doSwap(d.K, d.cur, e.clientX, e.clientY); return; }
+  if (d.start === g.hole || d.start == null || hit(e.clientX, e.clientY) === d.start) tap(d.start, e.clientX, e.clientY);
 }
 cv.addEventListener('pointerup', up);
-cv.addEventListener('pointercancel', e => { if (drag && drag.id === e.pointerId) drag = null; });
-document.getElementById('undo').addEventListener('click', () => { audio(); if (g.won() && LAB.embedded) return; if (!g.won() || now() > winT) g.undo(); });
-document.getElementById('reset').addEventListener('click', () => { audio(); if (g.won() && LAB.embedded) return; g.reset(); });
+cv.addEventListener('pointercancel', e => { if (drag && drag.id === e.pointerId) { drag = null; press = null; } });
+document.getElementById('undo').addEventListener('click', () => { audio(); touched = true; if (g.won() && LAB.embedded) return; if (!g.won() || now() > winT + WIN_MS) g.undo(); });
+document.getElementById('reset').addEventListener('click', () => { audio(); touched = true; if (g.won() && LAB.embedded) return; g.reset(); });
 g.on((_, info) => {
-  if (info.type !== 'swap') { sel = null; pend = null; anim = null; hint = null; if (!g.won()) { winT = 0; doneSent = false; } }
+  if (info.type !== 'swap') { sel = null; pend = null; anim = null; hint = null; press = null; if (!g.won()) { winT = 0; doneSent = false; burstDone = false; } }
   if (g.won() && !winT) winT = now() + 400; // a swap from outside the page (the embed check) still fills the glass
   if (g.won()) armDone();
-  cue();
+  say();
 });
 window.PLAYLAB = { get won() { return !!(winT && now() > winT); } };
 
-// ---------- drawing ----------
-function shadow(x, y, r) {
-  const gr = ctx.createRadialGradient(x + r * 0.2, y + r * 0.9, 0, x + r * 0.2, y + r * 0.9, r * 1.05);
-  gr.addColorStop(0, 'rgba(0,0,0,.5)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
-  ctx.fillStyle = gr; ctx.beginPath(); ctx.ellipse(x + r * 0.2, y + r * 0.9, r * 1.05, r * 0.38, 0, 0, 7); ctx.fill();
+// ---------- particles ----------
+function spark(x, y, c, n, sp = 1) {
+  if (RM) n = Math.min(n, 2);
+  for (let i = 0; i < n; i++) { const a = Math.random() * 6.283, v = (0.6 + Math.random()) * sp;
+    parts.push({ k: 'spark', x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 0.6, t0: now(), life: 600 + Math.random() * 500, c, s: 2 + Math.random() * 3 }); }
 }
-function ball(x, y, r, c) {
+function star(x, y, s) {
+  ctx.beginPath(); for (let i = 0; i < 8; i++) { const a = i * Math.PI / 4, r = i % 2 ? s * 0.32 : s; ctx.lineTo(x + Math.cos(a) * r, y + Math.sin(a) * r); } ctx.closePath(); ctx.fill();
+}
+function drawParts(t, dt) {
+  parts = parts.filter(p => t - p.t0 < p.life);
+  for (const p of parts) {
+    const k = (t - p.t0) / p.life; p.x += p.vx * dt / 16; p.y += p.vy * dt / 16; p.vy += (p.k === 'ball' ? 0.32 : 0.04) * dt / 16;
+    if (p.k === 'ball') { ctx.save(); ctx.globalAlpha = 1 - k * k; marble(p.x, p.y, p.r * (1 + 0.3 * k), p.c, 0); ctx.restore(); }
+    else { ctx.fillStyle = k < 0.3 ? '#ffffff' : rgba(E[p.c].neon, 1 - k); star(p.x, p.y, p.s * (1 - k * 0.6)); }
+  }
+}
+
+// ---------- drawing ----------
+function marble(x, y, r, c, glow, sx = 1) {
   const e = E[c];
-  const gr = ctx.createRadialGradient(x - r * 0.35, y - r * 0.42, r * 0.05, x, y, r * 1.02);
-  gr.addColorStop(0, mix(e.pastel, '#ffffff', 0.55)); gr.addColorStop(0.25, e.neon); gr.addColorStop(0.6, e.hex); gr.addColorStop(1, e.dark);
-  ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill();
-  // rim light from below
-  const rl = ctx.createRadialGradient(x + r * 0.2, y + r * 0.55, r * 0.55, x, y, r);
-  rl.addColorStop(0, 'rgba(255,255,255,0)'); rl.addColorStop(1, rgba(e.pastel, 0.28));
-  ctx.fillStyle = rl; ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill();
-  // icon
-  if (r >= 11) {
-    ctx.save(); ctx.translate(x - r * 0.5, y - r * 0.47); ctx.scale(r / 24, r / 24);
-    if (c < 2) { ctx.fillStyle = 'rgba(255,255,255,.33)'; ctx.fill(ICONS[c]); }
-    else { ctx.strokeStyle = 'rgba(255,255,255,.4)'; ctx.lineWidth = 2.2; ctx.lineCap = 'round'; ctx.stroke(ICONS[c]); }
+  ctx.save(); ctx.translate(x, y); ctx.scale(sx, 1);
+  if (glow > 0.01) { ctx.shadowColor = e.neon; ctx.shadowBlur = 8 + 22 * glow; }
+  const gr = ctx.createRadialGradient(-r * 0.38, -r * 0.42, r * 0.06, 0, 0, r * 1.02);
+  gr.addColorStop(0, mix(e.pastel, '#ffffff', 0.5 + 0.4 * glow)); gr.addColorStop(0.28, glow > 0.01 ? mix(e.neon, '#ffffff', glow * 0.3) : e.neon);
+  gr.addColorStop(0.68, e.hex); gr.addColorStop(1, e.dark);
+  ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(0, 0, r, 0, 7); ctx.fill();
+  ctx.shadowBlur = 0;
+  // bounce light from below
+  const rl = ctx.createRadialGradient(r * 0.15, r * 0.6, r * 0.5, 0, 0, r);
+  rl.addColorStop(0, 'rgba(255,255,255,0)'); rl.addColorStop(1, rgba(e.pastel, 0.3));
+  ctx.fillStyle = rl; ctx.beginPath(); ctx.arc(0, 0, r, 0, 7); ctx.fill();
+  if (r >= 13) {
+    ctx.save(); ctx.translate(-r * 0.46, -r * 0.42); ctx.scale(r / 26, r / 26);
+    if (c < 2) { ctx.fillStyle = 'rgba(255,255,255,.3)'; ctx.fill(ICONS[c]); }
+    else { ctx.strokeStyle = 'rgba(255,255,255,.38)'; ctx.lineWidth = 2.4; ctx.lineCap = 'round'; ctx.stroke(ICONS[c]); }
     ctx.restore();
   }
-  // specular
-  ctx.fillStyle = 'rgba(255,255,255,.75)'; ctx.beginPath(); ctx.ellipse(x - r * 0.38, y - r * 0.46, r * 0.22, r * 0.13, -0.6, 0, 7); ctx.fill();
+  // thick dark outline
+  ctx.strokeStyle = INK; ctx.lineWidth = Math.max(1.6, r * 0.15); ctx.beginPath(); ctx.arc(0, 0, r, 0, 7); ctx.stroke();
+  // top-left specular: a soft blob plus a hot dot
+  ctx.fillStyle = 'rgba(255,255,255,.82)'; ctx.beginPath(); ctx.ellipse(-r * 0.36, -r * 0.44, r * 0.27, r * 0.15, -0.65, 0, 7); ctx.fill();
+  ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(-r * 0.12, -r * 0.6, r * 0.07, 0, 7); ctx.fill();
+  ctx.restore();
 }
+function dropShadow(x, y, r) { ctx.fillStyle = 'rgba(0,0,0,.42)'; ctx.beginPath(); ctx.arc(x + r * 0.16, y + r * 0.26, r * 1.02, 0, 7); ctx.fill(); }
 function glass(x, y, r, t) {
+  const won = winT && t > winT;
+  dropShadow(x, y, r);
   const gr = ctx.createRadialGradient(x - r * 0.3, y - r * 0.35, r * 0.1, x, y, r);
-  gr.addColorStop(0, 'rgba(220,232,255,.22)'); gr.addColorStop(0.7, 'rgba(110,130,170,.10)'); gr.addColorStop(1, 'rgba(190,210,245,.38)');
+  gr.addColorStop(0, 'rgba(225,236,255,.30)'); gr.addColorStop(0.7, 'rgba(110,130,170,.16)'); gr.addColorStop(1, 'rgba(190,210,245,.45)');
+  ctx.fillStyle = '#121826'; ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill();
   ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill();
-  if (winT && t > winT) {                                  // fills with the free element
-    const k = RM ? 1 : Math.min(1, (t - winT) / 650), f = g.free();
-    if (f >= 0) { const e = 1 - Math.pow(1 - k, 3); ctx.save(); ctx.globalAlpha = 0.25 + 0.75 * e; ball(x, y, r * (0.15 + 0.85 * e), f); ctx.restore(); }
+  if (won) {                                               // fills with the free element in a burst
+    const k = RM ? 1 : Math.min(1, (t - winT) / 600), f = g.free();
+    const e = k < 1 ? 1 + 2.70158 * Math.pow(k - 1, 3) + 1.70158 * Math.pow(k - 1, 2) : 1; // easeOutBack
+    if (f >= 0) { const pul = RM ? 0 : 0.5 + 0.5 * Math.sin((t - winT) / 160); marble(x, y, r * (0.1 + 0.9 * e), f, Math.min(1, 0.4 + 0.4 * pul)); }
   } else {
-    ctx.fillStyle = 'rgba(215,228,255,.85)'; ctx.font = `800 ${Math.round(r * 1.15)}px ui-rounded, system-ui, sans-serif`;
+    ctx.fillStyle = 'rgba(215,228,255,.9)'; ctx.font = `900 ${Math.round(r * 1.15)}px ui-rounded, system-ui, sans-serif`;
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('?', x, y + r * 0.06);
   }
-  ctx.strokeStyle = 'rgba(200,220,255,.6)'; ctx.lineWidth = 1.4; ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.stroke();
-  ctx.fillStyle = 'rgba(255,255,255,.7)'; ctx.beginPath(); ctx.ellipse(x - r * 0.38, y - r * 0.46, r * 0.2, r * 0.11, -0.6, 0, 7); ctx.fill();
+  ctx.strokeStyle = INK; ctx.lineWidth = Math.max(1.6, r * 0.13); ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.stroke();
+  ctx.strokeStyle = 'rgba(200,220,255,.7)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(x, y, r - r * 0.12, 0, 7); ctx.stroke();
+  ctx.fillStyle = 'rgba(255,255,255,.8)'; ctx.beginPath(); ctx.ellipse(x - r * 0.38, y - r * 0.46, r * 0.22, r * 0.12, -0.6, 0, 7); ctx.fill();
 }
 function stickLine(a, b, w, col) { ctx.strokeStyle = col; ctx.lineWidth = w; ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke(); }
 function dispCol(u, t) {
-  if (anim && anim.old[u] !== undefined && t < anim.t0 + anim.depth[u] * STEP + STEP * 0.5) return anim.old[u];
+  if (anim && anim.old[u] !== undefined && t < anim.t0 + anim.delay[u]) return anim.old[u];
   return g.col[u];
+}
+// the goal indicator: a glass bubble, the 5 rim colours round it as little marbles, and the count in the middle
+function indicator(t, won) {
+  const cols = g.rim.map(u => dispCol(u, t)), set = [...new Set(cols)], n = set.length;
+  if (ind.cols && n !== ind.n) {
+    ind.t0 = t;
+    for (const c of new Set(ind.cols)) if (!set.includes(c)) {      // an element left the rim: its marble flies out
+      const i = ind.cols.indexOf(c), a = -Math.PI / 2 + i * 2 * Math.PI / cols.length;
+      const x = IND.x + Math.cos(a) * 30, y = IND.y + Math.sin(a) * 30;
+      parts.push({ k: 'ball', x, y, vx: Math.cos(a) * 3 + (Math.random() - 0.5) * 2, vy: Math.sin(a) * 3 - 4, t0: t, life: RM ? 300 : 900, c, r: 7.5 });
+      spark(x, y, c, 6, 2);
+      if (AC) chime(1319);
+    }
+  }
+  ind.cols = cols; ind.n = n;
+  const k = (t - ind.t0) / 520, b = RM || k < 0 || k > 1 ? 0 : Math.sin(k * Math.PI * 2.5) * (1 - k);
+  const s = 1 + 0.28 * b, br = 18 * s, f = won ? g.free() : -1;
+  ctx.save(); ctx.translate(IND.x, IND.y);
+  // bubble
+  ctx.fillStyle = 'rgba(0,0,0,.4)'; ctx.beginPath(); ctx.arc(3, 5, br, 0, 7); ctx.fill();
+  const gg = ctx.createRadialGradient(-br * 0.3, -br * 0.35, 1, 0, 0, br);
+  if (f >= 0) { gg.addColorStop(0, E[f].pastel); gg.addColorStop(0.6, E[f].hex); gg.addColorStop(1, E[f].dark); }
+  else { gg.addColorStop(0, 'rgba(225,236,255,.4)'); gg.addColorStop(0.7, 'rgba(60,76,110,.9)'); gg.addColorStop(1, 'rgba(150,175,220,.9)'); }
+  ctx.fillStyle = gg; ctx.beginPath(); ctx.arc(0, 0, br, 0, 7); ctx.fill();
+  ctx.strokeStyle = INK; ctx.lineWidth = 3; ctx.stroke();
+  // rim marbles
+  for (let i = 0; i < cols.length; i++) {
+    const a = -Math.PI / 2 + i * 2 * Math.PI / cols.length + (RM ? 0 : b * 0.25), rr = 30 + 4 * b;
+    marble(Math.cos(a) * rr, Math.sin(a) * rr, 7.5, cols[i], won ? 0.6 : 0);
+  }
+  // the count
+  ctx.font = `900 ${Math.round(24 * s)}px ui-rounded, "SF Pro Rounded", system-ui, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.lineJoin = 'round'; ctx.strokeStyle = INK; ctx.lineWidth = 5; ctx.strokeText(String(n), 0, 1.5);
+  ctx.fillStyle = n <= g.goal ? '#ffe066' : '#ffffff'; ctx.fillText(String(n), 0, 1.5);
+  ctx.fillStyle = 'rgba(255,255,255,.7)'; ctx.beginPath(); ctx.ellipse(-br * 0.42, -br * 0.5, br * 0.22, br * 0.11, -0.6, 0, 7); ctx.fill();
+  ctx.restore();
+}
+// ghost finger: from a sphere of a useful chain along a stick onto its partner, until the first touch
+const GHOST = (() => { const K = g.good()[0]; if (!K) return null;
+  for (const u of K.vs) for (const v of g.adj[u]) if (K.set.has(v) && g.col[v] !== g.col[u]) return [u, v]; return null; })();
+function ghost(t, P) {
+  if (touched || !GHOST || g.won()) return;
+  const [u, v] = GHOST, ph = (t % 2400) / 2400, ease = x => x < 0.5 ? 2 * x * x : 1 - Math.pow(-2 * x + 2, 2) / 2;
+  let m, a, down;
+  if (ph < 0.15) { m = 0; a = ph / 0.15; down = ph > 0.08; } else if (ph < 0.62) { m = ease((ph - 0.15) / 0.47); a = 1; down = true; }
+  else if (ph < 0.75) { m = 1; a = 1; down = ph < 0.68; } else { m = 1; a = Math.max(0, 1 - (ph - 0.75) / 0.2); down = false; }
+  const x = P[u][0] + (P[v][0] - P[u][0]) * m, y = P[u][1] + (P[v][1] - P[u][1]) * m;
+  ctx.save(); ctx.globalAlpha = a * 0.92;
+  if (down) { // trail of light along the stick
+    ctx.lineCap = 'round'; stickLine(P[u], [x, y], stick * 1.3, 'rgba(255,255,255,.35)');
+    ctx.strokeStyle = 'rgba(255,255,255,.8)'; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.arc(x, y, R * (1.15 + 0.15 * Math.sin(t / 90)), 0, 7); ctx.stroke();
+  }
+  const s = Math.max(0.8, R / 18) * (down ? 0.92 : 1);
+  ctx.translate(x + 4 * s, y + 6 * s); ctx.rotate(-0.45); ctx.scale(s, s);
+  ctx.fillStyle = 'rgba(0,0,0,.35)'; ctx.beginPath(); ctx.roundRect(-4, 4, 14, 34, 7); ctx.roundRect(-6, 24, 30, 26, 11); ctx.fill();
+  ctx.fillStyle = '#f4f6fb'; ctx.strokeStyle = INK; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.roundRect(-7, 0, 14, 34, 7); ctx.roundRect(-9, 20, 30, 26, 11); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = '#f4f6fb'; ctx.fillRect(-5.5, 19, 11, 6);
+  ctx.fillStyle = 'rgba(255,255,255,.9)'; ctx.beginPath(); ctx.ellipse(-2, 6, 2, 4, 0, 0, 7); ctx.fill();
+  ctx.restore();
 }
 
 function frame() {
-  const t = now(); ctx.setTransform(DPR, 0, 0, DPR, 0, 0); ctx.clearRect(0, 0, W, H); ctx.lineCap = 'round';
-  if (anim && t > anim.t0 + (anim.maxD + 2) * STEP + 300) anim = null;
+  const t = now(), dt = Math.min(50, lastT ? t - lastT : 16); ctx.setTransform(DPR, 0, 0, DPR, 0, 0); ctx.clearRect(0, 0, W, H); ctx.lineCap = 'round';
+  if (anim && t > anim.t0 + anim.end + 600) anim = null;
   if (hint && t > hint.t0 + 1800) hint = null;
-  const P = S.map((p, u) => { const w = wob[u]; if (w === undefined) return p; const k = (t - w) / 380; if (k > 1 || RM) { delete wob[u]; return p; }
-    return [p[0] + Math.sin(k * 26) * R * 0.16 * (1 - k), p[1]]; });
-  const h = g.hole, rimSet = new Set(g.rim), won = winT && t > winT;
-  // shadows
-  for (let u = 0; u < g.n; u++) shadow(P[u][0], P[u][1], R);
-  // plain sticks: dark core plus a lit top edge
+  if (cradle && t > cradle.t0 + (RM ? 600 : 1050)) cradle = null;
+  const h = g.hole, rimSet = new Set(g.rim), won = !!(winT && t > winT), wt = won ? t - winT : 0;
+  // positions: jiggles on the sticks, the cradle swing
+  const P = S.map((p, u) => { const w = wob[u]; if (w === undefined || t < w.t0) return p; const k = (t - w.t0) / 420; if (k > 1 || RM) { delete wob[u]; return p; }
+    const d = Math.sin(k * 30) * R * 0.24 * (1 - k); return [p[0] + w.dx * d, p[1] + w.dy * d]; });
+  if (cradle) {
+    const k = (t - cradle.t0) / (RM ? 600 : 1050), rim = g.rim, m = rim.length, seg = Math.min(3, Math.floor(k * 4)), q = k * 4 - seg;
+    const end = seg % 2 ? rim[m - 1] : rim[0], nb = seg % 2 ? rim[m - 2] : rim[1];
+    const sw = Math.sin(q * Math.PI) * R * (RM ? 0.5 : 1.1);
+    const dx = S[end][0] - S[nb][0], dy = S[end][1] - S[nb][1], l = Math.hypot(dx, dy) || 1;
+    const ox = S[end][0] - S[h][0], oy = S[end][1] - S[h][1], ol = Math.hypot(ox, oy) || 1;
+    P[end] = [S[end][0] + dx / l * sw + ox / ol * sw * 0.35, S[end][1] + dy / l * sw + oy / ol * sw * 0.35];
+    if (q < 0.12) for (let i = 1; i < m - 1; i++) { const u = rim[i]; P[u] = [S[u][0] + Math.sin(t / 8) * 1.2, S[u][1]]; }
+  }
+  // light show (after the fill): two waves out along the sticks from the hole
+  const LS = u => { if (!won || RM && wt > WIN_MS) return 0; let v = 0;
+    for (const w0 of RM ? [500] : [650, 1650]) { const d = (wt - w0 - HD[u] * 150) / 140; v = Math.max(v, Math.exp(-d * d)); } return v; };
+  // drop shadows (offset darker copies) of sticks and spheres
+  ctx.save(); ctx.translate(R * 0.16, R * 0.26);
+  for (const [a, b] of g.edges) if (a !== h && b !== h) stickLine(P[a], P[b], stick + 3, 'rgba(0,0,0,.3)');
+  ctx.restore();
+  for (let u = 0; u < g.n; u++) if (u !== h) dropShadow(P[u][0], P[u][1], R);
+  // plain sticks: dark outline, body, lit top edge
   for (const [a, b] of g.edges) {
     if (a === h || b === h) continue;
-    stickLine(P[a], P[b], stick, '#2b3240');
-    ctx.save(); ctx.translate(0, -stick * 0.18); stickLine(P[a], P[b], stick * 0.4, 'rgba(150,165,190,.35)'); ctx.restore();
+    stickLine(P[a], P[b], stick + 3.5, INK);
+    const ls = won ? Math.max(LS(a), LS(b)) : 0;
+    stickLine(P[a], P[b], stick, ls > 0.05 ? mix('#3d4760', E[g.col[a]].neon, Math.min(1, ls)) : '#3d4760');
+    ctx.save(); ctx.translate(0, -stick * 0.2); stickLine(P[a], P[b], stick * 0.32, 'rgba(190,205,235,.42)'); ctx.restore();
   }
   // hole spokes: thin glass
-  ctx.setLineDash([stick * 0.6, stick * 1.2]);
-  for (const v of g.adj[h]) stickLine(P[h], P[v], Math.max(1.2, stick * 0.35), won ? rgba(E[g.free()].neon, 0.8) : 'rgba(170,195,235,.4)');
+  ctx.setLineDash([stick * 0.5, stick * 1.1]);
+  for (const v of g.adj[h]) stickLine(P[h], P[v], Math.max(1.4, stick * 0.35), won ? rgba(E[g.free()].neon, 0.85) : 'rgba(170,195,235,.45)');
   ctx.setLineDash([]);
   // the rim ring
   const pulse = RM ? 0.5 : 0.5 + 0.5 * Math.sin(t / 420);
   ctx.save(); ctx.shadowColor = won ? E[g.free()].neon : 'rgba(140,190,255,.9)'; ctx.shadowBlur = 10 + 6 * pulse;
-  for (let i = 0; i < g.rim.length; i++) if (g.adj[g.rim[i]].includes(g.rim[(i + 1) % g.rim.length])) stickLine(P[g.rim[i]], P[g.rim[(i + 1) % g.rim.length]], stick * 1.25, won ? rgba(E[g.free()].neon, 0.95) : `rgba(165,205,255,${0.55 + 0.25 * pulse})`);
+  for (let i = 0; i < g.rim.length; i++) { const a = g.rim[i], b = g.rim[(i + 1) % g.rim.length]; if (!g.adj[a].includes(b)) continue;
+    stickLine(P[a], P[b], stick * 1.25, won ? rgba(E[g.free()].neon, 0.95) : `rgba(165,205,255,${0.55 + 0.25 * pulse})`); }
   ctx.restore();
+  // a pressed sphere: its candidate chains glow
+  if (press && !sel) for (const K of press.cands) {
+    ctx.save(); ctx.globalAlpha = 0.55 + 0.25 * Math.sin((t - press.t0) / 110); ctx.shadowBlur = 12;
+    for (const [a, b] of g.edges) { if (!K.set.has(a) || !K.set.has(b)) continue; ctx.shadowColor = E[g.col[b]].neon;
+      const gr = ctx.createLinearGradient(P[a][0], P[a][1], P[b][0], P[b][1]); gr.addColorStop(0, E[g.col[a]].neon); gr.addColorStop(1, E[g.col[b]].neon);
+      stickLine(P[a], P[b], stick * 0.95, gr); }
+    ctx.restore();
+  }
   // pending sphere: its sticks to the other elements, softly
-  if (pend != null && !sel) for (const v of g.adj[pend]) if (v !== h) stickLine(P[pend], P[v], stick * 0.9, 'rgba(255,255,255,.22)');
-  // selected chain or hint: glowing sticks (two-tone), with a slow shimmer
-  const lit = sel ? sel.K : hint ? hint.K : null;
+  if (pend != null && !sel) for (const v of g.adj[pend]) if (v !== h) stickLine(P[pend], P[v], stick * 0.9, 'rgba(255,255,255,.25)');
+  // selected chain or hint: two-tone sticks that pulse between the chain's two colours
+  const lit = sel ? sel.K : hint ? hint.K : null, beat = RM ? 0.5 : 0.5 + 0.5 * Math.sin(t / 170);
   if (lit) {
     const [ca, cb] = lit.pair, al = sel ? 1 : 0.45 + 0.4 * Math.sin((t - hint.t0) / 150) ** 2;
-    ctx.save(); ctx.globalAlpha = lit.web ? 0.45 : al; ctx.shadowBlur = 14 + 6 * pulse;
+    ctx.save(); ctx.globalAlpha = lit.web ? 0.4 : al; ctx.shadowBlur = 12 + 12 * beat; ctx.shadowColor = beat > 0.5 ? E[ca].neon : E[cb].neon;
     for (const [a, b] of g.edges) {
       if (!lit.set.has(a) || !lit.set.has(b)) continue;
       const gr = ctx.createLinearGradient(P[a][0], P[a][1], P[b][0], P[b][1]);
       gr.addColorStop(0, E[g.col[a]].neon); gr.addColorStop(1, E[g.col[b]].neon);
-      ctx.shadowColor = E[g.col[a] === ca ? cb : ca].neon;
       const tr = sel && sel.traced.has(a) && sel.traced.has(b);
-      stickLine(P[a], P[b], stick * (tr ? 1.6 : 1.2), gr);
-      stickLine(P[a], P[b], stick * 0.4, 'rgba(255,255,255,.75)');
-    }
-    ctx.restore();
-  }
-  // swap ripple: light pulses running out along the chain's sticks
-  if (anim && STEP) {
-    ctx.save(); ctx.shadowColor = '#fff'; ctx.shadowBlur = 16;
-    for (const [a0, b0] of g.edges) {
-      if (!anim.K.set.has(a0) || !anim.K.set.has(b0)) continue;
-      let a = a0, b = b0; if (anim.depth[a] > anim.depth[b]) { a = b0; b = a0; }
-      if (anim.depth[a] === anim.depth[b]) continue;
-      const k = (t - anim.t0 - anim.depth[a] * STEP) / STEP; if (k < 0 || k > 1.4) continue;
-      const kk = Math.min(1, k), x = P[a][0] + (P[b][0] - P[a][0]) * kk, y = P[a][1] + (P[b][1] - P[a][1]) * kk;
-      ctx.globalAlpha = k > 1 ? (1.4 - k) / 0.4 : 1;
-      stickLine(P[a], [x, y], stick * 1.3, 'rgba(255,255,255,.55)');
-      ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(x, y, stick * 0.9, 0, 7); ctx.fill();
+      stickLine(P[a], P[b], stick * (tr ? 1.5 : 1.15) * (1 + 0.12 * beat), gr);
+      stickLine(P[a], P[b], stick * 0.35, `rgba(255,255,255,${0.5 + 0.4 * beat})`);
     }
     ctx.restore();
   }
@@ -395,33 +525,49 @@ function frame() {
   const order = [...Array(g.n).keys()].sort((a, b) => P[a][1] - P[b][1]);
   for (const u of order) {
     const [x, y] = P[u];
-    if (u === h) { glass(x, y, R * 1.08, t); continue; }
-    let r = R;
-    if (anim && anim.depth[u] !== undefined) { const k = (t - anim.t0 - anim.depth[u] * STEP) / (STEP * 2.2 || 1); if (k > 0 && k < 1) r *= 1 + 0.22 * Math.sin(k * Math.PI); }
-    if (lit && lit.set.has(u)) r *= 1.06;
-    ball(x, y, r, dispCol(u, t));
-    if (won && rimSet.has(u)) { ctx.strokeStyle = rgba(E[g.free()].neon, 0.6); ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(x, y, r + 3, 0, 7); ctx.stroke(); }
-    if (sel && sel.K.set.has(u)) {
-      ctx.strokeStyle = sel.traced.has(u) ? '#fff' : 'rgba(255,255,255,.4)'; ctx.lineWidth = sel.traced.has(u) ? 2.2 : 1.4;
-      ctx.beginPath(); ctx.arc(x, y, r + 3.5, 0, 7); ctx.stroke();
+    if (u === h) { glass(x, y, R * 1.12, t); continue; }
+    let r = R, sx = 1, glow = 0;
+    if (anim && anim.delay[u] !== undefined && !RM) {     // flip (squash through edge-on) then pop with an overshoot
+      const d = t - anim.t0 - anim.delay[u];
+      if (d > -70 && d < 0) sx = 0.15 + 0.85 * (-d / 70);
+      else if (d >= 0 && d < 70) sx = 0.15 + 0.85 * (d / 70);
+      if (d >= 0 && d < 320) { const k = d / 320; r *= 1 + 0.34 * Math.sin(k * Math.PI * 1.4) * (1 - k); glow = 0.6 * (1 - k); }
+      if (d >= 0 && !anim['s' + u]) { anim['s' + u] = 1; spark(x, y, g.col[u], 3, 1.4); }
+    }
+    if (press && press.u === u) { const k = Math.min(1, (t - press.t0) / 140); r *= 1 + 0.2 * (k < 1 ? 1 + 0.4 * Math.sin(k * Math.PI) : 1); glow = Math.max(glow, 0.7); }
+    if (lit && lit.set.has(u)) { r *= 1.05 + (sel ? 0.05 * beat : 0); if (sel) glow = Math.max(glow, sel.traced.has(u) ? 0.75 : 0.3 + 0.3 * beat); }
+    if (won) { const l = LS(u); r *= 1 + 0.2 * l; glow = Math.max(glow, l, rimSet.has(u) ? 0.35 : 0);
+      if (!RM && l > 0.9 && t - (lsHit[u] || 0) > 600) { lsHit[u] = t; spark(x, y, g.col[u], 2, 1.2); } }
+    marble(x, y, r, dispCol(u, t), glow, sx);
+    if (sel && sel.K.set.has(u) && sel.traced.has(u)) {
+      ctx.strokeStyle = '#fff'; ctx.lineWidth = 2.2; ctx.beginPath(); ctx.arc(x, y, r + 4, 0, 7); ctx.stroke();
     }
   }
   // pending halo
   if (pend != null && !sel) {
-    ctx.save(); ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.setLineDash([5, 4]); ctx.lineDashOffset = RM ? 0 : -t / 40;
-    ctx.beginPath(); ctx.arc(P[pend][0], P[pend][1], R + 5, 0, 7); ctx.stroke(); ctx.restore();
+    ctx.save(); ctx.strokeStyle = '#fff'; ctx.lineWidth = 2.5; ctx.setLineDash([5, 4]); ctx.lineDashOffset = RM ? 0 : -t / 40;
+    ctx.beginPath(); ctx.arc(P[pend][0], P[pend][1], R + 6, 0, 7); ctx.stroke(); ctx.restore();
   }
-  // win burst
-  if (won && !RM) {
-    const k = (t - winT) / 1100;
-    if (k < 1) { ctx.save(); ctx.strokeStyle = rgba(E[g.free()].neon, 1 - k); ctx.lineWidth = 3 * (1 - k) + 1;
-      for (let i = 0; i < 3; i++) { const kk = k - i * 0.12; if (kk > 0) { ctx.beginPath(); ctx.arc(P[h][0], P[h][1], R * (1.1 + kk * 5), 0, 7); ctx.stroke(); } }
-      ctx.restore(); }
+  // win: the burst out of the hole
+  if (won) {
+    const f = g.free();
+    if (!burstDone && f >= 0) { burstDone = true; spark(P[h][0], P[h][1], f, 26, 3.2); if (AC) { tone(196, 0.5, 'triangle', 0.06); click(); } }
+    if (!RM) { const k = wt / 1200;
+      if (k < 1 && f >= 0) { ctx.save(); ctx.lineWidth = 4 * (1 - k) + 1;
+        for (let i = 0; i < 3; i++) { const kk = k - i * 0.14; if (kk > 0) { ctx.strokeStyle = rgba(E[f].neon, Math.max(0, 1 - kk)); ctx.beginPath(); ctx.arc(P[h][0], P[h][1], R * (1.1 + kk * 6), 0, 7); ctx.stroke(); } }
+        ctx.restore(); }
+      // light-show wave chimes
+      for (const w0 of [650, 1650]) for (let d = 1; d <= HDMAX; d++) { const at = w0 + d * 150; if (lastT && lastT - winT < at && wt >= at && AC) chime(pent(3 + d + (w0 > 1000 ? 2 : 0))); }
+    }
   }
+  drawParts(t, dt);
+  indicator(t, won);
+  ghost(t, P);
+  lastT = t;
   requestAnimationFrame(frame);
 }
 addEventListener('resize', fit);
-fit(); cue(); requestAnimationFrame(frame);
+fit(); say(); requestAnimationFrame(frame);
 window.SPHERES = { g, screen: () => S, radius: () => R };   // for debugging / smoke tests
 })();
 </script>
