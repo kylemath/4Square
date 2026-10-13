@@ -195,7 +195,7 @@
         const dim = c.querySelector('.rl-dim'); if (dim) dim.style.opacity = (Math.min(a, 1.6) * .3).toFixed(3);
       });
       if (mid !== logoAt && items[mid]) {
-        logoAt = mid; logoEl.innerHTML = logo(items[mid]);
+        logoAt = mid; logoEl.innerHTML = items[mid].card ? '' : logo(items[mid]);   // a spec card already carries its logo
         const sp = logoEl.firstChild; if (sp) sp.classList.add('pop');
         if (o.onTick && performance.now() - tickAt > 50) { tickAt = performance.now(); o.onTick(items[mid], mid); }
       }
