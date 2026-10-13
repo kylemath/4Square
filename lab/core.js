@@ -42,7 +42,8 @@
 (function () {
   'use strict';
   // The filler gallery (?filler=1) stores one combined graph and opens it in whichever skin is selected.
-  (function installFiller() {
+  // Idempotent: skins call this again inside their own page script, so a cached copy of this file cannot drop the graph.
+  function installFiller() {
     if (typeof location === 'undefined' || !window.GAME) return;
     if (new URLSearchParams(location.search).get('filler') !== '1') return;
     let spec = null;
@@ -54,7 +55,8 @@
     const at = GAME.levels.findIndex(l => l.id === key);
     if (at >= 0) GAME.levels[at] = level; else GAME.levels.push(level);
     if (window.LAYOUT) LAYOUT[key] = { border: [], arcs: {}, centre: spec.pos, cells: spec.cells || null };
-  })();
+  }
+  installFiller();
   const ELEM = [
     { name: 'fire', hex: '#ef5a3c', dark: '#8e1c17', neon: '#ff7a52', pastel: '#f6a08a' },
     { name: 'water', hex: '#3d8fe8', dark: '#1b4f91', neon: '#5ab4ff', pastel: '#9cc6f4' },
@@ -69,6 +71,7 @@
     'M5 19c0-8 5.5-13 15-14-1 9.5-6 15-14 15M6 18c3-4 6-7 9-9',
   ];
   function game(num) {
+    installFiller();
     const G = window.GAME; if (!G) throw new Error('load ../levels.js first');
     num = String(num || new URLSearchParams(location.search).get('lvl') || '4');
     const L = G.levels.find(l => l.id === num || String(l.num) === num) || G.levels.find(l => l.id === 'kempes-double');   // a level id or its number
@@ -159,5 +162,5 @@
     addEventListener('message', e => { const d = e.data; if (d && d.fth && d.cmd === 'tokens' && e.source === parent) setTokens(d.vars); });
   }
   const tok = (name, fallback) => TOK[name] || fallback;
-  window.LAB = { game, ELEM, ICON, embedded: EMBED, done, finish, last: () => LAST, tokens: () => Object.assign({}, TOK), tok, TOKEN_NAMES };
+  window.LAB = { game, installFiller, ELEM, ICON, embedded: EMBED, done, finish, last: () => LAST, tokens: () => Object.assign({}, TOK), tok, TOKEN_NAMES };
 })();
