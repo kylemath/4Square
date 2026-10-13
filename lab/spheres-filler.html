@@ -26,7 +26,7 @@
   :root { --bg: #0d1117; --fg: #e6edf3; --dim: #8b949e; --line: #30363d; --accent: #9ecbff; }
   * { box-sizing: border-box; }
   html, body { margin: 0; background: var(--bg); color: var(--fg); }
-  body { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: column;
+  body { min-height: 100vh; height: 100dvh; display: flex; flex-direction: column; overflow: hidden;
     background: radial-gradient(120% 80% at 50% 0%, #1a2130 0%, var(--bg) 58%);
     font: 600 14px/1.35 ui-rounded, "SF Pro Rounded", system-ui, -apple-system, "Segoe UI", sans-serif; }
   header { flex: none; display: flex; flex-wrap: wrap; gap: 10px 22px; align-items: flex-end; justify-content: space-between;
@@ -43,10 +43,12 @@
   .controls a:hover, .controls button:hover { border-color: var(--accent); }
   .legend { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: center; margin-top: 6px; color: var(--dim); font-size: 12px; font-weight: 600; }
   .sw { width: 11px; height: 11px; border-radius: 50%; display: inline-block; margin-right: 5px; vertical-align: -1px; box-shadow: 0 1px 2px rgba(0,0,0,.45); }
-  main { flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 12px; padding: 4px 14px 14px; }
-  figure { margin: 0; min-height: 0; display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 16px; overflow: hidden; }
-  figure.picked { border-color: var(--accent); }
+  main { flex: 1; min-height: 0; overflow: auto; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: none; align-content: start; gap: 12px; padding: 4px 14px 14px; }
+  figure { margin: 0; height: 46vh; min-height: 300px; display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 16px; overflow: hidden;
     background: radial-gradient(90% 70% at 50% 12%, #1a2433 0%, #10151d 68%); }
+  figure.picked { border-color: var(--accent); }
+  .looks { display: flex; gap: 4px; }
+  .looks button.on { background: var(--accent); color: #121820; border-color: var(--accent); }
   .stage { position: relative; flex: 1; min-height: 0; }
   canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
   figcaption { flex: none; padding: 7px 10px 9px; border-top: 1px solid var(--line); }
@@ -61,10 +63,10 @@
   body.max main { display: block; }
   body.max figure { display: none; height: 100%; }
   body.max figure.on { display: flex; }
-  @media (max-width: 860px) {
-    body { display: block; height: auto; }
-    main { display: grid; grid-template-columns: 1fr; grid-template-rows: none; height: auto; }
-    figure { height: 78vh; }
+    @media (max-width: 860px) {
+    body { display: block; height: auto; overflow: auto; }
+    main { display: grid; grid-template-columns: 1fr; grid-template-rows: none; height: auto; overflow: visible; }
+    figure { height: 72vh; }
     body.max { height: 100dvh; overflow: hidden; }
     body.max main { height: calc(100dvh - 150px); }
   }
@@ -74,7 +76,7 @@
 <header>
   <div>
     <h1>Spheres · filler <a href="spheres.html">the game</a> <a href="index.html">lab</a></h1>
-    <p>The core is the level's graph, the same in every panel. The spheres around it are filler, coloured at random so a chain can run out through them and take a different route each time. Click a sphere to light that chain. Three panels wrap a larger ring around the core. The fourth is a filler island joined through a two-sphere neck.</p>
+    <p>Same idea, several maps: filler rings, a narrow channel, and rings of graphs the game already uses, joined by a short neck. The core keeps its colouring. Click a country or a sphere to light a chain. Play opens that whole map in the spheres game.</p>
     <div class="legend">
       <span><i class="sw" style="background:radial-gradient(circle at 35% 30%, #ffd0c8, #ef5a3c 55%, #8e1c17)"></i>fire</span>
       <span><i class="sw" style="background:radial-gradient(circle at 35% 30%, #d6e8ff, #3d8fe8 55%, #1b4f91)"></i>water</span>
@@ -87,6 +89,11 @@
     <label>Central graph
       <select id="core"></select>
     </label>
+    <div class="looks" id="looks" role="group" aria-label="How to draw the maps">
+      <button type="button" data-look="spheres" class="on">Spheres</button>
+      <button type="button" data-look="doodle">Line doodle</button>
+      <button type="button" data-look="map">Island map</button>
+    </div>
     <button type="button" id="recolor">Recolor filler</button>
     <button type="button" id="play">Play this graph</button>
   </div>
@@ -331,28 +338,225 @@ function chainLabel(m, K) {
   return E[m.col[K.anchor]].name + '–' + E[K.partner].name + ' · ' + K.size + ' spheres · ' + K.outside + ' outside the core';
 }
 let colorSalt = 1;
-function paintPanel(m, i) { colorFiller(m, hashStr(m.level.id) ^ Math.imul(colorSalt, 100003) ^ Math.imul(i + 1, 7919)); }
+function paintPanel(m, i) { colorFiller(m, hashStr((m.level && m.level.id) || 'x') ^ Math.imul(colorSalt, 100003) ^ Math.imul(i + 1, 7919)); }
 // The three edges of the old outer triangle cut across the picture. The filler already joins those spheres, so the edges go.
 function dropBorderEdges(m) {
   m.edges = m.edges.filter(([a, b]) => !m.borderEdge.has(ek(a, b)));
   m.borderEdge.forEach(k => m.set.delete(k));
 }
+// One polygon per vertex: edge midpoints and face centres, so neighbours share a border. The outer corners sit just past the hull.
+function cellsOf(pos, edges) {
+  const n = pos.length, adj = Array.from({ length: n }, () => []);
+  edges.forEach(([a, b]) => { adj[a].push(b); adj[b].push(a); });
+  adj.forEach((nb, u) => {
+    const seen = new Set(), uniq = [];
+    nb.forEach(v => { if (!seen.has(v)) { seen.add(v); uniq.push(v); } });
+    uniq.sort((a, b) => Math.atan2(pos[a][1] - pos[u][1], pos[a][0] - pos[u][0]) - Math.atan2(pos[b][1] - pos[u][1], pos[b][0] - pos[u][0]));
+    adj[u] = uniq;
+  });
+  const idx = adj.map(nb => { const m = new Map(); nb.forEach((v, i) => m.set(v, i)); return m; });
+  const seen = new Set(), faces = [];
+  for (let u = 0; u < n; u++) for (const v of adj[u]) {
+    if (seen.has(u + ',' + v)) continue;
+    const face = []; let a = u, b = v, guard = 0;
+    do {
+      if (seen.has(a + ',' + b)) break;
+      seen.add(a + ',' + b); face.push(a);
+      const nb = adj[b], i = idx[b].get(a); if (i == null) break;
+      const c = nb[(i - 1 + nb.length) % nb.length];
+      a = b; b = c;
+    } while (!(a === u && b === v) && ++guard < n * 4);
+    if (face.length >= 3 && a === u && b === v) faces.push(face);
+  }
+  const areas = faces.map(f => { let a = 0; for (let i = 0; i < f.length; i++) { const p = pos[f[i]], q = pos[f[(i + 1) % f.length]]; a += p[0] * q[1] - q[0] * p[1]; } return a / 2; });
+  const outer = areas.length ? areas.reduce((b, a, i) => Math.abs(a) > Math.abs(areas[b]) ? i : b, 0) : -1;
+  const absA = areas.map(a => Math.abs(a)).sort((a, b) => a - b);
+  const medA = absA[absA.length >> 1] || 1;
+  const big = new Set();
+  areas.forEach((a, i) => { if (i !== outer && Math.abs(a) > medA * 8) big.add(i); });
+  const lens = edges.map(([a, b]) => Math.hypot(pos[a][0] - pos[b][0], pos[a][1] - pos[b][1])).sort((a, b) => a - b);
+  const gap = (lens[lens.length >> 1] || 0.2) * 0.9;
+  const site = faces.map((f, i) => {
+    if (i === outer) return null;
+    const c = [0, 0]; f.forEach(v => { c[0] += pos[v][0]; c[1] += pos[v][1]; });
+    return [c[0] / f.length, c[1] / f.length];
+  });
+  const faceOf = new Map();
+  faces.forEach((f, fi) => { for (let i = 0; i < f.length; i++) faceOf.set(f[i] + ',' + f[(i + 1) % f.length], fi); });
+  const mid = (a, b) => [(pos[a][0] + pos[b][0]) / 2, (pos[a][1] + pos[b][1]) / 2];
+  function intoFace(fi, a, b) {
+    const A = pos[a], B = pos[b], mx = (A[0] + B[0]) / 2, my = (A[1] + B[1]) / 2, c = site[fi];
+    let dx = c[0] - mx, dy = c[1] - my, L = Math.hypot(dx, dy) || 1;
+    return [mx + dx / L * gap * 0.8, my + dy / L * gap * 0.8];
+  }
+  function corner(u, v, w) {
+    const angV = Math.atan2(pos[v][1] - pos[u][1], pos[v][0] - pos[u][0]);
+    const angW = Math.atan2(pos[w][1] - pos[u][1], pos[w][0] - pos[u][0]);
+    let span = angW - angV; if (span <= 1e-6) span += Math.PI * 2;
+    const bis = angV + span / 2, outPt = [pos[u][0] + Math.cos(bis) * gap * 1.4, pos[u][1] + Math.sin(bis) * gap * 1.4];
+    const opts = [faceOf.get(u + ',' + v), faceOf.get(v + ',' + u), faceOf.get(u + ',' + w), faceOf.get(w + ',' + u)].filter(x => x != null);
+    for (const fi of opts) {
+      if (fi === outer) return outPt;
+      const p = site[fi]; if (!p) continue;
+      let d = Math.atan2(p[1] - pos[u][1], p[0] - pos[u][0]) - angV; if (d < 0) d += Math.PI * 2;
+      if (d > 0.02 && d < span - 0.02) return big.has(fi) ? intoFace(fi, u, v) : p;
+    }
+    return outPt;
+  }
+  return adj.map((nb, u) => {
+    if (!nb.length) return [pos[u], [pos[u][0] + gap, pos[u][1]], [pos[u][0], pos[u][1] + gap]];
+    const poly = [];
+    for (let i = 0; i < nb.length; i++) { const v = nb[i], w = nb[(i + 1) % nb.length]; poly.push(mid(u, v)); poly.push(corner(u, v, w)); }
+    return poly;
+  });
+}
+function medEdge(p) {
+  const ls = p.edges.map(([a, b]) => Math.hypot(p.pos[a][0] - p.pos[b][0], p.pos[a][1] - p.pos[b][1])).sort((a, b) => a - b);
+  return ls[ls.length >> 1] || p.gap || 0.4;
+}
+function recenterPiece(p) {
+  let cx = 0, cy = 0; p.pos.forEach(q => { cx += q[0]; cy += q[1]; }); cx /= p.pos.length; cy /= p.pos.length;
+  p.pos = p.pos.map(([x, y]) => [x - cx, y - cy]);
+}
+function scalePiece(p, med) {
+  const s = med / (medEdge(p) || med);
+  p.pos = p.pos.map(([x, y]) => [x * s, y * s]);
+  p.gap = med;
+}
+function radiusOf(p) { return Math.max(...p.pos.map(q => Math.hypot(q[0], q[1])), 0.2); }
+function nearestTo(p, target, skipHole) {
+  let best = 0, bd = Infinity;
+  p.pos.forEach((q, i) => {
+    if (skipHole && i === p.hole) return;
+    const d = Math.hypot(q[0] - target[0], q[1] - target[1]);
+    if (d < bd) { bd = d; best = i; }
+  });
+  return best;
+}
+// A copy of a real level. Without the hole, its five neighbours stay a face and keep their colours.
+function loadPiece(levelId, keepHole) {
+  const base = cloneCore(levelId);
+  if (keepHole) return base;
+  const h = base.hole, map = [];
+  let k = 0;
+  for (let i = 0; i < base.pos.length; i++) map[i] = i === h ? -1 : k++;
+  const pos = [], col = [], kind = [], edges = [];
+  for (let i = 0; i < base.pos.length; i++) if (i !== h) { pos.push(base.pos[i].slice()); col.push(base.col[i] < 0 ? 0 : base.col[i]); kind.push('core'); }
+  for (const [a, b] of base.edges) if (map[a] >= 0 && map[b] >= 0) edges.push([map[a], map[b]]);
+  return { pos, edges, col, kind, hole: -1, rim: [], gap: base.gap, level: base.level, border: [] };
+}
+function compose(pieces, necks, holePiece) {
+  const pos = [], kind = [], col = [], edges = [], off = [];
+  pieces.forEach(p => {
+    off.push(pos.length);
+    p.pos.forEach(q => pos.push(q.slice()));
+    p.kind.forEach(k => kind.push(k));
+    p.col.forEach(c => col.push(c));
+    const o = off[off.length - 1];
+    p.edges.forEach(([a, b]) => edges.push([a + o, b + o]));
+  });
+  const neck = [];
+  necks.forEach(({ ia, va, ib, vb, n }) => {
+    const A = pos[off[ia] + va], B = pos[off[ib] + vb];
+    let prev = off[ia] + va;
+    for (let i = 1; i <= n; i++) {
+      const t = i / (n + 1), id = pos.length;
+      pos.push([A[0] + (B[0] - A[0]) * t, A[1] + (B[1] - A[1]) * t]);
+      kind.push('channel'); col.push(-1); edges.push([prev, id]); prev = id; neck.push(id);
+    }
+    edges.push([prev, off[ib] + vb]);
+    neck.push(off[ia] + va, off[ib] + vb);
+  });
+  const hp = pieces[holePiece], o0 = off[holePiece];
+  const rim = (hp.rim || []).map(v => v + o0);
+  const rimEdge = new Set();
+  rim.forEach((u, i) => rimEdge.add(ek(u, rim[(i + 1) % rim.length])));
+  const coreEdges = new Set();
+  for (let i = 0; i < edges.length; i++) if (kind[edges[i][0]] === 'core' && kind[edges[i][1]] === 'core') coreEdges.add(ek(edges[i][0], edges[i][1]));
+  return {
+    pos, kind, col, edges, hole: hp.hole + o0, rim, neck, level: hp.level, gap: hp.gap || 0.45,
+    border: [], borderEdge: new Set(), corners: [], center: [0, 0], set: new Set(edges.map(([a, b]) => ek(a, b))),
+    coreEdges, rimEdge,
+  };
+}
+function layoutRing(pieces) {
+  const med = pieces[0].gap || 0.45;
+  pieces.forEach(p => { recenterPiece(p); scalePiece(p, med); });
+  const rad = Math.max(...pieces.map(radiusOf));
+  const k = pieces.length, R = rad / Math.sin(Math.PI / k) + rad * 0.85;
+  pieces.forEach((p, i) => {
+    const a = -Math.PI / 2 + i * 2 * Math.PI / k, cx = Math.cos(a) * R, cy = Math.sin(a) * R;
+    p.pos = p.pos.map(([x, y]) => [x + cx, y + cy]); p._c = [cx, cy];
+  });
+  const necks = [];
+  for (let i = 0; i < k; i++) {
+    const j = (i + 1) % k;
+    necks.push({ ia: i, va: nearestTo(pieces[i], pieces[j]._c, true), ib: j, vb: nearestTo(pieces[j], pieces[i]._c, true), n: 2 });
+  }
+  return compose(pieces, necks, 0);
+}
+function layoutTwin(a, b) {
+  recenterPiece(a); recenterPiece(b); scalePiece(b, a.gap || 0.45); scalePiece(a, a.gap || 0.45);
+  const ra = radiusOf(a), rb = radiusOf(b), gap = (a.gap || 0.4) * 3.4;
+  a.pos = a.pos.map(([x, y]) => [x - ra - gap * 0.15, y]);
+  b.pos = b.pos.map(([x, y]) => [x + rb + gap, y]);
+  a._c = [-ra, 0]; b._c = [rb + gap, 0];
+  return compose([a, b], [{ ia: 0, va: nearestTo(a, b._c, true), ib: 1, vb: nearestTo(b, a._c, true), n: 2 }], 0);
+}
+function layoutFlower(core, budId) {
+  const buds = [0, 1, 2].map(() => { const b = loadPiece(budId, false); recenterPiece(b); scalePiece(b, (core.gap || 0.45) * 0.9); return b; });
+  const R = radiusOf(core) + radiusOf(buds[0]) + (core.gap || 0.4) * 3.3;
+  const necks = core.border.map((v, i) => {
+    const p = core.pos[v], L = Math.hypot(p[0], p[1]) || 1, cx = p[0] / L * R, cy = p[1] / L * R;
+    buds[i].pos = buds[i].pos.map(([x, y]) => [x + cx, y + cy]);
+    buds[i]._c = [cx, cy];
+    return { ia: 0, va: v, ib: i + 1, vb: nearestTo(buds[i], p, false), n: 2 };
+  });
+  return compose([core, ...buds], necks, 0);
+}
+function seal(m, i) {
+  if (!m.set || !m.set.size) m.set = new Set(m.edges.map(([a, b]) => ek(a, b)));
+  if (!m.borderEdge) m.borderEdge = new Set();
+  if (!m.rimEdge) m.rimEdge = new Set();
+  if (!m.coreEdges) m.coreEdges = new Set();
+  paintPanel(m, i);
+  m.cells = cellsOf(m.pos, m.edges);
+  m.cross = crossings(m);
+  m.extra = newCoreEdges(m);
+  m.touch = coreTouched(m);
+  return m;
+}
 function buildPanels(levelId) {
   const specs = [
-    { title: 'One ring', rings: 1, blurb: 'One band of filler around the outer triangle, in a random colouring. Click a sphere to light its chain.' },
-    { title: 'Two rings', rings: 2, blurb: 'A second band. The core colouring is the level; the filler colouring is its own.' },
-    { title: 'Three rings', rings: 3, blurb: 'A third band. The core draws smaller only because the frame fits the whole picture.' },
-    { title: 'Narrow channel', rings: 0, blurb: 'A filler island. A chain can cross only by the two-sphere neck.' },
+    { title: 'One ring', blurb: 'One band of filler around the chosen graph.' },
+    { title: 'Three rings', blurb: 'Three bands. The core draws smaller only because the frame fits the picture.' },
+    { title: 'Narrow channel', blurb: 'A filler island. A chain crosses only along the two-sphere neck.' },
+    { title: 'Twin bridge', blurb: 'The chosen graph joined to a second copy by a two-sphere neck. Only the first keeps the hole.' },
+    { title: 'Ring of four', blurb: 'Four copies in a circle, each linked to the next by a neck.' },
+    { title: 'Necklace', blurb: 'Three maps the game already uses — icosahedron, tidy trap, round and round — linked in a ring.' },
+    { title: 'Flower', blurb: 'The chosen graph, with an icosahedron budded off each corner of its old outer triangle.' },
   ];
   return specs.map((s, i) => {
-    const m = cloneCore(levelId);
-    if (s.rings) for (let k = 0; k < s.rings; k++) addRing(m, 3 + k);
-    else addChannel(m, 4);
-    dropBorderEdges(m);
-    paintPanel(m, i);
-    m.cross = crossings(m);
-    m.extra = newCoreEdges(m);
-    m.touch = coreTouched(m);
+    let m;
+    if (s.title === 'One ring' || s.title === 'Three rings') {
+      m = cloneCore(levelId);
+      const rings = s.title === 'One ring' ? 1 : 3;
+      for (let k = 0; k < rings; k++) addRing(m, 3 + k);
+      dropBorderEdges(m);
+    } else if (s.title === 'Narrow channel') {
+      m = cloneCore(levelId);
+      addChannel(m, 4);
+      dropBorderEdges(m);
+    } else if (s.title === 'Twin bridge') {
+      m = layoutTwin(loadPiece(levelId, true), loadPiece(levelId, false));
+    } else if (s.title === 'Ring of four') {
+      m = layoutRing([loadPiece(levelId, true), loadPiece(levelId, false), loadPiece(levelId, false), loadPiece(levelId, false)]);
+    } else if (s.title === 'Necklace') {
+      m = layoutRing([loadPiece('first-flip', true), loadPiece('tidy-trap', false), loadPiece('round-and-round', false)]);
+    } else {
+      m = layoutFlower(cloneCore(levelId), 'first-flip');
+    }
+    seal(m, i);
     return Object.assign({ model: m, fill: countKind(m, 'filler'), chan: countKind(m, 'channel'), core: countKind(m, 'core') }, s);
   });
 }
@@ -363,13 +567,24 @@ const rgba = (h, a) => 'rgba(' + hexRgb(h).join(',') + ',' + a + ')';
 const paintOf = (m, u) => E[m.col[u]];
 
 let active = 0;
+const PLAY = { spheres: 'spheres.html', doodle: 'doodle.html', map: 'map.html' };
 function packGraph(i) {
   const p = panels[i], m = p.spec.model;
+  const flip = look !== 'map';
+  const rawPos = m.pos.map(([x, y]) => [x, flip ? -y : y]);
+  const rawCells = (m.cells || []).map(poly => poly.map(([x, y]) => [x, flip ? -y : y]));
+  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+  const grow = (x, y) => { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); };
+  rawPos.forEach(q => grow(q[0], q[1]));
+  rawCells.forEach(poly => poly.forEach(q => grow(q[0], q[1])));
+  const s = 1.84 / Math.max(x1 - x0, y1 - y0, 1e-6), cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+  const N = (x, y) => [+((x - cx) * s).toFixed(5), +((y - cy) * s).toFixed(5)];
   return {
     title: p.spec.title + ' · ' + m.level.title,
     name: m.level.title + ' · ' + p.spec.title.toLowerCase(),
     n: m.pos.length, hole: m.hole, link: m.rim.slice(),
-    pos: m.pos.map(([x, y]) => [x, -y]),
+    pos: rawPos.map(([x, y]) => N(x, y)),
+    cells: rawCells.map(poly => poly.map(([x, y]) => N(x, y))),
     edges: m.edges.map(([a, b]) => [a, b]),
     col: m.col.slice(),
   };
@@ -378,17 +593,20 @@ function choose(i) {
   active = i;
   panels.forEach((p, k) => p.fig.classList.toggle('picked', k === i));
   const b = document.getElementById('play');
-  if (b && panels[i].spec) b.textContent = 'Play ' + panels[i].spec.title.toLowerCase();
+  if (b && panels[i] && panels[i].spec) {
+    const where = look === 'doodle' ? ' · doodle' : look === 'map' ? ' · map' : '';
+    b.textContent = 'Play ' + panels[i].spec.title.toLowerCase() + where;
+  }
 }
 function playPanel(i) {
   if (!panels[i] || !panels[i].spec) return;
   choose(i);
   try { sessionStorage.setItem('spheres-filler-play', JSON.stringify(packGraph(i))); } catch (e) { return; }
-  location.href = 'spheres.html?filler=1&lvl=filler-play';
+  location.href = (PLAY[look] || 'spheres.html') + '?filler=1&lvl=filler-play';
 }
 const grid = document.getElementById('grid');
 const panels = [];
-for (let i = 0; i < 4; i++) {
+function makePanel(i) {
   const fig = document.createElement('figure');
   fig.innerHTML = '<div class="stage"><canvas></canvas></div><figcaption><div class="cap"><b></b><span class="meta"></span><span class="hit"></span><button type="button" class="go">Play</button><button type="button" class="mx" aria-label="Fill the window">⤢</button></div><p></p></figcaption>';
   const cv = fig.querySelector('canvas');
@@ -405,6 +623,10 @@ for (let i = 0; i < 4; i++) {
   function hitAt(e) {
     const p = panels[i], r = cv.getBoundingClientRect();
     const x = e.clientX - r.left, y = e.clientY - r.top;
+    if (look !== 'spheres' && p.screenCells) {
+      for (let u = p.screenCells.length - 1; u >= 0; u--) if (p.screenCells[u] && pip(x, y, p.screenCells[u])) return u;
+      return -1;
+    }
     let best = -1, bd = Infinity;
     for (let u = 0; u < p.S.length; u++) { const d = Math.hypot(p.S[u][0] - x, p.S[u][1] - y); if (d < bd) { bd = d; best = u; } }
     return bd <= Math.max(p.R * 1.35, 14) ? best : -1;
@@ -438,20 +660,39 @@ for (let i = 0; i < 4; i++) {
   });
 }
 
+function screenOf(x0, y0, y1, ox, oy, s) {
+  return (x, y) => [ox + (x - x0) * s, oy + (y1 - y) * s];
+}
 function fitOne(p) {
   const stage = p.cv.parentElement, w = stage.clientWidth, h = stage.clientHeight;
-  if (w < 4 || h < 4) return;
+  if (w < 4 || h < 4 || !p.spec) return;
   p.DPR = Math.min(3, devicePixelRatio || 1); p.W = w; p.H = h;
   p.cv.width = Math.round(w * p.DPR); p.cv.height = Math.round(h * p.DPR);
-  const m = p.spec.model, pos = m.pos, pad = 18;
+  const m = p.spec.model, pos = m.pos, pad = 16;
   let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
-  for (const q of pos) { x0 = Math.min(x0, q[0]); x1 = Math.max(x1, q[0]); y0 = Math.min(y0, q[1]); y1 = Math.max(y1, q[1]); }
+  const grow = (x, y) => { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); };
+  pos.forEach(q => grow(q[0], q[1]));
+  (m.cells || []).forEach(poly => poly.forEach(q => grow(q[0], q[1])));
   const s = Math.min((w - 2 * pad) / (x1 - x0 || 1), (h - 2 * pad) / (y1 - y0 || 1));
   const ox = (w - (x1 - x0) * s) / 2, oy = (h - (y1 - y0) * s) / 2;
-  p.S = pos.map(([x, y]) => [ox + (x - x0) * s, oy + (y1 - y) * s]);
+  const map = screenOf(x0, y0, y1, ox, oy, s);
+  p.S = pos.map(([x, y]) => map(x, y));
+  p.screenCells = (m.cells || []).map(poly => poly.map(([x, y]) => map(x, y)));
   const ls = m.edges.map(([a, b]) => Math.hypot(p.S[a][0] - p.S[b][0], p.S[a][1] - p.S[b][1])).sort((a, b) => a - b);
   const med = ls[ls.length >> 1] || 20, mn = ls[0] || med;
   p.R = Math.max(3.2, Math.min(med * 0.30, mn * 0.42, 22));
+}
+function pip(x, y, poly) {
+  let c = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const a = poly[i], b = poly[j];
+    if ((a[1] > y) !== (b[1] > y) && x < (b[0] - a[0]) * (y - a[1]) / ((b[1] - a[1]) || 1e-9) + a[0]) c = !c;
+  }
+  return c;
+}
+function cellCenter(poly) {
+  let x = 0, y = 0; poly.forEach(p => { x += p[0]; y += p[1]; });
+  return [x / poly.length, y / poly.length];
 }
 function fitAll() { panels.forEach(fitOne); }
 
@@ -485,7 +726,75 @@ function glass(ctx, x, y, r, t) {
   ctx.beginPath(); ctx.arc(x, y, r + 3.5, 0, 7); ctx.stroke();
 }
 
+const PENS = ['#ff5d5d', '#3fa7f5', '#ffc928', '#3ccf6e'];
+const MAPC = ['#ef5a3c', '#3d8fe8', '#e8c547', '#4caf50'];
+const MAPD = ['#8e1c17', '#1b4f91', '#8a6510', '#1a6b2a'];
+let look = 'spheres';
+function polyPath(ctx, poly) {
+  ctx.beginPath();
+  poly.forEach((q, i) => i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1]));
+  ctx.closePath();
+}
+function drawDoodle(p) {
+  const ctx = p.ctx, m = p.spec.model, cells = p.screenCells || [];
+  ctx.setTransform(p.DPR, 0, 0, p.DPR, 0, 0);
+  ctx.clearRect(0, 0, p.W, p.H);
+  ctx.fillStyle = '#f4ead4'; ctx.fillRect(0, 0, p.W, p.H);
+  cells.forEach((poly, u) => {
+    if (!poly || poly.length < 3) return;
+    polyPath(ctx, poly);
+    if (u === m.hole) ctx.fillStyle = '#fffdf8';
+    else ctx.fillStyle = PENS[m.col[u]] || '#ccc';
+    ctx.globalAlpha = u === m.hole ? 1 : 0.78; ctx.fill(); ctx.globalAlpha = 1;
+  });
+  ctx.lineJoin = 'round'; ctx.lineCap = 'round'; ctx.strokeStyle = '#2b2d42'; ctx.lineWidth = 2.2;
+  cells.forEach(poly => { if (poly && poly.length > 2) { polyPath(ctx, poly); ctx.stroke(); } });
+  if (p.lit) {
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 3.2;
+    cells.forEach((poly, u) => { if (p.lit.set.has(u) && poly) { polyPath(ctx, poly); ctx.stroke(); } });
+  }
+  const hc = cells[m.hole];
+  if (hc) { const [x, y] = cellCenter(hc); ctx.fillStyle = '#2b2d42'; ctx.font = '700 18px "Patrick Hand", ui-rounded, system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('?', x, y); }
+}
+function drawIsland(p) {
+  const ctx = p.ctx, m = p.spec.model, cells = p.screenCells || [];
+  ctx.setTransform(p.DPR, 0, 0, p.DPR, 0, 0);
+  ctx.clearRect(0, 0, p.W, p.H);
+  const sea = ctx.createLinearGradient(0, 0, 0, p.H);
+  sea.addColorStop(0, '#7fd4f5'); sea.addColorStop(1, '#1f8ec4');
+  ctx.fillStyle = sea; ctx.fillRect(0, 0, p.W, p.H);
+  ctx.lineJoin = 'round';
+  cells.forEach(poly => { if (!poly || poly.length < 3) return; polyPath(ctx, poly); ctx.strokeStyle = '#e7c98a'; ctx.lineWidth = 10; ctx.stroke(); });
+  cells.forEach((poly, u) => {
+    if (!poly || poly.length < 3) return;
+    polyPath(ctx, poly);
+    ctx.fillStyle = u === m.hole ? '#c5ccd4' : (MAPC[m.col[u]] || '#aaa');
+    ctx.fill();
+    ctx.strokeStyle = '#1c1640'; ctx.lineWidth = 2.4; ctx.stroke();
+  });
+  const rim = new Set(m.rim || []);
+  ctx.setLineDash([5, 4]); ctx.strokeStyle = '#ffd84a'; ctx.lineWidth = 2.2;
+  cells.forEach((poly, u) => { if (rim.has(u) && poly) { polyPath(ctx, poly); ctx.stroke(); } });
+  ctx.setLineDash([]);
+  if (p.lit) {
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 3;
+    cells.forEach((poly, u) => { if (p.lit.set.has(u) && poly) { polyPath(ctx, poly); ctx.stroke(); } });
+  }
+  cells.forEach((poly, u) => {
+    if (!poly) return;
+    const [x, y] = cellCenter(poly);
+    if (u === m.hole) {
+      ctx.fillStyle = '#1c1640'; ctx.font = '800 16px ui-rounded, system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('?', x, y + 1);
+      return;
+    }
+    const e = E[m.col[u]]; if (!e || !ICON[m.col[u]]) return;
+    ctx.save(); ctx.translate(x - 7, y - 7); ctx.scale(14 / 24, 14 / 24);
+    ctx.strokeStyle = 'rgba(255,255,255,.85)'; ctx.lineWidth = 2.4; ctx.lineCap = 'round'; ctx.stroke(ICON[m.col[u]]); ctx.restore();
+  });
+}
 function draw(p, t) {
+  if (look === 'doodle') { drawDoodle(p); return; }
+  if (look === 'map') { drawIsland(p); return; }
   const ctx = p.ctx, m = p.spec.model, S = p.S, R = p.R;
   if (!S.length) return;
   ctx.setTransform(p.DPR, 0, 0, p.DPR, 0, 0);
@@ -560,6 +869,7 @@ function frame(t) { for (const p of panels) if (p.spec) draw(p, t); requestAnima
 
 function show(levelId) {
   const built = buildPanels(levelId);
+  while (panels.length < built.length) makePanel(panels.length);
   built.forEach((s, i) => {
     const p = panels[i];
     p.spec = s;
@@ -596,6 +906,12 @@ for (const L of GAME.levels) {
 sel.value = picked;
 sel.addEventListener('change', () => show(sel.value));
 document.getElementById('play').addEventListener('click', () => playPanel(active));
+document.getElementById('looks').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  look = b.dataset.look;
+  document.querySelectorAll('#looks button').forEach(x => x.classList.toggle('on', x === b));
+  if (panels[active] && panels[active].spec) choose(active);
+});
 document.getElementById('recolor').addEventListener('click', () => {
   colorSalt++;
   panels.forEach((p, i) => { if (!p.spec) return; paintPanel(p.spec.model, i); p.lit = null; p.hit.textContent = ''; });
