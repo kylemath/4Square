@@ -1885,6 +1885,7 @@
     else { skinReel.refresh(); if (at) skinReel.go(at, true); }
   }
   function selectSkin(id) { SKIN = SKINS.find(k => k.id === id) || ISL; save.skin = SKIN.id; persist(); applyLook(SKIN); renderSkinPick(); if ($('menu').classList.contains('on')) showMenu(); }
+  window.__selectSkin = selectSkin;   // test hook (tools/coins_check.js): pick a skin as a settled reel card would
   // ---------------- skin tickets (tickets.js): beat levels and earn coins to buy a ticket, then unlock any skin with it ----------------
   const beaten = () => G.levels.filter(l => save.byId[l.id] && save.byId[l.id].stars > 0).length;
   // the level the shop's live preview plays: the one last played this session, else the furthest open level
@@ -2304,7 +2305,7 @@
   window.__game = { get chains() { return chains; }, get col() { return col; }, toScreen: u => toScreen(u), get found() { return found; },
     good: () => { const d = dist(col); return chains.filter(K => dist(flipped(col, K)) === d - 1); }, dist: () => dist(col), get won() { return won; }, get T() { return BRD.debug().T; }, get trace() { return trace; }, pick: (x, y) => pick(x, y), pickAll: (x, y) => pickAll(x, y), stepTarget: (x, y) => stepTarget(x, y), ballAt: (x, y) => ballAt(x, y), get layout() { return BRD.debug().LAYO; }, get box() { return BRD.debug().BOX; }, get graph() { return Gr; }, get bridges() { return BRD.debug().bridges; }, board: BRD,
     gain, win: () => win(), capture: K => capture(K, K.vs[0]), flip: K => doFlip(K), get busy() { return busy; }, get score() { return score; }, get rate() { return RATE; },   // test hooks for tools/coins_check.js
-    bonus: (ncol, delay) => { $('win').classList.add('on'); bonusStart(delay || 0, ncol); }, get bz() { return bz; }, get active() { return active; }, get compass() { return compass; }, get pm() { return PM; }, get free() { return BRD.debug().free; }, get LIVE() { return BRD.LIVE; } };   // test hook
+    bonus: (ncol, delay) => { $('win').classList.add('on'); bonusStart(delay || 0, ncol); }, get bz() { return bz; }, get active() { return active; }, get compass() { return compass; }, get pm() { return PM; }, get free() { return BRD.debug().free; }, get LIVE() { return BRD.LIVE; }, get level() { return L; } };   // test hook
   Object.defineProperty(window.__game, 'act', { get: () => ACT });   // test hook: the running skin's spec (eggs tests)
   Object.assign(window.__game, { sfx: wsfx, flip: K => { found.add(K.key); needFind = false; doFlip(K); } });   // test hook: tools/win_scene_check.js (flip: marks the chain found first)
   // ---------------- dev panel (board/island.js): live spring / damping knobs, crossing guard, free borders ----------------

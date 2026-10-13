@@ -22,7 +22,7 @@ const SAVE = 'fill-the-hole-v2', LV = 'one-of-each';
     console.log('skins: ' + ids.join(' '));
     // ---- art: #coinG follows the skin
     for (const id of ids) {
-      const same = await P0.eval(`(() => { document.querySelector('#skinPick button[data-s="${id}"]').click(); const inner = FTH_SKINS.coinOf(FTH_SKINS.get('${id}')).svg(26).replace(/^<svg[^>]*>/, '').replace(/<\\/svg>\\s*$/, ''); return document.getElementById('coinG').innerHTML.replace(/\\s/g, '').length > 0 && document.getElementById('coinG').children.length === (new DOMParser().parseFromString('<svg xmlns="http://www.w3.org/2000/svg">' + inner + '</svg>', 'image/svg+xml').documentElement.children.length); })()`);
+      const same = await P0.eval(`(() => { __selectSkin('${id}'); const inner = FTH_SKINS.coinOf(FTH_SKINS.get('${id}')).svg(26).replace(/^<svg[^>]*>/, '').replace(/<\\/svg>\\s*$/, ''); return document.getElementById('coinG').innerHTML.replace(/\\s/g, '').length > 0 && document.getElementById('coinG').children.length === (new DOMParser().parseFromString('<svg xmlns="http://www.w3.org/2000/svg">' + inner + '</svg>', 'image/svg+xml').documentElement.children.length); })()`);
       ok(same, id + ': #coinG holds the skin coin art');
     }
     P0.S && 0;
@@ -35,15 +35,17 @@ const SAVE = 'fill-the-hole-v2', LV = 'one-of-each';
       const P = await open('all=1&view=game&lvl=' + LV + '&skin=' + id);
       const r = id === 'islands' ? await P.eval(`(async () => { const g = __game; let n = 0; while (!g.won && n++ < 30) { const K = g.good()[0]; if (!K) break; g.capture(K); g.flip(K); const t0 = performance.now(); while ((g.busy) && performance.now() - t0 < 6000) await new Promise(r => setTimeout(r, 50)); await new Promise(r => setTimeout(r, 40)); } return { won: g.won, score: g.score }; })()`)
         : await P.eval(`(async () => { __game.gain(120); __game.gain(60); return { won: false, score: __game.score }; })()`);
+      const fade = await P.eval(`(FTH_SKINS.get('${id}').bonus || {}).flow === 'fade'`), lv0 = await P.eval('__game.level && __game.level.id');
       if (id !== 'islands') { await P.eval('__game.win()'); }
       await nap(P, id === 'dots' ? 7000 : id === 'islands' ? 2500 : 800);
       const W = await P.eval(`(() => { const s = JSON.parse(localStorage.getItem('${SAVE}')); return { w: s.wallet, bal: FTH_SKINS.list.map(k => [k.id, FTH_WALLET.bal(k.id)]), rate: __game.rate, score: __game.score, shown: document.getElementById('winScore').textContent, counter: document.getElementById('score').textContent, label: document.getElementById('coinBox').getAttribute('aria-label') }; })()`);
       const mine = W.w[id] || { bal: 0 }, others = Object.keys(W.w).filter(k => k !== id && W.w[k].bal > 0);
       ok(mine.bal > 0 && others.length === 0, id + ': won, wallet credited only to ' + id + ' (' + mine.bal + ' coins' + (others.length ? ', also ' + others : '') + ', score ' + W.score + ' points at ' + W.rate.toFixed(3) + ' a point)');
-      ok(Math.abs(mine.bal + mine.f - W.score * W.rate) < 1.01 || W.score * W.rate > mine.bal, id + ': coins match points x rate (' + (W.score * W.rate).toFixed(1) + ')');
+      if (fade) ok(await P.eval(`!document.getElementById('win').classList.contains('on') && __game.level && __game.level.id !== '${lv0}'`), id + ': fade flow: no win card, the next level is already playing');
+      else ok(Math.abs(mine.bal + mine.f - W.score * W.rate) < 1.01 || W.score * W.rate > mine.bal, id + ': coins match points x rate (' + (W.score * W.rate).toFixed(1) + ')');
       ok(mine.earned === mine.bal, id + ': earned = balance before any exchange');
       ok(/\d+ /.test(W.label || ''), id + ': counter label "' + W.label + '"');
-      if (id === 'dots') ok(+W.shown === Math.floor(W.score * W.rate + 1e-9), id + ': the win card total ' + W.shown + ' is the whole score in ink beads');
+      if (id === 'dots' && !fade) ok(+W.shown === Math.floor(W.score * W.rate + 1e-9), id + ': the win card total ' + W.shown + ' is the whole score in ink beads');
       if (SH) { await P.shot(path.join(SH, 'win-' + id + '.png')); }
       // the bonus round: coins hidden, art from the same source
       if (id === 'dots' || id === 'ions') {
