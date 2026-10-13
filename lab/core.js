@@ -35,6 +35,12 @@
  * { fth: 1, cmd: 'undo'|'reset' }. A skin needs nothing else to run inside the app.
  * After a win an embedded page must not restart itself (the app owns what happens next): guard any tap-to-restart with
  * if (!LAB.embedded). LAB.done() posts once per win. The app also posts { cmd: 'tokens', vars } (its --sk-* theme): see LAB.tok().
+ *   LAB.at(x, y)        where the swap happened, in page CSS px (clientX/Y). Call it before or right after g.swap(K): the next
+ *                       posted swap carries it as `at: [x, y]` (just after: a { type: 'at', at } follows) and the app flies
+ *                       that swap's coins from there into its counter (SKIN-SPEC 14).
+ *                       Without it the coins fly from the middle of the frame. Points are always scored by the app.
+ *   LAB.egg(id, pts)    an easter egg declared in the skin's `eggs` with on: 'page' was found (SKIN-SPEC 15): posts
+ *                       { fth: 1, type: 'egg', id, pts, lvl }. The app credits pts quietly (capped at 2,000 a level).
  *
  * A chain is a "web" when it is the only {a, b} chain on the map: swapping it just renames two elements everywhere,
  * so it never changes anything. LAB.ELEM gives names, colours and icons for the 4 elements.
@@ -111,7 +117,8 @@
     g.canon = () => canon(g.col);
     compute();
     if (EMBED) {
-      const post = type => parent.postMessage({ fth: 1, type, id: L.id, num: String(L.num), moves: g.moves, won: g.won(), free: g.free(), col: g.col.slice() }, '*');
+      const post = type => { const m = { fth: 1, type, id: L.id, num: String(L.num), moves: g.moves, won: g.won(), free: g.free(), col: g.col.slice() };
+        if (type === 'swap') { if (AT) { m.at = AT; AT = null; SWT = 0; } else SWT = performance.now(); } parent.postMessage(m, '*'); };
       g.post = post; LAST = g;
       g.on((_, info) => { g.doneSent = false; post(info.type); });
       addEventListener('message', e => { const d = e.data; if (!d || !d.fth || e.source !== parent) return; if (d.cmd === 'undo') g.undo(); else if (d.cmd === 'reset') g.reset(); });
@@ -124,6 +131,16 @@
   // a skin that throws (for example on a map it cannot draw) tells the app, which falls back to its own board
   if (EMBED) addEventListener('error', e => /ResizeObserver/.test(e.message) ? 0 : parent.postMessage({ fth: 1, type: 'error', lvl: new URLSearchParams(location.search).get('lvl'), message: String(e.message) }, '*'));
   let LAST = null;
+  // LAB.at: where the next (or the just-made) swap happened, page CSS px; rides on the next posted swap (or the one just posted)
+  // (called right after a swap that went out without it: a small { type: 'at' } follows, which the app still uses)
+  let AT = null, atT = 0, SWT = 0;
+  const at = (x, y) => {
+    if (!EMBED || !isFinite(x) || !isFinite(y)) return; const p = [Math.round(x), Math.round(y)];
+    if (SWT && performance.now() - SWT < 400 && LAST) { SWT = 0; parent.postMessage({ fth: 1, type: 'at', id: LAST.level.id, at: p }, '*'); return; }
+    AT = p; clearTimeout(atT); atT = setTimeout(() => { AT = null; }, 1500);
+  };
+  // LAB.egg: a page easter egg (declared in the skin's eggs with on: 'page'); the app credits it quietly
+  const egg = (id, pts) => { if (EMBED) parent.postMessage({ fth: 1, type: 'egg', id: String(id), pts: Math.max(0, +pts || 0), lvl: LAST ? LAST.level.id : new URLSearchParams(location.search).get('lvl') }, '*'); };
   // posted once per win: a repeat call (or a second timer) is ignored until the game changes again
   const done = () => { if (LAST && LAST.won() && !LAST.doneSent) { LAST.doneSent = true; LAST.post('done'); } };
   // a skin with its own goal (Blank Doodle: colour every piece) says it is finished; moves = its swap count
@@ -145,5 +162,5 @@
     addEventListener('message', e => { const d = e.data; if (d && d.fth && d.cmd === 'tokens' && e.source === parent) setTokens(d.vars); });
   }
   const tok = (name, fallback) => TOK[name] || fallback;
-  window.LAB = { game, ELEM, ICON, embedded: EMBED, done, finish, last: () => LAST, tokens: () => Object.assign({}, TOK), tok, TOKEN_NAMES };
+  window.LAB = { game, ELEM, ICON, embedded: EMBED, done, finish, at, egg, last: () => LAST, tokens: () => Object.assign({}, TOK), tok, TOKEN_NAMES };
 })();
