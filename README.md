@@ -30,7 +30,10 @@ pearls, crystal shards...), worth between 1 and 100 G. A new player
 owns Islands only; every other skin is unlocked with a **skin ticket** (`tickets.js`, the 🎟️ Skins button). Ticket *n* opens
 once enough levels are beaten (1, 3, 5, 7, 9, 12, 14, 16, 18, 20, 23, 26, 28) and costs coins from any one wallet (900 points'
 worth at first, about one level's pay, rising by 300 a ticket to 4,500): each skin comes a little further on and costs a little more. The ticket
-then unlocks any locked skin. `node tools/tickets_check.js` checks the rules and that each ticket is affordable at its gate
+then unlocks any locked skin. The title screen picks a skin on the **skin reel** (`reel.js`: swipe the ribbon of skin cards; resting on
+an owned card selects it). The shop is a full-screen showroom on the same reel, over a live preview of the centred skin playing
+itself (its page with `&demo=1`, see `lab/core.js`); tickets are bought at the **deli counter** (`deli.js`): one hanging price sign per
+currency, tap one, PURCHASE. `node tools/tickets_check.js` checks the rules and that each ticket is affordable at its gate
 on clean play (17-29% to spare, before bonus rounds); `node tools/shop_check.js` plays it end to end. SKIN-SPEC.md section 12.
 
 **Maps.** The 🗺️ button (title screen and level map) opens `maps.js`: every map as a thumbnail of how much of its
