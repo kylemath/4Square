@@ -170,7 +170,7 @@ const sigs = w => w.FTH_INT.counts();
       deleteDoc: async r => { delete db[r.path]; },
       writeBatch: () => { const ops = []; return { set: (r, v) => ops.push(['s', r, v]), delete: r => ops.push(['d', r]), commit: async () => { if (netDown) throw Object.assign(new Error('offline'), { code: 'unavailable' }); ops.forEach(([t, r, v]) => { if (t === 's') db[r.path] = v; else delete db[r.path]; }); calls.push(ops.length); } }; },
       query: (c) => c, orderBy: () => 0, limit: () => 0,
-      getDocs: async q => ({ docs: Object.keys(db).filter(k => k.startsWith(q.path + '/') && k.split('/').length === q.path.split('/').length + 1).map(k => ({ id: k.split('/').pop(), data: () => db[k] })) }),
+      getDocs: async q => ({ docs: Object.keys(db).filter(k => k.startsWith(q.path + '/') && k.split('/').length === q.path.split('/').length + 1).map(k => ({ id: k.split('/').pop(), ref: { path: k }, data: () => db[k] })) }),
     },
   };
   w.FTH_FIREBASE = { apiKey: 'test', projectId: 'p' }; w.FTH_SDK_OVERRIDE = sdk;
@@ -188,12 +188,31 @@ const sigs = w => w.FTH_INT.counts();
   const bf = await F.board('dots', 'everyone'); ok('everyone board re-verifies entry from Firestore', bf.rows.length === 1 && bf.rows[0].me && bf.hidden === 0);
   db['boards/dots/entries/evil'] = Object.assign({}, JSON.parse(JSON.stringify(entry)), { stars: 90, nick: 'Evil 1' }); const bf2 = await F.board('dots', 'everyone');
   ok('forged remote entry (stars inflated) hidden + counted', bf2.rows.length === 1 && bf2.hidden === 1, JSON.stringify({ r: bf2.rows.length, h: bf2.hidden })); delete db['boards/dots/entries/evil'];
+  // research log (telemetry.js): off until Google sign-in, then every attempt goes to logs/<uid>/attempts/<id> once
+  Object.assign(w, { screen: { width: 390, height: 844 }, innerWidth: 390, innerHeight: 844, devicePixelRatio: 3 }); w.navigator.maxTouchPoints = 5; w.navigator.language = 'en-CA';
+  vm.runInContext(fs.readFileSync(path.join(D, 'telemetry.js'), 'utf8'), w, { filename: 'telemetry.js' });
+  w.FTH_RUN.loadAccount = async () => w.FTH_ACCT;
+  const attempt = async (lv, out) => { w.FTH_LOG.start({ num: lv, id: 'kempes-double', skin: 'dots', map: 'm', par: 2, state: '0123' }); w.tick(900); w.FTH_LOG.ev('swap', [1, 'ab']); w.FTH_LOG.end(out || 'win'); await w.FTH_LOG.upload(); };
+  const logs = uid => Object.keys(db).filter(k => k.startsWith('logs/' + uid + '/attempts/'));
+  await attempt(1); ok('research log off before Google sign-in: nothing recorded or sent', w.FTH_LOG.consent() === null && !w.FTH_LOG.records().length && !logs('anon-1').length);
   let lk = await F.linkGoogle(); ok('Google link keeps the uid (progress kept)', lk.status === 'ok' && F.state().uid === 'anon-1' && F.state().linked);
   ok('player doc marks linked, holds nickname only', db['players/anon-1'].linked === true && db['players/anon-1'].nick === F.state().nick);
+  ok('Google sign-in switches the research log on', w.FTH_LOG.consent() === 'on');
+  await attempt(2); await attempt(3, 'quit');
+  { const ks = logs('anon-1'), d = ks.length && db[ks[0]];
+    ok('each attempt is one log doc under the player', ks.length === 2 && d.uid === 'anon-1' && d.attempt === ks[0].split('/').pop() && typeof d.data === 'string' && JSON.parse(d.data).ev.length === 1, ks.length + ' docs');
+    ok('log docs carry only the allowed fields', ks.every(k => Object.keys(db[k]).every(f => ['v', 'uid', 'attempt', 'level', 'skin', 'outcome', 'ms', 'app', 'data', 'at'].includes(f)))); }
+  ok('an uploaded attempt is not sent again', (await w.FTH_LOG.upload()) === 0 && logs('anon-1').length === 2);
+  netDown = true; await attempt(4); ok('offline: the attempt waits in the local queue', logs('anon-1').length === 2);
+  netDown = false; await w.FTH_LOG.upload(); ok('back online: the waiting attempt is sent', logs('anon-1').length === 3);
+  w.FTH_LOG.setConsent(false); await attempt(5); ok('switched off on the account screen: nothing more is sent', logs('anon-1').length === 3);
+  w.FTH_LOG.setConsent(true);
   sdk._inuse = true; currentUser = mkUser('anon-1', true); lk = await F.linkGoogle(); ok('already-linked-elsewhere is reported with a credential', lk.status === 'in-use' && !!lk.credential);
   await F.useCredential(lk.credential); ok('switching to the existing account works', F.state().uid === 'g-existing');
   await F.flush(); ok('device proofs merge into the existing account entry', !!db['boards/dots/entries/g-existing'] && db['boards/dots/entries/g-existing'].levels === 1);
+  await attempt(6); ok('after switching profile, attempts go under the new uid', logs('g-existing').length === 1);
   await F.deleteMine(); ok('delete my data removes entry, run docs and player doc', !db['boards/dots/entries/g-existing'] && !db['players/g-existing']);
+  ok('delete my data removes the research log too', logs('g-existing').length === 0);
   await F.signOut(); ok('sign-out', !F.state().signedIn && !F.state().submit);
 
   console.log(fails ? '\n' + fails + ' FAILED' : '\nall passed'); process.exit(fails ? 1 : 0);

@@ -67,6 +67,7 @@
         putEntry: async (skin, uid, entry) => { const b = boards(); (b[skin] = b[skin] || {})[uid] = Object.assign({}, entry, { updatedAt: Date.now() }); jset(BOARDK, b); },
         board: async (skin, n) => Object.entries(boards()[skin] || {}).map(([uid, e]) => Object.assign({ uid }, e)).sort(order).slice(0, n || TOP_N),
         top: async (skin, n) => Object.entries(boards()[skin] || {}).map(([uid, e]) => Object.assign({ uid }, e)).filter(e => e.coins > 0).sort(byCoins).slice(0, n || 12),
+        putLog: async () => false,                     // LOCAL mode: the research log stays in telemetry.js's own queue
         deleteMine: async (uid, skins) => { const b = boards(); skins.forEach(s => { if (b[s]) delete b[s][uid]; }); jset(BOARDK, b); const c = jget('fth-cloud-local', {}); delete c[uid]; jset('fth-cloud-local', c); },
       },
     };
@@ -148,7 +149,11 @@
           }
           await F.deleteDoc(F.doc(db, 'players', uid));
           await F.deleteDoc(F.doc(db, 'saves', uid));   // the cloud save too (cloud.js); progress on this device stays
+          const logs = (await F.getDocs(F.collection(db, 'logs', uid, 'attempts'))).docs;   // and the research log
+          for (let i = 0; i < logs.length; i += 400) { const b = F.writeBatch(db); logs.slice(i, i + 400).forEach(d => b.delete(d.ref)); await b.commit(); }
         },
+        // the research log (telemetry.js): one write-once doc per attempt, the attempt itself as a JSON string
+        putLog: async (uid, doc) => { await F.setDoc(F.doc(db, 'logs', uid, 'attempts', doc.attempt), Object.assign({}, doc, { uid, at: F.serverTimestamp() })); return true; },
       },
     };
   }
@@ -170,7 +175,7 @@
         if (cfg && cfg.apiKey) AD = firebaseAdapter(window.FTH_SDK_OVERRIDE || await loadFirebaseSdk(), cfg);
       } catch (e) { lastErr = 'Could not start the online service; using this device only.'; AD = null; }
       if (!AD) AD = localAdapter();
-      try { user = await AD.auth.init(); await adoptNick(); } catch (e) { lastErr = 'Sign-in is not available right now.'; user = null; }
+      try { user = await AD.auth.init(); await adoptNick(); researchOn(); } catch (e) { lastErr = 'Sign-in is not available right now.'; user = null; }
       AD.auth.onChange(u => { user = u; changed(); });
       addEventListener('online', () => flush());
       if (user && prefs().submit) flush();
@@ -198,12 +203,23 @@
     if (!user || user.anon || ls.get(NICKK + ':' + user.uid)) return;
     try { const p = await AD.store.getPlayer(user.uid); if (p && p.nick && validateNick(p.nick).ok) { ls.set(NICKK + ':' + user.uid, p.nick); ls.set(NICKK, p.nick); changed(); } } catch (e) {}
   }
+  // signing in with Google is the research-log consent (lab players are told; the account screen shows it and can
+  // switch it off). A player who switched it off keeps it off.
+  function researchOn() { if (user && user.linked && window.FTH_LOG && FTH_LOG.consent() !== 'off') { FTH_LOG.setConsent(true); FTH_LOG.upload(); } }
   async function linkGoogle() {
     await ensureIdentity(); const r = await AD.auth.linkGoogle();
-    if (r.status === 'ok') { user = r.user; await adoptNick(); try { await AD.store.putPlayer(user.uid, { nick: nick(), linked: true }); } catch (e) {} changed(); }
+    if (r.status === 'ok') { user = r.user; await adoptNick(); try { await AD.store.putPlayer(user.uid, { nick: nick(), linked: true }); } catch (e) {} researchOn(); changed(); }
     return r;
   }
-  async function useCredential(cred) { user = await AD.auth.useCredential(cred); await adoptNick(); if (!nick()) setNick(randomNick(), true); markDirty(skinIds()); changed(); if (prefs().submit) flush(); return user; }
+  async function useCredential(cred) { user = await AD.auth.useCredential(cred); await adoptNick(); if (!nick()) setNick(randomNick(), true); markDirty(skinIds()); researchOn(); changed(); if (prefs().submit) flush(); return user; }
+  // telemetry.js hands each finished attempt here; true once it is in the cloud
+  async function logPut(rec) {
+    await init(); if (!user || !user.linked || AD.kind !== 'firebase') return false;
+    let data = JSON.stringify(rec);
+    if (data.length > 900000) data = JSON.stringify(Object.assign({}, rec, { ev: rec.ev.slice(0, 2000), cut: rec.ev.length }));
+    return AD.store.putLog(user.uid, { v: 1, attempt: String(rec.attempt), level: String(rec.level).slice(0, 40), skin: String(rec.skin || 'islands'),
+      outcome: String(rec.outcome || '?').slice(0, 24), ms: Math.max(0, Math.min(86400000, rec.ms | 0)), app: String(R.APP || '').slice(0, 40), data });
+  }
   async function signOut() { await init(); await AD.auth.signOut(); user = null; setPrefs({ submit: false }); changed(); }
   async function deleteMine() {
     await init(); if (!user) return 0;
@@ -351,7 +367,7 @@
     podium, coinCap,
     cloudGet: async () => { await init(); return user ? AD.store.getSave(user.uid) : null; },
     cloudPut: async (doc, expect) => { await init(); if (!user) return { ok: false }; return AD.store.putSave(user.uid, doc, expect); },
-    init, ensureIdentity, setNick, validateNick, randomNick, linkGoogle, useCredential, signOut, deleteMine, flush, board, verifyEntry, totals,
+    init, ensureIdentity, setNick, validateNick, randomNick, linkGoogle, useCredential, signOut, deleteMine, flush, board, verifyEntry, totals, logPut,
     setSubmit(on) { setPrefs({ submit: !!on }); if (on) { markDirty(skinIds()); flush(); } },
     state() { return { kind: AD ? AD.kind : 'local', hasGoogle: !!(AD && AD.hasGoogle), note: AD ? AD.note : '', uid: user && user.uid, anon: !user || user.anon, linked: !!(user && user.linked), nick: nick(), submit: !!prefs().submit, signedIn: !!user, err: lastErr, queued: Object.keys(dirty()).length, online: online() }; },
     // future hook: a board can rank by another currency; register { id, label, of: entry -> number }

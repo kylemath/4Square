@@ -13,6 +13,10 @@
  *      runs as a claude.ai artifact that declares the db capability and the viewer may write.
  *   3. a Google Form (set FTH_FORM below): one form response per attempt, the attempt as a JSON string in one field.
  *      Only works where the page may reach docs.google.com (e.g. the GitHub Pages copy; claude.ai artifacts block it).
+ *   4. Firestore logs/<uid>/attempts/<attempt id> (account.js logPut; rules in firestore.rules), for a player signed in
+ *      with Google on the online site. Signing in with Google is the consent (account.js researchOn); the account
+ *      screen shows it and can switch it off. Attempts not yet uploaded are retried from the local queue
+ *      (FTH_LOG.upload(): on each new attempt, on sign-in, when the browser comes back online).
  *
  * Related, separate from this file: integrity.js keeps an always-on, on-device integrity log and the run proofs for
  * leaderboards (see ACCOUNTS.md). It never changes what this research log records or its consent; its signals are
@@ -22,7 +26,7 @@
   'use strict';
   // Fill these in to collect with a Google Form: the form's /formResponse URL and the entry id of a paragraph field.
   const FTH_FORM = { url: '', entry: '' };     // e.g. { url: 'https://docs.google.com/forms/d/e/<id>/formResponse', entry: 'entry.123456789' }
-  const VERSION = 1, QKEY = 'fth-logs', CKEY = 'fth-telemetry', PKEY = 'fth-player';
+  const VERSION = 1, QKEY = 'fth-logs', CKEY = 'fth-telemetry', PKEY = 'fth-player', UKEY = 'fth-logs-up';
   const rid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
   const ls = { get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }, set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} } };
   let player = ls.get(PKEY); if (!player) { player = rid(); ls.set(PKEY, player); }
@@ -46,8 +50,28 @@
     let q = []; try { q = JSON.parse(ls.get(QKEY) || '[]'); } catch (e) {}
     q.push(rec); if (q.length > 300) q = q.slice(-300); ls.set(QKEY, JSON.stringify(q));
   }
+  // Firestore (sink 4): upload every queued attempt not uploaded yet; account.js is loaded only once consent is on
+  let upP = null;
+  function upload() {
+    if (upP || consent() !== 'on' || !window.FTH_RUN || !FTH_RUN.loadAccount || window.FTH_FIREBASE === null) return upP;
+    upP = (async () => {
+      let up = {}; try { up = JSON.parse(ls.get(UKEY) || '{}'); } catch (e) {}
+      const todo = window.FTH_LOG.records().filter(r => r.attempt && !up[r.attempt]);
+      if (!todo.length) return 0;
+      const A = await FTH_RUN.loadAccount(); let n = 0;
+      for (const r of todo) {
+        try { if (!(await A.logPut(r))) break; up[r.attempt] = 1; n++; }
+        catch (e) { if (!/permission|invalid/.test(String(e && e.code))) break; up[r.attempt] = 'x'; }   // refused by the rules: never retried
+        ls.set(UKEY, JSON.stringify(up));
+      }
+      const keep = new Set(window.FTH_LOG.records().map(r => r.attempt)); Object.keys(up).forEach(k => { if (!keep.has(k)) delete up[k]; });
+      ls.set(UKEY, JSON.stringify(up)); return n;
+    })().catch(() => 0).finally(() => { upP = null; });
+    return upP;
+  }
   async function send(rec) {
     queue(rec);
+    upload();
     try { const x = await db(); if (x) await x.d.collection('logs/' + x.id + '/attempts').doc(rec.attempt).set(rec); } catch (e) {}
     if (FTH_FORM.url && FTH_FORM.entry) {
       try {
@@ -60,7 +84,7 @@
   // ---------- API used by the game ----------
   const now = () => Math.round(performance.now() - cur.t0);
   window.FTH_LOG = {
-    consent, setConsent(on) { ls.set(CKEY, on ? 'on' : 'off'); },
+    consent, setConsent(on) { ls.set(CKEY, on ? 'on' : 'off'); }, upload,
     input(type) { if (type) inputs[type] = (inputs[type] || 0) + 1; },
     start(level) {
       if (cur) this.end('abandoned');
@@ -85,5 +109,7 @@
   };
   // flush an attempt in progress if the page goes away
   addEventListener('pagehide', () => { if (cur) window.FTH_LOG.end('left'); });
+  addEventListener('online', upload);
+  addEventListener('load', () => setTimeout(upload, 1500));
   addEventListener('pointerdown', e => window.FTH_LOG.input(e.pointerType), { capture: true, passive: true });
 })();

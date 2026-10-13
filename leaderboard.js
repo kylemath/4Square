@@ -207,6 +207,7 @@
     }
   }
   // ---------------------------------------------------------------- join banner (not joined yet) and your card (joined)
+  const research = () => !!(window.FTH_LOG && FTH_LOG.consent() === 'on');
   const notice = on => `<label class="lb-chk"><input type="checkbox" id="lbSub" ${on ? 'checked' : ''}><span>📤 Share nickname, scores &amp; replays. No real name or email.</span></label>`;
   function join() {
     const el = $('#lbJoin', root), s = A.state();
@@ -216,7 +217,7 @@
     el.innerHTML = `<div class="lb-join" role="region" aria-label="Join the leaderboard"><div class="lb-jt"><span class="flag" aria-hidden="true">🏁</span><b>JOIN THE RACE!</b></div>
       <div class="lb-jrow"><input class="lb-in" type="text" id="lbNick" maxlength="16" autocomplete="off" aria-label="Nickname" value="${esc(nickDraft)}"><button class="lb-dice" id="lbDice" aria-label="Random nickname">🎲</button></div>
       <div class="lb-jbtns"><button class="b3 go" id="lbJoinBtn">JOIN ▶</button><button class="b3 gg" id="lbGoogleJ" ${g} aria-label="Join with Google">${GOOGLE}Google</button></div>
-      ${notice(true)}<div class="lb-err" id="lbErrJ" role="alert"></div></div>`;
+      ${notice(true)}${s.hasGoogle ? '<p class="lb-note">🔬 With Google, your moves are also logged for the lab\'s puzzle research.</p>' : ''}<div class="lb-err" id="lbErrJ" role="alert"></div></div>`;
     const err = m => { const e = $('#lbErrJ', el) || $('#lbErr', root); if (e) e.textContent = m || ''; }, nk = $('#lbNick', el);
     nk.oninput = () => { nickDraft = nk.value; };
     $('#lbDice', el).onclick = () => { nickDraft = nk.value = A.randomNick(); };
@@ -246,10 +247,11 @@
       <div class="lb-err" id="lbErr" role="alert">${esc(s.err)}</div>
       ${(() => { const c = window.FTH_CLOUD ? FTH_CLOUD.state() : null; if (!c) return '';
         const t = c.at ? new Date(c.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
-        return `<p class="lb-note" aria-label="Cloud save">${c.busy ? '☁️ …' : c.err ? '☁️ ⚠️ ' + esc(c.err) : c.at ? '☁️ ✓ ' + t + (s.linked ? ' · every device' : ' · 🔗 Google to play anywhere') : '☁️'}</p>`; })()}
+        return `<p class="lb-note" aria-label="Cloud save">${c.busy ? '☁️ …' : c.err ? '☁️ ⚠️ ' + esc(c.err) : c.at ? '☁️ ✓ ' + t + (s.linked ? ' · every device' : ' · 🔗 Google to play anywhere') : '☁️'}${research() ? ' · 🔬' : ''}</p>`; })()}
       ${s.queued ? `<p class="lb-note" aria-label="${s.queued} boards waiting to be sent">📤 ${s.queued}${s.online ? '' : ' · 📡✕'}</p>` : ''}
       <details><summary aria-label="Settings and your data">⚙️</summary>
         ${notice(s.submit)}
+        ${s.linked && window.FTH_LOG ? `<label class="lb-chk"><input type="checkbox" id="lbResearch" ${research() ? 'checked' : ''}><span>🔬 Log my moves for the lab's puzzle research (no name or email).</span></label>` : ''}
         ${s.hasGoogle ? '<p class="lb-note">Linking keeps your scores. Your Google name and email are never shown or stored by the game.</p>' : `<p class="lb-note">${esc(s.note)}</p>`}
         <p class="lb-note">Ranked by coins earned in each skin, all time: spending them does not lower it. Every entry's solutions are replayed on your device first, and its coins count only up to what its replayed levels could pay.</p>
         <div class="lb-row"><button class="lb-btn" id="lbOut">⏏ Sign out</button><button class="lb-btn" id="lbDel">🗑 Delete my leaderboard data</button></div>
@@ -259,9 +261,10 @@
     const err = m => { const e = $('#lbErr', root); if (e) e.textContent = m || ''; };
     $('#lbSave', el).onclick = () => { const r = A.setNick($('#lbNickMe', el).value); if (!r.ok) err(r.why); else { err(''); render(); } };
     $('#lbSub', el).onchange = e => A.setSubmit(e.target.checked);
+    const rs = $('#lbResearch', el); if (rs) rs.onchange = e => { FTH_LOG.setConsent(e.target.checked); if (e.target.checked) FTH_LOG.upload(); render(); };
     $('#lbGoogle', el).onclick = async e => { e.currentTarget.disabled = true; try { await google(err); } catch (x) { err('Google sign-in did not work (' + ((x && x.code) || 'error') + ').'); } render(); };
     $('#lbOut', el).onclick = async () => { await A.signOut(); render(); };
-    $('#lbDel', el).onclick = async () => { if (confirm('Delete your leaderboard entries, profile and cloud save? Your game progress on this device is kept.')) { try { await A.deleteMine(); } catch (x) { err('Could not delete right now: ' + (x && x.code || 'error')); } render(); } };
+    $('#lbDel', el).onclick = async () => { if (confirm('Delete your leaderboard entries, profile, cloud save and research log? Your game progress on this device is kept.')) { try { await A.deleteMine(); } catch (x) { err('Could not delete right now: ' + (x && x.code || 'error')); } render(); } };
     const cl = $('#lbClearLog', el); if (cl) cl.onclick = () => { FTH_INT.clear(); render(); };
   }
   window.FTH_LB = { open, close, render };

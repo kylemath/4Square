@@ -4,6 +4,7 @@
 //   boards/{skin}/entries/{uid}         one best-per-skin entry per player; PUBLIC read, owner write
 //   saves/{uid}                         the progress save (cloud.js): progress, wallets, skins, maps; owner only
 //   runs/{uid}_{levelId}_{skinId}       full replayable proof of the best run on that level + skin; owner read/write
+//   logs/{uid}/attempts/{attempt}       research log of every level attempt (telemetry.js); owner create-once/read/delete
 // What these rules enforce: signed in (anonymous counts), only your own docs, field types and bounds, numbers that
 // never go down, numbers bounded by what the level set allows, at most one write per doc per 5 seconds, delete only
 // your own. What they CANNOT check: that a proof really replays (that is done by verify.js in every reader and by
@@ -57,6 +58,20 @@ service cloud.firestore {
         && request.resource.data.get('coins', 0) >= resource.data.get('coins', 0)
         && slow(resource, 'updatedAt');
       allow delete: if mine(uid);
+    }
+
+    // logs/{uid}/attempts/{attempt}: the research log (telemetry.js), one doc per level attempt, only for players who
+    // signed in with Google (that is the consent; the account screen can switch it off). Write-once: create, never
+    // update. The owner may read and delete (the "delete my data" button); the lab reads with an admin export.
+    match /logs/{uid}/attempts/{aid} {
+      allow read, delete: if mine(uid);
+      allow create: if mine(uid)
+        && request.resource.data.keys().hasOnly(['v', 'uid', 'attempt', 'level', 'skin', 'outcome', 'ms', 'app', 'data', 'at'])
+        && request.resource.data.uid == uid && request.resource.data.attempt == aid
+        && str(aid, 4, 40) && str(request.resource.data.level, 1, 40) && request.resource.data.skin.matches('[a-z0-9-]{2,24}')
+        && str(request.resource.data.outcome, 1, 24) && num(request.resource.data.ms, 0, 86400000)
+        && str(request.resource.data.app, 0, 40) && str(request.resource.data.data, 2, 900000)
+        && request.resource.data.at == request.time;
     }
 
     match /runs/{runId} {
