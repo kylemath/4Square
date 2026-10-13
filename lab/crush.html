@@ -6,8 +6,9 @@
   shape, from g.cells, faintly tinted by the candy it holds) with one candy on it. Four flavours, each with its own
   colour AND shape: a round red jelly, a blue wrapped sweet, a yellow star and a green drop. In the middle of the
   board sits an empty chocolate-frosted tile (the hole) holding an empty sweet wrapper, ringed by sockets: one per
-  neighbouring candy, each showing that neighbour's flavour. Goal cue (bottom panel): "Fill the wrapper: clear a
-  flavour from the sockets". When the sockets show one flavour fewer, that missing candy drops into the wrapper.
+  neighbouring candy, each showing that neighbour's flavour. No instruction copy: until the first touch a ghost finger
+  drags one candy onto a neighbour while that pair bobs and glows. When the sockets show one flavour fewer, that
+  missing candy drops into the wrapper. The only HUD text is a candy-jar move counter ("0/2").
 
   Why the classic Candy Crush gesture is exactly a Kempe move: two neighbouring candies of flavours a and b always
   lie in the same {a, b} chain (the connected run of a- and b-candies through them). "Swap two neighbours" therefore
@@ -24,20 +25,25 @@
                                 it would flip both show a lock (that swap cannot empty a flavour from the sockets).
                                 On release, u and v slide past each other (the Candy Crush swap; it is literal:
                                 afterwards u holds v's flavour and v holds u's), then the swap ripples through the
-                                rest of K one BFS layer per beat, each candy flipping to its new flavour with a
-                                rising combo pitch and "Sweet! / Tasty! / Delicious! / Divine!" by chain size.
+                                rest of K in BFS order, one candy every 45 ms, each flipping with a pop overshoot and
+                                a rising pentatonic tone; "Sweet! / Tasty! / Delicious! / Divine!" by chain size.
+                                LAB.at(x, y) gets the swap point. A rim candy that changes sends its old flavour
+                                popping out of its socket; when a flavour leaves the rim the whole socket ring bounces.
     TAP candy u               = a radial picker of the other flavours (g.NC - 1 of them). Picking b swaps
                                 K = g.chainAt(u, b), rippling out from u. This reaches the one-candy chains (a candy
                                 with no b-neighbour just turns into b), as on every other page.
     K.web === true            = g.swap is NOT called (that chain is every a and b on the board, so swapping it only
-                                renames two flavours): the candies start to swap, wobble and spring back, "no change".
+                                renames two flavours): the candies start to swap, jelly-wobble and spring back, boing.
     g.won()                   = the sockets show g.goal flavours (3 on a 4-flavour board); the missing flavour
-                                g.free() drops into the wrapper, sugar-crush burst, "Sugar Crush!", stars by moves
-                                vs g.level.par (3 at par, 2 within par + 2, else 1, as in the app), then LAB.done().
-    undo / restart buttons    = g.undo() / g.reset() (also driven by the app's { fth, cmd } messages via core.js).
+                                g.free() drops into the wrapper, sugar-crush burst, two candy waves, sprinkle rain,
+                                "Sugar Crush!" (standalone also stars by moves vs par), then LAB.done() at 3.7 s.
+    undo / restart buttons    = g.undo() / g.reset() (also driven by the app's { fth, cmd } messages via core.js);
+                                inert once won inside the app. They wear the --sk-ctl tokens.
+    easter egg golden-wrapper = on ~1 load in 12 one candy wears shimmering gold foil; a swap whose chain includes it
+                                bursts the foil in gold sparkles and calls LAB.egg('golden-wrapper', 150) once.
   ?lvl= picks the level, ?embed=1 runs inside the app, &hud=full|compact hides this page's level title and stars.
   Sound starts only after the first gesture; prefers-reduced-motion drops slides, ripples, particles and wobbles.
-  Test hook: window.CRUSH = { g, play(u, b, v), center(u), busy() }.
+  Test hook: window.CRUSH = { g, play(u, b, v), center(u), busy(), won(), hint(), gold(u) }.
 -->
 <html lang="en">
 <head>
@@ -53,72 +59,58 @@
     font-family: Nunito, 'Avenir Next', 'Trebuchet MS', system-ui, sans-serif; }
   #cv { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; }
   .lil { font-family: 'Lilita One', 'Arial Rounded MT Bold', 'Trebuchet MS', system-ui, sans-serif; font-weight: 400; }
-  #top { position: fixed; left: 0; right: 0; top: 0; height: 52px; display: flex; align-items: center; gap: 8px;
+  .sr { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+  #top { position: fixed; left: 0; right: 0; top: 0; height: 56px; display: flex; align-items: center; gap: 8px;
     padding: 0 10px; padding-top: env(safe-area-inset-top); box-sizing: border-box; z-index: 2; pointer-events: none; }
   #lvl { flex: 1; min-width: 0; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     font-size: clamp(14px, 4.2vw, 20px); letter-spacing: .02em; text-shadow: 0 2px 0 #7a2a8c, 0 0 8px rgba(122,42,140,.5); }
   #lvl small { font-family: Nunito, system-ui, sans-serif; font-weight: 900; font-size: .62em; opacity: .85; display: block; letter-spacing: .08em; }
   body.app #lvl { visibility: hidden; }
-  .pill { display: flex; align-items: baseline; gap: 4px; padding: 4px 12px 5px; border-radius: 999px; color: var(--ink);
-    background: linear-gradient(#fffaf2, #ffe1ef); border: 3px solid #fff; box-shadow: 0 3px 0 #b33a86, inset 0 -3px 0 #ffc4df; }
-  .pill small { font-weight: 900; font-size: 10px; letter-spacing: .08em; color: #b33a86; }
+  /* the candy-jar move counter: numbers only */
+  .pill { display: flex; align-items: center; gap: 5px; padding: 3px 12px 4px 6px; border-radius: 999px;
+    color: var(--sk-ctl-ink, #4a1a5c); background: var(--sk-ctl, #fffaf2); border: 3px solid var(--sk-ctl-ink, #4a1a5c);
+    box-shadow: 0 4px 0 var(--sk-ctl-edge, #ff5fa8), 0 6px 10px rgba(40,0,60,.3); transition: transform .2s; }
+  .pill svg { width: 26px; height: 26px; flex: none; }
   .pill b { font-family: 'Lilita One', system-ui, sans-serif; font-weight: 400; font-size: 22px; line-height: 1; }
-  .pill span { font-weight: 900; font-size: 11px; color: #8a5a9c; white-space: nowrap; }
+  .pill span { font-family: 'Lilita One', system-ui, sans-serif; font-size: 15px; opacity: .6; }
   .pill.over b { color: #d2283c; }
-  #top button, #again2 { pointer-events: auto; width: 40px; height: 40px; padding: 0; border-radius: 50%; cursor: pointer;
-    border: 3px solid #fff; color: #fff; font: 900 20px/1 system-ui, sans-serif;
-    background: radial-gradient(circle at 35% 30%, #ff9ccc, #ff4f9a 55%, #c51f6e); box-shadow: 0 3px 0 #8e1450; }
-  #top button:active { transform: translateY(3px); box-shadow: none; }
-  #top button:disabled { opacity: .45; }
-  #goal { position: fixed; left: 10px; right: 10px; margin: 0 auto; max-width: 480px; bottom: max(8px, env(safe-area-inset-bottom)); z-index: 2;
-    display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 20px;
-    box-sizing: border-box; background: linear-gradient(#fffaf2, #ffe6f2); border: 3px solid #fff; color: var(--ink);
-    box-shadow: 0 4px 0 #b33a86, 0 8px 18px rgba(60,10,80,.35); pointer-events: none; white-space: nowrap; }
-  #goal .t { flex: 1; display: flex; flex-direction: column; line-height: 1.1; min-width: 0; overflow: hidden; }
-  #goal .t span { overflow: hidden; text-overflow: ellipsis; }
-  #goal .t b { font-family: 'Lilita One', system-ui, sans-serif; font-weight: 400; font-size: 18px; color: #7a2a8c; }
-  #goal .t span { font-weight: 800; font-size: 11px; color: #8a5a9c; }
-  #counts { display: flex; gap: 4px; flex: none; }
-  .cnt { position: relative; width: 34px; height: 38px; border-radius: 10px; background: #fff; box-shadow: inset 0 -3px 0 #f2d3e6; }
-  .cnt canvas { position: absolute; left: 3px; top: 1px; width: 28px; height: 28px; }
-  .cnt i { position: absolute; right: 2px; bottom: 1px; font: 900 11px/1 Nunito, system-ui, sans-serif; color: #7a2a8c; font-style: normal; }
-  .cnt.zero { background: #fff7c2; box-shadow: inset 0 -3px 0 #f0c84a, 0 0 0 2px #ffd23a; }
-  .cnt.zero i { color: #2a9a3a; }
-  #wrapIc { width: 34px; height: 34px; flex: none; }
-  #toast { position: fixed; left: 50%; top: 62px; transform: translate(-50%, -8px); z-index: 3; opacity: 0; pointer-events: none;
-    padding: 7px 14px; border-radius: 999px; background: rgba(54,18,84,.9); color: #fff; font-weight: 900; font-size: 14px;
-    transition: opacity .25s, transform .25s; white-space: nowrap; max-width: calc(100vw - 24px); overflow: hidden; text-overflow: ellipsis; }
-  #toast.on { opacity: 1; transform: translate(-50%, 0); }
-  #win { position: fixed; left: 50%; bottom: max(10px, env(safe-area-inset-bottom)); transform: translate(-50%, 30px); z-index: 4;
-    display: none; flex-direction: column; align-items: center; gap: 4px; padding: 10px 18px 12px; border-radius: 24px;
-    background: linear-gradient(#fffaf2, #ffe1ef); border: 4px solid #fff; color: var(--ink); opacity: 0;
-    box-shadow: 0 5px 0 #b33a86, 0 14px 30px rgba(60,10,80,.45); transition: opacity .35s, transform .35s cubic-bezier(.3,1.6,.5,1); }
+  .pill.bump { transform: scale(1.18) rotate(-4deg); }
+  .ctl { pointer-events: auto; width: 44px; height: 44px; padding: 0; border-radius: 50%; cursor: pointer;
+    border: 3px solid var(--sk-ctl-ink, #4a1a5c); color: var(--sk-ctl-ink, #4a1a5c); font: 900 22px/1 system-ui, sans-serif;
+    background: var(--sk-ctl, #fffaf2); box-shadow: 0 5px 0 var(--sk-ctl-edge, #ff5fa8), 0 7px 12px rgba(40,0,60,.35);
+    position: relative; transition: transform .06s; }
+  .ctl::after { content: ''; position: absolute; left: 7px; top: 5px; width: 14px; height: 7px; border-radius: 50%;
+    background: rgba(255,255,255,.75); transform: rotate(-25deg); pointer-events: none; }
+  .ctl:active { transform: translateY(4px); box-shadow: 0 1px 0 var(--sk-ctl-edge, #ff5fa8); }
+  .ctl:disabled { opacity: .45; }
+  #win { position: fixed; left: 50%; bottom: max(14px, env(safe-area-inset-bottom)); transform: translate(-50%, 30px); z-index: 4;
+    display: none; align-items: center; gap: 12px; padding: 10px 16px; border-radius: 24px;
+    background: var(--sk-ctl, #fffaf2); border: 4px solid var(--sk-ctl-ink, #4a1a5c); color: var(--ink); opacity: 0;
+    box-shadow: 0 6px 0 var(--sk-ctl-edge, #ff5fa8), 0 14px 30px rgba(60,10,80,.45); transition: opacity .35s, transform .35s cubic-bezier(.3,1.6,.5,1); }
   #win.on { display: flex; }
   #win.show { opacity: 1; transform: translate(-50%, 0); }
   #stars { display: flex; gap: 6px; }
   #stars svg { width: 44px; height: 44px; transform: scale(0); transition: transform .35s cubic-bezier(.3,1.8,.5,1); }
   #stars svg.in { transform: scale(1); }
   #stars svg:nth-child(2) { margin-top: -10px; width: 52px; height: 52px; }
-  #wtxt { font-weight: 900; font-size: 13px; color: #8a5a9c; white-space: nowrap; }
-  #again2 { width: auto; height: auto; border-radius: 999px; padding: 8px 18px; font: 400 18px/1 'Lilita One', system-ui, sans-serif; letter-spacing: .03em; }
-  #again2:active { transform: translateY(3px); box-shadow: none; }
-  body.app #stars, body.app #wtxt { display: none; }
-  body.won #goal { display: none; }
-  @media (max-width: 370px) { .pill span { display: none; } .cnt { width: 30px; } .cnt canvas { left: 1px; } }
-  @media (prefers-reduced-motion: reduce) { #win, #toast, #stars svg { transition: none; } }
+  body.app #win { display: none !important; }
+  @media (prefers-reduced-motion: reduce) { #win, #stars svg, .pill { transition: none; } }
 </style>
 </head>
 <body>
-<canvas id="cv"></canvas>
+<canvas id="cv" aria-label="Candy board: drag a candy onto a neighbour to swap"></canvas>
 <div id="top">
   <div id="lvl" class="lil"></div>
-  <div class="pill" id="mv"><small>MOVES</small><b id="mvN">0</b><span id="mvP"></span></div>
-  <button id="undo" aria-label="Undo" title="Undo">&#8630;</button>
-  <button id="again" aria-label="Start over" title="Start over">&#8634;</button>
+  <div class="pill" id="mv" role="status" aria-label="Moves"><svg viewBox="0 0 26 26" aria-hidden="true">
+    <rect x="7" y="2.5" width="12" height="5" rx="2" fill="#ff5fa8" stroke="#4a1a5c" stroke-width="1.8"/>
+    <path d="M6 8h14q3 0 3 4v8q0 4-4 4H7q-4 0-4-4v-8q0-4 3-4Z" fill="#e8f6ff" stroke="#4a1a5c" stroke-width="1.8"/>
+    <circle cx="9" cy="18" r="3" fill="#f0263f"/><circle cx="15.5" cy="19" r="3" fill="#33c43f"/><circle cx="12.5" cy="13.5" r="2.8" fill="#ffc41a"/><circle cx="18" cy="14" r="2.3" fill="#1f86f0"/>
+    <path d="M6.5 11v6" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/></svg><b id="mvN">0</b><span id="mvP"></span></div>
+  <button class="ctl" id="undo" aria-label="Undo">&#8630;</button>
+  <button class="ctl" id="again" aria-label="Start over">&#8634;</button>
 </div>
-<div id="goal"><canvas id="wrapIc" width="68" height="68"></canvas><div class="t"><b>Fill the wrapper</b><span id="gtxt">clear a flavour from its sockets</span></div><div id="counts"></div></div>
-<div id="toast"></div>
-<div id="win"><div id="stars"></div><div id="wtxt"></div><button id="again2">Play again</button></div>
+<div id="sr" class="sr" aria-live="polite"></div>
+<div id="win"><div id="stars"></div><button class="ctl" id="again2" aria-label="Start over">&#8634;</button></div>
 <script src="../levels.js"></script>
 <script src="../layout.js"></script>
 <script src="core.js"></script>
@@ -177,7 +169,7 @@
     const F = FL[e], P = cpath(e, r);
     c.save(); c.translate(x, y); if (o.rot) c.rotate(o.rot); c.scale(o.sx || 1, o.sy || 1);
     if (o.a !== undefined) c.globalAlpha *= o.a;
-    if (o.glow) { const gg = c.createRadialGradient(0, 0, r * .6, 0, 0, r * 1.7); gg.addColorStop(0, 'rgba(255,255,255,' + (.75 * o.glow) + ')'); gg.addColorStop(1, 'rgba(255,240,180,0)'); c.fillStyle = gg; c.beginPath(); c.arc(0, 0, r * 1.7, 0, Math.PI * 2); c.fill(); }
+    if (o.glow) { const gg = c.createRadialGradient(0, 0, r * .6, 0, 0, r * 1.7); const gc = o.gc || '255,255,255'; gg.addColorStop(0, 'rgba(' + gc + ',' + (.75 * o.glow) + ')'); gg.addColorStop(1, 'rgba(' + gc + ',0)'); c.fillStyle = gg; c.beginPath(); c.arc(0, 0, r * 1.7, 0, Math.PI * 2); c.fill(); }
     c.save(); c.translate(0, r * .13); c.fillStyle = 'rgba(30,0,40,.32)'; c.fill(P); c.restore();
     const gr = c.createRadialGradient(-r * .32, -r * .38, r * .08, 0, 0, r * 1.1);
     gr.addColorStop(0, F.hi); gr.addColorStop(.45, F.c); gr.addColorStop(1, F.d);
@@ -224,7 +216,7 @@
   }
   const CELLS = g.cells || fallbackCells();
   let W = 0, H = 0, DPR = 1, G = null, bgC = null;
-  const TOP = 56, BOT = 70;
+  const TOP = 60, BOT = 14;
   function subdivide(poly, step) {     // split long edges so a warped border bends smoothly
     const out = [];
     for (let i = 0; i < poly.length; i++) { const a = poly[i], b = poly[(i + 1) % poly.length], m = Math.max(1, Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) / step)); for (let j = 0; j < m; j++) out.push([a[0] + (b[0] - a[0]) * j / m, a[1] + (b[1] - a[1]) * j / m]); }
@@ -322,8 +314,11 @@
   const sfx = {
     pick() { tone(880, .06, 'sine', .18, 1.5); },
     swish() { tone(420, .14, 'triangle', .22, 1.9); },
-    pop(i) { const f = 523 * Math.pow(2, PENT[Math.min(i, PENT.length - 1)] / 12); tone(f, .14, 'sine', .32, 1.15); tone(f * 2, .08, 'triangle', .08, 1); },
-    boing() { tone(220, .3, 'sine', .35, .5); tone(330, .25, 'triangle', .12, .6, .05); },
+    pop(i) { const f = 523 * Math.pow(2, PENT[Math.min(i, PENT.length - 1)] / 12); tone(f, .12, 'sine', .3, 1.18); tone(f * 2, .05, 'triangle', .1, 1.4); tone(1800 + 300 * (i % 3), .025, 'square', .03, .6); },
+    trace(n, web) { if (web) { tone(180, .12, 'triangle', .1, .8); return; } for (let i = 0; i < Math.min(n, 8); i++) tone(660 * Math.pow(2, PENT[i] / 12), .07, 'sine', .07, 1.1, i * .035); },
+    leave() { tone(500, .22, 'triangle', .2, 2.4); tone(1250, .1, 'sine', .1, 1.5, .1); },
+    sparkle() { [0, 4, 7, 12, 16, 19, 24, 28].forEach((s, i) => tone(1318 * Math.pow(2, s / 12), .12, 'sine', .14, 1.02, i * .045)); },
+    boing() { tone(260, .32, 'sine', .3, .55); tone(390, .22, 'sine', .08, .7, .06); },
     undo() { tone(600, .08, 'triangle', .2, .7); },
     word(n) { [0, 4, 7, 12].slice(0, 2 + Math.min(2, n)).forEach((s, i) => tone(784 * Math.pow(2, s / 12), .18, 'triangle', .18, 1, i * .07)); },
     crush() { [0, 4, 7, 12, 16, 19, 24].forEach((s, i) => tone(523 * Math.pow(2, s / 12), .3, 'triangle', .22, 1, i * .07)); tone(90, .5, 'sine', .4, .5); },
@@ -333,22 +328,36 @@
   // ---------------------------------------------------------------- state
   let shown = g.col.slice();                // what each candy shows right now (lags g.col during a ripple)
   let tl = [], wtl = [];                    // timelines: { at, fn } (wtl = the win celebration)
-  let slide = null, flips = {}, wob = {}, pops = {}, parts = [], words = [], drag = null, picker = null;
-  let win = null, filled = -1, fillT0 = 0, lastSwap = null;
-  const BEAT = RM ? 0 : 115, SLIDE = RM ? 0 : 230;
+  let slide = null, flips = {}, wob = {}, pops = {}, hops = {}, sockB = {}, parts = [], flyers = [], words = [], drag = null, picker = null;
+  let win = null, filled = -1, fillT0 = 0, rimB = -1e9, holeWob = -1e9, inPlay = false, touched = false;
+  const SLIDE = RM ? 0 : 230, STEP = RM ? 0 : 45;   // STEP: the swap wave, one candy every 45 ms in BFS order
   const at = (t, fn) => tl.push({ at: t, fn }), wat = (t, fn) => wtl.push({ at: t, fn });
   function runDue(list, t) { list.sort((a, b) => a.at - b.at); while (list.length && list[0].at <= t) list.shift().fn(); }
   function finalize() { while (tl.length) runDue(tl, Infinity); slide = null; flips = {}; }
   const busy = () => tl.length > 0 || !!slide;
+  const rgb = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16)).join(',');
+  const srEl = $('sr'); const sr = msg => { srEl.textContent = msg; };
+
+  // the ghost finger's first move (shown until the first touch): a neighbour pair whose chain is a good swap
+  const HINT = (() => {
+    const gd = g.good(), Ks = gd.filter(K => K.rimHits < 2).concat(gd, g.chains.filter(K => !K.web));
+    for (const K of Ks) for (const u of K.vs) for (const v of g.adj[u]) if (v !== HOLE && K.set.has(v) && g.col[v] !== g.col[u]) return { u, v, K };
+    return null;
+  })();
+  // easter egg 'golden-wrapper': on about 1 load in 12 one candy wears gold foil; swapping a chain through it pays quietly
+  let GOLD = -1, eggDone = false, goldPop = -1e9;
+  if (Math.random() < 1 / 12) { const c = []; for (let u = 0; u < N; u++) if (u !== HOLE) c.push(u); GOLD = c[Math.floor(Math.random() * c.length)]; }
 
   // ---------------------------------------------------------------- particles and words
   function burst(x, y, cols, n, spd) {
     if (RM) return;
-    for (let i = 0; i < n; i++) { const a = Math.random() * Math.PI * 2, s = (spd || 1) * (60 + Math.random() * 220); parts.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s - 80, life: 0, max: .6 + Math.random() * .7, c: cols[i % cols.length], k: i % 3, r: 2 + Math.random() * 3.5, rot: Math.random() * 6 }); }
+    for (let i = 0; i < n; i++) { const a = Math.random() * Math.PI * 2, s = (spd || 1) * (60 + Math.random() * 220); parts.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s - 80, life: 0, max: .6 + Math.random() * .7, c: cols[i % cols.length], k: i % 3, r: 2 + Math.random() * 3.5, rot: Math.random() * 6, gr: 1 }); }
   }
-  function say(txt, x, y, size, sub) { words.push({ txt, sub, x: clamp(x, size * 2.4, W - size * 2.4), y: clamp(y, TOP + size, H - BOT - size), size, t0: now() }); }
-  let toastT = 0;
-  function toast(msg) { const el = $('toast'); el.textContent = msg; el.classList.add('on'); clearTimeout(toastT); toastT = setTimeout(() => el.classList.remove('on'), 1800); }
+  function rain(n) { // sprinkles and confetti falling from the top
+    const cols = ['#ff5fa8', '#fff', '#5ad1ff', '#ffe14d', '#7dff8a', '#ff8a3a'];
+    for (let i = 0; i < n; i++) parts.push({ x: Math.random() * W, y: -10 - Math.random() * 30, vx: (Math.random() - .5) * 60, vy: 80 + Math.random() * 120, life: 0, max: 2.6 + Math.random(), c: cols[(Math.random() * cols.length) | 0], k: 1 + (i % 2), r: 2.5 + Math.random() * 3, rot: Math.random() * 6, gr: .12 });
+  }
+  function say(txt, x, y, size) { words.push({ txt, x: clamp(x, size * 2.4, W - size * 2.4), y: clamp(y, TOP + size, H - BOT - size), size, t0: now() }); }
 
   // ---------------------------------------------------------------- the move
   // BFS layers of chain K from the seeds (inside K, along map edges)
@@ -360,92 +369,127 @@
   const WORDS = [[12, 'Divine!'], [8, 'Delicious!'], [5, 'Tasty!'], [3, 'Sweet!']];
   // u: the candy touched; b: the flavour it becomes; v: the neighbour it was dragged onto (or -1 for the picker)
   function play(u, b, v) {
-    if (win || u === HOLE || u < 0 || b === g.col[u] || b < 0 || b >= NC) return false;
+    if (win || g.won() || u === HOLE || u < 0 || b === g.col[u] || b < 0 || b >= NC) return false;
     finalize();
     const K = g.chainAt(u, b); if (!K) return false;
     const t = now();
-    if (K.web) {   // renaming two flavours everywhere: no move
+    if (K.web) {   // renaming two flavours everywhere: no move, the board wobbles like jelly
       if (!RM && v >= 0) slide = { u, v, eu: shown[u], ev: shown[v], t0: t, dur: 520, back: true };
-      K.vs.forEach(w => { wob[w] = t + (RM ? 0 : 60); });
-      sfx.boing(); toast('No change: that renames ' + FL[K.pair[0]].name.split(' ')[0] + ' \u2194 ' + FL[K.pair[1]].name.split(' ')[0] + ' everywhere');
+      K.vs.forEach(w => { wob[w] = t + (RM ? 0 : 40 + hash(w, 7) * 120); });
+      sfx.boing(); sr('No change: that swap renames two flavours everywhere.');
       return false;
     }
     const before = g.col.slice();
-    g.swap(K);
-    const after = g.col.slice(); lastSwap = { K, t };
-    const seeds = v >= 0 ? [u, v] : [u], L = layers(K, seeds);
+    inPlay = true; try { g.swap(K); } finally { inPlay = false; }
+    const pu = G.poles[u], pv = v >= 0 ? G.poles[v] : pu;
+    if (LAB.at) LAB.at((pu[0] + pv[0]) / 2, (pu[1] + pv[1]) / 2);
+    const after = g.col.slice();
+    const seeds = v >= 0 ? [u, v] : [u], order = [].concat(...layers(K, seeds));
     const sx = v >= 0 ? SLIDE : 0;
     if (v >= 0) {
       if (SLIDE) { slide = { u, v, eu: before[u], ev: before[v], t0: t, dur: SLIDE }; sfx.swish(); }
-      at(t + sx, () => { slide = null; shown[u] = after[u]; shown[v] = after[v]; pops[u] = pops[v] = now(); burstAt(u, 6); burstAt(v, 6); sfx.pop(0); });
+      at(t + sx, () => { slide = null; [u, v].forEach(w => { const f = shown[w]; shown[w] = after[w]; pops[w] = now(); burstAt(w, 6); changed(w, f); }); sfx.pop(0); });
     } else {
       at(t, () => { flipTo(u, after[u]); sfx.pop(0); });
     }
-    L.forEach((lay, i) => { if (i === 0) return; at(t + sx + i * BEAT, () => { lay.forEach(w => flipTo(w, after[w])); sfx.pop(i); }); });
-    const end = t + sx + (L.length - 1) * BEAT + (RM ? 0 : 200);
+    order.forEach((w, i) => { if (seeds.includes(w)) return; at(t + sx + i * STEP, () => { flipTo(w, after[w]); if (STEP || i < 2) sfx.pop(i); }); });
+    if (GOLD >= 0 && K.set.has(GOLD)) at(t + sx + Math.max(0, order.indexOf(GOLD)) * STEP + 120, goldBurst);
+    const end = t + sx + (order.length - 1) * STEP + (RM ? 0 : 260);
     at(end, () => {
       let wd = null; for (const [n, s] of WORDS) if (K.size >= n) { wd = s; break; }
-      if (wd) { let mx = 0, my = 0; K.vs.forEach(w => { mx += G.poles[w][0]; my += G.poles[w][1]; }); say(wd, mx / K.size, my / K.size - G.Rcap, clamp(G.Rcap * .9 + K.size * 1.2, 26, 54), K.size + ' candy chain'); sfx.word(K.size >= 8 ? 2 : K.size >= 5 ? 1 : 0); }
+      if (wd) { let mx = 0, my = 0; K.vs.forEach(w => { mx += G.poles[w][0]; my += G.poles[w][1]; }); say(wd, mx / K.size, my / K.size - G.Rcap, clamp(G.Rcap * .9 + K.size * 1.2, 26, 54)); sfx.word(K.size >= 8 ? 2 : K.size >= 5 ? 1 : 0); }
       if (g.won()) startWin();
     });
-    hud();
+    sr('Swapped a chain of ' + K.size + (K.size === 1 ? ' candy.' : ' candies.'));
+    hud(true);
     return true;
   }
-  function flipTo(w, e) { if (shown[w] === e && !flips[w]) return; flips[w] = { t0: now(), dur: RM ? 1 : 300, from: shown[w], to: e }; shown[w] = e; burstAt(w, 4); }
+  function flipTo(w, e) {
+    if (shown[w] === e && !flips[w]) return;
+    const from = shown[w], dur = RM ? 1 : 300;
+    flips[w] = { t0: now(), dur, from, to: e }; shown[w] = e; burstAt(w, 4);
+    if (!RM) pops[w] = now() + dur * .5;          // the overshoot pop as the new flavour lands
+    changed(w, from);
+  }
+  // a candy changed flavour: if it is on the rim its socket bounces, the old flavour pops out of the socket, and when
+  // that flavour has left the rim altogether the whole ring of sockets bounces
+  function changed(w, from) {
+    if (!RIMS.has(w) || from === shown[w] || from < 0) return;
+    const s = G.sockets.find(q => q.x === w), t = now();
+    sockB[w] = t;
+    if (s && !RM) { const sp = 160 + Math.random() * 60; flyers.push({ e: from, x: s.px, y: s.py, vx: Math.cos(s.a) * sp, vy: Math.sin(s.a) * sp - 260, r: G.sr * .82, t0: t, spin: (Math.random() - .5) * 10, rot: 0 }); }
+    if (!RIM.some(x => shown[x] === from)) {
+      rimB = t; sfx.leave();
+      burst(G.hp[0], G.hp[1], [FL[from].c, FL[from].hi, '#fff'], 22, 1.1);
+      if (s) burst(s.px, s.py, [FL[from].c, '#fff'], 10, .8);
+    }
+  }
+  function goldBurst() {
+    if (GOLD < 0) return;
+    const p = G.poles[GOLD]; goldPop = now();
+    burst(p[0], p[1], ['#ffd23a', '#fff6b0', '#ffb000', '#fff'], 46, 1.4);
+    sfx.sparkle();
+    if (!eggDone) { eggDone = true; if (LAB.egg) LAB.egg('golden-wrapper', 150); }
+    GOLD = -1;                                   // the foil bursts off
+  }
   function burstAt(w, n) { const p = G.poles[w]; burst(p[0], p[1], [FL[shown[w]].c, FL[shown[w]].hi, '#fff'], n, .6); }
-  function transition() { // after undo / reset: flip every candy that differs
+  function transition() { // after undo / reset (or a swap made outside this page): flip every candy that differs, in a wave
     finalize(); words = []; const t = now();
-    for (let u = 0; u < N; u++) if (u !== HOLE && shown[u] !== g.col[u]) flips[u] = { t0: t + (RM ? 0 : (hash(u, 5) * 120)), dur: RM ? 1 : 260, from: shown[u], to: g.col[u] };
-    shown = g.col.slice(); hud();
+    for (let u = 0; u < N; u++) if (u !== HOLE && shown[u] !== g.col[u]) { const f = shown[u]; flips[u] = { t0: t + (RM ? 0 : (hash(u, 5) * 160)), dur: RM ? 1 : 260, from: f, to: g.col[u] }; shown[u] = g.col[u]; if (RIMS.has(u)) sockB[u] = t; }
+    hud(true);
   }
   // undo / reset arrive here whether from the buttons or from the app (core.js handles { fth, cmd })
-  g.on((_, info) => { if (info.type === 'undo' || info.type === 'reset') { endWin(); transition(); } });
+  g.on((_, info) => {
+    if (info.type === 'undo' || info.type === 'reset') { endWin(); transition(); }
+    else if (info.type === 'swap' && !inPlay) { transition(); if (g.won() && !win) startWin(); }
+  });
 
   // ---------------------------------------------------------------- win: the sugar crush
   function startWin() {
+    if (win) return;
     const t = now(), e = g.free(); win = { t0: t, e, stars: g.moves <= g.level.par ? 3 : g.moves <= g.level.par + 2 ? 2 : 1 };
-    document.body.classList.add('won'); $('undo').disabled = true; hud();
-    const hp = G.hp;
-    wat(t + (RM ? 0 : 350), () => { filled = e; fillT0 = now(); });
-    wat(t + (RM ? 0 : 1050), () => {
-      sfx.crush(); burst(hp[0], hp[1], [FL[e].c, FL[e].hi, '#fff', '#ff5fa8', '#ffe14d'], 60, 1.6);
-      for (let u = 0; u < N; u++) if (u !== HOLE) { const d = Math.hypot(G.poles[u][0] - hp[0], G.poles[u][1] - hp[1]); wat(now() + (RM ? 0 : d * 1.6), () => { pops[u] = now(); burstAt(u, 5); }); }
-      win.banner = now();
-    });
-    wat(t + (RM ? 0 : 2000), () => {
-      const el = $('win'); el.classList.add('on'); requestAnimationFrame(() => el.classList.add('show'));
-      $('wtxt').textContent = g.moves + ' move' + (g.moves === 1 ? '' : 's') + ' · par ' + g.level.par + (g.moves <= g.level.par ? ' · perfect!' : '');
-      const st = $('stars'); st.innerHTML = '';
-      for (let i = 0; i < 3; i++) { st.insertAdjacentHTML('beforeend', starSvg(i < win.stars)); }
-      [...st.children].forEach((s, i) => wat(now() + (RM ? 0 : 250 * i + 150), () => { s.classList.add('in'); if (i < win.stars) sfx.star(i); }));
-    });
-    wat(t + (RM ? 600 : 3300), () => { LAB.done(); });
+    document.body.classList.add('won'); $('undo').disabled = true; $('again').disabled = !!LAB.embedded; drag = null; picker = null; hud();
+    sr('Sugar crush! The wrapper is filled.');
+    const hp = G.hp, wave = (t1, k, rev) => {
+      let mx = 0; for (let u = 0; u < N; u++) if (u !== HOLE) mx = Math.max(mx, Math.hypot(G.poles[u][0] - hp[0], G.poles[u][1] - hp[1]));
+      for (let u = 0; u < N; u++) if (u !== HOLE) {
+        const d = Math.hypot(G.poles[u][0] - hp[0], G.poles[u][1] - hp[1]), dl = (rev ? mx - d : d) * 1.5;
+        wat(t1 + dl, () => { hops[u] = now(); pops[u] = now() + 300; burstAt(u, k); });
+      }
+      for (let i = 0; i < 6; i++) wat(t1 + i * mx * 1.5 / 6, () => sfx.pop(rev ? 9 - i : i + 2));
+    };
+    if (RM) {
+      filled = e; fillT0 = t; win.banner = t;
+      wat(t + 1500, () => { showStars(); LAB.done(); });
+      return;
+    }
+    wat(t + 350, () => { filled = e; fillT0 = now(); sfx.swish(); });
+    wat(t + 1050, () => { sfx.crush(); rimB = now(); burst(hp[0], hp[1], [FL[e].c, FL[e].hi, '#fff', '#ff5fa8', '#ffe14d'], 70, 1.7); });
+    wave(t + 1150, 5, false);
+    wat(t + 1350, () => { win.banner = now(); win.rain = now() + 2100; });
+    wave(t + 2350, 3, true);
+    wat(t + 2600, showStars);
+    wat(t + 3700, () => { LAB.done(); });
   }
-  function endWin() { win = null; filled = -1; wtl = []; document.body.classList.remove('won'); const el = $('win'); el.classList.remove('show', 'on'); $('undo').disabled = false; }
+  function showStars() {
+    if (IN_APP || !win) return;
+    const el = $('win'); el.classList.add('on'); requestAnimationFrame(() => el.classList.add('show'));
+    const st = $('stars'); st.innerHTML = '';
+    for (let i = 0; i < 3; i++) st.insertAdjacentHTML('beforeend', starSvg(i < win.stars));
+    [...st.children].forEach((s, i) => wat(now() + (RM ? 0 : 250 * i + 150), () => { s.classList.add('in'); if (i < win.stars) sfx.star(i); }));
+  }
+  function endWin() { win = null; filled = -1; wtl = []; document.body.classList.remove('won'); const el = $('win'); el.classList.remove('show', 'on'); $('undo').disabled = false; $('again').disabled = false; }
   const starSvg = on => '<svg viewBox="-12 -12 24 24"><path d="M0-10.5 3 -3.6 10.4-3.2 4.7 1.6 6.6 9 0 4.9-6.6 9-4.7 1.6-10.4-3.2-3-3.6Z" fill="' + (on ? '#ffd23a' : '#e9d4ef') + '" stroke="' + (on ? '#c27a00' : '#c9a8d6') + '" stroke-width="1.6" stroke-linejoin="round"/>' + (on ? '<path d="M-2.5-6.5 -1-3.4-4.6-3.1" fill="none" stroke="#fff8c8" stroke-width="1.4" stroke-linecap="round"/>' : '') + '</svg>';
 
-  // ---------------------------------------------------------------- HUD
+  // ---------------------------------------------------------------- HUD (a level title standalone, the candy-jar counter)
   const lvlEl = $('lvl');
   lvlEl.innerHTML = '<small>LEVEL ' + g.level.num + '</small>' + (g.level.title || g.name || '');
-  $('mvP').textContent = '/ par ' + g.level.par;
-  const cnt = $('counts'), cntEls = [];
-  for (let e = 0; e < NC; e++) {
-    const d = document.createElement('div'); d.className = 'cnt'; const c = document.createElement('canvas'); c.width = c.height = 56;
-    const cc = c.getContext('2d'); cc.scale(2, 2); drawCandy(cc, e, 14, 14.5, 11);
-    const i = document.createElement('i'); d.appendChild(c); d.appendChild(i); cnt.appendChild(d); cntEls.push({ d, i });
-  }
-  $('gtxt').textContent = 'clear a flavour from its ' + RIM.length + ' sockets';
-  function drawWrapIcon() {
-    const c = $('wrapIc').getContext('2d'); c.clearRect(0, 0, 68, 68); c.save(); c.scale(2, 2);
-    c.fillStyle = '#5a2e14'; c.beginPath(); c.arc(17, 17, 16, 0, Math.PI * 2); c.fill();
-    if (win) drawCandy(c, win.e, 17, 17.5, 10); else drawWrapper(c, 17, 17, 9, .9);
-    c.restore();
-  }
-  function hud() {
-    $('mvN').textContent = g.moves; $('mv').classList.toggle('over', g.moves > g.level.par);
-    const rc = RIM.map(x => g.col[x]);
-    cntEls.forEach((o, e) => { const k = rc.filter(c => c === e).length; o.i.textContent = k ? '×' + k : '✓'; o.d.classList.toggle('zero', !k); });
-    drawWrapIcon();
+  $('mvP').textContent = '/' + g.level.par;
+  let bumpT = 0;
+  function hud(bump) {
+    const mv = $('mv'); $('mvN').textContent = g.moves; mv.classList.toggle('over', g.moves > g.level.par);
+    mv.setAttribute('aria-label', g.moves + ' moves, par ' + g.level.par);
+    if (bump && !RM) { mv.classList.add('bump'); clearTimeout(bumpT); bumpT = setTimeout(() => mv.classList.remove('bump'), 180); }
   }
   function drawWrapper(c, x, y, r, a) { // an empty sweet wrapper outline (where the prize lands)
     c.save(); c.translate(x, y); c.globalAlpha *= a;
@@ -469,6 +513,7 @@
     const t = now();
     runDue(tl, t); runDue(wtl, t);
     if (slide && t > slide.t0 + slide.dur) slide = null;
+    if (win && win.rain && t < win.rain && !RM) rain(3);
     ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
     ctx.drawImage(bgC, 0, 0, W, H);
     const P = G.poles, R = G.rr;
@@ -476,6 +521,7 @@
     let PK = null;
     if (drag && drag.v >= 0) PK = g.chainAt(drag.u, g.col[drag.v]);
     else if (picker && picker.hover >= 0) PK = g.chainAt(picker.u, picker.hover);
+    const ghost = HINT && !touched && !win;
     const pulse = .5 + .5 * Math.sin(t / 130);
     // tiles
     ctx.save(); ctx.clip(G.clip);
@@ -493,7 +539,8 @@
       const e = shown[u], base = (hash(u, 1) * .1 + .36);
       ctx.fillStyle = 'rgba(178,196,255,' + base + ')'; ctx.fill(p);
       ctx.globalAlpha = .14; ctx.fillStyle = FL[e].tint; ctx.fill(p); ctx.globalAlpha = 1;
-      if (PK && PK.set.has(u)) { ctx.globalAlpha = .25 + .25 * pulse; ctx.fillStyle = '#fff6c0'; ctx.fill(p); ctx.globalAlpha = 1; }
+      if (PK && PK.set.has(u)) { const ph = shown[u] === PK.pair[0] ? pulse : 1 - pulse; ctx.globalAlpha = PK.web ? .12 : .2 + .3 * ph; ctx.fillStyle = PK.web ? '#ffffff' : FL[shown[u]].hi; ctx.fill(p); ctx.globalAlpha = 1; }
+      if (win && hops[u] !== undefined) { const k = (t - hops[u]) / 520; if (k >= 0 && k < 1) { ctx.globalAlpha = .45 * Math.sin(k * Math.PI); ctx.fillStyle = FL[e].hi; ctx.fill(p); ctx.globalAlpha = 1; } }
     }
     ctx.lineJoin = 'round'; ctx.lineWidth = G.gap * 2; ctx.strokeStyle = '#2f2373';
     for (let u = 0; u < N; u++) ctx.stroke(G.paths[u]);
@@ -504,37 +551,51 @@
     ctx.save(); ctx.lineCap = 'round';
     G.sockets.forEach(s => { const q = P[s.x]; ctx.strokeStyle = 'rgba(255,214,140,.45)'; ctx.lineWidth = Math.max(2, G.sr * .3); ctx.setLineDash([2, 5]); ctx.beginPath(); ctx.moveTo(s.px, s.py); ctx.lineTo(q[0], q[1]); ctx.stroke(); });
     ctx.restore();
-    // chain links for the preview
+    // chain links for the preview: each half of a link in its candy's flavour, the two flavours pulsing in turn
     if (PK) {
-      ctx.save(); ctx.lineCap = 'round'; ctx.strokeStyle = PK.web ? 'rgba(200,200,220,.6)' : 'rgba(255,250,210,' + (.55 + .4 * pulse) + ')'; ctx.lineWidth = Math.max(3, G.Rcap * .16);
-      g.edges.forEach(([a, b]) => { if (PK.set.has(a) && PK.set.has(b)) { ctx.beginPath(); ctx.moveTo(P[a][0], P[a][1]); ctx.lineTo(P[b][0], P[b][1]); ctx.stroke(); } });
+      ctx.save(); ctx.lineCap = 'round';
+      const lw = Math.max(3, G.Rcap * .18);
+      g.edges.forEach(([a, b]) => {
+        if (!PK.set.has(a) || !PK.set.has(b)) return;
+        const mx = (P[a][0] + P[b][0]) / 2, my = (P[a][1] + P[b][1]) / 2;
+        ctx.strokeStyle = 'rgba(255,255,255,.85)'; ctx.lineWidth = lw + 4; ctx.beginPath(); ctx.moveTo(P[a][0], P[a][1]); ctx.lineTo(P[b][0], P[b][1]); ctx.stroke();
+        [a, b].forEach(w => { const e = shown[w], ph = e === PK.pair[0] ? pulse : 1 - pulse; ctx.strokeStyle = PK.web ? 'rgba(170,160,200,.8)' : FL[e].c; ctx.globalAlpha = PK.web ? 1 : .6 + .4 * ph; ctx.lineWidth = lw; ctx.beginPath(); ctx.moveTo(P[w][0], P[w][1]); ctx.lineTo(mx, my); ctx.stroke(); });
+        ctx.globalAlpha = 1;
+      });
       ctx.restore();
     }
-    // the hole: wrapper + sockets
+    // the hole: wrapper + sockets (the whole ring bounces when a flavour leaves the rim)
     const hp = G.hp;
+    const rk = (t - rimB) / 650, ringK = !RM && rk >= 0 && rk < 1 ? 1 + .22 * Math.sin(rk * Math.PI * 3) * (1 - rk) : 1;
+    const hw = (t - holeWob) / 500, hwob = !RM && hw >= 0 && hw < 1 ? Math.sin(hw * Math.PI * 5) * (1 - hw) : 0;
     if (filled >= 0) {
       const ft = RM ? 1 : clamp((t - fillT0) / 750, 0, 1), y0 = TOP - G.wrapR, y = lerp(y0, hp[1], bounce(ft));
       ctx.save(); ctx.globalAlpha = .35 + .3 * pulse; const gg = ctx.createRadialGradient(hp[0], hp[1], 0, hp[0], hp[1], G.hd * 1.3); gg.addColorStop(0, '#fff3b0'); gg.addColorStop(1, 'rgba(255,243,176,0)'); ctx.fillStyle = gg; ctx.beginPath(); ctx.arc(hp[0], hp[1], G.hd * 1.3, 0, Math.PI * 2); ctx.fill(); ctx.restore();
       if (ft < 1) drawWrapper(ctx, hp[0], hp[1], G.wrapR, 1);
       const sq = ft >= 1 ? 1 : (ft > .35 ? 1 - .12 * Math.sin((ft - .35) / .65 * Math.PI * 3) * (1 - ft) : 1);
-      drawCandy(ctx, filled, hp[0], y, G.wrapR * 1.05, { sx: 2 - sq, sy: sq, glow: ft >= 1 ? .6 + .4 * pulse : 0 });
+      drawCandy(ctx, filled, hp[0], y, G.wrapR * 1.05 * (ft >= 1 ? ringK : 1), { sx: 2 - sq, sy: sq, glow: ft >= 1 ? .6 + .4 * pulse : 0 });
     } else {
       const br = RM ? 1 : 1 + .05 * Math.sin(t / 400);
-      drawWrapper(ctx, hp[0], hp[1], G.wrapR * br, .95);
+      ctx.save(); ctx.translate(hp[0], hp[1]); ctx.rotate(hwob * .25); ctx.scale(1 + hwob * .1, 1 - hwob * .1);
+      drawWrapper(ctx, 0, 0, G.wrapR * br * ringK, .95); ctx.restore();
     }
     const lockSet = PK && !PK.web && PK.rimHits >= 2 ? PK.set : null;
     G.sockets.forEach(s => {
-      ctx.fillStyle = '#2a1206'; ctx.beginPath(); ctx.arc(s.px, s.py + 1.5, G.sr * 1.12, 0, Math.PI * 2); ctx.fill();
-      const cup = ctx.createRadialGradient(s.px, s.py - G.sr * .4, 1, s.px, s.py, G.sr * 1.1); cup.addColorStop(0, '#c88a52'); cup.addColorStop(1, '#6b3a1a');
-      ctx.fillStyle = cup; ctx.beginPath(); ctx.arc(s.px, s.py, G.sr * 1.05, 0, Math.PI * 2); ctx.fill();
+      const sk = sockB[s.x] !== undefined ? (t - sockB[s.x]) / 450 : 2;
+      if (sk >= 1) delete sockB[s.x];
+      const sb = !RM && sk >= 0 && sk < 1 ? 1 + .35 * Math.sin(sk * Math.PI) * (1 - sk * .5) : 1;
+      const px = hp[0] + (s.px - hp[0]) * ringK, py = hp[1] + (s.py - hp[1]) * ringK, sr0 = G.sr * sb;
+      ctx.fillStyle = '#2a1206'; ctx.beginPath(); ctx.arc(px, py + 1.5, sr0 * 1.12, 0, Math.PI * 2); ctx.fill();
+      const cup = ctx.createRadialGradient(px, py - sr0 * .4, 1, px, py, sr0 * 1.1); cup.addColorStop(0, '#c88a52'); cup.addColorStop(1, '#6b3a1a');
+      ctx.fillStyle = cup; ctx.beginPath(); ctx.arc(px, py, sr0 * 1.05, 0, Math.PI * 2); ctx.fill();
       const e = shown[s.x], fl = flips[s.x], ft = fl ? clamp((t - fl.t0) / fl.dur, 0, 1) : 1;
-      drawCandy(ctx, fl && ft < .5 ? fl.from : e, s.px, s.py, G.sr * .82, { sx: fl ? Math.max(.05, Math.abs(Math.cos(Math.PI * ft))) : 1, glow: win ? .5 * pulse : 0 });
-      if (lockSet && lockSet.has(s.x)) drawLock(ctx, s.px + G.sr * .7, s.py - G.sr * .7, Math.max(9, G.sr * .95));
+      drawCandy(ctx, fl && ft < .5 ? fl.from : e, px, py, sr0 * .82, { sx: fl ? Math.max(.05, Math.abs(Math.cos(Math.PI * ft))) : 1, glow: win ? .5 * pulse : 0 });
+      if (lockSet && lockSet.has(s.x)) drawLock(ctx, px + G.sr * .7, py - G.sr * .7, Math.max(9, G.sr * .95));
     });
     // candies
     const order = [];
     for (let u = 0; u < N; u++) if (u !== HOLE && !(slide && (u === slide.u || u === slide.v)) && !(drag && u === drag.u)) order.push(u);
-    order.forEach(u => drawOne(u, t, PK, pulse));
+    order.forEach(u => drawOne(u, t, PK, pulse, ghost));
     if (slide) {
       const st = clamp((t - slide.t0) / slide.dur, 0, 1);
       const k = slide.back ? Math.sin(st * Math.PI) * .42 * (1 - st * .3) : easeIO(st);
@@ -545,13 +606,16 @@
     if (drag) {
       const u = drag.u, p = P[u]; let dx = drag.x - p[0], dy = drag.y - p[1]; const d = Math.hypot(dx, dy), lim = R[u] * .55;
       if (d > lim) { dx *= lim / d; dy *= lim / d; }
-      drawCandy(ctx, shown[u], p[0] + dx, p[1] + dy, R[u] * 1.1, { glow: .7 });
-      if (drag.v >= 0 && PK) { // size badge
-        const q = P[drag.v], bx = (p[0] + q[0]) / 2, by = Math.min(p[1], q[1]) - R[u] * 1.3;
-        const txt = PK.web ? 'no change' : PK.size + (PK.size === 1 ? ' candy' : ' candies') + (PK.rimHits >= 2 ? '  • locked' : '');
-        ctx.font = '800 13px Nunito, system-ui, sans-serif'; const tw = ctx.measureText(txt).width + 18, x = clamp(bx, tw / 2 + 4, W - tw / 2 - 4), y = Math.max(TOP + 14, by);
-        ctx.fillStyle = PK.web ? 'rgba(70,60,90,.9)' : 'rgba(255,255,255,.95)'; ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x - tw / 2, y - 12, tw, 24, 12) : ctx.rect(x - tw / 2, y - 12, tw, 24); ctx.fill();
-        ctx.fillStyle = PK.web ? '#fff' : '#7a2a8c'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(txt, x, y + 1);
+      const lift = RM ? 1 : 1 + .14 * easeOut(clamp((t - drag.t0) / 90, 0, 1));
+      drawCandy(ctx, shown[u], p[0] + dx, p[1] + dy - R[u] * .12 * (lift - 1) / .14, R[u] * lift, { glow: .8, gc: rgb(FL[shown[u]].hi) });
+      if (u === GOLD) drawGold(p[0] + dx, p[1] + dy, R[u] * lift, shown[u], 1, 1, 0, t);
+      if (drag.v >= 0 && PK && !PK.web) { // chain-size bubble: a number only
+        const q = P[drag.v], bx = (p[0] + q[0]) / 2, by = Math.min(p[1], q[1]) - R[u] * 1.35;
+        const txt = '×' + PK.size, x = clamp(bx, 24, W - 24), y = Math.max(TOP + 16, by), rr = 17;
+        ctx.save(); ctx.fillStyle = 'rgba(40,0,60,.35)'; ctx.beginPath(); ctx.arc(x + 2, y + 3, rr, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#fffaf2'; ctx.strokeStyle = '#4a1a5c'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(x, y, rr, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        ctx.font = "400 17px 'Lilita One', system-ui, sans-serif"; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#7a2a8c'; ctx.fillText(txt, x, y + 1);
+        ctx.restore();
       }
     }
     // picker
@@ -560,48 +624,120 @@
       ctx.save(); ctx.fillStyle = 'rgba(40,10,60,.35)'; ctx.beginPath(); ctx.arc(p[0], p[1], R[picker.u] * 1.15, 0, Math.PI * 2); ctx.fill(); ctx.restore();
       picker.items.forEach(it => {
         const ap = RM ? 1 : easeOut(clamp((t - picker.t0) / 180, 0, 1)), x = lerp(p[0], it.x, ap), y = lerp(p[1], it.y, ap);
-        ctx.save(); ctx.fillStyle = 'rgba(255,255,255,.96)'; ctx.shadowColor = 'rgba(40,0,60,.4)'; ctx.shadowBlur = 8; ctx.shadowOffsetY = 3;
-        ctx.beginPath(); ctx.arc(x, y, it.r, 0, Math.PI * 2); ctx.fill(); ctx.restore();
-        if (picker.hover === it.b) { ctx.strokeStyle = '#ff5fa8'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(x, y, it.r, 0, Math.PI * 2); ctx.stroke(); }
+        ctx.save(); ctx.fillStyle = 'rgba(40,0,60,.35)'; ctx.beginPath(); ctx.arc(x + 2, y + 3, it.r, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#fffaf2'; ctx.strokeStyle = picker.hover === it.b ? '#ff5fa8' : '#4a1a5c'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(x, y, it.r, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); ctx.restore();
         drawCandy(ctx, it.b, x, y, it.r * .72 * ap);
       });
     }
+    // candies popping out of the rim
+    flyers = flyers.filter(f => t - f.t0 < 800);
+    flyers.forEach(f => {
+      const k = (t - f.t0) / 800, s = k * .8;
+      drawCandy(ctx, f.e, f.x + f.vx * s, f.y + f.vy * s + 520 * s * s, f.r * (1 + .5 * Math.sin(Math.min(1, k * 2) * Math.PI / 2)), { rot: f.spin * s, a: 1 - k * k });
+    });
     // particles
     const dt = 1 / 60;
-    parts = parts.filter(q => (q.life += dt) < q.max);
+    parts = parts.filter(q => (q.life += dt) < q.max && q.y < H + 20);
     parts.forEach(q => {
-      q.vy += 420 * dt; q.vx *= .985; q.x += q.vx * dt; q.y += q.vy * dt; q.rot += .2;
-      ctx.globalAlpha = 1 - q.life / q.max; ctx.fillStyle = q.c;
+      q.vy += 420 * q.gr * dt; q.vx *= .985; q.x += q.vx * dt + (q.gr < 1 ? Math.sin(q.life * 4 + q.rot) * .6 : 0); q.y += q.vy * dt; q.rot += .2;
+      ctx.globalAlpha = q.gr < 1 ? Math.min(1, (q.max - q.life) * 2) : 1 - q.life / q.max; ctx.fillStyle = q.c;
       if (q.k === 0) { ctx.beginPath(); ctx.arc(q.x, q.y, q.r, 0, Math.PI * 2); ctx.fill(); }
       else if (q.k === 1) { ctx.save(); ctx.translate(q.x, q.y); ctx.rotate(q.rot); ctx.fillRect(-q.r, -q.r * .4, q.r * 2, q.r * .8); ctx.restore(); }
       else { ctx.save(); ctx.translate(q.x, q.y); ctx.rotate(q.rot); ctx.beginPath(); for (let i = 0; i < 8; i++) { const a = i * Math.PI / 4, rr = i % 2 ? q.r * .4 : q.r * 1.4; ctx.lineTo(rr * Math.cos(a), rr * Math.sin(a)); } ctx.fill(); ctx.restore(); }
     });
     ctx.globalAlpha = 1;
+    // the golden wrapper bursting: a ring of light
+    const gk = (t - goldPop) / 600;
+    if (gk >= 0 && gk < 1 && !RM) { ctx.save(); ctx.globalAlpha = 1 - gk; ctx.strokeStyle = '#ffd23a'; ctx.lineWidth = 6 * (1 - gk) + 1; ctx.beginPath(); const gp = goldAt || hp; ctx.arc(gp[0], gp[1], G.Rcap * (.6 + 1.8 * gk), 0, Math.PI * 2); ctx.stroke(); ctx.restore(); }
     // combo words
     words = words.filter(w => t - w.t0 < 1400);
     words.forEach(w => {
       const k = (t - w.t0) / 1400, sc = RM ? 1 : (k < .2 ? easeOut(k / .2) * 1.15 : 1.15 - .15 * Math.min(1, (k - .2) / .2)), a = k > .75 ? 1 - (k - .75) / .25 : 1;
-      candyText(w.txt, w.x, w.y - (RM ? 0 : k * 26), w.size * sc, a, w.sub);
+      candyText(w.txt, w.x, w.y - (RM ? 0 : k * 26), w.size * sc, a);
     });
     if (win && win.banner) {
-      const k = (t - win.banner) / 600, sc = RM ? 1 : (k < 1 ? 1.25 * easeOut(Math.min(1, k * 1.4)) - .25 * clamp(k * 1.4 - 1, 0, 1) * 0 : 1 + .03 * Math.sin(t / 300));
+      const k = (t - win.banner) / 600, sc = RM ? 1 : (k < 1 ? 1.25 * easeOut(Math.min(1, k * 1.4)) : 1 + .04 * Math.sin(t / 220));
       const fs = clamp(W * .13, 38, 84), y = Math.max(TOP + fs, G.box.y + G.box.h * .2);
-      candyText('Sugar Crush!', W / 2, y, fs * Math.min(1.15, sc), 1, null, -.06);
+      candyText('Sugar Crush!', W / 2, y, fs * Math.min(1.25, sc), 1, RM ? -.06 : -.06 + .04 * Math.sin(t / 260));
     }
+    if (ghost) drawGhost(t);
   }
-  function drawOne(u, t, PK, pulse) {
+  let goldAt = null;
+  function drawOne(u, t, PK, pulse, ghost) {
     const p = G.poles[u]; let r = G.rr[u], sx = 1, sy = 1, rot = 0, x = p[0], y = p[1], e = shown[u];
     const fl = flips[u];
-    if (fl) { const k = (t - fl.t0) / fl.dur; if (k >= 1) delete flips[u]; else if (k >= 0) { sx = Math.max(.04, Math.abs(Math.cos(Math.PI * k))); sy = 1 + .18 * Math.sin(Math.PI * k); y -= r * .25 * Math.sin(Math.PI * k); if (k < .5) e = fl.from; } else e = fl.from; }
-    if (wob[u] !== undefined) { const k = (t - wob[u]) / 600; if (k > 1) delete wob[u]; else if (k >= 0) { rot = .35 * Math.sin(k * Math.PI * 5) * (1 - k); sx *= 1 + .1 * Math.sin(k * Math.PI * 4) * (1 - k); } }
-    if (pops[u] !== undefined) { const k = (t - pops[u]) / 380; if (k > 1) delete pops[u]; else if (k >= 0) { const b = Math.sin(k * Math.PI) * (1 - k * .4); sx *= 1 + .3 * b; sy *= 1 + .3 * b; } }
+    if (fl) { const k = (t - fl.t0) / fl.dur; if (k >= 1) delete flips[u]; else if (k >= 0) { sx = Math.max(.04, Math.abs(Math.cos(Math.PI * k))); sy = 1 + .18 * Math.sin(Math.PI * k); y -= r * .3 * Math.sin(Math.PI * k); if (k < .5) e = fl.from; } else e = fl.from; }
+    if (wob[u] !== undefined) { const k = (t - wob[u]) / 650; if (k > 1) delete wob[u]; else if (k >= 0) { const d = 1 - k; rot = .18 * Math.sin(k * Math.PI * 5) * d; sx *= 1 + .16 * Math.sin(k * Math.PI * 6) * d; sy *= 1 - .16 * Math.sin(k * Math.PI * 6) * d; } }
+    if (pops[u] !== undefined) { const k = (t - pops[u]) / 320; if (k > 1) delete pops[u]; else if (k >= 0) { const b = Math.sin(k * Math.PI) * (1 - k * .3); sx *= 1 + .32 * b; sy *= 1 + .32 * b; } }
+    if (hops[u] !== undefined) { const k = (t - hops[u]) / 520; if (k > 1) delete hops[u]; else if (k >= 0) { y -= r * .8 * Math.sin(k * Math.PI); rot += .25 * Math.sin(k * Math.PI * 2); if (k > .85) { sx *= 1.12; sy *= .88; } } }
     if (!RM && !fl) { const br = Math.sin(t / 700 + u * 1.7) * .025; sx *= 1 + br; sy *= 1 - br; }
     if (drag && drag.v === u) { const q = G.poles[drag.u], d = Math.hypot(q[0] - x, q[1] - y) || 1; x += (q[0] - x) / d * r * .12; y += (q[1] - y) / d * r * .12; }
+    let glow = 0, gc;
     const lit = PK && PK.set.has(u);
+    if (lit) { const ph = shown[u] === PK.pair[0] ? pulse : 1 - pulse; glow = PK.web ? .25 : .45 + .5 * ph; gc = PK.web ? undefined : rgb(FL[shown[u]].hi); }
+    // touched, not yet dragged: every neighbour it could swap with glows and bobs
+    else if (drag && drag.v < 0 && g.adj[drag.u].includes(u)) { glow = .35 + .3 * pulse; if (!RM) y -= r * .1 * (.5 + .5 * Math.sin(t / 120 + u)); }
+    // before the first touch: the ghost finger's pair bobs and glows, its chain glimmers
+    else if (ghost && (u === HINT.u || u === HINT.v)) { glow = .5 + .4 * pulse; gc = rgb(FL[shown[u]].hi); if (!RM) y -= r * .12 * (.5 + .5 * Math.sin(t / 160 + (u === HINT.u ? 0 : 1.6))); }
+    else if (ghost && HINT.K.set.has(u)) glow = .15 + .15 * pulse;
     if (picker && picker.u === u) r *= 1.05;
-    drawCandy(ctx, e, x, y, r, { sx, sy, rot, glow: lit ? (PK.web ? .25 : .45 + .45 * pulse) : 0 });
+    drawCandy(ctx, e, x, y, r, { sx, sy, rot, glow, gc });
+    if (u === GOLD) { goldAt = [x, y]; drawGold(x, y, r, e, sx, sy, rot, t); }
   }
-  function candyText(txt, x, y, size, a, sub, tilt) {
+  // the golden wrapper: gold foil over the candy, twisted ends, a shimmer band sweeping across now and then
+  function drawGold(x, y, r, e, sx, sy, rot, t) {
+    const Pth = cpath(e, r);
+    ctx.save(); ctx.translate(x, y); if (rot) ctx.rotate(rot); ctx.scale(sx || 1, sy || 1);
+    const end = s => { ctx.beginPath(); ctx.moveTo(s * r * .72, 0); ctx.lineTo(s * r * 1.32, -r * .42); ctx.quadraticCurveTo(s * r * 1.45, 0, s * r * 1.32, r * .42); ctx.closePath(); };
+    [-1, 1].forEach(s => { end(s); ctx.fillStyle = '#e8a800'; ctx.fill(); ctx.strokeStyle = '#7a4a00'; ctx.lineWidth = Math.max(1, r * .07); ctx.stroke(); });
+    ctx.save(); ctx.clip(Pth);
+    const gf = ctx.createLinearGradient(-r, -r, r, r); gf.addColorStop(0, 'rgba(255,248,190,.95)'); gf.addColorStop(.45, 'rgba(255,200,30,.9)'); gf.addColorStop(1, 'rgba(176,104,0,.92)');
+    ctx.fillStyle = gf; ctx.fillRect(-r * 1.2, -r * 1.2, r * 2.4, r * 2.4);
+    const sw = ((t / 1600) % 1.6) - .3;                 // shimmer sweeps across, then rests
+    if (sw < 1 && !RM) { const bx = lerp(-r * 1.6, r * 1.6, sw); const sh = ctx.createLinearGradient(bx - r * .4, 0, bx + r * .4, 0); sh.addColorStop(0, 'rgba(255,255,255,0)'); sh.addColorStop(.5, 'rgba(255,255,255,.85)'); sh.addColorStop(1, 'rgba(255,255,255,0)'); ctx.fillStyle = sh; ctx.save(); ctx.rotate(-.5); ctx.fillRect(-r * 2, -r * 2, r * 4, r * 4); ctx.restore(); }
+    ctx.fillStyle = 'rgba(255,255,255,.8)'; ctx.beginPath(); ctx.ellipse(-r * .3, -r * .34, r * .28, r * .14, -.6, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+    ctx.strokeStyle = '#7a4a00'; ctx.lineWidth = Math.max(1, r * .08); ctx.stroke(Pth);
+    const tw = .5 + .5 * Math.sin(t / 240);
+    if (!RM && tw > .6) { const s = r * .22 * (tw - .6) / .4; ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.moveTo(r * .5, -r * .7 - s); ctx.lineTo(r * .5 + s * .3, -r * .7); ctx.lineTo(r * .5, -r * .7 + s); ctx.lineTo(r * .5 - s * .3, -r * .7); ctx.closePath(); ctx.fill(); ctx.beginPath(); ctx.moveTo(r * .5 - s, -r * .7); ctx.lineTo(r * .5, -r * .7 - s * .3); ctx.lineTo(r * .5 + s, -r * .7); ctx.lineTo(r * .5, -r * .7 + s * .3); ctx.closePath(); ctx.fill(); }
+    ctx.restore();
+  }
+  // a cartoon pointing hand, fingertip at (x, y): cream glove, thick ink outline, offset drop shadow
+  function handShapes(c, s) {
+    c.beginPath();
+    const rr = (x, y, w, h, r) => { c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r); c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath(); };
+    rr(-s * .17, -s * .02, s * .34, s * 1.0, s * .17);                 // index finger
+    rr(-s * .28, s * .62, s * .92, s * .78, s * .26);                  // palm
+    [[.27, .7], [.45, .74], [.6, .8]].forEach(([x, y]) => { c.moveTo(s * x + s * .13, s * y); c.arc(s * x, s * y, s * .13, 0, Math.PI * 2); });
+    c.moveTo(-s * .12, s * .95); c.ellipse(-s * .3, s * .92, s * .14, s * .26, -.6, 0, Math.PI * 2);   // thumb
+  }
+  function drawHand(x, y, s, a, press) {
+    ctx.save(); ctx.globalAlpha = a; ctx.translate(x, y); ctx.rotate(-.42); ctx.scale(press, press);
+    ctx.save(); ctx.translate(s * .1, s * .12); handShapes(ctx, s); ctx.fillStyle = 'rgba(40,0,60,.35)'; ctx.fill(); ctx.restore();
+    handShapes(ctx, s); ctx.lineJoin = 'round'; ctx.lineWidth = s * .16; ctx.strokeStyle = '#4a1a5c'; ctx.stroke();
+    ctx.fillStyle = '#fffaf2'; ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,.9)'; ctx.beginPath(); ctx.ellipse(-s * .04, s * .2, s * .05, s * .14, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = 'rgba(255,95,168,.35)'; ctx.beginPath(); ctx.ellipse(s * .2, s * 1.15, s * .3, s * .14, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+  }
+  function drawGhost(t) {
+    const a = G.poles[HINT.u], b = G.poles[HINT.v], s = clamp(G.Rcap * 1.5, 34, 54);
+    if (RM) { drawHand(lerp(a[0], b[0], .5), lerp(a[1], b[1], .5), s, .9, 1); return; }
+    const C = 2300, k = (t % C) / C;
+    let x = a[0], y = a[1], al = 1, pr = 1, carry = 0;
+    if (k < .14) { const q = easeOut(k / .14); x = a[0] + s * .9 * (1 - q); y = a[1] + s * 1.1 * (1 - q); al = q; }
+    else if (k < .24) { pr = 1 - .12 * Math.sin((k - .14) / .1 * Math.PI / 2); }
+    else if (k < .62) { const q = easeIO((k - .24) / .38); x = lerp(a[0], b[0], q); y = lerp(a[1], b[1], q); pr = .88; carry = q; }
+    else if (k < .76) { x = b[0]; y = b[1]; pr = .88 + .12 * (k - .62) / .14; carry = 1; }
+    else { x = b[0]; y = b[1]; al = 1 - (k - .76) / .24; }
+    if (k >= .14 && k < .76) { // the candy follows the finger, a little
+      const q = Math.min(carry, 1) * .6, e = shown[HINT.u];
+      drawCandy(ctx, e, lerp(a[0], b[0], q), lerp(a[1], b[1], q) - G.rr[HINT.u] * .12, G.rr[HINT.u] * 1.1, { a: .75, glow: .6, gc: rgb(FL[e].hi) });
+    }
+    if (k >= .14 && k < .4) { const q = (k - .14) / .26; ctx.save(); ctx.globalAlpha = .7 * (1 - q); ctx.strokeStyle = '#fff'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(a[0], a[1], G.rr[HINT.u] * (.6 + .8 * q), 0, Math.PI * 2); ctx.stroke(); ctx.restore(); }
+    drawHand(x, y, s, al, pr);
+  }
+  function candyText(txt, x, y, size, a, tilt) {
     ctx.save(); ctx.globalAlpha = a; ctx.translate(x, y); if (tilt) ctx.rotate(tilt);
     ctx.font = '400 ' + size + "px 'Lilita One', 'Arial Rounded MT Bold', 'Trebuchet MS', sans-serif"; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.lineJoin = 'round'; ctx.lineWidth = size * .26; ctx.strokeStyle = '#5a1470'; ctx.strokeText(txt, 0, size * .06);
@@ -609,7 +745,6 @@
     const gr = ctx.createLinearGradient(0, -size * .5, 0, size * .5); gr.addColorStop(0, '#fff3a0'); gr.addColorStop(.45, '#ffb21e'); gr.addColorStop(.55, '#ff6aa8'); gr.addColorStop(1, '#d21f7a');
     ctx.fillStyle = gr; ctx.fillText(txt, 0, 0);
     ctx.fillStyle = 'rgba(255,255,255,.55)'; ctx.save(); ctx.beginPath(); ctx.rect(-size * 8, -size * .5, size * 16, size * .32); ctx.clip(); ctx.fillText(txt, 0, 0); ctx.restore();
-    if (sub) { ctx.font = '900 ' + Math.round(size * .32) + 'px Nunito, system-ui, sans-serif'; ctx.lineWidth = 4; ctx.strokeStyle = '#5a1470'; ctx.strokeText(sub, 0, size * .78); ctx.fillStyle = '#fff'; ctx.fillText(sub, 0, size * .78); }
     ctx.restore();
   }
 
@@ -640,7 +775,8 @@
   cv.addEventListener('pointerdown', ev => {
     ev.preventDefault(); audio();
     const [x, y] = pt(ev);
-    if (win) return;
+    if (win || g.won()) return;
+    touched = true;
     if (picker) {
       const it = picker.items.find(it => Math.hypot(x - it.x, y - it.y) < it.r * 1.25);
       if (it) { picker.hover = it.b; picker.pressing = it.b; try { cv.setPointerCapture(ev.pointerId); } catch (_) {} return; }
@@ -648,19 +784,19 @@
     }
     const u = hitCandy(x, y);
     if (u < 0) return;
-    if (u === HOLE) { toast('Fill the wrapper: clear a flavour from its sockets'); sfx.boing(); return; }
+    if (u === HOLE) { holeWob = now(); sfx.boing(); return; }
     finalize();
     drag = { u, x0: x, y0: y, x, y, v: -1, moved: false, id: ev.pointerId, t0: now() }; sfx.pick();
     try { cv.setPointerCapture(ev.pointerId); } catch (_) {}
   });
   cv.addEventListener('pointermove', ev => {
     const [x, y] = pt(ev);
-    if (picker && picker.pressing !== undefined) { const it = picker.items.find(it => Math.hypot(x - it.x, y - it.y) < it.r * 1.4); picker.hover = it ? it.b : -1; return; }
+    if (picker && picker.pressing !== undefined) { const it = picker.items.find(it => Math.hypot(x - it.x, y - it.y) < it.r * 1.4); const h = it ? it.b : -1; if (h !== picker.hover && h >= 0) { const K = g.chainAt(picker.u, h); if (K) sfx.trace(K.size, K.web); } picker.hover = h; return; }
     if (!drag || ev.pointerId !== drag.id) return;
     drag.x = x; drag.y = y;
     if (Math.hypot(x - drag.x0, y - drag.y0) > 8) drag.moved = true;
     const v = drag.moved ? targetOf(drag.u, x, y) : -1;
-    if (v !== drag.v) { drag.v = v; if (v >= 0) tone(660 + 40 * (g.chainAt(drag.u, g.col[v]) || { size: 1 }).size, .05, 'sine', .1, 1.2); }
+    if (v !== drag.v) { drag.v = v; if (v >= 0) { const K = g.chainAt(drag.u, g.col[v]); if (K) sfx.trace(K.size, K.web); } }
   });
   function up(ev, cancel) {
     if (picker && picker.pressing !== undefined) {
@@ -670,25 +806,27 @@
     }
     if (!drag || ev.pointerId !== drag.id) return;
     const d = drag; drag = null;
-    if (cancel) return;
+    if (cancel || win) return;
     if (d.v >= 0) play(d.u, g.col[d.v], d.v);
     else if (!d.moved) openPicker(d.u);
   }
   cv.addEventListener('pointerup', ev => up(ev, false));
   cv.addEventListener('pointercancel', ev => up(ev, true));
-  function doUndo() { if (win || !g.history.length) return; picker = null; drag = null; finalize(); g.undo(); sfx.undo(); }
-  function doReset() { picker = null; drag = null; finalize(); if (!g.moves && !win) return; g.reset(); sfx.undo(); }
-  ['undo', 'again', 'again2'].forEach(id => $(id).addEventListener('pointerdown', ev => { ev.stopPropagation(); audio(); }));
+  // once won inside the app, the page's own undo / start over are inert (the shell owns what happens next)
+  const locked = () => !!LAB.embedded && (!!win || g.won());
+  function doUndo() { if (win || locked() || !g.history.length) return; picker = null; drag = null; finalize(); g.undo(); sfx.undo(); }
+  function doReset() { if (locked()) return; picker = null; drag = null; finalize(); if (!g.moves && !win) return; g.reset(); sfx.undo(); }
+  ['undo', 'again', 'again2'].forEach(id => $(id).addEventListener('pointerdown', ev => { ev.stopPropagation(); audio(); touched = true; }));
   $('undo').addEventListener('click', doUndo);
   $('again').addEventListener('click', doReset);
-  $('again2').addEventListener('click', () => { endWin(); g.reset(); });
-  addEventListener('keydown', ev => { if ((ev.ctrlKey || ev.metaKey) && ev.key === 'z') doUndo(); else if (ev.key === 'Escape') picker = null; });
+  $('again2').addEventListener('click', () => { if (locked()) return; endWin(); g.reset(); });
+  addEventListener('keydown', ev => { if (locked()) return; if ((ev.ctrlKey || ev.metaKey) && ev.key === 'z') doUndo(); else if (ev.key === 'Escape') picker = null; });
   addEventListener('resize', () => { finalize(); layout(); });
 
   layout(); hud();
   if (document.fonts && document.fonts.load) document.fonts.load("40px 'Lilita One'").catch(() => {});
   requestAnimationFrame(frame);
-  window.CRUSH = { g, play, center: u => G.poles[u].slice(0, 2), busy, won: () => !!win };
+  window.CRUSH = { g, play, center: u => G.poles[u].slice(0, 2), busy, won: () => !!win, hint: () => HINT && [HINT.u, HINT.v], gold: u => { GOLD = u; eggDone = false; } };
 })();
 </script>
 </body>
