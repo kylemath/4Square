@@ -87,7 +87,7 @@
   .trow .btn3d { flex: 1 1 0; min-width: 0; max-width: 84px; display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 8px 4px 7px !important; font-size: .74rem !important; letter-spacing: .02em; white-space: nowrap; }
   .trow .btn3d .ti { font-size: 1.6rem; line-height: 1.05; font-weight: 400; }
   #btnInstall { font-size: 1.1rem; padding: 11px 20px; }
-  #btnInstall[hidden], #btnWallet[hidden], .tdot[hidden], .tribbon[hidden] { display: none !important; }
+  #btnInstall[hidden], #btnWallet[hidden], .tdot[hidden] { display: none !important; }
   /* install sheet: how to add the game to the home screen (iPhone Safari, or Android when the browser has no prompt) */
   #installSheet .card { text-align: left; color: var(--text); }
   #installSheet h2 { margin: 4px 0 8px; font-size: 1.35rem; text-align: center; }
@@ -295,9 +295,35 @@
   #skinPick { width: calc(100% + 32px); margin: 0 -16px; flex: none; }
   .tdot { position: absolute; top: -3px; right: -3px; width: 12px; height: 12px; border-radius: 50%; background: #ff4d5e; border: 2px solid #fff; }
   #btnShopTitle, #btnShopMap { position: relative; }
-  .tribbon { display: block; width: 100%; margin: 8px 0 2px; padding: 9px 12px; border-radius: 14px; border: 2px dashed var(--sk-accent, #ffd84a); background: color-mix(in srgb, var(--sk-accent, #ffd84a) 22%, transparent); color: inherit; font: inherit; font-size: .95rem; cursor: pointer; }
-  .tribbon b { color: var(--sk-accent, #ffd84a); }
-  @media (prefers-reduced-motion: no-preference) { .tribbon:not([hidden]) { animation: tribb 1.6s ease-in-out infinite; } @keyframes tribb { 50% { transform: scale(1.03); } } }
+  /* the ticket tray: once the coins for the next skin ticket are in, it drops down from the top of the win card's screen with
+     the wallet balances against the ticket's price; the ticket jiggles like a notification and a tap goes straight to the deli */
+  #tkTray { position: fixed; z-index: 30; top: 0; left: 50%; width: min(92vw, 360px); transform: translate(-50%, calc(-100% - 12px)); visibility: hidden; transition: transform .3s ease-in, visibility 0s .3s;
+    padding-top: env(safe-area-inset-top); background: #fff; color: #1c1640; border: 4px solid #1c1640; border-top: 0; border-radius: 0 0 22px 22px; box-shadow: 0 6px 0 #1c1640, 0 14px 30px rgba(0,0,0,.4); font-weight: 900; }
+  #tkTray.on { transform: translate(-50%, 0); visibility: visible; transition: transform .55s cubic-bezier(.3, 1.4, .5, 1); }
+  #tkTray .tt-go { display: flex; align-items: center; gap: 12px; width: 100%; padding: 12px 14px 4px; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+  #tkTray .tt-go:focus-visible { outline: 3px solid #4aa8ff; outline-offset: -3px; border-radius: 16px; }
+  #tkTray .tt-tk { position: relative; flex: none; display: block; }
+  #tkTray .tt-tk svg { width: 64px; height: auto; display: block; }
+  #tkTray .tt-n { position: absolute; top: -7px; right: -9px; min-width: 22px; height: 22px; padding: 0 5px; border-radius: 11px; background: #ff4d5e; color: #fff; border: 2px solid #fff; box-shadow: 0 0 0 2px #1c1640; font-size: 13px; line-height: 18px; text-align: center; }
+  #tkTray .tt-wal { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+  #tkTray .tt-w { display: flex; align-items: center; gap: 6px; font-variant-numeric: tabular-nums; }
+  #tkTray .tt-w svg { width: 24px; height: 24px; flex: none; }
+  #tkTray .tt-w b { font-size: 1.1rem; min-width: 3ch; }
+  #tkTray .tt-bar { flex: 1; min-width: 24px; height: 10px; border-radius: 5px; border: 2px solid #1c1640; background: #e8e4f4; overflow: hidden; }
+  #tkTray .tt-bar i { display: block; height: 100%; background: linear-gradient(#ffe066, #ffab1a); }
+  #tkTray .tt-w.ok .tt-bar i { background: linear-gradient(#7ae86a, #3fbf4a); }
+  #tkTray .tt-p { font-size: .85rem; opacity: .6; }
+  #tkTray .tt-more { font-size: .85rem; opacity: .6; }
+  #tkTray .tt-arr { flex: none; font-size: 1.3rem; color: #3fbf4a; -webkit-text-stroke: 1px #1c1640; }
+  #tkTray .tt-fold { display: block; width: 64px; height: 18px; margin: 0 auto; padding: 0; border: 0; background: none; cursor: pointer; }
+  #tkTray .tt-fold::before { content: ""; display: block; width: 40px; height: 5px; margin: 0 auto; border-radius: 3px; background: #1c1640; opacity: .3; }
+  #tkTray.fold .tt-wal { display: none; }
+  @media (prefers-reduced-motion: no-preference) {
+    #tkTray.on .tt-tk { animation: ttjig 2.4s ease-in-out .6s infinite; transform-origin: 50% 70%; }
+    #tkTray.on .tt-n { animation: ttpop 2.4s ease-in-out .6s infinite; }
+    @keyframes ttjig { 0%, 60%, 100% { transform: none; } 64% { transform: rotate(-14deg) scale(1.1); } 68% { transform: rotate(12deg) scale(1.1); } 72% { transform: rotate(-9deg); } 76% { transform: rotate(6deg); } 80% { transform: rotate(-3deg); } 84% { transform: none; } }
+    @keyframes ttpop { 0%, 60%, 100% { transform: none; } 66% { transform: scale(1.3); } 74% { transform: scale(.95); } 80% { transform: none; } }
+  }
   .board #cv { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; user-select: none; -webkit-user-select: none; }
   #cv .wl > path { fill: none; stroke-linecap: round; stroke-linejoin: round; } #cv .wl .ws { stroke: var(--d); } #cv .wl .wo { stroke: #1c1640; }
   #cv .wl .wb { stroke: var(--c); } #cv .wl .wr { stroke: var(--n); } #cv .wl .wp { stroke: #07090d; } #cv .wl .wi { fill: #07090d; stroke: var(--c); }
@@ -635,9 +661,9 @@
   <div><div class="wtotal" id="winTotal" aria-label="Points"><svg class="coin" viewBox="-13 -13 26 26" aria-hidden="true"><use href="#coinG"/></svg><b id="winScore">0</b></div></div>
   <p id="winText"></p>
   <div id="bonus"></div>
-  <button class="tribbon" id="winTicket" aria-label="A skin ticket is ready: open the skins" hidden>🎟️ <b>Open ▶</b></button>
   <div class="wbtns"><button class="btn3d white" id="winRetry" aria-label="Retry this level">↺ Retry</button><button class="btn3d green" id="winNext">NEXT ▶</button></div>
 </div></div>
+<div id="tkTray" role="region" aria-label="Skin ticket"><button class="tt-go" id="tkTrayGo"></button><button class="tt-fold" id="tkTrayFold" aria-label="Fold the wallet away" aria-expanded="true"></button></div>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs><g id="coinG"><circle cy="1.8" r="11" fill="#c27a00" stroke="#1c1640" stroke-width="2"/><circle r="11" fill="#ffd84a" stroke="#1c1640" stroke-width="2"/><circle r="7.4" fill="none" stroke="#f0a91c" stroke-width="1.8"/><path d="M0 -4.8L1.4 -1.4 4.8 0 1.4 1.4 0 4.8-1.4 1.4-4.8 0-1.4-1.4Z" fill="#fff6c8" stroke="#c27a00" stroke-width=".8"/><path d="M-6.5 -6A9 9 0 0 1 1 -9.2" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round" opacity=".85"/></g></defs></svg>
 <div class="howto" id="howto" role="dialog" aria-modal="true" aria-label="How to play">
   <div class="hthead"><span class="htk">How to play</span><button class="htskip" id="htSkip" aria-label="Skip how to play">✕</button></div>
@@ -1898,13 +1924,33 @@
   const shopCtx = () => ({ save, skins: SKINS, order: REEL_ORDER, beaten, persist, lvl: shopLvl, current: () => SKIN.id,
     onSelect: id => { if (owns(id) && id !== SKIN.id) selectSkin(id); },
     onPlay: id => { selectSkin(id); FTH_TICKETS.close(); $('btnPlay').click(); },
-    onUnlock: id => selectSkin(id), onClose: () => { renderSkinPick(SKIN.id); ticketDots(); },
+    onUnlock: id => selectSkin(id), onClose: () => { renderSkinPick(SKIN.id); ticketDots(); trayRefresh(); },
     blip, sfx: wsfx, theme: k => Object.assign({}, ISL.theme || {}, k.theme || {}),
     say: k => { if (k === 'buy') arp(660, 5, 60); else { arp(523, 8, 45); confetti(); } } });
   function openShop(focus) { blip(523, .08, 'triangle', .04); LOG('shop_open', { focus: focus || '', n: FTH_TICKETS.state(save).own.length }); FTH_TICKETS.open(shopCtx(), focus); }
   const ticketReady = () => !unlockAll && !LABN && (FTH_TICKETS.state(save).tickets > 0 || FTH_TICKETS.canBuy(shopCtx()));
   window.FTH_OWNS = id => owns(id);              // read-only, for the leaderboard's lock tags
   function ticketDots() { const on = ticketReady(); document.querySelectorAll('.tdot').forEach(d => { d.hidden = !on; }); return on; }
+  // the ticket tray (win card): the wallets that can pay for the next ticket, fullest first, each balance against its price;
+  // the ticket's badge counts the tickets to be had (held + one buyable). A tap buys at the deli, or spends a held one in the shop.
+  function trayRender() {
+    const ctx = shopCtx(), t = FTH_TICKETS.next(ctx), held = FTH_TICKETS.state(save).tickets, buy = FTH_TICKETS.canBuy(ctx);
+    const pay = t ? t.pay.filter(w => w.bal > 0 || w.ok) : [], rows = pay.slice(0, 3), fmt = n => Math.floor(n).toLocaleString('en');
+    const wal = rows.map(w => { const c = FTH_SKINS.coinOf(w.spec);
+      return '<span class="tt-w' + (w.ok ? ' ok' : '') + '" aria-label="' + fmt(w.bal) + ' of ' + fmt(w.price) + ' ' + c.plural + '">' + c.svg(24) + '<b>' + fmt(w.bal) + '</b><i class="tt-bar"><i style="width:' + Math.round(w.frac * 100) + '%"></i></i><span class="tt-p">' + fmt(w.price) + '</span></span>'; }).join('') +
+      (pay.length > rows.length ? '<span class="tt-more">+' + (pay.length - rows.length) + '</span>' : '');
+    $('tkTrayGo').innerHTML = '<span class="tt-tk">' + FTH_REEL.ticket(64) + '<span class="tt-n">' + (held + (buy ? 1 : 0)) + '</span></span><span class="tt-wal">' + wal + '</span><span class="tt-arr" aria-hidden="true">▶</span>';
+    $('tkTrayGo').setAttribute('aria-label', buy ? 'A skin ticket is ready: buy it at the deli' : 'You hold a skin ticket: spend it on a skin');
+  }
+  function trayShow() { trayRender(); $('tkTray').classList.add('on'); }
+  function trayHide() { $('tkTray').classList.remove('on'); }
+  function trayRefresh() { if ($('tkTray').classList.contains('on')) { if (ticketReady()) trayRender(); else trayHide(); } }
+  function trayGo() {
+    const ctx = shopCtx();
+    if (!FTH_TICKETS.canBuy(ctx) || !window.FTH_DELI) return openShop();       // a ticket already held: the shop spends it
+    blip(523, .08, 'triangle', .04); LOG('deli_open', { from: 'win' });
+    FTH_DELI.open(ctx, { onBought: () => openShop(), onClose: () => trayRefresh() });   // bought: on to the skins to spend it
+  }
   function skinStart() {
     clearTimeout(skinWinT);
     ACT = !SKIN.src || skinFits(SKIN) ? SKIN : SKINS[0];                       // a skin with a play page that cannot draw this map plays on the island
@@ -2000,7 +2046,7 @@
   // ---------------- levels ----------------
   function startLevel(i, brief) {
     levelIdx = i; L = G.levels[i]; Gr = G.graphs[L.g];
-    const cf = $('confetti'); cf.width = cf.width; $('toast').innerHTML = ''; $('winTicket').hidden = true; wrongSteps = 0; lastProgress = performance.now();
+    const cf = $('confetti'); cf.width = cf.width; $('toast').innerHTML = ''; trayHide(); wrongSteps = 0; lastProgress = performance.now();
     n = Gr.n; hole = Gr.hole; link = Gr.link;
     adj = Array.from({ length: n }, () => []);
     Gr.edges.forEach(([a, b]) => { adj[a].push(b); adj[b].push(a); });
@@ -2132,7 +2178,7 @@
     me.t.forEach(clearTimeout); cancelAnimationFrame(me.raf); if (me.ghost) me.ghost.remove();
     if (!me.done) { try { if (me.inst) me.inst.halt(); } catch (_) {} if (window.FTH_LOG) FTH_LOG.end('bonus_left', { game: me.id, got: me.got }); }
   }
-  function bonusUnlock() { $('winNext').disabled = $('winRetry').disabled = false; $('win').classList.remove('bonusing'); $('winTicket').hidden = !ticketDots(); }
+  function bonusUnlock() { $('winNext').disabled = $('winRetry').disabled = false; $('win').classList.remove('bonusing'); if (ticketDots()) trayShow(); }
   function bonusRing(f, cls) { const r = $('bonusRing'); if (!r) return; r.querySelector('.rf').style.strokeDashoffset = q1(BRC * (1 - Math.max(0, Math.min(1, f)))); if (cls !== undefined) r.setAttribute('class', 'bring' + (cls ? ' ' + cls : '')); }
   function bonusStart(delay, force) {
     bonusStop(); $('winBag').classList.remove('gone');
@@ -2423,7 +2469,7 @@
   }
   function titleStop() { if (titleStopFn) titleStopFn(); titleStopFn = null; }
   function showTitle() {
-    $('win').classList.remove('on'); $('brief').classList.remove('on');
+    $('win').classList.remove('on'); trayHide(); $('brief').classList.remove('on');
     $('game').classList.remove('on'); $('menu').classList.remove('on'); $('title').classList.add('on'); EGGS.idleStop();
     uiTotals(); titleStart(); ticketDots();
   }
@@ -2793,7 +2839,7 @@
   }
   function showMenu() {
     skinStop(); EGGS.idleStop();
-    $('win').classList.remove('on'); $('brief').classList.remove('on'); closeWheel(); titleStop();
+    $('win').classList.remove('on'); trayHide(); $('brief').classList.remove('on'); closeWheel(); titleStop();
     lootReset(); msg('');
     $('game').classList.remove('on'); $('title').classList.remove('on'); $('menu').classList.add('on');
     const r = renderSaga(), m = $('menu'); ticketDots();
@@ -2865,7 +2911,8 @@
   $('btnTitle').onclick = showTitle;
   // the wallet and exchange (economy.js, lazy: loaded on the first open)
   $('btnShopTitle').onclick = $('btnShopMap').onclick = () => openShop();
-  $('winTicket').onclick = () => openShop();
+  $('tkTrayGo').onclick = trayGo;
+  $('tkTrayFold').onclick = () => { const f = $('tkTray').classList.toggle('fold'); $('tkTrayFold').setAttribute('aria-expanded', String(!f)); blip(f ? 440 : 660, .06, 'triangle', .03); };
   // FEATURE BENCH (README): the currency exchange (economy.js) is parked; ?feat=exchange brings back its wallet button
   if (PVQ.get('feat') && PVQ.get('feat').split(',').includes('exchange')) $('btnWallet').hidden = false;
   $('btnWallet').onclick = () => {

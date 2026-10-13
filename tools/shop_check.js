@@ -4,8 +4,9 @@
 //     the shop on that skin, where the deli shows the level gate as a padlock;
 //   - the reel swipes (drag with momentum, keys), and coming to rest on an owned card selects that skin;
 //   - the currency exchange is benched: no wallet button (it comes back with ?feat=exchange);
-//   - winning the first level (Islands, at par) pays enough for ticket 1: the win card says so, the deli sells it for doubloons
-//     (sign -> zoom -> PURCHASE), the ticket unlocks Dots in the shop, ▶ plays it, a reload keeps it with a clean seal;
+//   - winning the first level (Islands, at par) pays enough for ticket 1: the ticket tray drops down over the win card with the
+//     wallet against the price, its ticket opens the deli, which sells it for doubloons (sign -> zoom -> PURCHASE), then the
+//     shop opens and the ticket unlocks Dots there, ▶ plays it, a reload keeps it with a clean seal;
 //   - the shop's live preview plays itself (&demo=1) and never reports to the shell;
 //   - a hand-edited list of owned skins is flagged by the integrity seal;
 //   - the leaderboard is one list of every skin with its top 3 by coins earned there; after joining you are 1st in Islands.
@@ -70,12 +71,13 @@ const key = (sel, k) => `document.querySelector('${sel} .rl').dispatchEvent(new 
     ok('splash won', w);
     ok('win card shows', await until(P, `document.getElementById('win').classList.contains('on')`));
     await nap(P, 2500); await P.eval(`(document.getElementById('bonusSkip') || {}).click && document.getElementById('bonusSkip').click()`);
-    ok('after the bonus round, the win card says a ticket is ready', await until(P, `!document.getElementById('winTicket').hidden`, 8000));
+    ok('after the bonus round, the ticket tray drops down', await until(P, `document.getElementById('tkTray').classList.contains('on')`, 8000));
     const bal = await P.eval(`JSON.parse(localStorage.getItem('${SAVE}')).wallet.islands.bal`);
+    const tray = await P.eval(`(() => { const w = document.querySelector('#tkTray .tt-w'); return { n: document.querySelector('#tkTray .tt-n').textContent, ok: !!w && w.classList.contains('ok'), bal: w && w.querySelector('b').textContent, price: w && w.querySelector('.tt-p').textContent }; })()`);
+    ok('the tray shows the wallet against the price, the ticket badged 1', tray.n === '1' && tray.ok && +tray.bal === bal && tray.price === '225', Object.assign(tray, { bal0: bal }));
     await shot('win-ticket');
-    await P.eval(`document.getElementById('winTicket').click()`); await sleep(500);
-    ok('the shop has the deli marked', await P.eval(`!document.querySelector('#shop .sh-deli .tdot').hidden`));
-    await P.eval(`document.querySelector('#shop .sh-deli').click()`); await sleep(900);
+    await P.eval(`document.getElementById('tkTrayGo').click()`); await sleep(900);
+    ok('the tray\'s ticket opens the deli, not the shop', await P.eval(`document.getElementById('deli').classList.contains('on') && !(document.getElementById('shop') || { classList: { contains: () => false } }).classList.contains('on')`));
     const sign = await P.eval(`(() => { const b = document.querySelector('#deli .dl-sign.ok .dl-face[data-w="islands"]'); return b && b.getAttribute('aria-label'); })()`);
     ok('the deli sells ticket 1 for 225 doubloons', /^225 doubloons/.test(sign || ''), { bal, sign });
     await shot('deli');
@@ -87,7 +89,7 @@ const key = (sel, k) => `document.querySelector('${sel} .rl').dispatchEvent(new 
     await sleep(1000); await shot('deli-purchase');
     const after = await P.eval(`(() => { const s = JSON.parse(localStorage.getItem('${SAVE}')); return { bal: s.wallet.islands.bal, earned: s.wallet.islands.earned, skins: s.skins }; })()`);
     ok('the ticket is paid from the Islands wallet', after.skins.tickets === 1 && after.skins.bought === 1 && after.bal === bal - 225 && after.earned >= bal, after);
-    ok('the deli closes after its animation, back in the shop', await until(P, `!document.getElementById('deli').classList.contains('on') && document.getElementById('shop').classList.contains('on')`, 8000));
+    ok('the deli closes after its animation, into the shop', await until(P, `!document.getElementById('deli').classList.contains('on') && document.getElementById('shop').classList.contains('on')`, 8000));
     ok('the shop counts the ticket', await P.eval(`/×1/.test(document.querySelector('#shop .sh-tks').textContent)`));
     await toCard('#shop', 'dots');
     ok('a locked skin now offers [🎟️ × 1]', await P.eval(`!!document.querySelector('#shop .sh-pv.lock .sh-big.use')`));
