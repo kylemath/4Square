@@ -26,8 +26,10 @@
   const emb = (x, y, s, e) => '<g transform="translate(' + x + ' ' + y + ') scale(' + s + ')">' + emblem(e) + '</g>';
   // a round table seen from above: cloth, scalloped-ish hem ring, emblem in the middle
   function table(x, y, r, e, extra) {
-    return '<g transform="translate(' + x + ' ' + y + ')"><circle cy="' + f1(r * .08) + '" r="' + f1(r * 1.04) + '" fill="#0b0716" opacity=".35"/>' +
+    return '<g transform="translate(' + x + ' ' + y + ')"><circle cx="' + f1(r * .07) + '" cy="' + f1(r * .11) + '" r="' + f1(r * 1.06) + '" fill="#0b0716" opacity=".5"/>' +
+      '<circle r="' + f1(r + Math.max(1.2, r / 9) / 2 + 1) + '" fill="#1c1640"/>' +
       '<circle r="' + r + '" fill="' + CLOTH[e] + '" stroke="' + HEM[e] + '" stroke-width="' + f1(Math.max(1.2, r / 9)) + '"/>' +
+      '<path d="M' + f1(-r * .62) + ' ' + f1(-r * .3) + 'A' + f1(r * .7) + ' ' + f1(r * .7) + ' 0 0 1 ' + f1(-r * .2) + ' ' + f1(-r * .66) + '" fill="none" stroke="#fff" stroke-width="' + f1(Math.max(1.4, r / 12)) + '" stroke-linecap="round" opacity=".85"/>' +
       '<circle r="' + f1(r * .84) + '" fill="none" stroke="' + HEM[e] + '" stroke-width="' + f1(Math.max(.8, r / 22)) + '" stroke-dasharray="' + f1(r / 5) + ' ' + f1(r / 6) + '" opacity=".7"/>' +
       emb(0, 0, f1(r * .6), e) + (extra || '') + '</g>';
   }
@@ -46,7 +48,7 @@
   const BULB = RM('.bl{animation:tw 2.2s ease-in-out infinite alternate}@keyframes tw{from{opacity:.5}to{opacity:1}}');
   // a guest face (tiny): skin tone, hair colour, optional red pin
   function guest(x, y, r, skin, hair, pin, grump) {
-    return '<g transform="translate(' + x + ' ' + y + ')"><circle r="' + r + '" fill="#fffaf0" stroke="' + GOLD + '" stroke-width="1.6"/>' +
+    return '<g transform="translate(' + x + ' ' + y + ')"><circle cx="1" cy="1.6" r="' + r + '" fill="#0b0716" opacity=".45"/><circle r="' + r + '" fill="#fffaf0" stroke="#1c1640" stroke-width="1.8"/>' +
       '<path d="M' + -r * .7 + ' ' + r * .75 + 'Q0 ' + r * .1 + ' ' + r * .7 + ' ' + r * .75 + 'Z" fill="#7a2f4f"/>' +
       '<circle cy="' + f1(-r * .1) + '" r="' + f1(r * .5) + '" fill="' + skin + '" stroke="' + INK + '" stroke-width="1"/>' +
       '<path d="M' + -r * .52 + ' ' + -r * .15 + 'Q' + -r * .5 + ' ' + -r * .75 + ' 0 ' + -r * .7 + 'Q' + r * .5 + ' ' + -r * .75 + ' ' + r * .52 + ' ' + -r * .15 + 'Q' + r * .3 + ' ' + -r * .4 + ' 0 ' + -r * .4 + 'Q' + -r * .3 + ' ' + -r * .4 + ' ' + -r * .52 + ' ' + -r * .15 + 'Z" fill="' + hair + '"/>' +
@@ -87,7 +89,7 @@
     gp.map((p, i) => guest(p[0], p[1], 15, SK[i], HC[i], true, true)).join('') +
     gran(150, 100, 24) +
     [0, 1, 2, 3].map(e => table(48 + e * 68, 206, 23, e)).join('') +
-    T(150, 172, 14, 'Gran won\'t sit with these five', '#f6e3b0') + T(150, 38, 13, '', '#fff'),
+    '<g transform="translate(150 58)"><circle r="11" fill="#fff" stroke="#d8424f" stroke-width="3.4"/><path d="M-7.4 7.4L7.4-7.4" stroke="#d8424f" stroke-width="3.4"/></g>',
     BULB);
   // 2: guests who feud can't share a table
   const p2 = svg(night + lights(10, 290, 14, 10, 12) +
@@ -96,9 +98,8 @@
     guest(198, 128, 14, SK[1], HC[2], false, true) +
     '<g transform="translate(150 106)"><path d="M-8-14l-8 14h7l-6 14 16-18h-8l7-10z" fill="#ffe08a" stroke="#ff4d5e" stroke-width="1.4" stroke-linejoin="round"/></g>' +
     '<path d="M122 120Q150 96 178 120" fill="none" stroke="#ff4d5e" stroke-width="2.2" stroke-dasharray="4 4"/>' +
-    T(150, 44, 15, 'Guests who feud', '#f6e3b0') + T(150, 62, 15, 'can\'t share a table', '#f6e3b0') +
-    T(150, 232, 14, 'every table is a different element', '#d9cce8'),
-    BULB);
+    '<g class="nb"><g transform="translate(198 128)"><circle r="17" fill="none" stroke="#ff4d5e" stroke-width="3"/></g></g>',
+    BULB + RM('.nb{animation:sl 1.4s ease-in-out infinite}@keyframes sl{0%,100%{opacity:.3}50%{opacity:1}}'));
   // 3: move a guest, rivals storm off: a cascade (chain)
   const p3 = svg(night + lights(10, 290, 14, 10, 12) +
     table(78, 140, 52, 3) + table(222, 140, 52, 2) +
@@ -106,17 +107,16 @@
     guest(206, 120, 13, SK[0], HC[1], false, false) + guest(238, 132, 13, SK[4], HC[3], false, false) +
     '<g class="mv"><path d="M114 108Q150 76 186 108" fill="none" stroke="' + GOLD + '" stroke-width="3" stroke-linecap="round"/><path d="M178 98L188 109L174 112" fill="none" stroke="' + GOLD + '" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></g>' +
     '<g class="mv2"><path d="M186 176Q150 204 114 176" fill="none" stroke="#ff4d5e" stroke-width="2.4" stroke-linecap="round" stroke-dasharray="4 4"/><path d="M122 168L112 176L126 180" fill="none" stroke="#ff4d5e" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></g>' +
-    T(150, 44, 15, 'Move a guest, and their', '#f6e3b0') + T(150, 62, 15, 'rivals storm off. Well!', '#f6e3b0') +
-    T(150, 232, 14, 'a cascade of swaps: one chain', '#d9cce8'),
-    BULB + RM('.mv{animation:sl 2.4s ease-in-out infinite}.mv2{animation:sl 2.4s ease-in-out .5s infinite}@keyframes sl{0%,100%{opacity:.4}50%{opacity:1}}'));
+    '<g class="gf"><path d="M-6 26V4a5 5 0 0 1 10 0v12l4-1a4 4 0 0 1 5 3l1 2 3-1a4 4 0 0 1 5 4v8q0 12-12 12h-6q-8 0-10-8z" fill="#fff" stroke="#1c1640" stroke-width="2.4" stroke-linejoin="round"/></g>',
+    BULB + '.gf{transform:translate(96px,134px)}' + RM('.mv{animation:sl 2.4s ease-in-out infinite}.mv2{animation:sl 2.4s ease-in-out .5s infinite}@keyframes sl{0%,100%{opacity:.4}50%{opacity:1}}' +
+      '.gf{animation:gf 2.4s ease-in-out infinite}@keyframes gf{0%,10%{transform:translate(96px,134px);opacity:0}20%{opacity:1}50%{transform:translate(150px,96px)}75%,85%{transform:translate(190px,128px);opacity:1}100%{transform:translate(190px,128px);opacity:0}}'));
   // 4: a lock
   const p4 = svg(night + lights(10, 290, 14, 10, 12) +
     table(80, 150, 50, 0) + table(220, 150, 50, 1) +
     guest(68, 134, 13, SK[2], HC[1], false, false) + guest(98, 138, 13, SK[4], HC[0], true, true) +
     guest(206, 130, 13, SK[0], HC[2], false, false) + guest(236, 138, 13, SK[3], HC[3], true, true) +
     '<g class="lk"><g transform="translate(150 150)"><path d="M-10 -4V-12A10 10 0 0 1 10 -12V-4" fill="none" stroke="' + GOLD + '" stroke-width="3.4" stroke-linecap="round"/><rect x="-14" y="-4" width="28" height="22" rx="4" fill="' + GOLD + '" stroke="' + INK + '" stroke-width="2"/><circle cy="6" r="3" fill="' + INK + '"/></g></g>' +
-    T(150, 44, 15, 'Sometimes the cascade drags', '#f6e3b0') + T(150, 62, 15, 'another of Gran\'s rivals too', '#f6e3b0') +
-    T(150, 232, 14, 'that move is a lock: she gains nothing', '#d9cce8'),
+    '',
     BULB + RM('.lk{transform-box:fill-box;transform-origin:50% 100%;animation:sh 2.8s ease-in-out infinite}@keyframes sh{0%,78%,100%{transform:rotate(0)}84%{transform:rotate(-9deg)}90%{transform:rotate(9deg)}95%{transform:rotate(-4deg)}}'));
   // 5: the win
   const p5 = svg(night + lights(10, 290, 14, 10, 12) +
@@ -127,17 +127,12 @@
     card(188, 74, 104, 40, '') + tick(272, 94, 11) + gran(214, 94, 13) +
     '<g class="ga">' + gran(110, 92, 24) + '</g>' +
     '<path d="M138 92L186 92" stroke="' + GOLD + '" stroke-width="2.6" stroke-dasharray="1 6" stroke-linecap="round"/>' +
-    T(150, 46, 15, 'One table with none of her rivals', '#f6e3b0') +
-    T(150, 232, 15, 'Gran sits down, and the glasses clink', '#d9cce8'),
+    '',
     BULB + RM('.ga{animation:wk 2.4s ease-in-out infinite}@keyframes wk{0%,100%{transform:translateX(0)}50%{transform:translateX(8px)}}'));
 
   // ---- bonus tile: a little round table in the element's colour with its emblem
   const bonusTile = (x, y, r, e, k) => '<g class="tl e' + e + '" data-k="' + k + '" transform="translate(' + x + ' ' + y + ')"><g class="tin">' +
-    '<circle class="hl" r="' + f1(r * 1.15) + '" fill="#ffe7a0"/>' +
-    '<circle cy="' + f1(r * .08) + '" r="' + f1(r * .96) + '" fill="#0b0716" opacity=".35"/>' +
-    '<circle class="hx" r="' + f1(r * .92) + '" fill="' + CLOTH[e] + '" stroke="' + HEM[e] + '" stroke-width="' + f1(Math.max(1.4, r / 8)) + '"/>' +
-    '<circle r="' + f1(r * .74) + '" fill="none" stroke="' + HEM[e] + '" stroke-width="1" stroke-dasharray="' + f1(r / 4) + ' ' + f1(r / 5) + '" opacity=".7"/>' +
-    emb(0, 0, f1(r * .52), e) + '</g></g>';
+    '<circle class="hl" r="' + f1(r * 1.12) + '" fill="#ffe7a0"/>' + gemArt(e, r) + '</g></g>';
 
   // ---------- the level map: the wedding estate at night, seen from above ----------
   const LGROUND = {   // top, bottom, pattern id, lit edge
@@ -310,11 +305,141 @@
       return '<path d="M0 27C-6 17-19 9-19-5A19 19 0 0 1 19-5C19 9 6 17 0 27Z" fill="' + GOLD + '" stroke="#6d4a1c" stroke-width="2.4"/><path d="M-15-7A15 15 0 0 1 -4-17" fill="none" stroke="#fff6d8" stroke-width="2" stroke-linecap="round"/>' + gran(0, -6, 13.5);
     },
   };
+  // ---------- app-store art (SKIN-SPEC 13): the Islands way, thick ink outline, top-left light, offset drop shadows ----------
+  const IK = '#1c1640', EL = ['#ef5a3c', '#3d8fe8', '#f2c230', '#4caf50'], ELD = ['#8e1c17', '#1b4f91', '#8a6510', '#1a6b2a'];
+  // a scalloped hem: n bumps round a circle of radius R (bulging outwards)
+  function scallop(cx, cy, R, n) {
+    let d = ''; const c = R * Math.sin(Math.PI / n) * 1.08;
+    for (let i = 0; i <= n; i++) { const a = -Math.PI / 2 + i * 2 * Math.PI / n, x = f1(cx + R * Math.cos(a)), y = f1(cy + R * Math.sin(a));
+      d += i ? 'A' + f1(c) + ' ' + f1(c) + ' 0 0 1 ' + x + ' ' + y : 'M' + x + ' ' + y; }
+    return d + 'Z';
+  }
+  // a rose seen from above: petal ring, swirl, highlight
+  function rose(x, y, r, sw) {
+    return '<g transform="translate(' + x + ' ' + y + ')"><path d="' + scallop(f1(r * .1), f1(r * .14), r * .8, 7) + '" fill="#7d1a30"/>' +
+      '<path d="' + scallop(0, 0, r * .8, 7) + '" fill="#e8455e" stroke="' + IK + '" stroke-width="' + sw + '" stroke-linejoin="round"/>' +
+      '<path d="M' + f1(r * .08) + ' 0A' + f1(r * .12) + ' ' + f1(r * .12) + ' 0 1 1 ' + f1(r * .03) + ' ' + f1(-r * .2) + 'A' + f1(r * .32) + ' ' + f1(r * .32) + ' 0 0 1 ' + f1(r * .26) + ' ' + f1(r * .22) + 'A' + f1(r * .5) + ' ' + f1(r * .5) + ' 0 0 1 ' + f1(-r * .5) + ' ' + f1(r * .12) + '" fill="none" stroke="#8e1c2e" stroke-width="' + f1(sw * .8) + '" stroke-linecap="round"/>' +
+      '<ellipse cx="' + f1(-r * .32) + '" cy="' + f1(-r * .36) + '" rx="' + f1(r * .2) + '" ry="' + f1(r * .11) + '" transform="rotate(-35 ' + f1(-r * .32) + ' ' + f1(-r * .36) + ')" fill="#fff" opacity=".6"/></g>';
+  }
+  // Gran's head, big: silver bun and curls, round spectacles, rosy cheeks
+  function granHead(x, y, r, sw) {
+    const p = n => f1(r * n), s2 = f1(sw * .8);
+    return '<g transform="translate(' + x + ' ' + y + ')">' +
+      '<circle cx="' + p(.08) + '" cy="' + p(-.82) + '" r="' + p(.36) + '" fill="#9a90b0"/><circle cy="' + p(-.9) + '" r="' + p(.34) + '" fill="#eeeaf4" stroke="' + IK + '" stroke-width="' + sw + '"/>' +
+      '<ellipse cy="' + p(-.14) + '" rx="' + p(1.02) + '" ry="' + p(.86) + '" fill="#eeeaf4" stroke="' + IK + '" stroke-width="' + sw + '"/>' +
+      '<circle cx="' + p(.06) + '" cy="' + p(.12) + '" r="' + p(.8) + '" fill="#d99e84"/><circle cy="' + p(.06) + '" r="' + p(.8) + '" fill="#f8d4b8" stroke="' + IK + '" stroke-width="' + sw + '"/>' +
+      '<path d="M' + p(-.84) + ' ' + p(-.12) + 'Q' + p(-.8) + ' ' + p(-.8) + ' 0 ' + p(-.78) + 'Q' + p(.8) + ' ' + p(-.8) + ' ' + p(.84) + ' ' + p(-.12) + 'Q' + p(.5) + ' ' + p(-.5) + ' ' + p(.2) + ' ' + p(-.42) + 'Q0 ' + p(-.6) + ' ' + p(-.2) + ' ' + p(-.42) + 'Q' + p(-.5) + ' ' + p(-.5) + ' ' + p(-.84) + ' ' + p(-.12) + 'Z" fill="#eeeaf4" stroke="' + IK + '" stroke-width="' + s2 + '" stroke-linejoin="round"/>' +
+      '<circle cx="' + p(-.5) + '" cy="' + p(.28) + '" r="' + p(.16) + '" fill="#ff8fa3" opacity=".7"/><circle cx="' + p(.5) + '" cy="' + p(.28) + '" r="' + p(.16) + '" fill="#ff8fa3" opacity=".7"/>' +
+      '<g fill="#fff" fill-opacity=".45" stroke="' + IK + '" stroke-width="' + s2 + '"><circle cx="' + p(-.32) + '" cy="' + p(.02) + '" r="' + p(.25) + '"/><circle cx="' + p(.32) + '" cy="' + p(.02) + '" r="' + p(.25) + '"/></g>' +
+      '<path d="M' + p(-.08) + ' 0H' + p(.08) + '" stroke="' + IK + '" stroke-width="' + s2 + '"/>' +
+      '<circle cx="' + p(-.32) + '" cy="' + p(.04) + '" r="' + p(.08) + '" fill="' + IK + '"/><circle cx="' + p(.32) + '" cy="' + p(.04) + '" r="' + p(.08) + '" fill="' + IK + '"/>' +
+      '<path d="M' + p(-.24) + ' ' + p(.44) + 'Q0 ' + p(.64) + ' ' + p(.24) + ' ' + p(.44) + '" fill="none" stroke="' + IK + '" stroke-width="' + s2 + '" stroke-linecap="round"/>' +
+      '<ellipse cx="' + p(-.3) + '" cy="' + p(-.5) + '" rx="' + p(.24) + '" ry="' + p(.1) + '" transform="rotate(-25 ' + p(-.3) + ' ' + p(-.5) + ')" fill="#fff" opacity=".85"/></g>';
+  }
+  // a guest as a portrait disc (the play page's look): shoulders, head, hair, a smile; a dashed ring for a lit chain member
+  function face(x, y, r, i, ring) {
+    const SKn = ['#f6d3b3', '#c98b5e', '#e8b48a', '#9c6440', '#f2c6a0'][i % 5], HCn = ['#2b1d16', '#c8873a', '#6b3f1f', '#1d1d24', '#a33b20'][i % 5], OF = ['#3a4a7a', '#7a2f4f', '#2f6b5a', '#5b3a7a', '#c25a3a'][i % 5], p = n => f1(r * n);
+    return '<g transform="translate(' + x + ' ' + y + ')">' + (ring ? '<circle r="' + p(1.34) + '" fill="none" stroke="' + ring + '" stroke-width="' + p(.24) + '" stroke-dasharray="' + p(.5) + ' ' + p(.3) + '"/>' : '') +
+      '<circle cx="' + p(.12) + '" cy="' + p(.16) + '" r="' + p(1.02) + '" fill="#0b0716" opacity=".45"/><circle r="' + p(1.02) + '" fill="#fff6e6" stroke="' + IK + '" stroke-width="' + p(.14) + '"/>' +
+      '<path d="M' + p(-.82) + ' ' + p(.62) + 'Q0 ' + p(.02) + ' ' + p(.82) + ' ' + p(.62) + 'Q' + p(.5) + ' ' + p(1) + ' 0 ' + p(1) + 'Q' + p(-.5) + ' ' + p(1) + ' ' + p(-.82) + ' ' + p(.62) + 'Z" fill="' + OF + '"/>' +
+      '<circle cy="' + p(-.12) + '" r="' + p(.52) + '" fill="' + SKn + '" stroke="' + IK + '" stroke-width="' + p(.1) + '"/>' +
+      '<path d="M' + p(-.54) + ' ' + p(-.14) + 'Q' + p(-.56) + ' ' + p(-.78) + ' 0 ' + p(-.74) + 'Q' + p(.56) + ' ' + p(-.78) + ' ' + p(.54) + ' ' + p(-.14) + 'Q' + p(.3) + ' ' + p(-.44) + ' 0 ' + p(-.44) + 'Q' + p(-.3) + ' ' + p(-.44) + ' ' + p(-.54) + ' ' + p(-.14) + 'Z" fill="' + HCn + '"/>' +
+      '<circle cx="' + p(-.18) + '" cy="' + p(-.12) + '" r="' + p(.08) + '" fill="' + IK + '"/><circle cx="' + p(.18) + '" cy="' + p(-.12) + '" r="' + p(.08) + '" fill="' + IK + '"/>' +
+      '<path d="M' + p(-.16) + ' ' + p(.1) + 'Q0 ' + p(.22) + ' ' + p(.16) + ' ' + p(.1) + '" fill="none" stroke="' + IK + '" stroke-width="' + p(.07) + '" stroke-linecap="round"/>' +
+      '<ellipse cx="' + p(-.5) + '" cy="' + p(-.56) + '" rx="' + p(.22) + '" ry="' + p(.1) + '" transform="rotate(-40 ' + p(-.5) + ' ' + p(-.56) + ')" fill="#fff" opacity=".8"/></g>';
+  }
+  // a table seen from above, layered: offset shadow, scalloped hem, cloth with a top-left sheen, the centrepiece
+  const CLOTHB = ['#ffe3ea', '#e0ecff', '#fff1bf', '#e2f4d8'];
+  function bigTable(x, y, R, e, gid, sw) {
+    return '<g transform="translate(' + x + ' ' + y + ')"><path d="' + scallop(f1(R * .08), f1(R * .12), R, 16) + '" fill="#0b0716" opacity=".5"/>' +
+      '<path d="' + scallop(0, 0, R, 16) + '" fill="' + HEM[e] + '" stroke="' + IK + '" stroke-width="' + sw + '" stroke-linejoin="round"/>' +
+      '<circle r="' + f1(R * .8) + '" fill="url(#' + gid + e + ')" stroke="' + IK + '" stroke-width="' + f1(sw * .7) + '"/>' +
+      '<path d="M' + f1(-R * .58) + ' ' + f1(-R * .26) + 'A' + f1(R * .64) + ' ' + f1(R * .64) + ' 0 0 1 ' + f1(-R * .18) + ' ' + f1(-R * .62) + '" fill="none" stroke="#fff" stroke-width="' + f1(sw * 1.1) + '" stroke-linecap="round" opacity=".9"/>' +
+      emb(0, 0, f1(R * .56), e) + '</g>';
+  }
+  const clothDefs = gid => [0, 1, 2, 3].map(e => '<radialGradient id="' + gid + e + '" cx="38%" cy="32%" r="75%"><stop offset="0" stop-color="#fff"/><stop offset=".55" stop-color="' + CLOTHB[e] + '"/><stop offset="1" stop-color="' + SHADE[e] + '"/></radialGradient>').join('');
+
+  const iconSvg = '<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg"><defs>' +
+    '<linearGradient id="tables-ic-bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffd36e"/><stop offset=".5" stop-color="#ff8a58"/><stop offset="1" stop-color="#d93a6a"/></linearGradient>' +
+    '<radialGradient id="tables-ic-cl" cx="36%" cy="30%" r="78%"><stop offset="0" stop-color="#ffffff"/><stop offset=".55" stop-color="#fff0f3"/><stop offset="1" stop-color="#f4b8c8"/></radialGradient>' +
+    '<clipPath id="tables-ic-clip"><rect width="120" height="120" rx="26"/></clipPath></defs>' +
+    '<rect width="120" height="120" rx="26" fill="url(#tables-ic-bg)"/><g clip-path="url(#tables-ic-clip)">' +
+    '<path d="M60 50L-10 -10H30ZM60 50L90 -10H130ZM60 50L130 40V80ZM60 50L-10 60V20Z" fill="#fff" opacity=".13"/>' +
+    '<path d="' + scallop(64, 52, 40, 18) + '" fill="#8e1f45" opacity=".6"/>' +
+    '<path d="' + scallop(60, 46, 40, 18) + '" fill="#e8455e" stroke="' + IK + '" stroke-width="3.6" stroke-linejoin="round"/>' +
+    '<circle cx="60" cy="46" r="32" fill="url(#tables-ic-cl)" stroke="' + IK + '" stroke-width="2.6"/>' +
+    '<path d="M37 34A27 27 0 0 1 52 20" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round"/>' +
+    [[-140, 0], [-40, 1], [40, 2], [140, 3]].map(([a, e]) => { const r = a * Math.PI / 180, x = f1(60 + Math.cos(r) * 21), y = f1(44 + Math.sin(r) * 21);
+      return '<circle cx="' + f1(x + 1.2) + '" cy="' + f1(y + 2) + '" r="8" fill="#9c6a86" opacity=".55"/><circle cx="' + x + '" cy="' + y + '" r="8" fill="#fff" stroke="' + IK + '" stroke-width="2.4"/><circle cx="' + x + '" cy="' + y + '" r="4.6" fill="' + EL[e] + '" stroke="' + ELD[e] + '" stroke-width="1.2"/><circle cx="' + f1(x - 1.6) + '" cy="' + f1(y - 1.8) + '" r="1.4" fill="#fff" opacity=".85"/>'; }).join('') +
+    rose(60, 43, 13, 2.4) +
+    '<path d="M36 124Q36 100 60 98Q84 100 84 124Z" fill="#9b7fc2" stroke="' + IK + '" stroke-width="3"/>' +
+    '<g fill="#fffaf0" stroke="' + IK + '" stroke-width="1.2"><circle cx="50" cy="114" r="2.4"/><circle cx="55" cy="116" r="2.4"/><circle cx="60" cy="117" r="2.4"/><circle cx="65" cy="116" r="2.4"/><circle cx="70" cy="114" r="2.4"/></g>' +
+    granHead(60, 96, 20, 3) + '</g>' +
+    '<rect x="1.5" y="1.5" width="117" height="117" rx="25" fill="none" stroke="#fff" stroke-opacity=".35" stroke-width="2"/></svg>';
+
+  // the wordmark: a teacup glyph and "Gran's Table" in chunky italic serif (cream and gold, plum ink, offset shadow)
+  const logoArt = P => '<defs><linearGradient id="' + P + 'f" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fffaf0"/><stop offset=".55" stop-color="#ffe6a6"/><stop offset="1" stop-color="#f2b44a"/></linearGradient>' +
+    '<linearGradient id="' + P + 'cup" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff"/><stop offset="1" stop-color="#f6b6c1"/></linearGradient></defs>' +
+    '<g transform="translate(0 2)"><g transform="translate(2 3)" fill="#3a0f2a"><path d="M12 44Q10 64 26 66H34Q50 64 48 44Z"/><ellipse cx="30" cy="68" rx="24" ry="6"/></g>' +
+    '<ellipse cx="30" cy="68" rx="24" ry="6" fill="#fff6e6" stroke="' + IK + '" stroke-width="3"/>' +
+    '<path d="M46 50Q58 48 56 57Q54 63 44 62" fill="none" stroke="' + IK + '" stroke-width="7" stroke-linecap="round"/><path d="M46 50Q58 48 56 57Q54 63 44 62" fill="none" stroke="#fff6e6" stroke-width="3" stroke-linecap="round"/>' +
+    '<path d="M12 44Q10 64 26 66H34Q50 64 48 44Z" fill="url(#' + P + 'cup)" stroke="' + IK + '" stroke-width="3" stroke-linejoin="round"/>' +
+    '<ellipse cx="30" cy="44" rx="18" ry="4.4" fill="#b5652e" stroke="' + IK + '" stroke-width="3"/>' +
+    '<circle cx="30" cy="56" r="4" fill="#e8455e" stroke="' + IK + '" stroke-width="1.6"/><path d="M17 50Q17 58 21 61" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/>' +
+    '<path d="M24 36Q20 30 25 25Q30 20 26 14M34 36Q30 30 35 25Q40 20 36 14" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" opacity=".85"/></g>' +
+    '<g font-family="\'Playfair Display\', Georgia, \'Arial Black\', serif" font-style="italic" font-weight="900" font-size="40">' +
+    '<text x="66" y="61" textLength="168" lengthAdjust="spacingAndGlyphs" fill="#3a0f2a" stroke="#3a0f2a" stroke-width="9" stroke-linejoin="round">Gran\'s Table</text>' +
+    '<text x="63" y="57" textLength="168" lengthAdjust="spacingAndGlyphs" fill="url(#' + P + 'f)" stroke="' + IK + '" stroke-width="6" stroke-linejoin="round" paint-order="stroke">Gran\'s Table</text>' +
+    '<text x="62.2" y="55.8" textLength="168" lengthAdjust="spacingAndGlyphs" fill="none" stroke="#fff" stroke-width="1.1" opacity=".5">Gran\'s Table</text></g>';
+  const logoSvg = '<svg viewBox="0 0 240 80" xmlns="http://www.w3.org/2000/svg">' + logoArt('tables-lg-') + '</svg>';
+
+  // the reel card: three tables under string lights, a guest dragged across with the cascade lit, the logo below
+  const cardSvg = '<svg viewBox="0 0 240 320" xmlns="http://www.w3.org/2000/svg"><defs>' +
+    '<radialGradient id="tables-cd-bg" cx="50%" cy="25%" r="85%"><stop offset="0" stop-color="#6a4f8e"/><stop offset=".6" stop-color="#3a2b58"/><stop offset="1" stop-color="#1f1733"/></radialGradient>' +
+    '<radialGradient id="tables-cd-glow"><stop offset="0" stop-color="#ffe7a0" stop-opacity=".9"/><stop offset="1" stop-color="#ffe7a0" stop-opacity="0"/></radialGradient>' +
+    clothDefs('tables-cd-c') + '</defs>' +
+    '<rect width="240" height="320" rx="18" fill="url(#tables-cd-bg)"/>' +
+    '<path d="M0 8Q60 34 120 8Q180 34 240 8" fill="none" stroke="#8a74a8" stroke-width="1.6"/>' +
+    [12, 30, 48, 66, 84, 102, 138, 156, 174, 192, 210, 228].map((x, i) => { const t = (x % 120) / 120, y = f1(8 + 52 * t * (1 - t) + 3);
+      return '<circle cx="' + x + '" cy="' + y + '" r="8" fill="url(#tables-cd-glow)"/><circle cx="' + x + '" cy="' + y + '" r="3" fill="' + ['#fff1c2', '#f6b6c1', '#ffd36a'][i % 3] + '" stroke="' + IK + '" stroke-width="1"/>'; }).join('') +
+    bigTable(70, 96, 40, 0, 'tables-cd-c', 3) + bigTable(176, 130, 40, 1, 'tables-cd-c', 3) + bigTable(80, 196, 32, 2, 'tables-cd-c', 3) +
+    '<circle cx="176" cy="130" r="56" fill="none" stroke="#ffe7a0" stroke-width="3" stroke-dasharray="7 6" opacity=".9"/>' +
+    face(30, 80, 11, 0) + face(64, 50, 11, 1) + face(108, 74, 11, 2) + face(104, 128, 11, 3) + face(38, 128, 11, 4) +
+    face(218, 108, 11, 1, '#ef5a3c') + face(208, 170, 11, 3, '#ef5a3c') + face(150, 178, 11, 0) + face(184, 80, 11, 4, '#ef5a3c') +
+    face(44, 196, 10, 2) + face(114, 206, 10, 0) + face(84, 160, 10, 1) +
+    '<path d="M112 98Q132 70 146 102" fill="none" stroke="#ffd84a" stroke-width="5" stroke-linecap="round" stroke-dasharray="1 9"/>' +
+    '<circle cx="146" cy="112" r="24" fill="url(#tables-cd-glow)"/>' + face(146, 110, 13, 2, '#3d8fe8') +
+    '<g transform="translate(152 126) rotate(-18)"><path d="M-6 26V4a5 5 0 0 1 10 0v12l4-1a4 4 0 0 1 5 3l1 2 3-1a4 4 0 0 1 5 4v8q0 12-12 12h-6q-8 0-10-8z" fill="#fff" stroke="' + IK + '" stroke-width="2.6" stroke-linejoin="round"/><path d="M-2 8v10" stroke="#d9cce8" stroke-width="2" stroke-linecap="round"/></g>' +
+    '<g transform="translate(206 44)"><circle cx="2" cy="4" r="21" fill="#140c22" opacity=".5"/><circle r="21" fill="#efe2f6" stroke="' + IK + '" stroke-width="2.6"/>' + granHead(0, 3, 13, 2) + '</g>' +
+    '<rect x="8" y="232" width="224" height="80" rx="16" fill="#1f1030" opacity=".55"/>' +
+    '<g transform="translate(0 232)">' + logoArt('tables-cd-lg-') + '</g></svg>';
+
+  // ---------- bonus gems: one centrepiece per table, one SHAPE per element (rose, bluebell, sunflower, fern leaf) ----------
+  function gemD(e, r) {
+    const p = n => f1(r * n);
+    if (e === 0) return scallop(0, 0, r * .78, 8);
+    if (e === 1) return 'M' + p(-.52) + ' ' + p(-.3) + 'Q' + p(-.54) + ' ' + p(-.86) + ' 0 ' + p(-.86) + 'Q' + p(.54) + ' ' + p(-.86) + ' ' + p(.52) + ' ' + p(-.3) + 'L' + p(.58) + ' ' + p(.26) + 'Q' + p(.86) + ' ' + p(.42) + ' ' + p(.76) + ' ' + p(.66) + 'L' + p(.44) + ' ' + p(.52) + 'L' + p(.22) + ' ' + p(.78) + 'L0 ' + p(.56) + 'L' + p(-.22) + ' ' + p(.78) + 'L' + p(-.44) + ' ' + p(.52) + 'L' + p(-.76) + ' ' + p(.66) + 'Q' + p(-.86) + ' ' + p(.42) + ' ' + p(-.58) + ' ' + p(.26) + 'Z';
+    if (e === 2) { let d = ''; for (let i = 0; i < 24; i++) { const a = -Math.PI / 2 + i * Math.PI / 12, R = i % 2 ? r * .62 : r * .95; d += (i ? 'L' : 'M') + f1(Math.cos(a) * R) + ' ' + f1(Math.sin(a) * R); } return d + 'Z'; }
+    return 'M0 ' + p(-.94) + 'C' + p(.72) + ' ' + p(-.6) + ' ' + p(.78) + ' ' + p(.3) + ' 0 ' + p(.92) + 'C' + p(-.78) + ' ' + p(.3) + ' ' + p(-.72) + ' ' + p(-.6) + ' 0 ' + p(-.94) + 'Z';
+  }
+  const GEMF = ['#e8455e', '#3f7fe0', '#f6c21c', '#4fae4a'], GEMS = ['#7d1a30', '#173d7a', '#8a5d06', '#1f5a22'];
+  function gemArt(e, r) {
+    const sw = f1(Math.max(1.6, r * .09)), p = n => f1(r * n), d = gemD(e, r);
+    let s = '<path d="' + d + '" fill="' + GEMS[e] + '" transform="translate(' + p(.08) + ' ' + p(.11) + ')"/>' +
+      '<path class="hx" d="' + d + '" fill="' + GEMF[e] + '" stroke="' + IK + '" stroke-width="' + sw + '" stroke-linejoin="round"/>';
+    if (e === 0) s += '<path d="M' + p(.08) + ' 0A' + p(.12) + ' ' + p(.12) + ' 0 1 1 ' + p(.03) + ' ' + p(-.2) + 'A' + p(.32) + ' ' + p(.32) + ' 0 0 1 ' + p(.26) + ' ' + p(.22) + 'A' + p(.5) + ' ' + p(.5) + ' 0 0 1 ' + p(-.5) + ' ' + p(.12) + '" fill="none" stroke="#8e1c2e" stroke-width="' + sw + '" stroke-linecap="round"/>';
+    if (e === 1) s += '<path d="M0 ' + p(-.86) + 'Q' + p(.1) + ' ' + p(-1.04) + ' ' + p(.34) + ' ' + p(-1) + '" fill="none" stroke="#1f5a22" stroke-width="' + sw + '" stroke-linecap="round"/><path d="M' + p(-.22) + ' ' + p(-.5) + 'Q' + p(-.28) + ' 0 ' + p(-.2) + ' ' + p(.4) + '" fill="none" stroke="#9cc6f4" stroke-width="' + sw + '" stroke-linecap="round" opacity=".8"/>';
+    if (e === 2) s += '<circle cx="' + p(.04) + '" cy="' + p(.06) + '" r="' + p(.42) + '" fill="#4a2a0a"/><circle r="' + p(.42) + '" fill="#8a5326" stroke="' + IK + '" stroke-width="' + sw + '"/><g fill="#c48a3a">' + [0, 1, 2, 3, 4, 5].map(i => '<circle cx="' + f1(Math.cos(i * 1.05) * r * .2) + '" cy="' + f1(Math.sin(i * 1.05) * r * .2) + '" r="' + p(.05) + '"/>').join('') + '</g>';
+    if (e === 3) s += '<path d="M0 ' + p(-.8) + 'V' + p(.86) + 'M0 ' + p(-.4) + 'L' + p(.3) + ' ' + p(-.6) + 'M0 ' + p(-.4) + 'L' + p(-.3) + ' ' + p(-.6) + 'M0 0L' + p(.42) + ' ' + p(-.24) + 'M0 0L' + p(-.42) + ' ' + p(-.24) + 'M0 ' + p(.4) + 'L' + p(.4) + ' ' + p(.16) + 'M0 ' + p(.4) + 'L' + p(-.4) + ' ' + p(.16) + '" fill="none" stroke="#1f5a22" stroke-width="' + sw + '" stroke-linecap="round"/>';
+    return s + '<ellipse cx="' + p(-.3) + '" cy="' + p(-.42) + '" rx="' + p(.2) + '" ry="' + p(.1) + '" transform="rotate(-38 ' + p(-.3) + ' ' + p(-.42) + ')" fill="#fff" opacity=".75"/>';
+  }
+
   FTH_SKINS.register({
-    id: 'tables', name: 'Gran\'s Table', ic: '👵', blurb: 'a wedding, a feud, one seat',
+    id: 'tables', name: 'Gran\'s Table', ic: '👵', blurb: 'four tables, one seat for Gran',
     coin: { name: 'sugar cube', plural: 'sugar cubes', glyph: '🍬', value: 5, pitch: 0.7,   // this skin's currency (SKIN-SPEC.md section 12)
       colors: { main: '#fffdf5', edge: '#d7c9b5' },
-      svg: FTH_SKINS.coinArt('<path d="M0 -11.6L10.4 -5.8V5.8L0 11.6L-10.4 5.8V-5.8Z" fill="#e4d8c4"/><path d="M0 -11.6L10.4 -5.8L0 0L-10.4 -5.8Z" fill="#fffdf5"/><path d="M-10.4 -5.8L0 0V11.6L-10.4 5.8Z" fill="#efe5d3"/><path d="M0 0L10.4 -5.8V5.8L0 11.6Z" fill="#d9ccb6"/><path d="M-10.4 -5.8L0 0L10.4 -5.8M0 0V11.6" fill="none" stroke="#1c1640" stroke-width="1.1" stroke-linejoin="round"/><path d="M0 -11.6L10.4 -5.8V5.8L0 11.6L-10.4 5.8V-5.8Z" fill="none" stroke="#1c1640" stroke-width="2" stroke-linejoin="round"/><circle cx="-3" cy="-5.6" r=".9" fill="#d7c9b5"/><circle cx="3.2" cy="-4.4" r=".7" fill="#d7c9b5"/><circle cx="-6" cy="3" r=".8" fill="#fff"/>') },
+      svg: FTH_SKINS.coinArt('<path d="M0 -10.4L9.6 -5.2V6.2L0 11.6L-9.6 6.2V-5.2Z" fill="#8a6a52" transform="translate(1.4 1.4)"/><path d="M0 -11.2L9.8 -5.6V5.4L0 10.8L-9.8 5.4V-5.6Z" fill="#e4d8c4"/><path d="M0 -11.2L9.8 -5.6L0 0L-9.8 -5.6Z" fill="#fffdf5"/><path d="M-9.8 -5.6L0 0V10.8L-9.8 5.4Z" fill="#f3ead8"/><path d="M0 0L9.8 -5.6V5.4L0 10.8Z" fill="#d2c1a6"/><path d="M-9.8 -5.6L0 0L9.8 -5.6M0 0V10.8" fill="none" stroke="#1c1640" stroke-width="1.2" stroke-linejoin="round"/><path d="M0 -11.2L9.8 -5.6V5.4L0 10.8L-9.8 5.4V-5.6Z" fill="none" stroke="#1c1640" stroke-width="2.2" stroke-linejoin="round"/><path d="M-5.6 -6.4L-.6 -9.1" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/><circle cx="2.6" cy="-5.4" r=".8" fill="#d7c9b5"/><circle cx="-1.6" cy="-3.6" r=".7" fill="#d7c9b5"/><circle cx="-6" cy="1.6" r=".9" fill="#fff"/><circle cx="-3.4" cy="5" r=".7" fill="#fff"/><circle cx="5" cy="2.4" r=".8" fill="#b9a68a"/>') },
+    icon: iconSvg, card: cardSvg, logo: logoSvg,
     src: 'lab/tables.html', needs: ['cells'],
     hud: 'compact',
     theme: {
@@ -364,13 +489,13 @@
     fonts: ['https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;1,600&family=Nunito:wght@700;800&display=swap'],
     title: { svg: titleSvg },
     intro: [
-      { title: 'Gran won\'t sit', text: 'The bride\'s grandmother feuds with five guests, and they are spread over all four tables. She has nowhere to sit.', svg: p1 },
-      { title: 'Feuds', text: 'Guests who feud can\'t share a table. Pick a guest up to see their rivals; each table has its own flowers.', svg: p2 },
-      { title: 'Move a guest', text: 'Drag a guest to another table. Their rivals there storm off to the old table, and their rivals storm back: a cascade, which is one chain swap.', svg: p3 },
-      { title: 'Locks', text: 'If the cascade drags another of Gran\'s rivals along, the table counts stay the same: that move is locked and gets her nowhere.', svg: p4 },
-      { title: 'Seat Gran', text: 'Free one table of all five rivals, and Gran walks over and sits. Glasses clink!', svg: p5 },
+      { title: 'Gran needs a seat', text: 'Gran feuds with five guests, spread over all four tables.', svg: p1 },
+      { title: 'Feuds', text: 'Guests who feud never share a table.', svg: p2 },
+      { title: 'Move a guest', text: 'Drag a guest to a table; their rivals there storm off.', svg: p3 },
+      { title: 'Locks', text: 'If the cascade drags another rival along, Gran gains nothing.', svg: p4 },
+      { title: 'Seat Gran', text: 'Clear one table of her rivals and Gran sits down!', svg: p5 },
     ],
-    bonus: { label: 'TABLE BONUS', board: 'radial-gradient(circle at 50% 0%, #3b2e58, #1c1630)', line: '#ffe7a0', tile: bonusTile },
+    bonus: { label: 'TEA', games: ['pop', 'stack'], intro: 'drop', board: 'radial-gradient(circle at 50% 0%, #3b2e58, #1c1630)', line: '#ffe7a0', tile: bonusTile },
     map: {
       sea: ['#4a3a68', '#43355f', '#3c2f56', '#35294d', '#2e2444', '#281f3b', '#221a33', '#1c152b', '#161024'],
       seaX: '#0f0a1c',
@@ -389,6 +514,10 @@
       },
     },
     levelMap,
-    words: { win: 'Gran has found her table!', perfect: 'Perfect seating! No shorter way exists.', par: 'Par is {par}. Can you get ★★★?', chart: 'SEATING PLANS' },
+    eggs: [
+      { id: 'gran-cat', on: 'page', note: 'leave the hall alone a while: Gran\'s cat strolls across the tables; tap it for a purr', pays: true },
+      { id: 'gran-tea', on: 'page', note: 'tap Gran five times: the kettle whistles and she pours a cuppa', pays: false },
+    ],
+    words: { win: 'A toast to Gran!', perfect: 'Perfect seating! No shorter way exists.', par: 'Par is {par}. Can you get ★★★?', chart: 'SEATING PLANS' },
   });
 })();

@@ -1,34 +1,27 @@
 <!doctype html>
 <!--
-  DOODLE MAP (lab front end; a sister of lines.html "Line Doodle", same sketchbook art, but playing OUR puzzle)
+  DOODLE MAP (Line Doodle's play page): a hand-drawn map (g.cells) on taped paper, coloured in with four felt-tip
+  markers (the 4 elements, each with its own hatching). One piece, the hole (g.hole), is blank with a pulsing "?".
+  No instruction text: the picture, glowing markers, a ghost finger and sound teach it.
 
-  What the player sees: a taped sketchbook page with a hand-drawn map (g.cells, the dual map: one polygon per region
-  in the square [-1,1]^2 with exact adjacency). The square border and every border between two pieces are wobbly
-  felt-tip strokes that draw themselves in (each shared border drawn once). The map arrives ALREADY COLOURED: every
-  piece is filled with its pen (g.col; 4 chunky markers = the 4 elements, all uncapped from the start, each with its
-  own hatch pattern for colour-blind players). One piece, the hole (g.hole), is blank white with a pencilled "?".
-  A pencilled line on the page says "colour the blank piece".
+  What the player does:
+    1. tap a marker: picks pen b (it stays picked).
+    2. press a coloured piece u (col[u] != b): it lifts at once and its chain K = g.chainAt(u, b) lights up, pulsing in
+       its two pen colours with a rising tone per piece. Release on the same piece:
+         - K.web -> the ink smudges in and fades back (no g.swap call), the marker shakes.
+         - else  -> g.swap(K), exactly once: the pieces flip in a wave from the touch point (45 ms apart, a pop each)
+                    and LAB.at() says where the coins fly from. Slide off the piece to cancel.
+       A piece that already has pen b wobbles. Once the rim is down to 3 pens (g.won()) core refuses swaps.
+    3. when g.won(): the free marker bobs and glows, the "?" turns its colour, a ghost finger taps the blank piece.
+       Tap the blank piece with that pen: it fills, then the whole sheet is scribbled over in a celebratory wave with
+       doodled stars (~3.5 s), then LAB.done(). A pen already on the rim sparks on the clashing borders instead.
+  Progress: when an element leaves the rim, a blob of its ink flies from the blank piece back into its marker and the
+  rim pieces bounce. Idle ~7 s: a pencil circle round a useful piece, its marker bobs, a ghost finger taps there.
+  Margin (top left): undo (g.undo) and restart (g.reset), inert once won inside the app.
+  Eggs (skins/doodle.js `eggs`): 'doodle-smiley' (idle 25 s: a smiley is sketched in the paper's margin; tap it) and
+  'cap-click' (tap one marker 5 times quickly: it squeaks and spins).
 
-  What the player does (fast taps, one gesture):
-    1. tap a marker: picks pen b (it stays picked, so you can keep tapping pieces).
-    2. tap a coloured piece u with col[u] != b:
-         K = g.chainAt(u, b)  (the {col[u], b} chain through u: the group of pieces connected through those two pens)
-         - K.web          -> the ink smudges in and fades back; nothing changes (no g.swap call).
-         - otherwise      -> g.swap(K), exactly once: the felt-tip fills re-bloom outward from the tap through the
-                             group in BFS order (from the tapped piece across the shared borders). If no neighbour of
-                             u has pen b, the group is just u, so it simply recolours.
-       tap a piece that already has pen b: it wobbles (nothing changes).
-       Once the rim is down to 3 pens (g.won()), core refuses swaps; tapping a coloured piece then makes the "?" hop.
-    3. tap the blank piece with pen b: if some neighbour of the hole (g.rim) already has pen b, sparks fly on exactly
-       those shared borders and the pen bounces. If none does (only when g.won() and b === g.free()), the blank piece
-       fills with b, a "Coloured!" sticker pops, confetti; tap for a fresh sheet (g.reset(); standalone only: in the app the shell owns what happens after a win).
-  Idle ~10 s: a faint pencil circle around a piece u of g.good()[0] and the matching pen (the pen b with
-  g.chainAt(u, b) === that chain) bobs. After g.won(): the circle goes round the blank piece and g.free()'s pen bobs.
-  Margin (top left): tiny undo (g.undo) and restart (g.reset).
-
-  So every action is exactly one g.swap(K) or nothing. Every chain is reachable: for any chain K with pair {a, b} and
-  any u in K, pen (col[u] === a ? b : a) + piece u gives K. The logic block between LOGIC-START/END is DOM-free and is
-  smoke-tested in node (geometry, hit test, gesture mapping, a winning line).
+  The logic block between LOGIC-START/END is DOM-free and is smoke-tested in node.
 -->
 <html lang="en">
 <head>
@@ -43,45 +36,57 @@
     background-image: radial-gradient(rgba(140,100,50,.13) 1.2px, transparent 1.6px); background-size: 15px 15px;
     font-family: Fredoka, 'Baloo 2', 'Arial Rounded MT Bold', 'Trebuchet MS', system-ui, sans-serif; color: #2b2d42; }
   #cv { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; }
+  /* the marker tray: a chunky 3D pencil case behind the pens (a control: it wears the skin's --sk-ctl tokens) */
   #pal { position: fixed; display: flex; align-items: flex-end; justify-content: center; pointer-events: none; }
-  .pen { pointer-events: auto; border: 0; background: none; padding: 0; margin: 0; cursor: pointer; position: relative;
+  #pal::after { content: ""; position: absolute; left: 50%; bottom: 0; width: var(--trayw, 70%); height: 44%; transform: translateX(-50%);
+    background: var(--sk-ctl, #fffcf3); border: 2.5px solid var(--sk-ctl-edge, #2b2d42); border-bottom-width: 6px; border-radius: 18px 22px 17px 21px;
+    box-shadow: 3px 4px 0 rgba(43,45,66,.3); z-index: -1; box-sizing: border-box; }
+  .pen { pointer-events: auto; border: 0; background: none; padding: 0; margin: 0; cursor: pointer; position: relative; z-index: 1;
     transition: transform .2s cubic-bezier(.3,1.7,.5,1), opacity .3s, filter .3s; transform-origin: 50% 100%; }
   .pen svg { display: block; width: 100%; height: 100%; overflow: visible; }
   .pen .cap { transition: transform .45s cubic-bezier(.3,1.6,.5,1), opacity .45s; transform-box: fill-box; transform-origin: 50% 100%; }
   .pen.open .cap { transform: translate(14px,-46px) rotate(38deg); opacity: 0; }
-  .pen.sel { transform: translateY(-16%) rotate(-6deg); }
+  .pen.sel { transform: translateY(-16%) rotate(-6deg); filter: drop-shadow(0 0 6px rgba(255,245,157,.95)); }
+  .pen.glow { filter: drop-shadow(0 0 6px #fff59d) drop-shadow(0 0 3px #ffb300); }
+  .pen.dim { opacity: .45; filter: saturate(.45); }
   .pen.shake { animation: shake .4s; }
   .pen.hop { animation: hop .45s cubic-bezier(.3,1.8,.5,1); }
   .pen.bob { animation: bob 1.1s ease-in-out infinite; }
+  .pen.spin { animation: spin .9s cubic-bezier(.3,1.4,.5,1); }
+  .pen.dance { animation: dance .7s ease-in-out infinite; }
+  .pen.gulp { animation: gulp .4s cubic-bezier(.3,1.8,.5,1); }
   @keyframes shake { 20% { transform: translateY(-10%) rotate(-12deg); } 45% { transform: translateY(-4%) rotate(10deg); } 70% { transform: rotate(-5deg); } }
   @keyframes hop { 40% { transform: translateY(-14%); } }
-  @keyframes bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-12%) rotate(4deg); } }
-  #tools { position: fixed; left: 6px; top: 4px; display: flex; gap: 4px; }
-  #tools button { box-sizing: border-box; width: 36px; height: 34px; padding: 3px; border: 2px solid var(--sk-ctl-edge, transparent); border-radius: 10px; background: var(--sk-ctl, none); cursor: pointer; opacity: .75; }   /* --sk-ctl*: the skin's control tokens (lab/core.js) */
-  #tools svg { stroke: var(--sk-ctl-ink, #2b2d42); }
-  #tools button:active { transform: scale(.9); }
-  #tools svg { width: 100%; height: 100%; display: block; }
+  @keyframes bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-14%) rotate(4deg); } }
+  @keyframes spin { 0% { transform: translateY(0) rotate(0); } 40% { transform: translateY(-30%) rotate(200deg); } 100% { transform: translateY(0) rotate(360deg); } }
+  @keyframes dance { 0%, 100% { transform: translateY(0) rotate(-6deg); } 50% { transform: translateY(-18%) rotate(8deg); } }
+  @keyframes gulp { 40% { transform: scale(1.15, .9); } }
+  #tools { position: fixed; left: 8px; top: 6px; display: flex; gap: 6px; }
+  /* chunky 3D controls in the skin's control tokens (--sk-ctl*: lab/core.js) */
+  #tools button { box-sizing: border-box; width: 40px; height: 38px; padding: 4px; border: 2.5px solid var(--sk-ctl-edge, #2b2d42); border-bottom-width: 5px;
+    border-radius: 12px 14px 11px 13px; background: var(--sk-ctl, #fffcf3); cursor: pointer; box-shadow: 2px 3px 0 rgba(43,45,66,.28);
+    transition: transform .08s, border-bottom-width .08s; }
+  #tools svg { stroke: var(--sk-ctl-ink, #2b2d42); width: 100%; height: 100%; display: block; }
+  #tools button:active { transform: translateY(3px); border-bottom-width: 2.5px; box-shadow: 1px 1px 0 rgba(43,45,66,.28); }
+  .won.embed #tools button { opacity: .45; }
   #stamp { position: fixed; pointer-events: none; display: flex; flex-direction: column; align-items: center; justify-content: center;
     opacity: 0; transform: scale(.3) rotate(-25deg); transition: opacity .2s, transform .45s cubic-bezier(.3,1.8,.5,1); }
   #stamp.on { opacity: 1; transform: scale(1) rotate(-8deg); }
-  #stamp .st { background: #fffdf5; border: 3px solid #2b2d42; border-radius: 18px; padding: .2em .6em; font-weight: 700;
+  #stamp .st { background: #fffdf5; border: 3px solid #2b2d42; border-radius: 18px; padding: .2em .6em; font-weight: 700; color: #1f8f45;
     box-shadow: 4px 5px 0 rgba(43,45,66,.85); white-space: nowrap; }
-  #stamp .nx { margin-top: .5em; font-size: .45em; font-weight: 500; background: #fff59d; padding: .25em .7em;
-    transform: rotate(5deg); box-shadow: 2px 3px 0 rgba(0,0,0,.15); }
-  .embed #stamp .nx { display: none; }   /* inside the app the shell owns what happens next */
-  @media (prefers-reduced-motion: reduce) { .pen, .pen .cap, #stamp { transition: none; } .pen.shake, .pen.hop, .pen.bob { animation: none; } }
+  @media (prefers-reduced-motion: reduce) { .pen, .pen .cap, #stamp { transition: none; } .pen.shake, .pen.hop, .pen.bob, .pen.spin, .pen.dance, .pen.gulp { animation: none; } }
 </style>
 </head>
 <body>
-<canvas id="cv"></canvas>
+<canvas id="cv" role="img" aria-label="a hand-drawn map to colour in; one piece is blank"></canvas>
 <div id="tools">
-  <button id="undo" aria-label="undo"><svg viewBox="0 0 30 30" fill="none" stroke="#2b2d42" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+  <button id="undo" aria-label="undo"><svg viewBox="0 0 30 30" fill="none" stroke="#2b2d42" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round">
     <path d="M9 11 C13 6.5 22 7 23.5 14 C25 21 17 24.5 12 22"/><path d="M8.5 5.5 L8.6 11.4 L14.3 11.2"/></svg></button>
-  <button id="again" aria-label="restart"><svg viewBox="0 0 30 30" fill="none" stroke="#2b2d42" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+  <button id="again" aria-label="start over"><svg viewBox="0 0 30 30" fill="none" stroke="#2b2d42" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round">
     <path d="M23 10.5 A9.2 9.2 0 1 0 24.5 17"/><path d="M24.2 4.8 L23.4 10.8 L17.6 9.6"/></svg></button>
 </div>
-<div id="pal"></div>
-<div id="stamp"><div class="st">Coloured!</div><div class="nx">tap for a fresh sheet</div></div>
+<div id="pal" role="toolbar" aria-label="felt-tip markers"></div>
+<div id="stamp" aria-hidden="true"><div class="st">Coloured!</div></div>
 
 <script src="../levels.js"></script>
 <script src="../layout.js"></script>
@@ -187,30 +192,33 @@ const DM = (() => {
 (() => {
   const RM = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
   const g = LAB.game(), M = DM.prep(g);
-  // inside the app the shell's bar already shows the level title and stars, so this page keeps only its own cue, undo and restart
-  const HUD = new URLSearchParams(location.search).get('hud'), SHELL_HUD = HUD === 'full' || HUD === 'compact';
+  const HUD = new URLSearchParams(location.search).get('hud');
   document.documentElement.dataset.hud = HUD || '';
   const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
   const palEl = document.getElementById('pal'), stamp = document.getElementById('stamp');
   const INK = '#2b2d42', PENCIL = 'rgba(80,82,96,', PAPER = '#fffcf3';
+  const FONT = "Fredoka, 'Arial Rounded MT Bold', 'Trebuchet MS', system-ui, sans-serif";
   // pen k = element k (fire, water, air, earth)
   const PENS = [
     { c: '#ff5d5d', d: '#c93636', a: Math.PI / 4 }, { c: '#3fa7f5', d: '#1f74b8', a: -Math.PI / 4 },
     { c: '#ffc928', d: '#c9900a', a: 0 }, { c: '#3ccf6e', d: '#1f8f45', a: Math.PI / 2 }];
   function rng(seed) { let a = seed >>> 0;
     return () => { a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+  const egg = (id, pts) => { try { window.LAB && LAB.egg && LAB.egg(id, pts); } catch (_) {} };
+  const coinsAt = (x, y) => { try { window.LAB && LAB.at && LAB.at(x, y); } catch (_) {} };
 
   // ---------- state ----------
-  let pen = -1, holeCol = -1, won = false, wonAt = 0, drawStart = 0, drawTotal = 0, lastAct = performance.now();
-  let anim = [], wob = [], smudges = [], sparks = [], confetti = [], qHop = 0, hintOn = null, hintT0 = 0, cueWig = 0;
+  let pen = -1, holeCol = -1, won = false, wonAt = 0, drawStart = 0, drawTotal = 0;
+  let anim = [], wob = [], pops = [], smudges = [], sparks = [], confetti = [], flyers = [], stars = [], scrib = [];
+  let qHop = 0, hintOn = null, hintT0 = 0, readyT = 0, press = null, lit = null, rimBounce = 0, holeDep = new Map(), smiley = null;
 
   // ---------- layout ----------
   let W = 0, H = 0, dpr = 1, PX = 0, PY = 0, PS = 0, PH = 0, RX = 0, RY = 0, RS = 0, CH = 0, penW = 0, penH = 0, paper = null, paths = [];
-  const ASP = 1.07;
+  const ASP = 1.07, NP = Math.min(4, g.NC);
   function layout() {
     W = innerWidth; H = innerHeight; dpr = Math.min(3, window.devicePixelRatio || 1);
     cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
-    const land = W > H * 1.15, top = 40;
+    const land = W > H * 1.15, top = 46;
     if (land) {
       penH = Math.max(70, Math.min(170, H * 0.34)); penW = penH * 0.3;
       const palW = 4 * penW + 3 * penW * 0.35 + 24;
@@ -225,6 +233,7 @@ const DM = (() => {
       Object.assign(palEl.style, { left: '0px', width: W + 'px', top: (H - palH - 4) + 'px', height: palH + 'px' });
     }
     palEl.style.gap = (penW * 0.35) + 'px';
+    palEl.style.setProperty('--trayw', (NP * penW + (NP - 1) * penW * 0.35 + penW * 1.1) + 'px');
     [...palEl.children].forEach(b => { b.style.width = penW + 'px'; b.style.height = penH + 'px'; });
     const m = PS * 0.05; CH = PH - PS; RS = PS - 2 * m; RX = PX + m; RY = PY + CH + m;
     Object.assign(stamp.style, { left: RX + 'px', top: RY + 'px', width: RS + 'px', height: RS + 'px', fontSize: Math.max(22, PS * 0.11) + 'px' });
@@ -291,26 +300,28 @@ const DM = (() => {
 
   // ---------- render ----------
   const ease = t => 1 - Math.pow(1 - t, 3);
-  function drawPoly(pts, upto) {
-    ctx.beginPath(); let acc = 0; ctx.moveTo(X(pts[0]), Y(pts[0]));
+  const clamp01 = t => Math.max(0, Math.min(1, t));
+  function drawPoly(pts, upto, map) {
+    map = map || (p => [X(p), Y(p)]);
+    ctx.beginPath(); let acc = 0; let q0 = map(pts[0]); ctx.moveTo(q0[0], q0[1]);
     for (let i = 1; i < pts.length; i++) {
       const d = Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
-      if (acc + d > upto) { const t = (upto - acc) / d, q = [pts[i - 1][0] + t * (pts[i][0] - pts[i - 1][0]), pts[i - 1][1] + t * (pts[i][1] - pts[i - 1][1])];
-        ctx.lineTo(X(q), Y(q)); break; }
-      ctx.lineTo(X(pts[i]), Y(pts[i])); acc += d;
+      if (acc + d > upto) { const t = (upto - acc) / d, q = map([pts[i - 1][0] + t * (pts[i][0] - pts[i - 1][0]), pts[i - 1][1] + t * (pts[i][1] - pts[i - 1][1])]);
+        ctx.lineTo(q[0], q[1]); break; }
+      const q = map(pts[i]); ctx.lineTo(q[0], q[1]); acc += d;
     }
     ctx.stroke();
   }
   function paint(i, c) {
     if (c === -2) return;
     if (c < 0) { ctx.fillStyle = '#ffffff'; ctx.fill(paths[i]); return; }
-    ctx.globalAlpha = 0.72; ctx.fillStyle = PENS[c].c; ctx.fill(paths[i]);
+    ctx.globalAlpha = 0.78; ctx.fillStyle = PENS[c].c; ctx.fill(paths[i]);
     ctx.globalAlpha = 1; ctx.fillStyle = pats[c]; ctx.fill(paths[i]);
   }
   const colOf = i => i === g.hole ? holeCol : g.col[i];
   function fillFace(i, now) {
     const c = colOf(i); let an = anim[i], t = 0;
-    if (an) { t = (now - an.t0) / 130; /* quick bloom */ if (t >= 1) { anim[i] = null; an = null; } }
+    if (an) { t = (now - an.t0) / 150; /* quick bloom */ if (t >= 1) { anim[i] = null; an = null; } }
     ctx.save();
     const w = wob[i];
     if (w) { const s = (now - w) / 380; if (s >= 1) wob[i] = 0; else ctx.translate(Math.sin(s * 34) * (1 - s) * 3.5 * dpr, Math.cos(s * 27) * (1 - s) * 1.5 * dpr); }
@@ -319,23 +330,47 @@ const DM = (() => {
     else { paint(i, an.from); if (t > 0) { ctx.beginPath(); ctx.arc(an.x, an.y, ease(t) * an.R, 0, 7); ctx.clip(); paint(i, c); } }
     ctx.restore();
   }
+  // a piece that pops (swap wave, rim bounce, celebration) or is pressed: drawn again on top, scaled about its centre
+  function popScale(i, now) {
+    let s = 0, r = 0;
+    const p = pops[i]; if (p) { const t = (now - p.t0) / p.dur; if (t >= 1) pops[i] = null; else if (t > 0) { s = Math.max(s, p.amp * Math.sin(Math.PI * t)); r = p.rot * Math.sin(Math.PI * 2 * t) * (1 - t); } }
+    if (press && press.u === i && !won) s = Math.max(s, 0.07);
+    return [s, r];
+  }
+  function drawPop(i, now) {
+    let [s, r] = popScale(i, now); if (s <= 0.002) return;
+    const [cx, cy] = cen(i), lw = Math.max(2.2, RS * 0.0095) * dpr;
+    const big = reach(i, cx, cy); s = Math.min(s, 9 * dpr / big); r = r * Math.min(1, 40 * dpr / big);   // big pieces pop by a few px, not by a fraction
+    ctx.save(); ctx.translate(cx + 2 * dpr * s * 12, cy + 3 * dpr * s * 12); ctx.rotate(r); ctx.scale(1 + s, 1 + s); ctx.translate(-cx, -cy);
+    ctx.fillStyle = 'rgba(43,45,66,.28)'; ctx.fill(paths[i]); ctx.restore();
+    ctx.save(); ctx.translate(cx, cy); ctx.rotate(r); ctx.scale(1 + s, 1 + s); ctx.translate(-cx, -cy);
+    ctx.fillStyle = PAPER; ctx.fill(paths[i]);
+    ctx.save(); ctx.clip(paths[i]); paint(i, colOf(i)); ctx.restore();
+    if (press && press.u === i) { ctx.strokeStyle = '#fff59d'; ctx.lineWidth = lw * 3; ctx.lineJoin = 'round'; ctx.stroke(paths[i]); }
+    ctx.strokeStyle = INK; ctx.lineWidth = lw * 1.1; ctx.lineJoin = 'round'; ctx.stroke(paths[i]);
+    ctx.restore();
+  }
   function segMid(s) { return [(s.p[0] + s.q[0]) / 2, (s.p[1] + s.q[1]) / 2]; }
+  const FINGER = new Path2D('M0 0C-3 -2 -4 -6 -1 -8C3 -9 6 -6 9 -1L13 -4C16 -6 19 -4 19 -1L22 -2C25 -3 27 0 26 3C29 3 30 7 28 10L24 24C22 30 14 33 8 30L-2 22C-6 19 -5 14 -1 14L6 17L0 0Z');
+  function ghostFinger(x, y, now, t0) {
+    const t = (now - t0) / 1000, k = RM ? 0 : Math.max(0, Math.sin(t * Math.PI * 1.6)), a = RM ? .9 : Math.min(.92, t * 2);
+    const s = Math.max(1.1, PS / 260) * dpr;
+    ctx.save(); ctx.globalAlpha = a; ctx.translate(x + 4 * dpr, y + (4 + 9 * k) * dpr); ctx.scale(s, s);
+    if (k > .8 && !RM) { ctx.strokeStyle = 'rgba(255,255,255,.9)'; ctx.lineWidth = 2.4; ctx.beginPath(); ctx.arc(0, 0, 9 + 14 * (k - .8) / .2, 0, 7); ctx.stroke(); }
+    ctx.fillStyle = 'rgba(255,255,255,.93)'; ctx.strokeStyle = INK; ctx.lineWidth = 2.2; ctx.lineJoin = 'round'; ctx.fill(FINGER); ctx.stroke(FINGER);
+    ctx.restore();
+  }
+  function starPath(r) { const p = new Path2D(); for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + i * Math.PI / 5, q = i % 2 ? r * .46 : r; i ? p.lineTo(Math.cos(a) * q, Math.sin(a) * q) : p.moveTo(Math.cos(a) * q, Math.sin(a) * q); } p.closePath(); return p; }
   function render(now) {
     now = now || performance.now();
     ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, cv.width, cv.height);
     const lw = Math.max(2.2, RS * 0.0095) * dpr;
-    // paper + tape
-    ctx.save(); ctx.shadowColor = 'rgba(80,50,20,.28)'; ctx.shadowBlur = 10 * dpr; ctx.shadowOffsetY = 4 * dpr;
-    ctx.fillStyle = PAPER; ctx.fillRect(PX * dpr, PY * dpr, PS * dpr, PH * dpr); ctx.restore();
+    // paper (offset shadow) + tape
+    ctx.fillStyle = 'rgba(90,60,25,.28)'; ctx.fillRect((PX + 5) * dpr, (PY + 6) * dpr, PS * dpr, PH * dpr);
+    ctx.fillStyle = PAPER; ctx.fillRect(PX * dpr, PY * dpr, PS * dpr, PH * dpr);
     ctx.drawImage(paper, PX * dpr, PY * dpr);
     ctx.save(); ctx.translate((PX + PS / 2) * dpr, PY * dpr); ctx.rotate(-0.04);
-    ctx.fillStyle = 'rgba(255,236,160,.75)'; ctx.fillRect(-PS * 0.09 * dpr, -PS * 0.022 * dpr, PS * 0.18 * dpr, PS * 0.045 * dpr); ctx.restore();
-    // pencilled cue in the top margin
-    ctx.save(); const fs = Math.max(11, PS * 0.05);
-    ctx.font = `${fs * dpr}px 'Patrick Hand', 'Comic Sans MS', 'Chalkboard SE', cursive`; ctx.fillStyle = PENCIL + '.62)'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    const cw = cueWig && now - cueWig < 500 ? Math.sin((now - cueWig) / 40) * (1 - (now - cueWig) / 500) * 0.05 : 0;
-    ctx.translate((PX + PS / 2) * dpr, (PY + CH * 0.5 + PS * 0.035) * dpr); ctx.rotate(-0.015 + cw);
-    ctx.fillText('colour the blank piece', 0, 0); ctx.restore();
+    ctx.fillStyle = 'rgba(255,236,160,.8)'; ctx.fillRect(-PS * 0.09 * dpr, -PS * 0.022 * dpr, PS * 0.18 * dpr, PS * 0.045 * dpr); ctx.restore();
     // fills
     for (let i = 0; i < g.n; i++) fillFace(i, now);
     // smudges (webs): the other pen's ink seeps in and fades back
@@ -345,6 +380,18 @@ const DM = (() => {
       for (const v of s.vs) { const o = g.col[v] === s.pair[0] ? s.pair[1] : s.pair[0];
         ctx.save(); ctx.clip(paths[v]); ctx.globalAlpha = 0.55 * a; ctx.fillStyle = PENS[o].c; ctx.fill(paths[v]);
         ctx.globalAlpha = 0.18 * a; ctx.fillStyle = '#5a5050'; ctx.fill(paths[v]); ctx.restore(); }
+    }
+    // the lit chain (pressed piece): a halo pulsing in the chain's two pen colours, marching outward from the touch
+    if (lit && !won) {
+      const a = RM ? 1 : Math.min(1, (now - lit.t0) / 90);
+      ctx.save(); ctx.lineJoin = 'round';
+      for (const L of lit.list) for (const [v, d] of L.dep) {
+        if (!RM && now - lit.t0 < d * 45) continue;
+        ctx.globalAlpha = a * L.alpha; ctx.strokeStyle = '#fffbe0'; ctx.lineWidth = lw * 4.2; ctx.stroke(paths[v]);
+        const ph = RM ? 0 : Math.floor((now - lit.t0) / 240);
+        ctx.strokeStyle = PENS[L.pair[(d + ph) % 2]].c; ctx.lineWidth = lw * 2.4; ctx.stroke(paths[v]);
+      }
+      ctx.restore();
     }
     // spark glow under the ink
     sparks = sparks.filter(s => now - s.t0 < 1000);
@@ -366,42 +413,79 @@ const DM = (() => {
       ctx.globalAlpha = 0.93; ctx.lineWidth = lw; drawPoly(I.pts, upto);
     }
     ctx.globalAlpha = 1;
-    // the pencilled "?" on the blank piece
+    // the celebration: felt-tip scribbles sweep over every piece in a wave from the blank one
+    for (const S of scrib) {
+      const t = clamp01((now - S.t0) / 380); if (t <= 0) continue;
+      ctx.save(); ctx.clip(paths[S.i]); ctx.strokeStyle = S.c; ctx.globalAlpha = 0.75; ctx.lineWidth = lw * 1.5; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+      drawPoly(S.pts, S.len * ease(t)); ctx.restore();
+    }
+    // popping / pressed pieces on top
+    for (let i = 0; i < g.n; i++) if (pops[i] || (press && press.u === i)) drawPop(i, now);
+    // the "?" on the blank piece: pencil grey, pulsing; once the free pen fits it wears that pen's colour
     if (holeCol < 0) {
-      const h = M.info[g.hole], [cx, cy] = cen(g.hole), sz = Math.max(14 * dpr, h.inr * RS * dpr * 1.25);
+      const h = M.info[g.hole], [cx, cy] = cen(g.hole), sz = Math.max(16 * dpr, h.inr * RS * dpr * 1.6), ready = g.won();
       let dy = 0, rot = -0.08, sc = 1;
       if (!RM) {
+        sc = 1 + (ready ? 0.14 : 0.07) * Math.sin(now / (ready ? 150 : 320));
         if (qHop && now - qHop < 520) { const s = (now - qHop) / 520; dy = -Math.sin(Math.PI * s) * sz * 0.35; rot += Math.sin(s * 18) * 0.15 * (1 - s); }
-        if (g.won()) { sc = 1 + 0.1 * Math.sin(now / 160); rot += 0.06 * Math.sin(now / 230); }
+        if (ready) rot += 0.08 * Math.sin(now / 230);
       }
       ctx.save(); ctx.translate(cx, cy + dy); ctx.rotate(rot); ctx.scale(sc, sc);
-      ctx.font = `${sz}px 'Patrick Hand', 'Comic Sans MS', 'Chalkboard SE', cursive`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      const td2 = Math.min(1, Math.max(0, (now - drawStart) / 1000 - 0.15) * 3);
-      ctx.fillStyle = PENCIL + (0.75 * (RM ? 1 : td2)) + ')'; ctx.fillText('?', 0, sz * 0.04); ctx.restore();
+      ctx.font = `700 ${sz}px ${FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      const td2 = RM ? 1 : Math.min(1, Math.max(0, (now - drawStart) / 1000 - 0.15) * 3);
+      ctx.globalAlpha = td2; ctx.lineJoin = 'round';
+      if (ready && g.free() >= 0) { ctx.lineWidth = sz * 0.13; ctx.strokeStyle = INK; ctx.strokeText('?', 0, sz * 0.04); ctx.fillStyle = PENS[g.free()].c; }
+      else ctx.fillStyle = PENCIL + '.7)';
+      ctx.fillText('?', 0, sz * 0.04); ctx.restore();
     }
-    // idle hint: a faint pencil circle
-    if (hintOn) {
+    // idle hint: a pencil circle and a ghost finger tapping there
+    if (hintOn && !won) {
       const [cx, cy] = cen(hintOn.u), r = Math.max(14 * dpr, M.info[hintOn.u].inr * RS * dpr * 1.6), a = RM ? 1 : Math.min(1, (now - hintT0) / 600);
-      const R = rng(hintOn.u * 31 + 5); ctx.save(); ctx.strokeStyle = PENCIL + (0.55 * a) + ')'; ctx.lineWidth = 1.6 * dpr; ctx.beginPath();
+      const R = rng(hintOn.u * 31 + 5); ctx.save(); ctx.strokeStyle = PENCIL + (0.6 * a) + ')'; ctx.lineWidth = 2 * dpr; ctx.beginPath();
       const ph = R() * 6, sweep = 2 * Math.PI * (1.12) * (RM ? 1 : Math.min(1, (now - hintT0) / 500));
       for (let k = 0; k <= 60; k++) { const th = ph + sweep * k / 60, rr = r * (1 + 0.06 * Math.sin(th * 3 + ph) + 0.04 * k / 60);
         const x = cx + rr * Math.cos(th) * 1.08, y = cy + rr * Math.sin(th) * 0.92; k ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
       ctx.stroke(); ctx.restore();
+      if (now - hintT0 > 500) ghostFinger(cx, cy, now, hintT0 + 500);
     }
+    // ready to colour the blank piece: a ghost finger taps it
+    if (readyT && !won && holeCol < 0 && g.won() && now - readyT > 1400 && !hintOn) { const [cx, cy] = cen(g.hole); ghostFinger(cx, cy, now, readyT + 1400); }
     // sparks on the clashing borders
     for (const s of sparks) {
       const t = (now - s.t0) / 1000;
       for (const v of s.hits) { const e = DM.sharedSeg(M, v, g.hole); if (!e) continue; const q = segMid(e);
         spark(X(q), Y(q), lw * (t < 0.15 ? t / 0.15 : 1) * (1 - t * 0.5), now, v); }
     }
-    // confetti
+    // ink blobs flying from the blank piece back into their marker (an element left the rim)
+    flyers = flyers.filter(f => now - f.t0 < f.dur);
+    for (const f of flyers) {
+      const t = clamp01((now - f.t0) / f.dur); if (t <= 0) continue; const e = ease(t);
+      const x = f.x0 + (f.x1 - f.x0) * e, y = f.y0 + (f.y1 - f.y0) * e - Math.sin(Math.PI * t) * f.arc, r = f.r * (1 - 0.45 * t);
+      ctx.save(); ctx.translate(x, y); ctx.rotate(t * 6);
+      ctx.fillStyle = 'rgba(43,45,66,.3)'; ctx.beginPath(); ctx.arc(2 * dpr, 3 * dpr, r, 0, 7); ctx.fill();
+      ctx.fillStyle = PENS[f.c].c; ctx.strokeStyle = INK; ctx.lineWidth = 2.2 * dpr; ctx.beginPath(); ctx.arc(0, 0, r, 0, 7); ctx.fill(); ctx.stroke();
+      ctx.strokeStyle = 'rgba(255,255,255,.8)'; ctx.lineWidth = 2 * dpr; ctx.beginPath(); ctx.arc(0, 0, r * 0.6, Math.PI * 1.05, Math.PI * 1.5); ctx.stroke();
+      ctx.restore();
+    }
+    // doodled stars (celebration): traced in, then filled, then twinkling
+    for (const s of stars) {
+      const t = (now - s.t0) / 1000; if (t <= 0) continue;
+      const grow = RM ? 1 : ease(clamp01(t / 0.35)), tw = RM ? 1 : 1 + 0.12 * Math.sin(now / 130 + s.ph);
+      ctx.save(); ctx.translate(s.x, s.y); ctx.rotate(s.rot + (RM ? 0 : (1 - grow) * 2)); ctx.scale(grow * tw, grow * tw);
+      const P = starPath(s.r); ctx.save(); ctx.translate(2 * dpr, 3 * dpr); ctx.fillStyle = 'rgba(43,45,66,.3)'; ctx.fill(P); ctx.restore();
+      ctx.fillStyle = s.c; ctx.fill(P); ctx.strokeStyle = INK; ctx.lineWidth = 2.2 * dpr; ctx.lineJoin = 'round'; ctx.stroke(P);
+      ctx.restore();
+    }
+    // the margin smiley (easter egg)
+    if (smiley) drawSmiley(now);
+    // confetti (felt-tip squiggles)
     if (confetti.length) {
       const live = [];
       for (const c of confetti) {
-        const t = (now - c.t0) / 1000; if (t > 1.8) continue; live.push(c);
+        const t = (now - c.t0) / 1000; if (t > 1.8) continue; live.push(c); if (t < 0) continue;
         const x = c.x + c.vx * t, y = c.y + c.vy * t + 900 * dpr * t * t / 2;
         ctx.save(); ctx.translate(x, y); ctx.rotate(c.r + t * c.vr); ctx.globalAlpha = Math.min(1, 2 * (1.8 - t));
-        ctx.strokeStyle = c.c; ctx.lineWidth = 3 * dpr; ctx.beginPath(); ctx.moveTo(-8 * dpr, 0); ctx.quadraticCurveTo(-4 * dpr, -6 * dpr, 0, 0); ctx.quadraticCurveTo(4 * dpr, 6 * dpr, 8 * dpr, 0); ctx.stroke(); ctx.restore();
+        ctx.strokeStyle = c.c; ctx.lineWidth = 3.4 * dpr; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(-8 * dpr, 0); ctx.quadraticCurveTo(-4 * dpr, -6 * dpr, 0, 0); ctx.quadraticCurveTo(4 * dpr, 6 * dpr, 8 * dpr, 0); ctx.stroke(); ctx.restore();
       }
       confetti = live;
     }
@@ -415,38 +499,42 @@ const DM = (() => {
   }
   let looping = false;
   function busy(now) {
-    if (confetti.length) return true;
-    if (RM) return sparks.length > 0 || smudges.length > 0;
-    return anim.some(a => a) || wob.some(w => w) || (now - drawStart) / 1000 < drawTotal + 0.1 || sparks.length > 0 || smudges.length > 0
-      || (qHop && now - qHop < 600) || (cueWig && now - cueWig < 550) || (hintOn && now - hintT0 < 700) || (g.won() && holeCol < 0);
+    if (confetti.length || flyers.length || smiley || (stars.length && now - wonAt < 4600)) return true;
+    if (!won && holeCol < 0 && !RM) return true;              // the "?" always breathes
+    if (RM) return sparks.length > 0 || smudges.length > 0 || !!lit;
+    return anim.some(a => a) || wob.some(w => w) || pops.some(p => p) || (now - drawStart) / 1000 < drawTotal + 0.1 || sparks.length > 0 || smudges.length > 0
+      || !!lit || !!press || (qHop && now - qHop < 600) || (won && now - wonAt < 4500);
   }
   function loop(now) { render(now); if (busy(now)) requestAnimationFrame(loop); else { looping = false; render(); } }
   function kick() { if (!looping) { looping = true; requestAnimationFrame(loop); } }
 
-  // ---------- sound ----------
+  // ---------- sound (synthesised, quiet; the AudioContext starts on the first touch) ----------
   let AC = null;
   function au() {
     if (!AC) { try { AC = new (window.AudioContext || window.webkitAudioContext)(); } catch (_) { AC = null; } }
     if (AC && AC.state === 'suspended') AC.resume(); return AC;
   }
   function env(q, t, a, peak, d) { q.gain.setValueAtTime(0.0001, t); q.gain.exponentialRampToValueAtTime(peak, t + a); q.gain.exponentialRampToValueAtTime(0.0001, t + d); }
-  function squeak(i, delay, vol) {
+  function squeak(i, delay, vol, up) {
     const A = AC; if (!A) return; const t = A.currentTime + (delay || 0), n = Math.floor(A.sampleRate * 0.13), b = A.createBuffer(1, n, A.sampleRate), d = b.getChannelData(0);
     for (let k = 0; k < n; k++) d[k] = Math.random() * 2 - 1;
     const s = A.createBufferSource(); s.buffer = b; const f = A.createBiquadFilter(); f.type = 'bandpass'; f.Q.value = 4;
-    f.frequency.setValueAtTime(1400 + i * 380, t); f.frequency.linearRampToValueAtTime(2300 + i * 380, t + 0.12);
-    const q = A.createGain(); env(q, t, 0.015, vol || 0.22, 0.13); s.connect(f); f.connect(q); q.connect(A.destination); s.start(t);
+    const f0 = 1400 + i * 380 + (up || 0);
+    f.frequency.setValueAtTime(f0, t); f.frequency.linearRampToValueAtTime(f0 + 900, t + 0.12);
+    const q = A.createGain(); env(q, t, 0.015, vol || 0.18, 0.13); s.connect(f); f.connect(q); q.connect(A.destination); s.start(t);
   }
   function tone(type, f0, f1, dur, peak, delay) {
     const A = AC; if (!A) return; const t = A.currentTime + (delay || 0), o = A.createOscillator(), q = A.createGain();
     o.type = type; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f1, t + dur);
     env(q, t, 0.01, peak, dur); o.connect(q); q.connect(A.destination); o.start(t); o.stop(t + dur + 0.02);
   }
-  const tink = () => { tone('sine', 1500, 800, 0.14, 0.07); tone('square', 900, 500, 0.06, 0.03, 0.05); };
-  const pop = () => { tone('triangle', 260, 900, 0.12, 0.2); tone('sine', 1200, 1600, 0.1, 0.06, 0.08); };
-  const fanfare = () => [523, 659, 784, 1047].forEach((f, i) => tone('triangle', f, f * 1.01, 0.22, 0.14, i * 0.09));
-  const thud = () => tone('sine', 180, 90, 0.12, 0.12);
-  const smear = () => { tone('sine', 420, 260, 0.35, 0.06); tone('triangle', 300, 330, 0.3, 0.04, 0.1); };
+  const tink = () => { tone('sine', 1500, 800, 0.14, 0.06); tone('square', 900, 500, 0.06, 0.025, 0.05); };
+  const pop = (k, delay) => { const f = 330 * Math.pow(2, (k || 0) / 12); tone('triangle', f, f * 2.4, 0.09, 0.08, delay); };
+  const note = (k, delay) => { const f = 440 * Math.pow(2, [0, 2, 4, 7, 9, 12, 14, 16, 19, 21, 24][Math.min(10, k)] / 12); tone('sine', f, f * 1.01, 0.12, 0.035, delay); };
+  const fanfare = d => [523, 659, 784, 1047, 1319].forEach((f, i) => tone('triangle', f, f * 1.01, 0.24, 0.11, (d || 0) + i * 0.09));
+  const thud = () => tone('sine', 180, 90, 0.12, 0.1);
+  const smear = () => { tone('sine', 420, 260, 0.35, 0.05); tone('triangle', 300, 330, 0.3, 0.035, 0.1); };
+  const whoosh = () => tone('sine', 900, 260, 0.3, 0.04);
 
   // ---------- pens ----------
   function hatchIcon(a) {
@@ -455,84 +543,164 @@ const DM = (() => {
     if (a > 0) return '<path d="M12 70l12 12M12 80l12 12M18 66l10 10"/>';
     return '<path d="M12 82l12-12M12 92l14-14M20 92l8-8"/>';
   }
+  let capN = 0, capPen = -1, capT = 0, capPaid = false;
   const penBtns = PENS.map((P, i) => {
     const b = document.createElement('button'); b.className = 'pen'; b.setAttribute('aria-label', LAB.ELEM[i].name + ' pen');
     b.innerHTML = `<svg viewBox="0 0 40 130" preserveAspectRatio="xMidYMax meet">
+      <rect x="9" y="41" width="28" height="88" rx="9" fill="rgba(43,45,66,.3)"/>
       <path d="M12 30 L14 15 Q20 7 26 15 L28 30 Z" fill="${P.c}" stroke="${INK}" stroke-width="2.5" stroke-linejoin="round"/>
       <rect x="8" y="28" width="24" height="12" rx="3" fill="#fffaf0" stroke="${INK}" stroke-width="2.5"/>
       <rect x="6" y="38" width="28" height="88" rx="9" fill="${P.c}" stroke="${INK}" stroke-width="2.5"/>
+      <path d="M26 44v76" stroke="${P.d}" stroke-width="6" stroke-linecap="round" opacity=".45"/>
       <rect x="10" y="62" width="20" height="34" rx="4" fill="#fffaf0" stroke="${INK}" stroke-width="2"/>
       <g stroke="${P.d}" stroke-width="2.4" opacity=".75">${hatchIcon(P.a)}</g>
-      <path d="M11 46 v10" stroke="#fff" stroke-width="3" stroke-linecap="round" opacity=".55"/>
+      <path d="M11 46 v10 M11 102 v14" stroke="#fff" stroke-width="3" stroke-linecap="round" opacity=".6"/>
       <g class="cap"><rect x="5" y="2" width="30" height="42" rx="9" fill="${P.d}" stroke="${INK}" stroke-width="2.5"/>
       <rect x="27" y="8" width="5" height="26" rx="2" fill="${P.c}" stroke="${INK}" stroke-width="1.5"/></g></svg>`;
-    b.addEventListener('pointerdown', e => { e.preventDefault(); au(); touch(); pen = i; syncPens(); squeak(i); });
+    b.addEventListener('pointerdown', e => {
+      e.preventDefault(); au(); touch(); pen = i; syncPens(); squeak(i);
+      // egg 'cap-click': the same marker five times quickly squeaks and spins
+      const now = performance.now(); if (capPen === i && now - capT < 450) capN++; else capN = 1; capPen = i; capT = now;
+      if (capN >= 5) { capN = 0; jolt(b, 'spin'); [0, .08, .16].forEach((d, k) => squeak(i, d, 0.14, 600 + k * 400)); if (!capPaid) { capPaid = true; egg('cap-click', 0); } }
+    });
     if (i >= g.NC) b.style.display = 'none';             // the ponds use only 2 or 3 elements: their extra pens stay in the box
     palEl.appendChild(b); return b;
   });
-  function syncPens() { penBtns.forEach((b, k) => b.classList.toggle('sel', k === pen)); }
-  function jolt(b, cls) { b.classList.remove('shake', 'hop'); void b.offsetWidth; b.classList.add(cls); }
-  penBtns.forEach(b => b.addEventListener('animationend', () => b.classList.remove('shake', 'hop')));
+  function syncPens() {
+    const ready = g.won() && holeCol < 0 && !won, fr = g.free();
+    penBtns.forEach((b, k) => {
+      b.classList.toggle('sel', k === pen);
+      b.classList.toggle('glow', ready && k === fr);
+      b.classList.toggle('bob', (ready && k === fr && k !== pen) || (!!hintOn && hintOn.b === k && k !== pen));
+      b.classList.toggle('dim', ready && k !== fr);
+    });
+  }
+  function jolt(b, cls) { b.classList.remove('shake', 'hop', 'spin', 'gulp'); void b.offsetWidth; b.classList.add(cls); }
+  penBtns.forEach(b => b.addEventListener('animationend', ev => { if (/^(shake|hop|spin|gulp)$/.test(ev.animationName)) b.classList.remove('shake', 'hop', 'spin', 'gulp'); }));
   function uncap() { // all four pens come uncapped at the start of a sheet (a little pop each)
     penBtns.forEach(b => b.classList.remove('open'));
     penBtns.forEach((b, k) => setTimeout(() => b.classList.add('open'), RM ? 0 : 250 + k * 110));
   }
+  const penTop = e => { const r = penBtns[e].getBoundingClientRect(); return [(r.left + r.width / 2) * dpr, (r.top + r.height * 0.25) * dpr]; };
 
-  // ---------- idle hint ----------
-  let idleT = 0;
+  // ---------- idle hint and the margin smiley ----------
+  let idleT = 0, smileT = 0, smilePaid = false;
   function touch() {
-    lastAct = performance.now(); if (hintOn) { penBtns[hintOn.b] && penBtns[hintOn.b].classList.remove('bob'); hintOn = null; kick(); }
-    clearTimeout(idleT); idleT = setTimeout(showHint, 10000);
+    if (hintOn) { hintOn = null; syncPens(); kick(); }
+    clearTimeout(idleT); idleT = setTimeout(showHint, 7000);
+    clearTimeout(smileT); smileT = setTimeout(showSmiley, 25000);
   }
   function showHint() {
     if (won) return; const h = DM.hint(g, M); if (!h || h.b < 0) return;
-    hintOn = h; hintT0 = performance.now(); penBtns[h.b].classList.add('bob'); kick();
+    hintOn = h; hintT0 = performance.now(); syncPens(); kick();
+  }
+  // egg 'doodle-smiley': left alone a while, a little smiley gets sketched in the top margin; tapping it pays a few points
+  const SMILE = (() => { const c = []; for (let k = 0; k <= 40; k++) { const a = -Math.PI / 2 + k / 40 * Math.PI * 2.05; c.push([Math.cos(a), Math.sin(a)]); } return c; })();
+  const MOUTH = (() => { const c = []; for (let k = 0; k <= 14; k++) { const a = Math.PI * (0.15 + 0.7 * k / 14); c.push([Math.cos(a) * .58, Math.sin(a) * .58]); } return c; })();
+  function showSmiley() {
+    if (won || smiley) return null;
+    const r = Math.max(10, Math.min(PS * 0.045, (CH + PS * 0.05) * 0.4));
+    smiley = { x: (PX + PS * 0.9) * dpr, y: (PY + (CH + PS * 0.05) * 0.52) * dpr, r: r * dpr, t0: performance.now(), hit: 0 }; kick();
+    return [smiley.x / dpr, smiley.y / dpr];
+  }
+  function drawSmiley(now) {
+    const S = smiley, t = (now - S.t0) / 1000, r = S.r;
+    let jy = 0, wink = false;
+    if (S.hit) { const s = (now - S.hit) / 700; if (s < 1) { jy = -Math.sin(Math.PI * s) * r * 0.9; wink = s < .6; } }
+    const bob = RM ? 0 : Math.sin(now / 400) * r * 0.06;
+    const map = p => [S.x + p[0] * r, S.y + jy + bob + p[1] * r];
+    ctx.save(); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    const k = RM ? 1 : clamp01(t / 1.1);
+    if (k >= 1) { ctx.fillStyle = '#fff59d'; ctx.beginPath(); ctx.arc(S.x, S.y + jy + bob, r, 0, 7); ctx.fill(); }
+    ctx.strokeStyle = PENCIL + '.85)'; ctx.lineWidth = Math.max(1.6 * dpr, r * 0.14);
+    drawPoly(SMILE, 6.5 * k, map);
+    if (k > .7) { ctx.fillStyle = PENCIL + '.9)';
+      ctx.beginPath(); ctx.arc(S.x - r * .32, S.y + jy + bob - r * .2, r * .1, 0, 7); ctx.fill();
+      if (wink) { ctx.beginPath(); ctx.moveTo(S.x + r * .2, S.y + jy + bob - r * .2); ctx.lineTo(S.x + r * .44, S.y + jy + bob - r * .2); ctx.stroke(); }
+      else { ctx.beginPath(); ctx.arc(S.x + r * .32, S.y + jy + bob - r * .2, r * .1, 0, 7); ctx.fill(); }
+      drawPoly(MOUTH, 2.2 * clamp01((k - .7) / .3), p => map([p[0], p[1] + .02])); }
+    ctx.restore();
+  }
+  function smileyHit(e) {
+    if (!smiley || performance.now() - smiley.t0 < 1100) return false;
+    const x = e.clientX * dpr, y = e.clientY * dpr; if (Math.hypot(x - smiley.x, y - smiley.y) > smiley.r * 1.7) return false;
+    smiley.hit = performance.now(); pop(7); pop(12, 0.08);
+    if (!smilePaid) { smilePaid = true; egg('doodle-smiley', 40); }
+    kick(); return true;
   }
 
   // ---------- sheets ----------
   function fresh() {
-    won = false; holeCol = -1; stamp.classList.remove('on'); confetti = []; sparks = []; smudges = []; wob = [];
+    won = false; holeCol = -1; readyT = g.won() ? performance.now() : 0; stamp.classList.remove('on'); document.documentElement.classList.remove('won');
+    confetti = []; sparks = []; smudges = []; wob = []; pops = []; flyers = []; stars = []; scrib = []; lit = null; press = null; smiley = null;
+    penBtns.forEach(b => b.classList.remove('dance'));
     const seed = (Math.random() * 2 ** 31) | 0; prepInk(seed);
     drawStart = performance.now();
     // fills bloom in after the ink, outward from the blank piece
     const dep = new Map([[g.hole, 0]]); let front = [g.hole];
     while (front.length) { const nx = []; for (const v of front) for (const w of g.adj[v]) if (!dep.has(w)) { dep.set(w, dep.get(v) + 1); nx.push(w); } front = nx; }
-    anim = [];
+    holeDep = dep; anim = [];
     if (!RM) for (let i = 0; i < g.n; i++) { const [x, y] = cen(i); anim[i] = { t0: drawStart + 350 + dep.get(i) * 110, x, y, R: reach(i, x, y), from: -2 }; }
+    prevRim = new Set(g.rimColours()); syncPens();
     uncap(); touch(); kick();
   }
 
+  // ---------- progress: an element leaving the rim flies back into its marker; the rim bounces ----------
+  let prevRim = new Set(g.rimColours());
+  g.on((_, info) => {
+    const now = performance.now(), rim = new Set(g.rimColours()), [hx, hy] = cen(g.hole);
+    const gone = [...prevRim].filter(c => !rim.has(c)), changed = rim.size !== prevRim.size || gone.length;
+    if (info.type === 'swap' && changed && !RM) {
+      gone.forEach((c, k) => { const [x1, y1] = penTop(c);
+        flyers.push({ c, x0: hx, y0: hy, x1, y1, arc: 60 * dpr, r: Math.max(9, PS * 0.03) * dpr, t0: now + 180 + k * 120, dur: 720 });
+        setTimeout(() => { jolt(penBtns[c], 'gulp'); pop(9); }, 180 + k * 120 + 700); });
+      g.rim.forEach((v, k) => { pops[v] = { t0: now + 120 + k * 50, dur: 320, amp: 0.12, rot: 0.12 }; });
+      qHop = now + 120; if (gone.length) whoosh();
+    }
+    prevRim = rim;
+    if (g.won() && holeCol < 0) { if (!readyT) readyT = now; } else readyT = 0;
+    if (info.type !== 'swap') { lit = null; press = null; }
+    syncPens(); kick();
+  });
+
   // ---------- play ----------
-  function bloomChain(K, u, ex, ey, now) {
-    const { dep, par } = DM.order(g, K, u); let maxD = 0;
-    for (const v of K.vs) {
-      const d = dep.get(v); maxD = Math.max(maxD, d);
+  // BFS through the chain from the tapped piece -> each piece's rank in the wave
+  function waveOf(K, u) { const { dep } = DM.order(g, K, u); return [...dep.entries()].sort((a, b) => a[1] - b[1]); }
+  function lightUp(u, mv, now) {
+    let list = [];
+    if (mv.kind === 'swap' || mv.kind === 'web') list = [{ pair: mv.K.pair, dep: waveOf(mv.K, u), alpha: mv.kind === 'web' ? 0.55 : 1 }];
+    else if (mv.kind === 'nopen' && u !== g.hole) list = g.chainsThrough(u).map(K => ({ pair: K.pair, dep: waveOf(K, u), alpha: 0.45 }));
+    if (!list.length) { lit = null; return; }
+    lit = { t0: now, list };
+    if (mv.kind === 'swap') list[0].dep.slice(0, 11).forEach(([, d], k) => note(k, RM ? 0 : d * 0.045));
+  }
+  function swapWave(K, u, ex, ey, now) {
+    const order = waveOf(K, u), par = DM.order(g, K, u).par, step = Math.max(30, Math.min(60, 900 / order.length));
+    order.forEach(([v, d], k) => {
       let x, y;
       if (v === u) { x = ex; y = ey; } else { const s = DM.sharedSeg(M, v, par.get(v)); const q = segMid(s); x = X(q); y = Y(q); }
-      // 'from' is the pen before the swap: the other pen of the pair
-      const from = g.col[v] === K.pair[0] ? K.pair[1] : K.pair[0];
-      anim[v] = RM ? null : { t0: now + d * 70, x, y, R: reach(v, x, y), from };
-    }
-    return maxD;
+      const from = g.col[v] === K.pair[0] ? K.pair[1] : K.pair[0], t0 = now + k * step;   // 'from' is the pen before the swap
+      anim[v] = RM ? null : { t0, x, y, R: reach(v, x, y), from };
+      if (!RM) pops[v] = { t0, dur: 300, amp: 0.13, rot: (k % 2 ? 1 : -1) * 0.14 };
+      if (k < 12) pop(k, RM ? 0 : k * step / 1000);
+    });
   }
-  function tap(e) {
+  function tap(u, e) {
     const now = performance.now(), ex = e.clientX * dpr, ey = e.clientY * dpr;
-    const u = DM.faceAt(M, (e.clientX - RX) / RS, (e.clientY - RY) / RS);
     const mv = DM.move(g, pen, u);
     switch (mv.kind) {
       case 'none': return;
       case 'nopen': penBtns.forEach((b, k) => setTimeout(() => jolt(b, 'hop'), RM ? 0 : k * 60)); wob[u] = now; thud(); break;
       case 'same': wob[u] = now; thud(); break;
-      case 'done': qHop = now; cueWig = now; jolt(penBtns[pen], 'shake'); thud(); break;
-      case 'web': smudges.push({ vs: mv.K.vs, pair: mv.K.pair, t0: now }); jolt(penBtns[pen], 'shake'); smear(); break;
+      case 'done': qHop = now; jolt(penBtns[pen], 'shake'); wob[u] = now; thud(); break;
+      case 'web': smudges.push({ vs: mv.K.vs, pair: mv.K.pair, t0: now }); jolt(penBtns[pen], 'shake'); mv.K.vs.forEach(v => { wob[v] = now; }); smear(); break;
       case 'swap': {
         g.swap(mv.K);                                            // the one and only state change
-        const maxD = bloomChain(mv.K, u, ex, ey, now);
-        for (let d = 0; d <= Math.min(maxD, 3); d++) squeak(pen, d * 0.07, d ? 0.12 : 0.22);
-        if (g.won()) setTimeout(() => { qHop = performance.now(); kick(); }, 150 + maxD * 70);
+        swapWave(mv.K, u, ex, ey, now);                          // the flip wave ('from' is the other pen of the pair)
+        coinsAt(e.clientX, e.clientY);                           // the shell flies this swap's coins from the touch point
         break;
       }
-      case 'blocked': sparks.push({ hits: mv.hits, t0: now }); qHop = now; jolt(penBtns[pen], 'shake'); tink(); break;
+      case 'blocked': sparks.push({ hits: mv.hits, t0: now }); qHop = now; jolt(penBtns[pen], 'shake'); mv.hits.forEach(v => { wob[v] = now; }); tink(); break;
       case 'fill': {
         holeCol = mv.b; anim[g.hole] = RM ? null : { t0: now, x: ex, y: ey, R: reach(g.hole, ex, ey), from: -1 };
         squeak(pen); win(); break;
@@ -540,35 +708,81 @@ const DM = (() => {
     }
     kick();
   }
+  // the win: the blank fills with a burst, then the whole sheet is scribbled over in a wave with doodled stars (~3.6 s)
   function win() {
-    won = true; wonAt = performance.now(); clearTimeout(idleT);
-    setTimeout(LAB.done, RM ? 300 : 1800);                 // inside the app: hand over to its win screen once the piece is coloured
-    setTimeout(() => { stamp.classList.add('on'); pop(); }, RM ? 0 : 160); setTimeout(fanfare, RM ? 0 : 260);
-    if (!RM) { const [cx, cy] = cen(g.hole);
-      for (let k = 0; k < 46; k++) {
-        const a = Math.random() * Math.PI * 2, v = (200 + Math.random() * 500) * dpr;
-        confetti.push({ x: cx, y: cy, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 300 * dpr, r: Math.random() * 6, vr: (Math.random() - 0.5) * 12, c: PENS[k % 4].c, t0: performance.now() + 120 });
-      } }
+    won = true; wonAt = performance.now(); clearTimeout(idleT); clearTimeout(smileT); hintOn = null; lit = null; press = null;
+    document.documentElement.classList.add('won'); syncPens();
+    setTimeout(LAB.done, RM ? 900 : 3700);                 // inside the app: hand over to its win screen once the sheet is celebrated
+    setTimeout(() => { stamp.classList.add('on'); pop(12); }, RM ? 0 : 200);
+    const [cx, cy] = cen(g.hole), t0 = wonAt, R = rng(g.n * 977 + 3);
+    if (RM) { fanfare(0); return; }
+    pops[g.hole] = { t0: t0 + 60, dur: 420, amp: 0.3, rot: 0.2 };
+    for (let k = 0; k < 40; k++) {
+      const a = Math.random() * Math.PI * 2, v = (200 + Math.random() * 500) * dpr;
+      confetti.push({ x: cx, y: cy, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 300 * dpr, r: Math.random() * 6, vr: (Math.random() - 0.5) * 12, c: PENS[k % 4].c, t0: t0 + 120 });
+    }
+    // the scribble wave, ring by ring out from the blank piece
+    const maxD = Math.max(...holeDep.values());
+    for (let i = 0; i < g.n; i++) {
+      const d = holeDep.get(i) || 0, b = M.info[i].box, c = colOf(i), at = t0 + 700 + d * Math.min(260, 1500 / Math.max(1, maxD));
+      const pts = [], n = 7, ang = c >= 0 ? PENS[c].a + Math.PI / 2 : 0, ux = Math.cos(ang), uy = Math.sin(ang);
+      const mx = (b[0] + b[2]) / 2, my = (b[1] + b[3]) / 2, L = Math.hypot(b[2] - b[0], b[3] - b[1]) * 0.55;
+      for (let k = 0; k <= n; k++) { const s = (k / n - 0.5) * 2 * L, o = (k % 2 ? 1 : -1) * L * 0.9; pts.push([mx + ux * s - uy * o, my + uy * s + ux * o]); }
+      let len = 0; for (let k = 1; k < pts.length; k++) len += Math.hypot(pts[k][0] - pts[k - 1][0], pts[k][1] - pts[k - 1][1]);
+      scrib.push({ i, t0: at, pts, len, c: c >= 0 ? PENS[c].d : INK });
+      if (i !== g.hole) pops[i] = { t0: at, dur: 340, amp: 0.1, rot: (i % 2 ? 1 : -1) * 0.12 };
+    }
+    for (let d = 0; d <= Math.min(maxD, 8); d++) squeak(d % 4, (700 + d * Math.min(260, 1500 / Math.max(1, maxD))) / 1000, 0.08, d * 120);
+    // stars drawn in round the sheet
+    for (let k = 0; k < 9; k++) {
+      const side = k % 4, f = R();
+      const x = side === 0 ? PX + PS * f : side === 1 ? PX + PS + 8 - R() * 20 : side === 2 ? PX + PS * f : PX - 8 + R() * 20;
+      const y = side === 0 ? PY + CH * 0.5 + 6 : side === 2 ? PY + PH - 4 : PY + PH * (0.15 + 0.7 * f);
+      stars.push({ x: x * dpr, y: y * dpr, r: Math.max(9, PS * (0.03 + 0.02 * R())) * dpr, c: PENS[k % 4].c, rot: R() * 6, ph: R() * 9, t0: t0 + 1000 + k * 170 });
+    }
+    setTimeout(() => { penBtns.forEach((b, k) => setTimeout(() => b.classList.add('dance'), k * 90)); }, 900);
+    setTimeout(() => fanfare(0), 2500);
+    setTimeout(() => { for (let k = 0; k < 30; k++) { const x = (PX + PS * Math.random()) * dpr;
+      confetti.push({ x, y: PY * dpr, vx: (Math.random() - .5) * 300 * dpr, vy: -400 * dpr * Math.random(), r: Math.random() * 6, vr: (Math.random() - 0.5) * 12, c: PENS[k % 4].c, t0: performance.now() }); } kick(); }, 2500);
+    setTimeout(() => { penBtns.forEach(b => b.classList.remove('dance')); kick(); }, 4300);
   }
+  const faceOf = e => DM.faceAt(M, (e.clientX - RX) / RS, (e.clientY - RY) / RS);
   cv.addEventListener('pointerdown', e => {
     e.preventDefault(); au(); touch();
-    if (won) { if (!LAB.embedded && performance.now() - wonAt > 450) { g.reset(); fresh(); } return; }   // in the app the shell owns the next step
-    tap(e);
+    if (won) { if (!LAB.embedded && performance.now() - wonAt > 4000) { g.reset(); fresh(); } return; }   // in the app the shell owns the next step
+    if (smileyHit(e)) return;
+    const u = faceOf(e); if (u < 0) return;
+    try { cv.setPointerCapture(e.pointerId); } catch (_) {}
+    const now = performance.now(), mv = DM.move(g, pen, u);
+    press = { u, id: e.pointerId };                         // lifts at once (drawn on the next frame)
+    lightUp(u, mv, now); kick();
   });
-  document.getElementById('undo').addEventListener('pointerdown', e => {
-    e.preventDefault(); au(); touch();
-    if (won) { if (LAB.embedded) return; won = false; holeCol = -1; stamp.classList.remove('on'); confetti = []; anim[g.hole] = null; thud(); kick(); return; }
-    const before = g.col.slice(); g.undo(); const now = performance.now(); let k = 0;
-    for (let i = 0; i < g.n; i++) if (before[i] !== g.col[i]) { const [x, y] = cen(i); anim[i] = RM ? null : { t0: now + 40 * k++, x, y, R: reach(i, x, y), from: before[i] }; }
-    if (k) squeak(pen < 0 ? 0 : pen, 0, 0.12); else thud();
+  cv.addEventListener('pointermove', e => {
+    if (!press || e.pointerId !== press.id) return;
+    if (faceOf(e) !== press.u && lit) { lit = null; kick(); }   // slid off: the preview goes out
+  });
+  cv.addEventListener('pointerup', e => {
+    if (!press || e.pointerId !== press.id) return;
+    const u = press.u; press = null; lit = null;
+    if (won) { kick(); return; }
+    if (faceOf(e) === u) tap(u, e);                         // release on the same piece commits
     kick();
   });
-  document.getElementById('again').addEventListener('pointerdown', e => { e.preventDefault(); au(); if (LAB.embedded && won) return; g.reset(); fresh(); squeak(2, 0, 0.12); });
+  cv.addEventListener('pointercancel', () => { press = null; lit = null; kick(); });
+  document.getElementById('undo').addEventListener('pointerdown', e => {
+    e.preventDefault(); au(); touch();
+    if (won) { if (LAB.embedded) return; won = false; holeCol = -1; stamp.classList.remove('on'); document.documentElement.classList.remove('won'); confetti = []; scrib = []; stars = []; anim[g.hole] = null; readyT = performance.now(); syncPens(); thud(); kick(); return; }
+    const before = g.col.slice(); g.undo(); const now = performance.now(); let k = 0;
+    for (let i = 0; i < g.n; i++) if (before[i] !== g.col[i]) { const [x, y] = cen(i); anim[i] = RM ? null : { t0: now + 40 * k, x, y, R: reach(i, x, y), from: before[i] }; if (!RM) pops[i] = { t0: now + 40 * k, dur: 260, amp: 0.08, rot: 0 }; k++; }
+    if (k) squeak(pen < 0 ? 0 : pen, 0, 0.1); else thud();
+    kick();
+  });
+  document.getElementById('again').addEventListener('pointerdown', e => { e.preventDefault(); au(); if (LAB.embedded && won) return; g.reset(); fresh(); squeak(2, 0, 0.1); });
   addEventListener('resize', layout);
   document.addEventListener('contextmenu', e => e.preventDefault());
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => kick());
 
-  window.PLAYLAB = { cen: i => cen(i).map(v => v / dpr), pen: i => { pen = i; syncPens(); }, get won() { return won; } };   // test hook (tools/embed_win_check.js)
+  window.PLAYLAB = { cen: i => cen(i).map(v => v / dpr), pen: i => { pen = i; syncPens(); }, get won() { return won; }, smiley: showSmiley, hint: showHint, game: g };   // test hooks (tools/embed_win_check.js)
   layout(); fresh();
 })();
 </script>

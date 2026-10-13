@@ -1,11 +1,14 @@
-// Blank Doodle: a colouring-book skin. Bright white pages, bold black outlines, grainy crayon fills, Fredoka lettering.
-// The map starts uncoloured; the player colours every piece and swaps a two-pen group when a piece shows "?".
+// Blank Doodle: a paint-by-yourself skin. A blank sketch map on white paper; the player paints every piece with four
+// tubes of glossy poster paint (bold black outlines, top-left gloss, offset shadows, splats), Fredoka lettering.
+// The map starts unpainted; the player paints every piece and swaps a two-paint group when a piece shows "?".
 (function () {
   const INK = '#1b1b2f';
-  const PC = ['#ff5d5d', '#3fa7f5', '#ffc928', '#3ccf6e'];      // red, blue, yellow, green (blank.html's pens)
-  const PL = ['#ffb3a8', '#a9d8fb', '#ffe58a', '#a6e8bb'];      // pale crayon tints
-  const F = "Fredoka,'Baloo 2','Arial Rounded MT Bold',system-ui,sans-serif";
+  const PC = ['#ff5d5d', '#3fa7f5', '#ffc928', '#3ccf6e'];      // red, blue, yellow, green (blank.html's paints)
+  const PD = ['#c93636', '#1f74b8', '#c9900a', '#1f8f45'];      // their shades
+  const PL = ['#ffb3a8', '#a9d8fb', '#ffe58a', '#a6e8bb'];      // pale tints
+  const F = "Fredoka,'Baloo 2','Arial Rounded MT Bold','Arial Black',system-ui,sans-serif";
   const f1 = n => Math.round(n * 10) / 10;
+  const rnd = (s, k) => { const x = Math.sin(s * 127.1 + k * 311.7) * 43758.5453; return x - Math.floor(x); };
 
   // polygon points of a hexagon (rot 0: flat top; rot 30: pointy top)
   function hexPts(cx, cy, r, rot) {
@@ -16,141 +19,258 @@
   // neighbour centre of a hexagon in direction k (0..5) at spacing d; rot as above
   const nb = (cx, cy, d, rot, k) => { const a = (rot + 30 + 60 * k) * Math.PI / 180; return [cx + d * Math.cos(a), cy + d * Math.sin(a)]; };
 
-  // one crayon piece: c = pen 0..3 or -1 for a blank piece; extra = extra attributes
-  function piece(id, cx, cy, r, c, rot, cls) {
-    const p = hexPts(cx, cy, r * 0.95, rot || 0);
-    const k = cls ? ' class="' + cls + '"' : '';
-    if (c < 0) return '<polygon' + k + ' points="' + p + '" fill="#fff" stroke="' + INK + '" stroke-width="3" stroke-linejoin="round"/>';
-    return '<g' + k + '><polygon points="' + p + '" fill="' + PC[c] + '" fill-opacity=".62" stroke="none"/>' +
-      '<polygon points="' + p + '" fill="' + PC[c] + '" filter="url(#g' + id + ')"/>' +
+  // a paint splat: n round lobes plus a few flung droplets (deterministic in seed)
+  function splatPath(cx, cy, R, n, seed, nsat, soft) {
+    const P = (a, r) => f1(cx + r * Math.cos(a)) + ' ' + f1(cy + r * Math.sin(a)), st = Math.PI / n, ins = [];
+    for (let i = 0; i < n; i++) ins.push(R * ((soft ? 0.84 : 0.62) + rnd(seed, i + 40) * 0.1));
+    let d = 'M' + P(-st, ins[n - 1]);
+    for (let i = 0; i < n; i++) {
+      const a = i * 2 * st, ro = R * (0.86 + rnd(seed, i + 20) * (soft ? 0.14 : 0.32)) * (soft ? 1.12 : 1.22);
+      d += 'C' + P(a - st * 0.55, ro) + ' ' + P(a + st * 0.55, ro) + ' ' + P(a + st, ins[i]);
+    }
+    const sats = [];
+    for (let k = 0; k < (nsat || 0); k++) { const a = rnd(seed, k + 70) * 6.283, r = R * (1.32 + rnd(seed, k + 80) * 0.36);
+      sats.push([cx + r * Math.cos(a), cy + r * Math.sin(a), R * (0.08 + rnd(seed, k + 90) * 0.09)]); }
+    return { d: d + 'Z', sats };
+  }
+  // a splat drawn the Islands way: offset shadow, fill, ink outline, top-left gloss
+  function splat(cx, cy, R, fill, seed, o) {
+    o = o || {}; const S = splatPath(cx, cy, R, o.n || 9, seed, o.sat || 0, o.soft), sw = o.sw === 0 ? 0 : o.sw || Math.max(1.6, R * 0.1), dx = f1(R * 0.09 + 1), dy = f1(R * 0.13 + 1.5);
+    const sh = o.noShadow ? '' : '<g transform="translate(' + dx + ' ' + dy + ')" fill="' + INK + '" opacity=".3"><path d="' + S.d + '"/>' + S.sats.map(c => '<circle cx="' + f1(c[0]) + '" cy="' + f1(c[1]) + '" r="' + f1(c[2]) + '"/>').join('') + '</g>';
+    return sh + '<path d="' + S.d + '" fill="' + fill + '"' + (sw ? ' stroke="' + INK + '" stroke-width="' + f1(sw) + '" stroke-linejoin="round"' : '') + (o.op ? ' opacity="' + o.op + '"' : '') + '/>' +
+      S.sats.map(c => '<circle cx="' + f1(c[0]) + '" cy="' + f1(c[1]) + '" r="' + f1(c[2]) + '" fill="' + fill + '"' + (sw ? ' stroke="' + INK + '" stroke-width="' + f1(sw * 0.6) + '"' : '') + (o.op ? ' opacity="' + o.op + '"' : '') + '/>').join('') +
+      (o.noGloss ? '' : '<ellipse cx="' + f1(cx - R * 0.32) + '" cy="' + f1(cy - R * 0.36) + '" rx="' + f1(R * 0.24) + '" ry="' + f1(R * 0.13) + '" transform="rotate(-35 ' + f1(cx - R * 0.32) + ' ' + f1(cy - R * 0.36) + ')" fill="#fff" opacity=".7"/>');
+  }
+  // one painted piece: c = paint 0..3 or -1 for a blank (paper) piece
+  function piece(cx, cy, r, c, rot, cls) {
+    const p = hexPts(cx, cy, r * 0.95, rot || 0), k = cls ? ' class="' + cls + '"' : '';
+    const sh = '<polygon points="' + p + '" transform="translate(' + f1(r * 0.08 + 1) + ' ' + f1(r * 0.11 + 1.5) + ')" fill="' + INK + '" opacity="' + (c < 0 ? '.14' : '.3') + '"/>';
+    if (c < 0) return '<g' + k + '>' + sh + '<polygon points="' + p + '" fill="#fff" stroke="' + INK + '" stroke-width="3" stroke-linejoin="round"/></g>';
+    const hl = hexPts(cx - r * 0.12, cy - r * 0.14, r * 0.58, rot || 0);
+    return '<g' + k + '>' + sh + '<polygon points="' + p + '" fill="' + PC[c] + '"/>' +
+      '<polygon points="' + hl + '" fill="#fff" opacity=".2"/>' +
+      '<ellipse cx="' + f1(cx - r * 0.34) + '" cy="' + f1(cy - r * 0.4) + '" rx="' + f1(r * 0.2) + '" ry="' + f1(r * 0.1) + '" transform="rotate(-30 ' + f1(cx - r * 0.34) + ' ' + f1(cy - r * 0.4) + ')" fill="#fff" opacity=".75"/>' +
       '<polygon points="' + p + '" fill="none" stroke="' + INK + '" stroke-width="3" stroke-linejoin="round"/></g>';
   }
-  function pen(x, y, c, rot, s) {
-    return '<g transform="translate(' + x + ' ' + y + ') rotate(' + rot + ') scale(' + (s || 1) + ')">' +
-      '<rect x="-6" y="-34" width="12" height="40" rx="3" fill="' + PC[c] + '" stroke="' + INK + '" stroke-width="2.4"/>' +
-      '<rect x="-6" y="-34" width="12" height="9" rx="3" fill="#fff" stroke="' + INK + '" stroke-width="2.4"/>' +
-      '<polygon points="-6,6 6,6 0,17" fill="#f3e3c3" stroke="' + INK + '" stroke-width="2.4" stroke-linejoin="round"/>' +
-      '<polygon points="-2.6,12 2.6,12 0,17" fill="' + PC[c] + '"/></g>';
+  // a paintbrush, tip at (x, y), handle along +y before rotation; c = the paint on its tip
+  function brush(x, y, c, rot, s) {
+    const hd = 'M-5 30L-3.6 70Q0 75 3.6 70L5 30Z', fe = 'M-7 17H7V31H-7Z', br = 'M0 -2C-5 4 -8 11 -7 18L7 18C8 11 5 4 0 -2Z';
+    return '<g transform="translate(' + f1(x) + ' ' + f1(y) + ') rotate(' + rot + ') scale(' + (s || 1) + ')">' +
+      '<path d="' + hd + br + fe + '" transform="translate(3 2)" fill="' + INK + '" opacity=".3"/>' +
+      '<path d="' + hd + '" fill="#ff9a3c" stroke="' + INK + '" stroke-width="2.6" stroke-linejoin="round"/>' +
+      '<path d="M-1.8 35L-1 64" stroke="#fff" stroke-opacity=".6" stroke-width="2" stroke-linecap="round"/>' +
+      '<path d="' + br + '" fill="#f3e3c3" stroke="' + INK + '" stroke-width="2.6" stroke-linejoin="round"/>' +
+      '<path d="M0 -2C-5 4 -7.4 9 -7.3 12L7.3 12C7.4 9 5 4 0 -2Z" fill="' + PC[c] + '" stroke="' + INK + '" stroke-width="2.4" stroke-linejoin="round"/>' +
+      '<rect x="-7" y="17" width="14" height="14" rx="2.5" fill="#d9deea" stroke="' + INK + '" stroke-width="2.6"/><path d="M-7 23H7" stroke="' + INK + '" stroke-width="1.6"/>' +
+      '<ellipse cx="-2.4" cy="5" rx="1.4" ry="2.6" fill="#fff" opacity=".75"/></g>';
   }
-  const txt = (x, y, s, size, anchor, fill, extra) =>
-    '<text x="' + x + '" y="' + y + '" font-family="' + F + '" font-weight="700" font-size="' + size + '" text-anchor="' + (anchor || 'middle') +
-    '" fill="' + (fill || INK) + '"' + (extra || '') + '>' + s + '</text>';
-  // wrap an svg: paper background, crayon grain filter g{id}, animation css wrapped for reduced motion
-  function svg(id, body, css) {
+  // the ghost finger (tip at x, y) that teaches a tap
+  const HAND = 'M10 24V9a5 5 0 0 1 10 0V21a4.5 4.5 0 0 1 8 1.5a4.5 4.5 0 0 1 8 2.5a4 4 0 0 1 7 3V38c0 7-5 11-12 11h-5c-5 0-8-2.5-11-6.5l-7-9a4.2 4.2 0 0 1 6.5-5.2Z';
+  const finger = (x, y, cls) => '<circle class="rp" cx="' + x + '" cy="' + y + '" r="12" fill="none" stroke="#fff" stroke-width="4"/>' +
+    '<g class="' + (cls || 'fg') + '"><g transform="translate(' + f1(x - 12) + ' ' + f1(y - 3) + ') scale(.8)">' +
+    '<path d="' + HAND + '" transform="translate(3 4)" fill="' + INK + '" opacity=".3"/>' +
+    '<path d="' + HAND + '" fill="#fff" stroke="' + INK + '" stroke-width="3" stroke-linejoin="round"/>' +
+    '<path d="M13 10V20" stroke="#d6dbe8" stroke-width="3" stroke-linecap="round"/></g></g>';
+  const FCSS = '.fg{animation:fgt 2.4s ease-in-out infinite;transform-box:fill-box;transform-origin:20% 10%}' +
+    '@keyframes fgt{0%,12%{transform:translate(12px,16px);opacity:0}28%{transform:translate(4px,6px);opacity:.96}38%{transform:translate(0,0) scale(.92)}50%{transform:translate(3px,4px)}82%{opacity:.96}100%{transform:translate(12px,16px);opacity:0}}' +
+    '.rp{transform-box:fill-box;transform-origin:center;opacity:0;animation:rpp 2.4s ease-out infinite}@keyframes rpp{0%,36%{transform:scale(.2);opacity:0}40%{opacity:.95}70%,100%{transform:scale(1.7);opacity:0}}';
+  const txt = (x, y, s, size, fill, extra) =>
+    '<text x="' + x + '" y="' + y + '" font-family="' + F + '" font-weight="700" font-size="' + size + '" text-anchor="middle" fill="' + (fill || INK) + '"' + (extra || '') + '>' + s + '</text>';
+  // wrap an intro / title svg: dotted paper, animation css wrapped for reduced motion
+  function svg(body, css) {
     return '<svg viewBox="0 0 300 250" xmlns="http://www.w3.org/2000/svg">' +
-      '<defs><filter id="g' + id + '" x="-5%" y="-5%" width="110%" height="110%">' +
-      '<feTurbulence type="fractalNoise" baseFrequency=".85" numOctaves="2" seed="' + (id.length * 7 + 3) + '" result="n"/>' +
-      '<feColorMatrix in="n" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  2.4 0 0 0 -.45" result="m"/>' +
-      '<feComposite in="SourceGraphic" in2="m" operator="in"/></filter></defs>' +
       (css ? '<style>@media (prefers-reduced-motion: no-preference){' + css + '}</style>' : '') +
       '<rect x="6" y="6" width="288" height="238" rx="18" fill="#fffefa" stroke="' + INK + '" stroke-width="2.5" stroke-dasharray="2 7" stroke-linecap="round" opacity=".55"/>' +
       body + '</svg>';
   }
-  const penRow = (y, s) => [0, 1, 2, 3].map(i => pen(96 + i * 36, y, i, 0, s || 0.62)).join('');
+  // four paint dabs in a row (the "palette"); sel = the picked one (it glows)
+  const dabRow = (y, s, sel) => [0, 1, 2, 3].map(i => (i === sel ? '<circle class="dsel" cx="' + (96 + i * 36) + '" cy="' + y + '" r="' + f1(16 * s) + '" fill="#fff59d" stroke="#ffb800" stroke-width="3"/>' : '') +
+    splat(96 + i * 36, y, 11 * s, PC[i], i * 3 + 1, { n: 6, sw: 2.4, soft: true })).join('');
+  const ok = (x, y, good) => '<circle cx="' + (x + 2) + '" cy="' + (y + 3) + '" r="15" fill="' + INK + '" opacity=".3"/><circle cx="' + x + '" cy="' + y + '" r="15" fill="' + (good ? '#3ccf6e' : '#ff5d5d') + '" stroke="' + INK + '" stroke-width="3"/>' +
+    (good ? '<path d="M' + (x - 7) + ' ' + y + 'l5 5 9 -10" fill="none" stroke="#fff" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>'
+      : '<path d="M' + (x - 6) + ' ' + (y - 6) + 'l12 12m0 -12l-12 12" stroke="#fff" stroke-width="4.5" stroke-linecap="round"/>');
 
-  // ---------- title ----------
-  const titleBody = (() => {
-    const cx = 150, cy = 122, r = 34, d = r * 1.75, col = [0, 1, 2, 3, 1], o = [];
-    col.forEach((c, k) => { const p = nb(cx, cy, d, 0, k); o.push(piece('t', p[0], p[1], r, c, 0, 'tt tt' + k)); });
-    o.push('<polygon points="' + hexPts(cx, cy, r * 0.95, 0) + '" fill="#fff" stroke="' + INK + '" stroke-width="3" stroke-dasharray="7 6" stroke-linejoin="round"/>');
-    o.push(txt(cx, cy + 12, '?', 34, 'middle', '#ff9f1c', ' class="tq"'));
-    o.push('<g class="tp">' + pen(236, 62, 2, 38, 1.05) + '</g>');
-    return o.join('');
+  // ---------- title: a rim of four paints round a blank piece, a brush about to paint it ----------
+  const titleSvg = (() => {
+    const cx = 146, cy = 132, r = 34, d = r * 1.75, col = [0, 1, 2, 3, 1], o = [];
+    o.push(splat(52, 60, 20, PL[0], 3, { n: 8, sat: 3, noShadow: true, noGloss: true, sw: 2 }), splat(250, 206, 22, PL[1], 8, { n: 9, sat: 3, noShadow: true, noGloss: true, sw: 2 }), splat(44, 200, 14, PL[2], 5, { n: 7, sat: 2, noShadow: true, noGloss: true, sw: 2 }));
+    col.forEach((c, k) => { const p = nb(cx, cy, d, 0, k); o.push(piece(p[0], p[1], r, c, 0, 'tt')); });
+    const p5 = nb(cx, cy, d, 0, 5); o.push('<polygon points="' + hexPts(p5[0], p5[1], r * 0.95, 0) + '" fill="none" stroke="' + INK + '" stroke-width="2.5" stroke-dasharray="3 7" stroke-linecap="round" opacity=".5"/>');
+    o.push(piece(cx, cy, r, -1, 0));
+    o.push(txt(cx, cy + 13, '?', 38, '#ff9f1c', ' stroke="' + INK + '" stroke-width="5" paint-order="stroke" stroke-linejoin="round" class="tq"'));
+    o.push('<g class="tp"><g class="td">' + splat(184, 98, 5, PC[0], 2, { n: 5, noGloss: true, sw: 1.8 }) + '</g>' + brush(188, 90, 0, -135, 1.1) + '</g>');
+    return svg(o.join(''),
+      '.tq{animation:tqw 2.4s ease-in-out infinite;transform-box:fill-box;transform-origin:center}@keyframes tqw{0%,100%{transform:rotate(-8deg)}50%{transform:rotate(8deg) scale(1.1)}}' +
+      '.tp{animation:tpb 2.4s ease-in-out infinite}@keyframes tpb{0%,100%{transform:translate(0,0)}50%{transform:translate(-8px,10px)}}' +
+      '.td{animation:tdd 2.4s ease-in infinite}@keyframes tdd{0%,40%{transform:translate(0,0);opacity:0}50%{opacity:1}85%{transform:translate(-22px,26px);opacity:1}100%{transform:translate(-24px,30px);opacity:0}}');
   })();
-  const titleSvg = svg('t', titleBody,
-    '.tq{animation:tqw 2.4s ease-in-out infinite;transform-box:fill-box;transform-origin:center}@keyframes tqw{0%,100%{transform:rotate(-8deg)}50%{transform:rotate(8deg) scale(1.1)}}' +
-    '.tp{animation:tpb 2.4s ease-in-out infinite}@keyframes tpb{0%,100%{transform:translate(0,0)}50%{transform:translate(-6px,8px)}}');
 
-  // ---------- intro 1: colour every piece ----------
+  // ---------- intro 1: paint every piece ----------
   const i1 = (() => {
-    const cx = 150, cy = 110, r = 30, d = r * 1.75, o = [], ring = [0, 1, -1, 3, 2, -1];
-    o.push(piece('a', cx, cy, r, -1, 0));
-    ring.forEach((c, k) => { const p = nb(cx, cy, d, 0, k); o.push(piece('a', p[0], p[1], r, c, 0, k === 2 ? 'a2' : '')); });
+    const cx = 150, cy = 106, r = 30, d = r * 1.75, o = [], ring = [0, 1, -1, 3, 2, -1];
+    o.push(piece(cx, cy, r, -1, 0));
+    ring.forEach((c, k) => { const p = nb(cx, cy, d, 0, k); o.push(piece(p[0], p[1], r, c, 0)); });
     const p5 = nb(cx, cy, d, 0, 5);
-    o.push('<g class="a5">' + piece('a', p5[0], p5[1], r, 1, 0) + '</g>');
-    o.push('<g class="ap">' + pen(222, 56, 1, 32, 1) + '</g>');
-    o.push(penRow(238, 0.7));
-    return svg('a', o.join(''),
-      '.a5{animation:a5f 3.2s ease-in-out infinite}@keyframes a5f{0%,25%{opacity:0}45%,85%{opacity:1}100%{opacity:0}}' +
-      '.ap{animation:apb 3.2s ease-in-out infinite}@keyframes apb{0%,100%{transform:translate(0,0)}35%{transform:translate(-10px,18px)}}');
+    o.push(piece(p5[0], p5[1], r, 1, 0, 'a5'));
+    o.push(dabRow(222, 1, 1));
+    o.push(finger(f1(p5[0]), f1(p5[1])));
+    return svg(o.join(''), FCSS +
+      '.a5{transform-box:fill-box;transform-origin:center;animation:a5f 2.4s ease-out infinite}@keyframes a5f{0%,38%{opacity:0;transform:scale(.4)}48%{opacity:1;transform:scale(1.14)}58%,88%{opacity:1;transform:scale(1)}100%{opacity:0}}' +
+      '.dsel{animation:dsp 1.2s ease-in-out infinite}@keyframes dsp{50%{opacity:.45}}');
   })();
 
   // ---------- intro 2: neighbours must differ ----------
   const i2 = (() => {
     const r = 33, d = r * 1.75, o = [];
-    const row = (y, a, b, ok) => {
-      const x1 = 150 - d / 2, x2 = 150 + d / 2;
-      o.push(piece('b', x1, y, r, a, 30), piece('b', x2, y, r, b, 30));
-      const ex = 150, ey1 = y - r / 2 * 0.95, ey2 = y + r / 2 * 0.95;
-      if (!ok) o.push('<line class="bc" x1="' + ex + '" y1="' + f1(ey1) + '" x2="' + ex + '" y2="' + f1(ey2) + '" stroke="#e8112d" stroke-width="6" stroke-linecap="round"/>' +
-        '<g class="bs" stroke="#e8112d" stroke-width="3" stroke-linecap="round"><path d="M150 ' + (y - 28) + ' v-9 M139 ' + (y - 24) + ' l-6 -6 M161 ' + (y - 24) + ' l6 -6"/></g>');
+    const row = (y, a, b, good) => {
+      const x1 = 128 - d / 2, x2 = 128 + d / 2;
+      o.push('<g' + (good ? '' : ' class="bw"') + '>' + piece(x1, y, r, a, 30) + piece(x2, y, r, b, 30) +
+        (good ? '' : '<line class="bc" x1="128" y1="' + f1(y - r / 2 * 0.95) + '" x2="128" y2="' + f1(y + r / 2 * 0.95) + '" stroke="#e8112d" stroke-width="7" stroke-linecap="round"/>') + '</g>');
+      o.push(ok(240, y, good));
     };
-    row(68, 0, 0, false); row(160, 0, 1, true);
-    o.push(txt(232, 76, 'clash!', 17, 'start', '#e8112d', ' transform="rotate(-8 232 76)"'));
-    o.push(txt(232, 168, 'fine', 17, 'start', '#1f8f45', ' transform="rotate(-8 232 168)"'));
-    o.push(txt(150, 232, 'touching pieces: different pens', 14, 'middle', INK));
-    return svg('b', o.join(''), '.bc{animation:bcp 1s ease-in-out infinite}@keyframes bcp{50%{opacity:.35}}.bs{animation:bcp 1s ease-in-out infinite}');
+    row(74, 0, 0, false); row(172, 0, 1, true);
+    return svg(o.join(''), '.bc{animation:bcp 1s ease-in-out infinite}@keyframes bcp{50%{opacity:.3}}' +
+      '.bw{animation:bww 1.6s ease-in-out infinite;transform-box:fill-box;transform-origin:center}@keyframes bww{0%,60%,100%{transform:rotate(0)}68%{transform:rotate(-3deg)}76%{transform:rotate(3deg)}84%{transform:rotate(-2deg)}}');
   })();
 
   // ---------- intro 3: the stuck "?" ----------
   const i3 = (() => {
-    const cx = 150, cy = 112, r = 30, d = r * 1.75, o = [], ring = [0, 1, 2, 3, 0];
-    ring.forEach((c, k) => { const p = nb(cx, cy, d, 0, k); o.push(piece('c', p[0], p[1], r, c, 0)); });
-    o.push('<polygon points="' + hexPts(cx, cy, r * 0.95, 0) + '" fill="#fff" stroke="' + INK + '" stroke-width="3" stroke-linejoin="round"/>');
-    o.push(txt(cx, cy + 13, '?', 38, 'middle', '#ff7a00', ' class="cq"'));
-    o.push(penRow(238, 0.55));
-    return svg('c', o.join(''), '.cq{animation:cqw 1.8s ease-in-out infinite;transform-box:fill-box;transform-origin:center}@keyframes cqw{0%,100%{transform:rotate(-9deg)}50%{transform:rotate(9deg) scale(1.12)}}');
+    const cx = 150, cy = 108, r = 30, d = r * 1.75, o = [], ring = [0, 1, 2, 3, 0];
+    ring.forEach((c, k) => { const p = nb(cx, cy, d, 0, k); o.push(piece(p[0], p[1], r, c, 0)); });
+    o.push(piece(cx, cy, r, -1, 0));
+    o.push(txt(cx, cy + 13, '?', 38, '#ff9f1c', ' stroke="' + INK + '" stroke-width="5" paint-order="stroke" stroke-linejoin="round" class="cq"'));
+    o.push('<g opacity=".45">' + dabRow(222, 0.85) + '</g>');
+    return svg(o.join(''), '.cq{animation:cqw 1.8s ease-in-out infinite;transform-box:fill-box;transform-origin:center}@keyframes cqw{0%,100%{transform:rotate(-9deg)}50%{transform:rotate(9deg) scale(1.12)}}');
   })();
 
-  // ---------- intro 4: swap a two-pen group ----------
+  // ---------- intro 4: swap a two-paint group ----------
   const i4 = (() => {
     const r = 17, d = r * 1.75, o = [];
-    const panel = (id, cx, cy, after) => {
+    let fx = 0, fy = 0;
+    const panel = (cx, cy, after) => {
       const ring = after ? [3, 1, 2, 3, 1] : [0, 1, 2, 3, 1];     // ring pieces k0..k4
-      const P = nb(cx, cy, 2 * d, 0, 0);                            // outer piece next to k0
-      const k0 = nb(cx, cy, d, 0, 0);
-      ring.forEach((c, k) => { const p = nb(cx, cy, d, 0, k); o.push(piece(id, p[0], p[1], r, c, 0)); });
-      o.push(piece(id, P[0], P[1], r, after ? 0 : 3, 0));
-      if (after) { o.push(piece(id, cx, cy, r, 0, 0, 'd4p')); }
-      else {
-        o.push('<polygon points="' + hexPts(cx, cy, r * 0.95, 0) + '" fill="#fff" stroke="' + INK + '" stroke-width="2.6" stroke-linejoin="round"/>' + txt(cx, cy + 7, '?', 20, 'middle', '#ff7a00'));
-        const mx = (k0[0] + P[0]) / 2, my = (k0[1] + P[1]) / 2;
-        o.push('<ellipse class="d4g" cx="' + f1(mx) + '" cy="' + f1(my) + '" rx="' + f1(d * 1.2) + '" ry="' + f1(r * 1.12) + '" transform="rotate(30 ' + f1(mx) + ' ' + f1(my) + ')" fill="none" stroke="#ff9f1c" stroke-width="3" stroke-dasharray="6 5" stroke-linecap="round"/>');
-      }
+      const P = nb(cx, cy, 2 * d, 0, 0), k0 = nb(cx, cy, d, 0, 0);
+      if (!after) { const mx = (k0[0] + P[0]) / 2, my = (k0[1] + P[1]) / 2;
+        o.push('<ellipse class="d4g" cx="' + f1(mx) + '" cy="' + f1(my) + '" rx="' + f1(d * 1.25) + '" ry="' + f1(r * 1.3) + '" transform="rotate(30 ' + f1(mx) + ' ' + f1(my) + ')" fill="#fff59d" stroke="#ffb800" stroke-width="3.5" stroke-dasharray="7 5" stroke-linecap="round"/>');
+        fx = k0[0]; fy = k0[1]; }
+      ring.forEach((c, k) => { const p = nb(cx, cy, d, 0, k); o.push(piece(p[0], p[1], r, c, 0)); });
+      o.push(piece(P[0], P[1], r, after ? 0 : 3, 0));
+      if (after) o.push(piece(cx, cy, r, 0, 0, 'd4p'));
+      else o.push(piece(cx, cy, r, -1, 0) + txt(cx, cy + 7, '?', 20, '#ff9f1c', ' stroke="' + INK + '" stroke-width="4" paint-order="stroke"'));
     };
-    panel('d', 72, 118, false); panel('e', 228, 118, true);
-    o.push('<path d="M128 112 h30 m-9 -9 l9 9 l-9 9" fill="none" stroke="' + INK + '" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>');
-    o.push(txt(150, 98, 'swap', 14, 'middle', '#c98400'));
-    o.push(txt(72, 36, 'before', 15), txt(228, 36, 'after', 15));
-    o.push(txt(150, 218, 'red and green swap places,', 13), txt(150, 236, 'so red is free for the ?', 13));
-    return svg('d', o.join(''), '.d4g{animation:d4a 1.2s ease-in-out infinite}@keyframes d4a{50%{stroke-dashoffset:-11}}.d4p{animation:d4b 1.6s ease-in-out infinite;transform-box:fill-box;transform-origin:center}@keyframes d4b{0%,100%{transform:scale(1)}50%{transform:scale(1.12)}}');
+    panel(70, 112, false); panel(226, 112, true);
+    o.push('<path d="M130 110h34" stroke="' + INK + '" stroke-width="12" stroke-linecap="round"/><path d="M152 98l14 12-14 12" fill="none" stroke="' + INK + '" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>' +
+      '<path d="M130 110h34" stroke="#ffc928" stroke-width="6" stroke-linecap="round"/><path d="M152 98l14 12-14 12" fill="none" stroke="#ffc928" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>');
+    o.push(dabRow(222, 0.85, 3));
+    o.push(finger(f1(fx), f1(fy)));
+    return svg(o.join(''), FCSS + '.d4g{animation:d4a 1.2s ease-in-out infinite}@keyframes d4a{50%{stroke-dashoffset:-12;opacity:.6}}' +
+      '.d4p{animation:d4b 1.6s ease-in-out infinite;transform-box:fill-box;transform-origin:center}@keyframes d4b{0%,100%{transform:scale(1)}50%{transform:scale(1.14)}}');
   })();
 
-  // ---------- intro 5: rub out and win ----------
+  // ---------- intro 5: wipe and finish ----------
   const i5 = (() => {
     const cx = 150, cy = 140, r = 28, d = r * 1.75, o = [], ring = [1, 2, 1, 2, 1, 3];
-    o.push(piece('f', cx, cy, r, 0, 0));
-    ring.forEach((c, k) => { const p = nb(cx, cy, d, 0, k); o.push(piece('f', p[0], p[1], r, c, 0)); });
-    o.push('<g transform="translate(150 40) rotate(-6)"><rect x="-72" y="-22" width="144" height="44" rx="14" fill="#fff59d" stroke="' + INK + '" stroke-width="3.2"/>' + txt(0, 9, 'Coloured!', 28, 'middle', INK) + '</g>');
-    o.push('<g class="fe" transform="translate(236 196) rotate(-28)"><rect x="-22" y="-11" width="44" height="22" rx="6" fill="#ff9cb8" stroke="' + INK + '" stroke-width="2.8"/><rect x="-22" y="-11" width="14" height="22" rx="6" fill="#fff" stroke="' + INK + '" stroke-width="2.8"/></g>');
-    o.push(txt(54, 214, 'rub out', 13, 'middle'), txt(54, 230, 'to redo', 13, 'middle'));
-    return svg('f', o.join(''), '.fe{animation:feb 1.4s ease-in-out infinite}@keyframes feb{0%,100%{translate:0 0}50%{translate:-8px 4px}}');
+    o.push(piece(cx, cy, r, 0, 0));
+    ring.forEach((c, k) => { const p = nb(cx, cy, d, 0, k); o.push(k === 1 ? piece(p[0], p[1], r, -1, 0) + piece(p[0], p[1], r, c, 0, 'fw') : piece(p[0], p[1], r, c, 0)); });
+    const p1 = nb(cx, cy, d, 0, 1);
+    o.push(splat(242, 44, 14, PC[3], 4, { n: 8, sat: 3 }), splat(58, 50, 11, PC[1], 6, { n: 7, sat: 2 }));
+    o.push('<g transform="translate(150 38) rotate(-6)"><rect x="-70" y="-19" width="144" height="44" rx="14" fill="' + INK + '" opacity=".3"/><rect x="-74" y="-23" width="148" height="44" rx="14" fill="#fff59d" stroke="' + INK + '" stroke-width="3.2"/>' +
+      txt(0, 9, 'Coloured!', 28, '#ff4f9a', ' stroke="' + INK + '" stroke-width="5" paint-order="stroke" stroke-linejoin="round"') + '</g>');
+    o.push(finger(f1(p1[0]), f1(p1[1])));
+    return svg(o.join(''), FCSS + '.fw{animation:fww 2.4s ease-in-out infinite}@keyframes fww{0%,38%{opacity:1}46%,80%{opacity:0}92%,100%{opacity:1}}');
   })();
 
-  // ---------- bonus tile: a crayon hexagon ----------
+  // ---------- bonus gem: one paint shape per element (splat, drop, dollop, swatch) ----------
+  function gemPath(e, R) {
+    if (e === 0) return splatPath(0, 0, R * 0.86, 8, 11).d;
+    if (e === 1) return 'M0 ' + f1(-R * 1.04) + 'C' + f1(R * 0.5) + ' ' + f1(-R * 0.5) + ' ' + f1(R * 0.8) + ' ' + f1(-R * 0.1) + ' ' + f1(R * 0.8) + ' ' + f1(R * 0.26) +
+      'A' + f1(R * 0.8) + ' ' + f1(R * 0.8) + ' 0 0 1 ' + f1(-R * 0.8) + ' ' + f1(R * 0.26) + 'C' + f1(-R * 0.8) + ' ' + f1(-R * 0.1) + ' ' + f1(-R * 0.5) + ' ' + f1(-R * 0.5) + ' 0 ' + f1(-R * 1.04) + 'Z';
+    if (e === 2) { const q = v => f1(v * R);
+      return 'M' + q(-0.92) + ' ' + q(0.62) + 'C' + q(-1.12) + ' ' + q(0.1) + ' ' + q(-0.82) + ' ' + q(-0.3) + ' ' + q(-0.46) + ' ' + q(-0.2) + 'C' + q(-0.56) + ' ' + q(-0.86) + ' ' + q(0.1) + ' ' + q(-1.06) + ' ' + q(0.34) + ' ' + q(-0.6) +
+        'C' + q(0.78) + ' ' + q(-0.66) + ' ' + q(1.1) + ' ' + q(-0.22) + ' ' + q(0.86) + ' ' + q(0.06) + 'C' + q(1.16) + ' ' + q(0.26) + ' ' + q(1.06) + ' ' + q(0.72) + ' ' + q(0.78) + ' ' + q(0.74) + 'Z'; }
+    const s = R * 0.72, k = R * 0.26;
+    return 'M0 ' + f1(-s - k) + 'Q' + f1(k * 0.4) + ' ' + f1(-s - k * 0.6) + ' ' + f1(k) + ' ' + f1(-s) + 'L' + f1(s) + ' ' + f1(-k) + 'Q' + f1(s + k * 0.6) + ' ' + f1(-k * 0.4) + ' ' + f1(s + k) + ' 0' +
+      'Q' + f1(s + k * 0.6) + ' ' + f1(k * 0.4) + ' ' + f1(s) + ' ' + f1(k) + 'L' + f1(k) + ' ' + f1(s) + 'Q' + f1(k * 0.4) + ' ' + f1(s + k * 0.6) + ' 0 ' + f1(s + k) +
+      'Q' + f1(-k * 0.4) + ' ' + f1(s + k * 0.6) + ' ' + f1(-k) + ' ' + f1(s) + 'L' + f1(-s) + ' ' + f1(k) + 'Q' + f1(-s - k * 0.6) + ' ' + f1(k * 0.4) + ' ' + f1(-s - k) + ' 0' +
+      'Q' + f1(-s - k * 0.6) + ' ' + f1(-k * 0.4) + ' ' + f1(-s) + ' ' + f1(-k) + 'L' + f1(-k) + ' ' + f1(-s) + 'Q' + f1(-k * 0.4) + ' ' + f1(-s - k * 0.6) + ' 0 ' + f1(-s - k) + 'Z';
+  }
   function tile(x, y, r, e, k) {
-    const R = r * 0.94, p = hexPts(0, 0, R, 0), h = [];
-    for (let i = 0; i < 4; i++) {                                    // a few hatch strokes, deterministic in k
-      const jx = ((k * 7 + i * 5) % 7 - 3) * r * 0.05, jy = ((k * 3 + i * 11) % 5 - 2) * r * 0.05;
-      const px = (i % 2 ? 1 : -1) * r * 0.26 + jx, py = (i < 2 ? -1 : 1) * r * 0.28 + jy, L = r * 0.2;
-      h.push('M' + f1(px - L) + ' ' + f1(py + L) + 'L' + f1(px + L) + ' ' + f1(py - L));
-    }
+    const R = r * 0.94, d = gemPath(e, R), sw = f1(Math.max(2, r * 0.11)), hx = f1(-R * 0.3), hy = f1(-R * 0.34);
     return '<g class="tl e' + e + '" data-k="' + k + '" transform="translate(' + f1(x) + ' ' + f1(y) + ')"><g class="tin">' +
-      '<polygon class="halo" points="' + hexPts(0, 0, R * 1.22, 0) + '" fill="#ffd84a" opacity="0"/>' +
-      '<polygon class="hx" points="' + p + '" fill="' + PC[e] + '" fill-opacity=".78" stroke="' + INK + '" stroke-width="' + f1(Math.max(2, r * 0.13)) + '" stroke-linejoin="round"/>' +
-      '<path class="gr" d="' + h.join('') + '" stroke="' + INK + '" stroke-opacity=".28" stroke-width="' + f1(Math.max(1.2, r * 0.08)) + '" stroke-linecap="round" fill="none"/>' +
+      '<circle class="halo" r="' + f1(R * 1.2) + '" fill="#ffd84a" opacity="0"/>' +
+      '<path d="' + d + '" transform="translate(' + f1(R * 0.08) + ' ' + f1(R * 0.12) + ')" fill="' + INK + '" opacity=".35"/>' +
+      '<path class="hx" d="' + d + '" fill="' + PC[e] + '" stroke="' + INK + '" stroke-width="' + sw + '" stroke-linejoin="round"/>' +
+      '<path d="' + d + '" transform="translate(' + f1(-R * 0.1) + ' ' + f1(-R * 0.12) + ') scale(.62)" fill="#fff" opacity=".18"/>' +
+      '<ellipse class="gr" cx="' + hx + '" cy="' + hy + '" rx="' + f1(R * 0.22) + '" ry="' + f1(R * 0.12) + '" transform="rotate(-35 ' + hx + ' ' + hy + ')" fill="#fff" opacity=".8"/>' +
+      '<circle cx="' + f1(R * 0.36) + '" cy="' + f1(R * 0.34) + '" r="' + f1(R * 0.09) + '" fill="' + PD[e] + '" opacity=".55"/>' +
       '</g></g>';
   }
+
+  // ---------- logo, icon, card ----------
+  const LOGO_BODY = (p) => {
+    const T = (x, y, size, body, fill, extra) => '<text x="' + x + '" y="' + y + '" font-family="' + F + '" font-weight="700" font-size="' + size + '" text-anchor="middle" letter-spacing="1"' + (extra || '') + ' fill="' + fill + '">' + body + '</text>';
+    const doodle = 'Doodle'.split('').map((ch, i) => '<tspan fill="' + PC[[0, 1, 2, 3, 0, 1][i]] + '">' + ch + '</tspan>').join('');
+    const line = (x, y, size, s, col) =>
+      T(x + 3, y + 4, size, s, INK, ' stroke="' + INK + '" stroke-width="8" stroke-linejoin="round"') +
+      T(x, y, size, col || s, '#fff', ' stroke="' + INK + '" stroke-width="7" stroke-linejoin="round" paint-order="stroke"') +
+      T(x, y, size, s, 'url(#' + p + 'hl)');
+    return '<defs><linearGradient id="' + p + 'hl" x1="0" y1="0" x2="0" y2="1"><stop offset=".05" stop-color="#fff" stop-opacity=".6"/><stop offset=".45" stop-color="#fff" stop-opacity="0"/></linearGradient></defs>' +
+      splat(206, 24, 11, '#ff4f9a', 9, { n: 7, sat: 3, sw: 2.2 }) + splat(30, 58, 9, PC[2], 12, { n: 7, sat: 2, sw: 2.2 }) +
+      '<g transform="rotate(-4 120 40)">' + line(112, 33, 31, 'Blank') + line(124, 72, 39, 'Doodle', doodle) + '</g>';
+  };
+  const logo = '<svg viewBox="0 0 240 80" xmlns="http://www.w3.org/2000/svg">' + LOGO_BODY('blank-lg-') + '</svg>';
+
+  const icon = (() => {
+    const p = 'blank-ic-';
+    const pal = 'M20 68C14 42 42 22 70 26C96 30 108 50 100 64C95 72 84 67 80 74C76 82 90 88 83 96C74 105 50 104 36 96C26 90 22 80 20 68Z';
+    const blobs = [[36, 60, 0], [49, 41, 2], [71, 37, 3], [89, 52, 1]].map(([x, y, c], i) => splat(x, y, 10.5, PC[c], i * 5 + 2, { n: 6, sw: 2.8, soft: true })).join('');
+    return '<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg"><defs>' +
+      '<linearGradient id="' + p + 'bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffb3d6"/><stop offset=".5" stop-color="#ff4f9a"/><stop offset="1" stop-color="#9b3cf0"/></linearGradient>' +
+      '<radialGradient id="' + p + 'gl" cx=".25" cy=".18" r=".6"><stop offset="0" stop-color="#fff" stop-opacity=".5"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>' +
+      '<linearGradient id="' + p + 'pl" x1="0" y1="0" x2=".4" y2="1"><stop offset="0" stop-color="#fffef8"/><stop offset="1" stop-color="#f2d9a8"/></linearGradient>' +
+      '<clipPath id="' + p + 'cl"><rect width="120" height="120" rx="26"/></clipPath></defs>' +
+      '<g clip-path="url(#' + p + 'cl)"><rect width="120" height="120" fill="url(#' + p + 'bg)"/><rect width="120" height="120" fill="url(#' + p + 'gl)"/>' +
+      splat(104, 14, 16, '#ffd84a', 21, { n: 8, sat: 3, noShadow: true, noGloss: true, sw: 0, op: '.55' }) +
+      splat(10, 112, 18, '#3fa7f5', 23, { n: 9, sat: 2, noShadow: true, noGloss: true, sw: 0, op: '.45' }) +
+      '<path d="' + pal + '" transform="translate(4 6)" fill="' + INK + '" opacity=".4"/>' +
+      '<path d="' + pal + '" fill="url(#' + p + 'pl)" stroke="' + INK + '" stroke-width="3.6" stroke-linejoin="round"/>' +
+      '<path d="M27 58C29 44 44 32 62 31" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round" opacity=".9"/>' +
+      '<ellipse cx="46" cy="83" rx="7.5" ry="6" fill="#d23f86" stroke="' + INK + '" stroke-width="3"/><path d="M41 81a5.5 4.5 0 0 1 8 -2.4" stroke="' + INK + '" stroke-opacity=".35" stroke-width="2.4" fill="none"/>' +
+      blobs + brush(64, 70, 1, -45, 1.05) +
+      splat(54, 66, 4.6, PC[1], 31, { n: 6, sw: 1.8, noGloss: true }) + '<circle cx="46" cy="60" r="2.4" fill="' + PC[1] + '" stroke="' + INK + '" stroke-width="1.6"/>' +
+      '</g><rect x="1.5" y="1.5" width="117" height="117" rx="25" fill="none" stroke="#fff" stroke-opacity=".28" stroke-width="3"/></svg>';
+  })();
+
+  const card = (() => {
+    const p = 'blank-cd-', R = 25, s3 = Math.sqrt(3), o = [];
+    const blank = { '0,0': 1, '1,-2': 1, '-2,1': 1 }, hot = ['1,0', '1,1'];
+    let cells = [];
+    for (let q = -2; q <= 2; q++) for (let r = Math.max(-2, -q - 2); r <= Math.min(2, -q + 2); r++) cells.push([q, r]);
+    const pos = (q, r) => [120 + R * 1.5 * q, 112 + R * s3 * (r + q / 2)];
+    cells.forEach(([q, r]) => { const [x, y] = pos(q, r), c = blank[q + ',' + r] ? -1 : (((q + 2 * r) % 4) + 4) % 4; o.push(piece(x, y, R, c, 0)); });
+    // a two-paint group glowing, about to swap
+    hot.forEach(k => { const [q, r] = k.split(',').map(Number), [x, y] = pos(q, r);
+      o.push('<polygon points="' + hexPts(x, y, R * 0.95, 0) + '" fill="none" stroke="#ffd84a" stroke-width="7" stroke-linejoin="round"/><polygon points="' + hexPts(x, y, R * 0.8, 0) + '" fill="none" stroke="#fff" stroke-width="3" stroke-dasharray="5 5" stroke-linecap="round"/>'); });
+    const [hx, hy] = pos(0, 0);
+    o.push(txt(f1(hx), f1(hy + 11), '?', 30, '#ff9f1c', ' stroke="' + INK + '" stroke-width="5" paint-order="stroke" stroke-linejoin="round"'));
+    // the brush painting a blank piece, with a splash
+    const [bx, by] = pos(-2, 1);
+    o.push(splat(bx, by, 17, PC[3], 41, { n: 9, sat: 4 }), brush(bx + 6, by - 6, 3, 40, 1.15));
+    o.push(splat(206, 26, 9, PC[0], 44, { n: 7, sat: 2 }));
+    return '<svg viewBox="0 0 240 320" xmlns="http://www.w3.org/2000/svg"><defs>' +
+      '<linearGradient id="' + p + 'bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fffdf6"/><stop offset=".62" stop-color="#fff3df"/><stop offset="1" stop-color="#ffd3e8"/></linearGradient>' +
+      '<pattern id="' + p + 'dt" width="14" height="14" patternUnits="userSpaceOnUse"><circle cx="7" cy="7" r="1.2" fill="#d5cfe6"/></pattern>' +
+      '<linearGradient id="' + p + 'sw" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#ff4f9a"/><stop offset="1" stop-color="#ff8fc0"/></linearGradient>' +
+      '<clipPath id="' + p + 'cl"><rect width="240" height="320" rx="18"/></clipPath></defs>' +
+      '<g clip-path="url(#' + p + 'cl)"><rect width="240" height="320" fill="url(#' + p + 'bg)"/><rect width="240" height="320" fill="url(#' + p + 'dt)"/>' +
+      o.join('') +
+      '<path d="M-10 236C40 222 90 240 130 230C175 220 210 232 250 222V330H-10Z" transform="translate(0 5)" fill="' + INK + '" opacity=".3"/>' +
+      '<path d="M-10 236C40 222 90 240 130 230C175 220 210 232 250 222V330H-10Z" fill="url(#' + p + 'sw)" stroke="' + INK + '" stroke-width="3.5"/>' +
+      '<path d="M14 246C50 236 80 246 110 241" stroke="#fff" stroke-opacity=".5" stroke-width="4" stroke-linecap="round" fill="none"/>' +
+      '<g transform="translate(0 236)">' + LOGO_BODY('blank-cdlg-') + '</g>' +
+      '</g></svg>';
+  })();
+
 
   // ---------- map cell: a rounded hexagon ----------
   function cell(path, x, y, r) {
@@ -317,10 +437,14 @@
   })();
 
   FTH_SKINS.register({
-    id: 'blank', name: 'Blank Doodle', ic: '📝', blurb: 'colour a blank map, swap to unstick',
+    id: 'blank', name: 'Blank Doodle', ic: '📝', blurb: 'paint a blank map',
     coin: { name: 'paint drop', plural: 'paint drops', glyph: '💧', value: 3, pitch: 1.05,   // this skin's currency (SKIN-SPEC.md section 12)
       colors: { main: '#ff4f9a', edge: '#1b1b2f' },
-      svg: FTH_SKINS.coinArt('<path d="M0 -12.2C4 -6 9.2 -1.6 9.2 3.8A9.2 9.2 0 0 1 -9.2 3.8C-9.2 -1.6 -4 -6 0 -12.2Z" fill="#ff4f9a" stroke="#1b1b2f" stroke-width="2" stroke-linejoin="round"/><path d="M-5.2 2.4A5.4 5.4 0 0 0 -2.2 8" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round" opacity=".9"/><circle cx="3.4" cy="-1" r="1.4" fill="#fff" opacity=".55"/>') },
+      svg: FTH_SKINS.coinArt('<path d="M0 -12.2C4 -6 9.2 -1.6 9.2 3.8A9.2 9.2 0 0 1 -9.2 3.8C-9.2 -1.6 -4 -6 0 -12.2Z" transform="translate(1.3 1.8)" fill="#1b1b2f" opacity=".45"/>' +
+        '<path d="M0 -12.2C4 -6 9.2 -1.6 9.2 3.8A9.2 9.2 0 0 1 -9.2 3.8C-9.2 -1.6 -4 -6 0 -12.2Z" fill="#ff4f9a" stroke="#1b1b2f" stroke-width="2" stroke-linejoin="round"/>' +
+        '<path d="M4.6 8.6A9.2 9.2 0 0 0 9.1 2.4" stroke="#c42a72" stroke-width="2.4" fill="none" stroke-linecap="round"/>' +
+        '<path d="M-5.2 2.4A5.4 5.4 0 0 0 -2.2 8" stroke="#fff" stroke-width="2.2" fill="none" stroke-linecap="round" opacity=".95"/><ellipse cx="-2.6" cy="-3.4" rx="1.4" ry="2.4" transform="rotate(30 -2.6 -3.4)" fill="#fff" opacity=".8"/>') },
+    icon, card, logo,
     src: 'lab/blank.html', waits: true, own: true, needs: ['cells'],
     hud: 'compact',
     theme: {
@@ -342,11 +466,10 @@
       '--sk-star-on': '#ffc928', '--sk-star-edge': '#1b1b2f', '--sk-star-off': '#8b889c', '--sk-star-off-edge': '#55536a',
       '--sk-ctl': '#ffffff', '--sk-ctl-ink': '#1b1b2f', '--sk-ctl-edge': '#1b1b2f',
     },
-    css: '.tl .hx{transition:filter .15s,stroke .15s}' +
-      '.tl.lit .hx{fill-opacity:1;filter:saturate(1.25) brightness(1.06)}' +
-      '.tl.lit .gr{stroke-opacity:.5}' +
+    css: '.tl .hx{transition:filter .15s}' +
+      '.tl.lit .hx{filter:saturate(1.25) brightness(1.08)}' +
       '.tl.glow .halo{opacity:.85}' +
-      `.tl.glow .hx{stroke:${INK};fill-opacity:1;filter:saturate(1.4) brightness(1.12)}` +
+      '.tl.glow .hx{filter:saturate(1.4) brightness(1.15)}' +
       // chrome: thick ink outlines, flat 3px offset shadows, Fredoka everywhere
       `.btn3d,.badge,.pill,.coins,.goalbar,.starbar,.mnode .mst,.mnode .mtag,.say .msg,.skins button,#btnGo{font-family:var(--sk-font);text-shadow:none}` +
       `.btn3d{border:3px solid ${INK};border-radius:16px;color:${INK};--sh:${INK};box-shadow:3px 3px 0 ${INK};letter-spacing:.02em;font-weight:700}` +
@@ -392,14 +515,16 @@
     fonts: ['https://fonts.googleapis.com/css2?family=Fredoka:wght@500;700&display=swap'],
     title: { svg: titleSvg },
     intro: [
-      { title: 'Colour every piece', text: 'The map starts blank. Pick a pen, then tap or drag across pieces to colour them in. The hole counts too.', svg: i1 },
-      { title: 'Neighbours must differ', text: 'Two pieces that touch can never share a pen. A red glow on the border shows a clash.', svg: i2 },
-      { title: 'A "?" means stuck', text: 'When all four pens already touch a blank piece, a pencil "?" appears. It cannot be coloured as things stand.', svg: i3 },
-      { title: 'Swap a two-pen group', text: 'Press a coloured piece, then let go on its glowing group: its two pens trade places. That frees a pen for the "?".', svg: i4 },
-      { title: 'Rub out and finish', text: 'Tap a piece with its own pen to rub it out. Colour every piece with no matching neighbours to win.', svg: i5 },
+      { title: 'Paint every piece', text: 'Pick a paint, then tap or drag across blank pieces.', svg: i1 },
+      { title: 'Neighbours must differ', text: 'Touching pieces can never share a paint.', svg: i2 },
+      { title: 'A ? means stuck', text: 'All four paints touch it, so it cannot be painted yet.', svg: i3 },
+      { title: 'Swap two paints', text: 'Hold a painted piece, release on its glowing group: paints trade.', svg: i4 },
+      { title: 'Wipe and finish', text: 'Tap a piece with its own paint to wipe it.', svg: i5 },
     ],
     bonus: {
-      label: 'BONUS',
+      label: 'PAINT',
+      games: ['pop', 'chain'],
+      intro: 'zoom',
       board: 'radial-gradient(rgba(43,45,66,.1) 1px, transparent 1.4px) 0 0 / 14px 14px, #fffdf6',
       line: '#1b1b2f',
       tile,
@@ -417,9 +542,13 @@
     },
     words: {
       win: 'Coloured!',
-      perfect: 'Every piece coloured, no neighbours match!',
-      par: 'Par is {par} swaps. Can you get ★★★?',
-      chart: 'COLOURING SPACE',
+      perfect: 'Every piece painted!',
+      par: 'Par: {par} swaps',
+      chart: 'COLOUR SPACE',
     },
+    eggs: [
+      { id: 'clean-sheet', on: 'page', note: 'paint the whole map without a single clashing colour', pays: true },
+      { id: 'drip', on: 'idle', secs: 40, run(fx) { fx.burst && fx.burst('💧', 0.5, 0.3); fx.sound && fx.sound('pop'); } },
+    ],
   });
 })();

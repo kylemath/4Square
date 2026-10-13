@@ -2,29 +2,35 @@
 <!--
   BLANK DOODLE (lab front end; a sister of doodle.html "Doodle Map" and lines.html "Line Doodle")
 
-  What the player sees: the same taped sketchbook page and the same hand-drawn map (g.cells of the level from ?lvl=,
-  so it follows the lab's level selector), but the sheet starts BLANK: every piece is uncoloured, the hole included
-  (here the hole is just another piece; the whole map is the puzzle). Four uncapped markers, each with its own hatch.
-  A pencilled cue says "colour every piece".
+  What the player sees: a taped sheet of paper with a hand-inked map (g.cells of the level from ?lvl=, so it follows
+  the lab's level selector), but the sheet starts BLANK: every piece is unpainted, the hole included (here the hole is
+  just another piece; the whole map is the puzzle). Four tubes of glossy poster paint at the bottom, each with its own
+  hatch on the label (so the paints differ without colour too). No instructions on screen: a paint-drop chip counts the
+  pieces still blank, a ghost finger shows the next tap (a tube first, then a piece), and the tubes glow until one is picked.
 
   What the player does (Line-Doodle style, with Kempe swaps on the PARTIAL colouring):
-    - pick a pen b (tap a marker; it stays picked).
-    - tap (or tap-drag across) UNCOLOURED pieces: they fill with b (bloom from the finger). If a neighbour already has
-      b, the shared border glows red with a spark: a clash. It is allowed; it is the feedback.
-    - press a COLOURED piece u (pen a != b): the group of COLOURED pieces connected through pens {a, b} that contains
-      u (BFS over coloured pieces only; blank pieces are gaps) lights up with a dashed outline and a wash of the pen
-      each piece would get. Release on the group: a <-> b throughout it, with the re-bloom wave from the finger
-      through the group in BFS order. Slide off before releasing to cancel. With a mouse, hovering shows the group.
+    - pick a paint b (tap a tube; it stays picked, a dab of paint sits on its nozzle).
+    - tap (or tap-drag across) BLANK pieces: they fill with b (a bloom from the finger, a splat of drops, a pop and a
+      tone that rises as the sheet fills; a drop flies into the counter). If a neighbour already has b, the piece
+      wobbles and the shared border glows red with a spark: a clash. It is allowed; it is the feedback.
+    - press a PAINTED piece u (paint a != b): it lifts and glows, and the group of painted pieces connected through
+      paints {a, b} that contains u (BFS over painted pieces only; blank pieces are gaps) lights up, pulsing in its two
+      paints, with a rising arpeggio. Release on the group: a <-> b throughout it, re-painted in a wave from the finger
+      through the group in BFS order (45 ms a step, each piece pops with a sound); LAB.at(x, y) says where the coins
+      fly from. Slide off before releasing to cancel. With a mouse, hovering shows the group.
       A swap never creates or removes a clash (the group is maximal), so a clean colouring stays clean.
-    - tap a coloured piece with its OWN pen: rub it out (drag to rub out more pieces of that pen).
-  A blank piece whose neighbours already use all 4 pens gets a pencilled "?": it can't be coloured as things stand.
-  That is the teaching moment: about 1.5 s later a pencil circle goes round a piece whose swap frees a pen for it and
-  that pen bobs (found by trying every neighbour u and pen b, swapping the partial group and checking the "?" piece;
-  if no single swap does it, the first step of the shortest 2- or 3-swap fix; if none, a neighbour to rub out).
-  Otherwise, idle 10 s: the pen that fits the most constrained blank piece bobs and the piece is circled (or a
-  clashing piece is circled, with its own pen, for rubbing out).
-  Goal: every piece coloured and no clashes -> "Coloured!" sticker + confetti; tap for a fresh blank sheet (standalone only).
-  Margin: undo (own history of colourings: one entry per stroke, swap or rub-out) and restart (blank sheet, undoable).
+    - tap a painted piece with its OWN paint: wipe it (drag to wipe more pieces of that paint).
+  A blank piece whose neighbours already use all 4 paints gets a "?": it can't be painted as things stand.
+  That is the teaching moment: about 1.5 s later a circle goes round a piece whose swap frees a paint for it and
+  that tube bobs (found by trying every neighbour u and paint b, swapping the partial group and checking the "?" piece;
+  if no single swap does it, the first step of the shortest 2- or 3-swap fix; if none, a neighbour to wipe).
+  Otherwise, idle 10 s: the paint that fits the most constrained blank piece bobs and the piece is circled (or a
+  clashing piece is circled, with its own paint, for wiping).
+  Goal: every piece painted and no clashes -> a 3.6 s celebration (the pieces bounce in two waves, four big paint
+  splashes sweep the sheet, a "Coloured!" sticker, drops burst), then LAB.finish(swaps). Standalone, a tap after that
+  starts a fresh blank sheet; inside the app nothing restarts (the shell owns what happens next).
+  Egg 'clean-sheet': painting the whole map without ever making a clash calls LAB.egg('clean-sheet', 120).
+  Margin: undo (own history of colourings: one entry per stroke, swap or wipe) and clear (blank sheet, undoable).
 
   The partial-colouring logic lives in this page (BD.group / BD.swapped / BD.clashes / BD.rescue / BD.hint).
   core.js is used only for geometry and adjacency (g.n, g.adj, g.cells, g.hole); g.col and g.swap are not used.
@@ -36,58 +42,97 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
 <title>Blank Doodle</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;700&family=Patrick+Hand&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;700&display=swap" rel="stylesheet">
 <style>
   html, body { margin: 0; height: 100%; overflow: hidden; touch-action: none; -webkit-user-select: none; user-select: none;
     -webkit-tap-highlight-color: transparent; background: #e6d2ad;
     background-image: radial-gradient(rgba(140,100,50,.13) 1.2px, transparent 1.6px); background-size: 15px 15px;
-    font-family: Fredoka, 'Baloo 2', 'Arial Rounded MT Bold', 'Trebuchet MS', system-ui, sans-serif; color: #2b2d42; }
+    font-family: Fredoka, 'Baloo 2', 'Arial Rounded MT Bold', 'Trebuchet MS', system-ui, sans-serif; color: #1b1b2f; }
   #cv { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; }
   #pal { position: fixed; display: flex; align-items: flex-end; justify-content: center; pointer-events: none; }
   .pen { pointer-events: auto; border: 0; background: none; padding: 0; margin: 0; cursor: pointer; position: relative;
-    transition: transform .2s cubic-bezier(.3,1.7,.5,1), opacity .3s, filter .3s; transform-origin: 50% 100%; }
-  .pen svg { display: block; width: 100%; height: 100%; overflow: visible; }
+    transition: transform .2s cubic-bezier(.3,1.7,.5,1), opacity .3s; transform-origin: 50% 100%; }
+  .pen svg { display: block; width: 100%; height: 100%; overflow: visible; transition: filter .25s; }
   .pen .cap { transition: transform .45s cubic-bezier(.3,1.6,.5,1), opacity .45s; transform-box: fill-box; transform-origin: 50% 100%; }
   .pen.open .cap { transform: translate(14px,-46px) rotate(38deg); opacity: 0; }
+  .pen .dab { opacity: 0; transform: scale(.2); transform-box: fill-box; transform-origin: 50% 100%; transition: transform .35s cubic-bezier(.3,1.9,.5,1), opacity .2s; }
+  .pen.sel .dab { opacity: 1; transform: none; }
   .pen.sel { transform: translateY(-16%) rotate(-6deg); }
+  .pen.sel svg { filter: drop-shadow(0 0 6px var(--pc)) drop-shadow(0 0 2px #fff); }
+  #pal.pick .pen svg { animation: pglow 1.4s ease-in-out infinite; }      /* nothing picked yet: every tube glows */
+  @keyframes pglow { 50% { filter: drop-shadow(0 0 8px #fff59d) drop-shadow(0 0 3px #ffc928); } }
   .pen.shake { animation: shake .4s; }
   .pen.hop { animation: hop .45s cubic-bezier(.3,1.8,.5,1); }
   .pen.bob { animation: bob 1.1s ease-in-out infinite; }
   @keyframes shake { 20% { transform: translateY(-10%) rotate(-12deg); } 45% { transform: translateY(-4%) rotate(10deg); } 70% { transform: rotate(-5deg); } }
   @keyframes hop { 40% { transform: translateY(-14%); } }
   @keyframes bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-12%) rotate(4deg); } }
-  #tools { position: fixed; left: 6px; top: 4px; display: flex; gap: 4px; }
-  #tools button { box-sizing: border-box; width: 36px; height: 34px; padding: 3px; border: 2px solid var(--sk-ctl-edge, transparent); border-radius: 10px; background: var(--sk-ctl, none); cursor: pointer; opacity: .75; }   /* --sk-ctl*: the skin's control tokens (lab/core.js) */
-  #tools svg { stroke: var(--sk-ctl-ink, #2b2d42); }
-  #tools button:active { transform: scale(.9); }
-  #tools svg { width: 100%; height: 100%; display: block; }
+  /* margin controls: chunky 3D buttons in the skin's control tokens (lab/core.js passes --sk-ctl*) */
+  #tools { position: fixed; left: 8px; top: 6px; display: flex; gap: 8px; }
+  #tools button { box-sizing: border-box; width: 42px; height: 40px; padding: 5px; cursor: pointer;
+    background: var(--sk-ctl, #ffffff); border: 3px solid var(--sk-ctl-edge, #1b1b2f); border-radius: 13px;
+    box-shadow: 0 4px 0 var(--sk-ctl-edge, #1b1b2f); transition: transform .08s, box-shadow .08s; }
+  #tools button:active { transform: translateY(4px); box-shadow: 0 0 0 var(--sk-ctl-edge, #1b1b2f); }
+  #tools button.no { animation: nope .35s; }
+  @keyframes nope { 25% { transform: translateX(-4px) rotate(-6deg); } 60% { transform: translateX(3px) rotate(4deg); } }
+  #tools svg { width: 100%; height: 100%; display: block; stroke: var(--sk-ctl-ink, #1b1b2f); }
+  /* the counter: a paint drop and the number of pieces still blank */
+  #cnt { position: fixed; pointer-events: none; display: flex; align-items: center; gap: .2em; transform: translate(-50%, -50%);
+    background: #fff; border: 3px solid #1b1b2f; border-radius: 999px; padding: .08em .55em .08em .3em; box-shadow: 3px 3px 0 #1b1b2f;
+    font-weight: 700; line-height: 1; white-space: nowrap; }
+  #cnt svg { width: 1.15em; height: 1.15em; display: block; overflow: visible; }
+  #cnt b { min-width: 1.1em; text-align: center; }
+  #cnt.bump { animation: bump .42s cubic-bezier(.3,1.9,.5,1); }
+  #cnt.done { background: #fff59d; }
+  @keyframes bump { 35% { transform: translate(-50%, -50%) scale(1.3) rotate(-5deg); } }
+  /* the ghost finger */
+  #gf { position: fixed; left: 0; top: 0; width: 44px; height: 52px; pointer-events: none; opacity: 0; transition: opacity .3s, left .45s cubic-bezier(.4,1.3,.5,1), top .45s cubic-bezier(.4,1.3,.5,1); z-index: 3; }
+  #gf.on { opacity: .95; }
+  #gf svg { width: 100%; height: 100%; display: block; overflow: visible; }
+  #gf.on .hand { animation: gft 1.5s ease-in-out infinite; transform-box: fill-box; transform-origin: 25% 8%; }
+  #gf.on .rip { animation: gfr 1.5s ease-out infinite; transform-box: fill-box; transform-origin: center; }
+  @keyframes gft { 0%, 100% { transform: translate(9px, 12px); } 40% { transform: translate(0, 0) scale(.92); } 55% { transform: translate(2px, 3px); } }
+  @keyframes gfr { 0%, 36% { transform: scale(.2); opacity: 0; } 42% { opacity: .9; } 80%, 100% { transform: scale(1.8); opacity: 0; } }
   #stamp { position: fixed; pointer-events: none; display: flex; flex-direction: column; align-items: center; justify-content: center;
-    opacity: 0; transform: scale(.3) rotate(-25deg); transition: opacity .2s, transform .45s cubic-bezier(.3,1.8,.5,1); }
+    opacity: 0; transform: scale(.3) rotate(-25deg); transition: opacity .2s, transform .5s cubic-bezier(.3,1.8,.5,1); z-index: 2; }
   #stamp.on { opacity: 1; transform: scale(1) rotate(-8deg); }
-  #stamp .st { background: #fffdf5; border: 3px solid #2b2d42; border-radius: 18px; padding: .2em .6em; font-weight: 700;
-    box-shadow: 4px 5px 0 rgba(43,45,66,.85); white-space: nowrap; }
-  #stamp .nx { margin-top: .5em; font-size: .45em; font-weight: 500; background: #fff59d; padding: .25em .7em;
-    transform: rotate(5deg); box-shadow: 2px 3px 0 rgba(0,0,0,.15); }
-  .embed #stamp .nx { display: none; }   /* inside the app the shell owns what happens next */
-  @media (prefers-reduced-motion: reduce) { .pen, .pen .cap, #stamp { transition: none; } .pen.shake, .pen.hop, .pen.bob { animation: none; } }
+  #stamp .st { background: #fff59d; border: 4px solid #1b1b2f; border-radius: 20px; padding: .12em .55em .2em; font-weight: 700;
+    box-shadow: 5px 6px 0 #1b1b2f; white-space: nowrap; letter-spacing: .02em; }
+  #stamp .st span { -webkit-text-stroke: .09em #1b1b2f; paint-order: stroke fill; display: inline-block; }
+  #stamp.on .st span { animation: hopl .6s cubic-bezier(.3,1.8,.5,1) both; }
+  @keyframes hopl { 0% { transform: translateY(.5em) scale(.4); } 60% { transform: translateY(-.15em); } 100% { transform: none; } }
+  @media (prefers-reduced-motion: reduce) {
+    .pen, .pen .cap, .pen .dab, #stamp, #gf { transition: none; }
+    .pen.shake, .pen.hop, .pen.bob, #pal.pick .pen svg, #cnt.bump, #gf.on .hand, #gf.on .rip, #stamp.on .st span, #tools button.no { animation: none; }
+  }
 </style>
 </head>
 <body>
-<canvas id="cv"></canvas>
+<canvas id="cv" role="img" aria-label="a blank map to paint: pick a paint, then tap the pieces"></canvas>
 <div id="tools">
-  <button id="undo" aria-label="undo"><svg viewBox="0 0 30 30" fill="none" stroke="#2b2d42" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+  <button id="undo" aria-label="undo"><svg viewBox="0 0 30 30" fill="none" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round">
     <path d="M9 11 C13 6.5 22 7 23.5 14 C25 21 17 24.5 12 22"/><path d="M8.5 5.5 L8.6 11.4 L14.3 11.2"/></svg></button>
-  <button id="again" aria-label="blank sheet"><svg viewBox="0 0 30 30" fill="none" stroke="#2b2d42" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+  <button id="again" aria-label="clear the page"><svg viewBox="0 0 30 30" fill="none" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round">
     <path d="M23 10.5 A9.2 9.2 0 1 0 24.5 17"/><path d="M24.2 4.8 L23.4 10.8 L17.6 9.6"/></svg></button>
 </div>
-<div id="pal"></div>
-<div id="stamp"><div class="st">Coloured!</div><div class="nx">tap for a fresh sheet</div></div>
+<div id="pal" role="group" aria-label="paints"></div>
+<div id="cnt" role="status" aria-label="pieces left to paint"><svg viewBox="-13 -13 26 26" id="cntD">
+  <path d="M0 -12.2C4 -6 9.2 -1.6 9.2 3.8A9.2 9.2 0 0 1 -9.2 3.8C-9.2 -1.6 -4 -6 0 -12.2Z" transform="translate(1.3 1.8)" fill="#1b1b2f" opacity=".4"/>
+  <path d="M0 -12.2C4 -6 9.2 -1.6 9.2 3.8A9.2 9.2 0 0 1 -9.2 3.8C-9.2 -1.6 -4 -6 0 -12.2Z" fill="#ff4f9a" stroke="#1b1b2f" stroke-width="2.2" stroke-linejoin="round"/>
+  <path d="M-5.2 2.4A5.4 5.4 0 0 0 -2.2 8" stroke="#fff" stroke-width="2.2" fill="none" stroke-linecap="round"/></svg><b id="cntN">0</b></div>
+<div id="gf" aria-hidden="true"><svg viewBox="0 0 44 52">
+  <circle class="rip" cx="12" cy="3" r="10" fill="none" stroke="#fff" stroke-width="3.5"/>
+  <g class="hand"><g transform="scale(.8) translate(0 0)">
+    <path d="M10 24V9a5 5 0 0 1 10 0V21a4.5 4.5 0 0 1 8 1.5a4.5 4.5 0 0 1 8 2.5a4 4 0 0 1 7 3V38c0 7-5 11-12 11h-5c-5 0-8-2.5-11-6.5l-7-9a4.2 4.2 0 0 1 6.5-5.2Z" transform="translate(3 4)" fill="#1b1b2f" opacity=".3"/>
+    <path d="M10 24V9a5 5 0 0 1 10 0V21a4.5 4.5 0 0 1 8 1.5a4.5 4.5 0 0 1 8 2.5a4 4 0 0 1 7 3V38c0 7-5 11-12 11h-5c-5 0-8-2.5-11-6.5l-7-9a4.2 4.2 0 0 1 6.5-5.2Z" fill="#fff" stroke="#1b1b2f" stroke-width="3" stroke-linejoin="round"/>
+    <path d="M13 10V20" stroke="#d6dbe8" stroke-width="3" stroke-linecap="round"/></g></g></svg></div>
+<div id="stamp" aria-hidden="true"><div class="st"></div></div>
 
 <script src="../levels.js"></script>
 <script src="../layout.js"></script>
 <script src="core.js"></script>
 <script>
-// inside the app the shell's HUD (hud=full|compact) already shows the level title and stars; this page keeps only its own cue, undo and restart
+// inside the app the shell's HUD (hud=full|compact) already shows the level title and stars; this page keeps only its counter, undo and clear
 const HUD = new URLSearchParams(location.search).get('hud'), IN_HUD = HUD === 'full' || HUD === 'compact';
 document.documentElement.dataset.hud = IN_HUD ? HUD : '';
 </script>
@@ -237,28 +282,29 @@ const BD = (() => {
   const RM = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
   let g = LAB.game(); if (!g.cells) g = LAB.game('4');
   const M = BD.prep(g), N = g.n, ADJ = g.adj;
-  const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
-  const palEl = document.getElementById('pal'), stamp = document.getElementById('stamp');
-  const INK = '#2b2d42', PENCIL = 'rgba(80,82,96,', PAPER = '#fffcf3';
+  const $ = id => document.getElementById(id);
+  const cv = $('cv'), ctx = cv.getContext('2d'), palEl = $('pal'), stamp = $('stamp'), cntEl = $('cnt'), cntN = $('cntN'), gf = $('gf');
+  const INK = '#1b1b2f', PAPER = '#fffdf7';
   const PENS = [
     { c: '#ff5d5d', d: '#c93636', a: Math.PI / 4 }, { c: '#3fa7f5', d: '#1f74b8', a: -Math.PI / 4 },
     { c: '#ffc928', d: '#c9900a', a: 0 }, { c: '#3ccf6e', d: '#1f8f45', a: Math.PI / 2 }];
   function rng(seed) { let a = seed >>> 0;
     return () => { a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+  stamp.firstChild.innerHTML = 'Coloured!'.split('').map((ch, i) => `<span style="color:${['#ff4f9a', '#3fa7f5', '#ffc928', '#3ccf6e'][i % 4]};animation-delay:${i * 45}ms">${ch}</span>`).join('');
 
   // ---------- state ----------
   let col = new Array(N).fill(-1), hist = [], pen = -1, won = false, wonAt = 0, drawStart = 0, drawTotal = 0;
-  let nSwaps = 0;                                          // swaps used on this sheet (reported to the app)
-  let anim = [], wob = [], confetti = [], hintOn = null, hintT0 = 0, lastClash = 0, qHop = [];
-  let press = null, hoverG = null; // press: { u, G, over } while a coloured piece is held
+  let nSwaps = 0, everClash = false;                       // swaps used on this sheet (reported to the app); a clash ever made
+  let anim = [], wob = [], pops = [], drops = [], flies = [], sweeps = [], hintOn = null, hintT0 = 0, lastClash = 0, qHop = [];
+  let press = null, hoverG = null; // press: { u, G, over, t0 } while a painted piece is held
 
   // ---------- layout ----------
-  let W = 0, H = 0, dpr = 1, PX = 0, PY = 0, PS = 0, PH = 0, RX = 0, RY = 0, RS = 0, CH = 0, penW = 0, penH = 0, paper = null, paths = [];
+  let W = 0, H = 0, dpr = 1, PX = 0, PY = 0, PS = 0, PH = 0, RX = 0, RY = 0, RS = 0, CH = 0, penW = 0, penH = 0, paper = null, paths = [], CX = 0, CY = 0;
   const ASP = 1.07;
   function layout() {
     W = innerWidth; H = innerHeight; dpr = Math.min(3, window.devicePixelRatio || 1);
     cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
-    const land = W > H * 1.15, top = 40;
+    const land = W > H * 1.15, top = 52;
     if (land) {
       penH = Math.max(70, Math.min(170, H * 0.34)); penW = penH * 0.3;
       const palW = 4 * penW + 3 * penW * 0.35 + 24;
@@ -275,24 +321,25 @@ const BD = (() => {
     palEl.style.gap = (penW * 0.35) + 'px';
     [...palEl.children].forEach(b => { b.style.width = penW + 'px'; b.style.height = penH + 'px'; });
     const m = PS * 0.05; CH = PH - PS; RS = PS - 2 * m; RX = PX + m; RY = PY + CH + m;
-    Object.assign(stamp.style, { left: RX + 'px', top: RY + 'px', width: RS + 'px', height: RS + 'px', fontSize: Math.max(22, PS * 0.11) + 'px' });
-    makePaper(); makePaths(); makePatterns(); render();
+    Object.assign(stamp.style, { left: RX + 'px', top: RY + 'px', width: RS + 'px', height: RS + 'px', fontSize: Math.max(26, PS * 0.13) + 'px' });
+    Object.assign(cntEl.style, { left: (PX + PS / 2) + 'px', top: (PY + PS * 0.012) + 'px', fontSize: Math.max(15, PS * 0.058) + 'px' });
+    makePaper(); makePaths(); makePatterns();
+    const r = $('cntD').getBoundingClientRect(); CX = (r.left + r.width / 2) * dpr; CY = (r.top + r.height / 2) * dpr;
+    cue(); render();
   }
   const X = p => (RX + p[0] * RS) * dpr, Y = p => (RY + p[1] * RS) * dpr;
   function makePaper() {
     const c = document.createElement('canvas'), w = Math.round(PS * dpr), h = Math.round(PH * dpr); c.width = w; c.height = h;
     const q = c.getContext('2d'); q.fillStyle = PAPER; q.fillRect(0, 0, w, h);
     const R = rng(7);
-    for (let i = 0; i < w * h / 260; i++) { q.fillStyle = `rgba(120,100,60,${0.025 + R() * 0.05})`; q.fillRect(R() * w, R() * h, 1.2 * dpr, 1.2 * dpr); }
-    q.strokeStyle = 'rgba(80,140,200,.10)'; q.lineWidth = dpr;
-    for (let y = w * 0.035; y < h; y += w * 0.07) { q.beginPath(); q.moveTo(0, y); q.lineTo(w, y); q.stroke(); }
+    for (let i = 0; i < w * h / 260; i++) { q.fillStyle = `rgba(120,100,60,${0.02 + R() * 0.04})`; q.fillRect(R() * w, R() * h, 1.2 * dpr, 1.2 * dpr); }
     paper = c;
   }
   let pats = [];
-  function makePatterns() {
+  function makePatterns() {   // a faint brush-stroke texture per paint, in its own direction (the paints differ without colour too)
     pats = PENS.map(P => {
-      const s = Math.round(9 * dpr), c = document.createElement('canvas'); c.width = c.height = s;
-      const q = c.getContext('2d'); q.strokeStyle = P.d; q.globalAlpha = 0.33; q.lineWidth = 1.6 * dpr; q.beginPath();
+      const s = Math.round(10 * dpr), c = document.createElement('canvas'); c.width = c.height = s;
+      const q = c.getContext('2d'); q.strokeStyle = P.d; q.globalAlpha = 0.2; q.lineWidth = 1.8 * dpr; q.lineCap = 'round'; q.beginPath();
       if (P.a === 0) { q.moveTo(0, s / 2); q.lineTo(s, s / 2); }
       else if (P.a === Math.PI / 2) { q.moveTo(s / 2, 0); q.lineTo(s / 2, s); }
       else if (P.a > 0) { for (const o of [-s, 0, s]) { q.moveTo(o, 0); q.lineTo(o + s, s); } }
@@ -306,6 +353,10 @@ const BD = (() => {
   const cen = i => [X(M.info[i].c), Y(M.info[i].c)];
   const reach = (i, x, y) => { let R = 0; for (const q of M.U[i]) R = Math.max(R, Math.hypot(X(q) - x, Y(q) - y)); return R + 2 * dpr; };
   const segMid = s => [(s.p[0] + s.q[0]) / 2, (s.p[1] + s.q[1]) / 2];
+  let SC = [];   // per piece: how much of a pop's scale it takes (a big piece moves a few px at most, not off the sheet)
+  function makeScale() { SC = M.U.map((P, i) => { const c = M.info[i].c; let R = 0; for (const q of P) R = Math.max(R, Math.hypot(q[0] - c[0], q[1] - c[1])); return Math.min(1, 0.11 / Math.max(1e-3, R)); }); }
+  makeScale();
+  const blanks = () => col.reduce((n, c) => n + (c < 0), 0);
 
   // ---------- hand-drawn ink ----------
   function inkify(a, b, R, over) {
@@ -348,47 +399,79 @@ const BD = (() => {
     }
     ctx.stroke();
   }
+  // glossy poster paint: a solid fill, its brush texture, a light bevel top-left and a shade bottom-right (inside the clip)
   function paint(i, c) {
     if (c < 0) return;
-    ctx.globalAlpha = 0.72; ctx.fillStyle = PENS[c].c; ctx.fill(paths[i]);
-    ctx.globalAlpha = 1; ctx.fillStyle = pats[c]; ctx.fill(paths[i]);
+    ctx.fillStyle = PENS[c].c; ctx.fill(paths[i]);
+    ctx.fillStyle = pats[c]; ctx.fill(paths[i]);
+    const d = Math.max(1.6, RS * 0.007) * dpr;
+    ctx.save(); ctx.lineWidth = d * 2.4; ctx.lineJoin = 'round';
+    ctx.translate(d, d); ctx.strokeStyle = 'rgba(255,255,255,.5)'; ctx.stroke(paths[i]);
+    ctx.translate(-2 * d, -2 * d); ctx.strokeStyle = 'rgba(0,0,0,.16)'; ctx.stroke(paths[i]); ctx.restore();
   }
-  function fillFace(i, now) {
+  function fillInner(i, now) {   // the piece's paint, with its bloom (paint / wipe) if one is running; caller has clipped
     let an = anim[i], t = 0;
-    if (an) { t = (now - an.t0) / 130; /* quick bloom */ if (t >= 1) { anim[i] = null; an = null; } }
-    ctx.save();
-    const w = wob[i];
-    if (w) { const s = (now - w) / 380; if (s >= 1) wob[i] = 0; else ctx.translate(Math.sin(s * 34) * (1 - s) * 3.5 * dpr, Math.cos(s * 27) * (1 - s) * 1.5 * dpr); }
-    ctx.clip(paths[i]);
+    if (an) { t = (now - an.t0) / 150; if (t >= 1) { anim[i] = null; an = null; } }
     if (!an) paint(i, col[i]);
     else if (an.rub) { if (t <= 0) paint(i, an.from); else { ctx.beginPath(); ctx.arc(an.x, an.y, (1 - ease(t)) * an.R, 0, 7); ctx.clip(); paint(i, an.from); } }
     else { paint(i, an.from); if (t > 0) { ctx.beginPath(); ctx.arc(an.x, an.y, ease(t) * an.R, 0, 7); ctx.clip(); paint(i, col[i]); } }
+  }
+  function fillFace(i, now) {
+    ctx.save();
+    const w = wob[i];
+    if (w) { const s = (now - w) / 420; if (s >= 1) wob[i] = 0; else ctx.translate(Math.sin(s * 30) * (1 - s) * 4 * dpr, Math.cos(s * 23) * (1 - s) * 1.6 * dpr); }
+    ctx.clip(paths[i]); fillInner(i, now); ctx.restore();
+  }
+  // a piece lifted off the page: scaled about its centre, with an offset shadow, its own outline and maybe a glow
+  function liftDraw(i, s, glow, now, lw) {
+    const [cx, cy] = cen(i);
+    ctx.save(); ctx.translate(cx, cy); ctx.scale(s, s); ctx.translate(-cx, -cy);
+    ctx.save(); ctx.translate(3 * dpr, 4 * dpr); ctx.fillStyle = 'rgba(27,27,47,.3)'; ctx.fill(paths[i]); ctx.restore();
+    if (glow) { ctx.save(); ctx.shadowColor = '#fff59d'; ctx.shadowBlur = 16 * dpr; ctx.strokeStyle = '#ffd84a'; ctx.lineWidth = lw * 3.2; ctx.lineJoin = 'round'; ctx.stroke(paths[i]); ctx.restore(); }
+    ctx.save(); ctx.clip(paths[i]); ctx.fillStyle = PAPER; ctx.fill(paths[i]); fillInner(i, now); ctx.restore();
+    ctx.lineJoin = 'round'; ctx.strokeStyle = INK; ctx.lineWidth = lw * 1.15; ctx.stroke(paths[i]);
     ctx.restore();
   }
-  function pencilText(txt, x, y, sz, alpha, rot) {
+  function popScale(i, now) {
+    const p = pops[i]; if (!p) return 0;
+    const s = (now - p.t0) / p.dur; if (s < 0) return 0; if (s >= 1) { pops[i] = null; return 0; }
+    return 1 + p.A * SC[i] * Math.sin(Math.PI * s) * (1 - 0.35 * s);
+  }
+  // a splat (round lobes) as a canvas path
+  function splatPath(x, y, R, n, rot, seed) {
+    const r = rng(seed), p = new Path2D(), st = Math.PI / n, ins = [], P = (a, rr) => [x + rr * Math.cos(a + rot), y + rr * Math.sin(a + rot)];
+    for (let k = 0; k < n; k++) ins.push(R * (0.7 + r() * 0.12));
+    let q = P(-st, ins[n - 1]); p.moveTo(q[0], q[1]);
+    for (let k = 0; k < n; k++) { const a = k * 2 * st, ro = R * (1 + r() * 0.3) * 1.15, c1 = P(a - st * 0.55, ro), c2 = P(a + st * 0.55, ro), e = P(a + st, ins[k]);
+      p.bezierCurveTo(c1[0], c1[1], c2[0], c2[1], e[0], e[1]); }
+    p.closePath(); return p;
+  }
+  function drawDrop(x, y, r, c, lw) {
+    ctx.fillStyle = c; ctx.strokeStyle = INK; ctx.lineWidth = Math.max(1, lw * 0.45);
+    ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,.75)'; ctx.beginPath(); ctx.arc(x - r * 0.35, y - r * 0.35, r * 0.28, 0, 7); ctx.fill();
+  }
+  function drawQ(x, y, sz, rot) {   // the bold "?" on a boxed-in piece
     ctx.save(); ctx.translate(x, y); ctx.rotate(rot || 0);
-    ctx.font = `${sz}px 'Patrick Hand', 'Comic Sans MS', 'Chalkboard SE', cursive`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillStyle = PENCIL + alpha + ')'; ctx.fillText(txt, 0, sz * 0.04); ctx.restore();
+    ctx.font = `700 ${sz}px Fredoka, 'Baloo 2', 'Arial Rounded MT Bold', system-ui, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.lineJoin = 'round'; ctx.lineWidth = sz * 0.16; ctx.strokeStyle = INK; ctx.strokeText('?', 0, sz * 0.04);
+    ctx.fillStyle = '#ff9f1c'; ctx.fillText('?', 0, sz * 0.04); ctx.restore();
   }
   function render(now) {
     now = now || performance.now();
     ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, cv.width, cv.height);
     const lw = Math.max(2.2, RS * 0.0095) * dpr;
-    ctx.save(); ctx.shadowColor = 'rgba(80,50,20,.28)'; ctx.shadowBlur = 10 * dpr; ctx.shadowOffsetY = 4 * dpr;
-    ctx.fillStyle = PAPER; ctx.fillRect(PX * dpr, PY * dpr, PS * dpr, PH * dpr); ctx.restore();
+    ctx.fillStyle = 'rgba(80,50,20,.3)'; ctx.fillRect((PX + 5) * dpr, (PY + 7) * dpr, PS * dpr, PH * dpr);   // offset shadow, not a blur
     ctx.drawImage(paper, PX * dpr, PY * dpr);
-    ctx.save(); ctx.translate((PX + PS / 2) * dpr, PY * dpr); ctx.rotate(-0.04);
-    ctx.fillStyle = 'rgba(255,236,160,.75)'; ctx.fillRect(-PS * 0.09 * dpr, -PS * 0.022 * dpr, PS * 0.18 * dpr, PS * 0.045 * dpr); ctx.restore();
-    pencilText('colour every piece', (PX + PS / 2) * dpr, (PY + CH * 0.5 + PS * 0.035) * dpr, Math.max(11, PS * 0.05) * dpr, 0.62, -0.015);
+    ctx.save(); ctx.translate((PX + PS * 0.14) * dpr, PY * dpr); ctx.rotate(-0.3);
+    ctx.fillStyle = 'rgba(255,236,160,.8)'; ctx.fillRect(-PS * 0.09 * dpr, -PS * 0.022 * dpr, PS * 0.18 * dpr, PS * 0.045 * dpr); ctx.restore();
     for (let i = 0; i < N; i++) fillFace(i, now);
-    // the group under the finger (press) or the mouse (hover): a wash of the pen each piece would get + dashed outline
+    // the group under the finger (press) or the mouse (hover): a wash of the paint each piece would get
     const G = press ? press.G : hoverG;
     if (G) {
       const pul = press ? (RM ? 0.8 : 0.72 + 0.16 * Math.sin(now / 110)) * (press.over ? 1 : 0.4) : 0.5;
-      for (const v of G.vs) { const o = col[v] === G.a ? G.b : G.a;   // preview: the pen this piece would get
-        ctx.save(); ctx.clip(paths[v]); ctx.fillStyle = PAPER; ctx.globalAlpha = pul; ctx.fill(paths[v]);
-        ctx.globalAlpha = 0.72 * pul; ctx.fillStyle = PENS[o].c; ctx.fill(paths[v]);
-        ctx.globalAlpha = pul; ctx.fillStyle = pats[o]; ctx.fill(paths[v]); ctx.restore(); }
+      for (const v of G.vs) { const o = col[v] === G.a ? G.b : G.a;   // preview: the paint this piece would get
+        ctx.save(); ctx.clip(paths[v]); ctx.globalAlpha = 0.55 * pul; ctx.fillStyle = PENS[o].c; ctx.fill(paths[v]); ctx.restore(); }
     }
     // clash glow under the ink
     const cl = BD.clashes(ADJ, col), pulse = RM ? 0.6 : 0.45 + 0.3 * Math.sin(now / 130);
@@ -404,42 +487,74 @@ const BD = (() => {
       const tt = td - I.t0; if (tt <= 0) continue;
       const upto = tt >= I.dur ? Infinity : I.len * ease(tt / I.dur);
       ctx.globalAlpha = 0.22; ctx.lineWidth = lw * 1.5; drawPoly(I.pts, upto);
-      ctx.globalAlpha = 0.93; ctx.lineWidth = lw; drawPoly(I.pts, upto);
+      ctx.globalAlpha = 0.95; ctx.lineWidth = lw; drawPoly(I.pts, upto);
     }
     ctx.globalAlpha = 1;
-    if (G) { // marching dashes just inside each piece of the group
-      ctx.save(); ctx.setLineDash([6 * dpr, 5 * dpr]); ctx.lineDashOffset = RM ? 0 : -now / 40; ctx.lineWidth = lw * 2.6;
-      ctx.strokeStyle = press && press.over ? 'rgba(255,255,255,.95)' : 'rgba(255,255,255,.6)';
-      for (const v of G.vs) { ctx.save(); ctx.clip(paths[v]); ctx.stroke(paths[v]); ctx.restore(); }
-      ctx.restore();
+    if (G) { // the group pulses in its two paints, with marching white dashes inside each piece
+      const live = press && press.over;
+      for (const v of G.vs) { const k = G.dep.get(v) || 0, ph = RM ? 1 : Math.sin(now / 160 - k * 0.9);
+        ctx.save(); ctx.clip(paths[v]);
+        ctx.lineWidth = lw * 4; ctx.strokeStyle = PENS[ph > 0 ? G.a : G.b].d; ctx.globalAlpha = live ? 0.85 : 0.5; ctx.stroke(paths[v]);
+        ctx.globalAlpha = 1; ctx.setLineDash([6 * dpr, 5 * dpr]); ctx.lineDashOffset = RM ? 0 : -now / 40; ctx.lineWidth = lw * 1.6;
+        ctx.strokeStyle = live ? 'rgba(255,255,255,.95)' : 'rgba(255,255,255,.6)'; ctx.stroke(paths[v]); ctx.restore(); }
     }
-    // pencilled "?" on blank pieces that every pen already touches
+    // lifted pieces: the one under the finger, pops (paint, swap wave, win bounce)
+    ctx.save(); ctx.beginPath(); ctx.rect((PX - 4) * dpr, (PY - 4) * dpr, (PS + 12) * dpr, (PH + 14) * dpr); ctx.clip();
+    for (let i = 0; i < N; i++) {
+      const s = popScale(i, now), held = press && press.u === i;
+      if (s || held) liftDraw(i, held ? Math.max(s || 1, 1 + 0.07 * SC[i]) : s, held, now, lw);
+    }
+    ctx.restore();
+    // "?" on blank pieces that every paint already touches
     for (const v of BD.boxed(ADJ, col)) {
-      const [cx, cy] = cen(v), sz = Math.max(14 * dpr, M.info[v].inr * RS * dpr * 1.25), h = qHop[v];
+      const [cx, cy] = cen(v), sz = Math.max(16 * dpr, M.info[v].inr * RS * dpr * 1.3), h = qHop[v];
       let dy = 0, rot = -0.08;
       if (!RM && h && now - h < 520) { const s = (now - h) / 520; dy = -Math.sin(Math.PI * s) * sz * 0.35; rot += Math.sin(s * 18) * 0.15 * (1 - s); }
-      pencilText('?', cx, cy + dy, sz, 0.75, rot);
+      else if (!RM) rot += Math.sin(now / 300 + v) * 0.12;
+      drawQ(cx, cy + dy, sz, rot);
     }
-    // hint: a faint pencil circle
+    // hint: a bright circle round the piece
     if (hintOn) {
       const [cx, cy] = cen(hintOn.u), r = Math.max(14 * dpr, M.info[hintOn.u].inr * RS * dpr * 1.6), a = RM ? 1 : Math.min(1, (now - hintT0) / 600);
-      const R = rng(hintOn.u * 31 + 5); ctx.save(); ctx.strokeStyle = PENCIL + (0.6 * a) + ')'; ctx.lineWidth = 1.6 * dpr; ctx.beginPath();
+      const R = rng(hintOn.u * 31 + 5); ctx.save(); ctx.lineCap = 'round'; ctx.beginPath();
       const ph = R() * 6, sweep = 2 * Math.PI * 1.12 * (RM ? 1 : Math.min(1, (now - hintT0) / 500));
       for (let k = 0; k <= 60; k++) { const th = ph + sweep * k / 60, rr = r * (1 + 0.06 * Math.sin(th * 3 + ph) + 0.04 * k / 60);
         const x = cx + rr * Math.cos(th) * 1.08, y = cy + rr * Math.sin(th) * 0.92; k ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
-      ctx.stroke(); ctx.restore();
+      ctx.globalAlpha = a; ctx.strokeStyle = INK; ctx.lineWidth = 5 * dpr; ctx.stroke(); ctx.strokeStyle = '#ffc928'; ctx.lineWidth = 2.6 * dpr; ctx.stroke(); ctx.restore();
     }
     // sparks on clashing borders
     for (const [u, v] of cl) { const e = BD.sharedSeg(M, u, v); if (e) { const q = segMid(e); spark(X(q), Y(q), lw, now, u * 7 + v); } }
-    if (confetti.length) {
-      const live = [];
-      for (const c of confetti) {
-        const t = (now - c.t0) / 1000; if (t > 1.8) continue; live.push(c); if (t < 0) continue;
-        const x = c.x + c.vx * t, y = c.y + c.vy * t + 900 * dpr * t * t / 2;
-        ctx.save(); ctx.translate(x, y); ctx.rotate(c.r + t * c.vr); ctx.globalAlpha = Math.min(1, 2 * (1.8 - t));
-        ctx.strokeStyle = c.c; ctx.lineWidth = 3 * dpr; ctx.beginPath(); ctx.moveTo(-8 * dpr, 0); ctx.quadraticCurveTo(-4 * dpr, -6 * dpr, 0, 0); ctx.quadraticCurveTo(4 * dpr, 6 * dpr, 8 * dpr, 0); ctx.stroke(); ctx.restore();
-      }
-      confetti = live;
+    // the win: four big splashes sweep the sheet, leaving a trail of drops
+    if (sweeps.length) {
+      ctx.save(); ctx.beginPath(); ctx.rect(PX * dpr, PY * dpr, PS * dpr, PH * dpr); ctx.clip();
+      sweeps = sweeps.filter(S => {
+        const t = (now - S.t0) / S.dur; if (t >= 1) return false; if (t < 0) return true;
+        const e = t * t * (3 - 2 * t), x = (S.dir > 0 ? RX - RS * 0.2 + e * RS * 1.4 : RX + RS * 1.2 - e * RS * 1.4) * dpr, y = (S.y + Math.sin(t * 7) * RS * 0.03) * dpr, R = RS * 0.085 * dpr;
+        const p = splatPath(x, y, R, 9, t * 4 * S.dir, S.seed);
+        ctx.save(); ctx.translate(4 * dpr, 5 * dpr); ctx.fillStyle = 'rgba(27,27,47,.3)'; ctx.fill(p); ctx.restore();
+        ctx.fillStyle = PENS[S.c].c; ctx.fill(p); ctx.strokeStyle = INK; ctx.lineWidth = lw; ctx.stroke(p);
+        ctx.fillStyle = 'rgba(255,255,255,.7)'; ctx.beginPath(); ctx.ellipse(x - R * 0.35, y - R * 0.38, R * 0.26, R * 0.14, -0.6, 0, 7); ctx.fill();
+        if (Math.random() < 0.7) drops.push({ x, y: y + (Math.random() - 0.5) * R, vx: -S.dir * (60 + Math.random() * 120) * dpr, vy: (-120 + Math.random() * 160) * dpr, r: (2.5 + Math.random() * 4) * dpr, c: S.c, t0: now, life: 0.9, gr: 700 });
+        return true;
+      });
+      ctx.restore();
+    }
+    // flying drops: paint splashes, the win burst
+    if (drops.length) {
+      drops = drops.filter(d => {
+        const t = (now - d.t0) / 1000; if (t > d.life) return false; if (t < 0) return true;
+        const x = d.x + d.vx * t, y = d.y + d.vy * t + d.gr * dpr * t * t / 2, k = Math.min(1, 3 * (d.life - t));
+        ctx.globalAlpha = k; drawDrop(x, y, d.r * (0.6 + 0.4 * k), PENS[d.c].c, lw); ctx.globalAlpha = 1; return true;
+      });
+    }
+    // a drop flies from each newly painted piece into the counter, which bumps when it lands
+    if (flies.length) {
+      flies = flies.filter(f => {
+        const t = (now - f.t0) / 520; if (t < 0) return true;
+        if (t >= 1) { bump(); return false; }
+        const e = t * t, x = f.x + (CX - f.x) * e, y = f.y + (CY - f.y) * e - Math.sin(Math.PI * t) * RS * 0.18 * dpr;
+        drawDrop(x, y, (4 + 3 * (1 - t)) * dpr, PENS[f.c].c, lw); return true;
+      });
     }
   }
   function spark(x, y, lw, now, seed) {
@@ -451,66 +566,80 @@ const BD = (() => {
   }
   let looping = false;
   function busy(now) {
-    if (confetti.length) return true;
+    if (drops.length || flies.length || sweeps.length || pops.some(p => p)) return true;
     if (RM) return false;
     return anim.some(a => a) || wob.some(w => w) || (now - drawStart) / 1000 < drawTotal + 0.1 || !!press || !!hoverG
-      || BD.clashes(ADJ, col).length > 0 || qHop.some(h => h && now - h < 600) || (hintOn && now - hintT0 < 700);
+      || BD.clashes(ADJ, col).length > 0 || BD.boxed(ADJ, col).length > 0 || (hintOn && now - hintT0 < 700);
   }
   function loop(now) { render(now); if (busy(now)) requestAnimationFrame(loop); else { looping = false; render(); } }
   function kick() { if (!looping) { looping = true; requestAnimationFrame(loop); } }
 
-  // ---------- sound ----------
+  // ---------- counter ----------
+  let shown = -1;
+  function count(b) {
+    const n = blanks(); if (n === shown) return; shown = n; cntN.textContent = String(n); cntEl.classList.toggle('done', n === 0);
+    if (b) bump();
+  }
+  function bump() { if (RM) return; cntEl.classList.remove('bump'); void cntEl.offsetWidth; cntEl.classList.add('bump'); }
+  cntEl.addEventListener('animationend', () => cntEl.classList.remove('bump'));
+
+  // ---------- sound (synthesised, quiet; the AudioContext starts on the first touch) ----------
   let AC = null;
   function au() {
     if (!AC) { try { AC = new (window.AudioContext || window.webkitAudioContext)(); } catch (_) { AC = null; } }
     if (AC && AC.state === 'suspended') AC.resume(); return AC;
   }
   function env(q, t, a, peak, d) { q.gain.setValueAtTime(0.0001, t); q.gain.exponentialRampToValueAtTime(peak, t + a); q.gain.exponentialRampToValueAtTime(0.0001, t + d); }
-  function squeak(i, delay, vol) {
-    const A = AC; if (!A) return; const t = A.currentTime + (delay || 0), n = Math.floor(A.sampleRate * 0.13), b = A.createBuffer(1, n, A.sampleRate), d = b.getChannelData(0);
+  function noise(dur, type, f0, f1, vol, delay, Q) {
+    const A = AC; if (!A) return; const t = A.currentTime + (delay || 0), n = Math.floor(A.sampleRate * dur), b = A.createBuffer(1, n, A.sampleRate), d = b.getChannelData(0);
     for (let k = 0; k < n; k++) d[k] = Math.random() * 2 - 1;
-    const s = A.createBufferSource(); s.buffer = b; const f = A.createBiquadFilter(); f.type = 'bandpass'; f.Q.value = 4;
-    f.frequency.setValueAtTime(1400 + i * 380, t); f.frequency.linearRampToValueAtTime(2300 + i * 380, t + 0.12);
-    const q = A.createGain(); env(q, t, 0.015, vol || 0.22, 0.13); s.connect(f); f.connect(q); q.connect(A.destination); s.start(t);
+    const s = A.createBufferSource(); s.buffer = b; const f = A.createBiquadFilter(); f.type = type; f.Q.value = Q || 1;
+    f.frequency.setValueAtTime(f0, t); f.frequency.exponentialRampToValueAtTime(f1, t + dur);
+    const q = A.createGain(); env(q, t, 0.008, vol, dur); s.connect(f); f.connect(q); q.connect(A.destination); s.start(t);
   }
   function tone(type, f0, f1, dur, peak, delay) {
     const A = AC; if (!A) return; const t = A.currentTime + (delay || 0), o = A.createOscillator(), q = A.createGain();
     o.type = type; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f1, t + dur);
     env(q, t, 0.01, peak, dur); o.connect(q); q.connect(A.destination); o.start(t); o.stop(t + dur + 0.02);
   }
-  const tink = () => tone('sine', 1500, 800, 0.14, 0.07);
-  const pop = () => { tone('triangle', 260, 900, 0.12, 0.2); tone('sine', 1200, 1600, 0.1, 0.06, 0.08); };
-  const fanfare = () => [523, 659, 784, 1047].forEach((f, i) => tone('triangle', f, f * 1.01, 0.22, 0.14, i * 0.09));
+  const PENT = [0, 2, 4, 7, 9];
+  const note = (k, delay, vol) => { const f = 392 * Math.pow(2, (PENT[k % 5] + 12 * Math.floor(k / 5)) / 12); tone('triangle', f, f * 1.01, 0.18, vol || 0.06, delay); tone('sine', f * 2, f * 2, 0.1, (vol || 0.06) * 0.4, delay); };
+  const squeak = i => noise(0.09, 'bandpass', 1500 + i * 300, 2400 + i * 300, 0.12, 0, 4);      // a tube squeezed
+  const splatS = delay => noise(0.11, 'lowpass', 2400, 300, 0.16, delay);                         // wet paint landing
+  const popS = (k, delay) => { const r = Math.pow(2, Math.min(k, 14) / 12); tone('triangle', 240 * r, 820 * r, 0.1, 0.12, delay); };
+  const boing = () => { tone('sine', 330, 190, 0.22, 0.09); tone('sine', 495, 280, 0.18, 0.04, 0.03); };
   const thud = () => tone('sine', 180, 90, 0.12, 0.12);
-  function rub() { // eraser: low filtered noise
-    const A = AC; if (!A) return; const t = A.currentTime, n = Math.floor(A.sampleRate * 0.16), b = A.createBuffer(1, n, A.sampleRate), d = b.getChannelData(0);
-    for (let k = 0; k < n; k++) d[k] = (Math.random() * 2 - 1) * (0.6 + 0.4 * Math.sin(k / n * 40));
-    const s = A.createBufferSource(); s.buffer = b; const f = A.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 900;
-    const q = A.createGain(); env(q, t, 0.02, 0.2, 0.16); s.connect(f); f.connect(q); q.connect(A.destination); s.start(t);
-  }
+  const rub = () => noise(0.16, 'lowpass', 900, 500, 0.18);
+  const fanfare = () => [523, 659, 784, 1047, 1319].forEach((f, i) => tone('triangle', f, f * 1.01, 0.26, 0.12, i * 0.09));
 
-  // ---------- pens ----------
+  // ---------- paint tubes ----------
   function hatchIcon(a) {
-    if (a === 0) return '<path d="M12 72h16M12 79h16M12 86h16"/>';
-    if (a === Math.PI / 2) return '<path d="M14 66v26M20 66v26M26 66v26"/>';
-    if (a > 0) return '<path d="M12 70l12 12M12 80l12 12M18 66l10 10"/>';
-    return '<path d="M12 82l12-12M12 92l14-14M20 92l8-8"/>';
+    if (a === 0) return '<path d="M13 72h14M13 79h14M13 86h14"/>';
+    if (a === Math.PI / 2) return '<path d="M15 66v26M20 66v26M25 66v26"/>';
+    if (a > 0) return '<path d="M13 70l12 12M13 80l12 12M18 66l9 9"/>';
+    return '<path d="M13 82l12-12M13 92l14-14M20 92l7-7"/>';
   }
+  const TUBE = 'M9 40Q9 33 15 32H25Q31 33 31 40L34 112H6Z';
   const penBtns = PENS.map((P, i) => {
-    const b = document.createElement('button'); b.className = 'pen'; b.setAttribute('aria-label', LAB.ELEM[i].name + ' pen');
+    const b = document.createElement('button'); b.className = 'pen'; b.setAttribute('aria-label', LAB.ELEM[i].name + ' paint');
+    b.style.setProperty('--pc', P.c);
     b.innerHTML = `<svg viewBox="0 0 40 130" preserveAspectRatio="xMidYMax meet">
-      <path d="M12 30 L14 15 Q20 7 26 15 L28 30 Z" fill="${P.c}" stroke="${INK}" stroke-width="2.5" stroke-linejoin="round"/>
-      <rect x="8" y="28" width="24" height="12" rx="3" fill="#fffaf0" stroke="${INK}" stroke-width="2.5"/>
-      <rect x="6" y="38" width="28" height="88" rx="9" fill="${P.c}" stroke="${INK}" stroke-width="2.5"/>
-      <rect x="10" y="62" width="20" height="34" rx="4" fill="#fffaf0" stroke="${INK}" stroke-width="2"/>
-      <g stroke="${P.d}" stroke-width="2.4" opacity=".75">${hatchIcon(P.a)}</g>
-      <path d="M11 46 v10" stroke="#fff" stroke-width="3" stroke-linecap="round" opacity=".55"/>
-      <g class="cap"><rect x="5" y="2" width="30" height="42" rx="9" fill="${P.d}" stroke="${INK}" stroke-width="2.5"/>
-      <rect x="27" y="8" width="5" height="26" rx="2" fill="${P.c}" stroke="${INK}" stroke-width="1.5"/></g></svg>`;
-    b.addEventListener('pointerdown', e => { e.preventDefault(); au(); touch(); pen = i; syncPens(); squeak(i); });
+      <g transform="translate(3 3)" fill="${INK}" opacity=".28"><path d="${TUBE}"/><rect x="4" y="110" width="32" height="15" rx="3"/></g>
+      <path class="dab" d="M13.5 23Q12 13 20 8Q28 13 26.5 23Z" fill="${P.c}" stroke="${INK}" stroke-width="2.4" stroke-linejoin="round"/>
+      <rect x="15" y="21" width="10" height="13" rx="2" fill="#e3e7f2" stroke="${INK}" stroke-width="2.4"/>
+      <path d="${TUBE}" fill="${P.c}" stroke="${INK}" stroke-width="2.6" stroke-linejoin="round"/>
+      <path d="M27.5 42L30 106" stroke="#000" stroke-opacity=".16" stroke-width="3.4" stroke-linecap="round"/>
+      <rect x="10" y="58" width="20" height="38" rx="4" fill="#fffaf0" stroke="${INK}" stroke-width="2"/>
+      <g stroke="${P.d}" stroke-width="2.4" stroke-linecap="round" opacity=".8">${hatchIcon(P.a)}</g>
+      <path d="M12.5 43V53M10.5 100V106" stroke="#fff" stroke-width="3" stroke-linecap="round" opacity=".6"/>
+      <rect x="4" y="110" width="32" height="15" rx="3" fill="#e3e7f2" stroke="${INK}" stroke-width="2.4"/>
+      <path d="M8 115.5H32M8 119.5H32" stroke="${INK}" stroke-width="1.4" opacity=".45"/>
+      <g class="cap"><rect x="11" y="4" width="18" height="22" rx="4" fill="${P.d}" stroke="${INK}" stroke-width="2.4"/>
+      <path d="M16 8v14M20 8v14M24 8v14" stroke="#000" stroke-opacity=".22" stroke-width="1.6"/><path d="M14 8v7" stroke="#fff" stroke-width="2" stroke-linecap="round" opacity=".55"/></g></svg>`;
+    b.addEventListener('pointerdown', e => { e.preventDefault(); if (won) return; au(); touch(); pen = i; syncPens(); squeak(i); jolt(b, 'hop'); cue(); });
     palEl.appendChild(b); return b;
   });
-  function syncPens() { penBtns.forEach((b, k) => b.classList.toggle('sel', k === pen)); }
+  function syncPens() { penBtns.forEach((b, k) => b.classList.toggle('sel', k === pen)); palEl.classList.toggle('pick', pen < 0 && !won); }
   function jolt(b, cls) { b.classList.remove('shake', 'hop'); void b.offsetWidth; b.classList.add(cls); }
   penBtns.forEach(b => b.addEventListener('animationend', () => b.classList.remove('shake', 'hop')));
   function uncap() {
@@ -518,13 +647,25 @@ const BD = (() => {
     penBtns.forEach((b, k) => setTimeout(() => b.classList.add('open'), RM ? 0 : 250 + k * 110));
   }
 
+  // ---------- the ghost finger: a tube first, then a piece; later it points at the hint ----------
+  function cue() {
+    let x = -1, y = -1;
+    if (!won) {
+      if (pen < 0) { const r = penBtns[0].getBoundingClientRect(); x = r.left + r.width / 2; y = r.top + r.height * 0.42; }
+      else if (hintOn) { const c = cen(hintOn.u); x = c[0] / dpr; y = c[1] / dpr; }
+      else if (blanks() === N) { let best = 0; for (let i = 1; i < N; i++) if (M.info[i].inr > M.info[best].inr) best = i; const c = cen(best); x = c[0] / dpr; y = c[1] / dpr; }
+    }
+    if (x < 0) { gf.classList.remove('on'); return; }
+    gf.style.left = (x - 12) + 'px'; gf.style.top = (y - 3.2) + 'px'; gf.classList.add('on');
+  }
+
   // ---------- hints ----------
   let idleT = 0;
-  function clearHint() { if (hintOn) { penBtns[hintOn.b].classList.remove('bob'); hintOn = null; } }
+  function clearHint() { if (hintOn) { penBtns[hintOn.b].classList.remove('bob'); hintOn = null; cue(); } }
   function touch() { clearHint(); clearTimeout(idleT); idleT = setTimeout(showHint, 10000); kick(); }
   function showHint() {
     if (won) return; const h = BD.hint(ADJ, col); if (!h) return;
-    clearHint(); hintOn = h; hintT0 = performance.now(); penBtns[h.b].classList.add('bob'); kick();
+    clearHint(); hintOn = h; hintT0 = performance.now(); penBtns[h.b].classList.add('bob'); cue(); kick();
   }
   function teach() { // a blank piece just got boxed in: show the swap that frees it, soon
     clearTimeout(idleT); idleT = setTimeout(showHint, BD.boxed(ADJ, col).length ? 1500 : 10000);
@@ -532,24 +673,48 @@ const BD = (() => {
 
   // ---------- sheets ----------
   function fresh() {
-    won = false; col = new Array(N).fill(-1); hist = []; stamp.classList.remove('on'); confetti = []; anim = []; wob = []; qHop = []; nSwaps = 0;
-    press = null; hoverG = null; lastClash = 0;
-    prepInk((Math.random() * 2 ** 31) | 0); drawStart = performance.now(); uncap(); touch(); kick();
+    won = false; col = new Array(N).fill(-1); hist = []; stamp.classList.remove('on'); anim = []; wob = []; pops = []; drops = []; flies = []; sweeps = []; qHop = []; nSwaps = 0;
+    press = null; hoverG = null; lastClash = 0; everClash = false;
+    prepInk((Math.random() * 2 ** 31) | 0); drawStart = performance.now(); uncap(); syncPens(); count(false); touch(); cue(); kick();
   }
   function save() { hist.push(col.slice()); if (hist.length > 300) hist.shift(); }
-  function afterChange() {
-    const nc = BD.clashes(ADJ, col).length; if (nc > lastClash) tink(); lastClash = nc;
-    if (BD.done(ADJ, col)) return win();
-    teach(); kick();
+  function splash(x, y, c, n, sp) {   // drops flung from a paint point
+    if (RM) return; const now = performance.now();
+    for (let k = 0; k < n; k++) { const a = Math.random() * 6.283, v = (sp || 1) * (90 + Math.random() * 220) * dpr;
+      drops.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 120 * dpr, r: (2 + Math.random() * 3.5) * dpr, c, t0: now, life: 0.45 + Math.random() * 0.3, gr: 900 }); }
   }
-  function win() {
-    won = true; wonAt = performance.now(); clearTimeout(idleT); clearHint();
-    setTimeout(() => LAB.finish(nSwaps), RM ? 300 : 1800);   // inside the app: hand over to its win screen
-    setTimeout(() => { stamp.classList.add('on'); pop(); }, RM ? 0 : 160); setTimeout(fanfare, RM ? 0 : 260);
-    if (!RM) for (let k = 0; k < 46; k++) {
-      const a = Math.random() * Math.PI * 2, v = (200 + Math.random() * 500) * dpr;
-      confetti.push({ x: (RX + RS / 2) * dpr, y: (RY + RS / 2) * dpr, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 300 * dpr, r: Math.random() * 6, vr: (Math.random() - 0.5) * 12, c: PENS[k % 4].c, t0: performance.now() + 120 });
+  function afterChange(f, x, y) {
+    const cl = BD.clashes(ADJ, col), nc = cl.length;
+    if (nc > lastClash) { everClash = true; boing(); if (f >= 0) wob[f] = performance.now(); }
+    lastClash = nc; count(false);
+    if (BD.done(ADJ, col)) return win(x, y);
+    teach(); cue(); kick();
+  }
+  function win(x, y) {
+    won = true; wonAt = performance.now(); clearTimeout(idleT); clearHint(); press = null; hoverG = null; syncPens(); cue();
+    if (x === undefined) { x = (RX + RS / 2) * dpr; y = (RY + RS / 2) * dpr; }
+    try { if (window.LAB && LAB.at) LAB.at(x / dpr, y / dpr); } catch (_) {}
+    if (!everClash) try { if (window.LAB && LAB.egg) LAB.egg('clean-sheet', 120); } catch (_) {}
+    const now = wonAt, mx = (RX + RS / 2) * dpr, my = (RY + RS / 2) * dpr;
+    if (!RM) {
+      // 1: the pieces bounce in a wave from the last paint point; 2: four splashes sweep the sheet; 3: the sticker;
+      // 4: a second wave from the middle; then the shell takes over
+      for (let i = 0; i < N; i++) { const [cx, cy] = cen(i), d = Math.hypot(cx - x, cy - y) / (RS * dpr);
+        pops[i] = { t0: now + 60 + d * 650, A: 0.2, dur: 420 }; }
+      [0, 1, 2, 3].forEach(k => sweeps.push({ c: (k * 3 + 1) % 4, t0: now + 450 + k * 260, dur: 1150, y: RY + RS * (0.14 + k * 0.24), dir: k % 2 ? -1 : 1, seed: 11 + k }));
+      for (let k = 0; k < 10; k++) setTimeout(() => popS(k, 0), 60 + k * 70);
+      const wf = BD.faceAt(M, (x / dpr - RX) / RS, (y / dpr - RY) / RS); splash(x, y, wf >= 0 && col[wf] >= 0 ? col[wf] : 0, 18, 1.4);
+      setTimeout(() => { for (let i = 0; i < N; i++) { const [cx, cy] = cen(i), d = Math.hypot(cx - mx, cy - my) / (RS * dpr); pops[i] = { t0: performance.now() + d * 500, A: 0.16, dur: 380 }; } kick(); }, 2050);
+      [0, 1, 2, 3].forEach(k => setTimeout(() => splatS(0), 450 + k * 260));
     }
+    setTimeout(() => {
+      stamp.classList.add('on'); fanfare();
+      if (!RM) { const now2 = performance.now();
+        for (let k = 0; k < 40; k++) { const a = Math.random() * 6.283, v = (220 + Math.random() * 520) * dpr;
+          drops.push({ x: mx, y: my, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 260 * dpr, r: (3 + Math.random() * 5) * dpr, c: k % 4, t0: now2, life: 1.5, gr: 900 }); }
+        kick(); }
+    }, RM ? 0 : 1500);
+    setTimeout(() => LAB.finish(nSwaps), RM ? 600 : 3600);   // inside the app: hand over to its win screen
     kick();
   }
 
@@ -558,36 +723,53 @@ const BD = (() => {
   const pieceAt = e => BD.faceAt(M, (e.clientX - RX) / RS, (e.clientY - RY) / RS);
   function fillAt(f, e) {
     if (!dirty) { save(); dirty = true; }
-    const x = e.clientX * dpr, y = e.clientY * dpr; col[f] = pen;
-    anim[f] = RM ? null : { t0: performance.now(), x, y, R: reach(f, x, y), from: -1 }; squeak(pen); afterChange();
+    const x = e.clientX * dpr, y = e.clientY * dpr, now = performance.now(); col[f] = pen;
+    anim[f] = RM ? null : { t0: now, x, y, R: reach(f, x, y), from: -1 };
+    if (!RM) { pops[f] = { t0: now + 40, A: 0.14, dur: 280 }; flies.push({ x, y, c: pen, t0: now + 120 }); }
+    splash(x, y, pen, 7); splatS(); popS(4); note(Math.round(10 * (N - blanks()) / N), 0.03, 0.05);
+    if (RM) count(true);
+    afterChange(f, x, y);
   }
   function eraseAt(f, e) {
     if (!dirty) { save(); dirty = true; }
     const x = e.clientX * dpr, y = e.clientY * dpr, from = col[f]; col[f] = -1;
-    anim[f] = RM ? null : { t0: performance.now(), x, y, R: reach(f, x, y), from, rub: true }; rub(); afterChange();
+    anim[f] = RM ? null : { t0: performance.now(), x, y, R: reach(f, x, y), from, rub: true };
+    if (!RM) pops[f] = { t0: performance.now(), A: -0.08, dur: 240 };
+    rub(); afterChange(f, x, y); bump();
   }
   function doSwap(P, e) {
     save(); const G = P.G, now = performance.now();
     col = BD.swapped(col, G); nSwaps++; let maxD = 0;
+    try { if (window.LAB && LAB.at) LAB.at(e.clientX, e.clientY); } catch (_) {}
     for (const v of G.vs) {
       const d = G.dep.get(v); maxD = Math.max(maxD, d); let x, y;
       if (v === G.u) { x = e.clientX * dpr; y = e.clientY * dpr; } else { const q = segMid(BD.sharedSeg(M, v, G.par.get(v))); x = X(q); y = Y(q); }
-      anim[v] = RM ? null : { t0: now + d * 70, x, y, R: reach(v, x, y), from: col[v] === G.a ? G.b : G.a };
+      anim[v] = RM ? null : { t0: now + d * 45, x, y, R: reach(v, x, y), from: col[v] === G.a ? G.b : G.a };
+      if (!RM) pops[v] = { t0: now + d * 45 + 70, A: 0.16, dur: 300 };
+      if (!RM && G.vs.length <= 24) { const [cx, cy] = cen(v); setTimeout(() => splash(cx, cy, col[v] >= 0 ? col[v] : 0, 3, 0.7), d * 45 + 70); }
     }
-    for (let d = 0; d <= Math.min(maxD, 3); d++) squeak(pen, d * 0.07, d ? 0.12 : 0.22);
-    afterChange();
+    for (let d = 0; d <= Math.min(maxD, 10); d++) popS(d, d * 0.045 + 0.06);
+    splatS();
+    afterChange(-1, e.clientX * dpr, e.clientY * dpr);
   }
   cv.addEventListener('pointerdown', e => {
-    e.preventDefault(); au(); touch();
-    if (won) { if (!LAB.embedded && performance.now() - wonAt > 450) fresh(); return; }   // in the app the shell owns the next step
+    e.preventDefault(); au();
+    if (won) { if (!LAB.embedded && performance.now() - wonAt > 3800) fresh(); return; }   // in the app the shell owns the next step
+    touch();
     const u = pieceAt(e); if (u < 0) return;
     hoverG = null;
-    if (pen < 0) { penBtns.forEach((b, k) => setTimeout(() => jolt(b, 'hop'), RM ? 0 : k * 60)); wob[u] = performance.now(); thud(); kick(); return; }
+    const now = performance.now();
+    if (!RM) pops[u] = { t0: now, A: 0.07, dur: 220 };                       // it lifts at once
+    if (pen < 0) { penBtns.forEach((b, k) => setTimeout(() => jolt(b, 'hop'), RM ? 0 : k * 60)); wob[u] = now; thud(); kick(); return; }
     try { cv.setPointerCapture(e.pointerId); } catch (_) {}
     dirty = false; last = u;
-    if (col[u] < 0) { mode = 'paint'; if (BD.boxed(ADJ, col).includes(u)) qHop[u] = performance.now(); fillAt(u, e); }
+    if (col[u] < 0) { mode = 'paint'; if (BD.boxed(ADJ, col).includes(u)) qHop[u] = now; fillAt(u, e); }
     else if (col[u] === pen) { mode = 'erase'; eraseAt(u, e); }
-    else { mode = 'swap'; press = { G: BD.group(ADJ, col, u, pen), over: true }; squeak(pen, 0, 0.08); kick(); }
+    else {
+      mode = 'swap'; pops[u] = null; press = { u, G: BD.group(ADJ, col, u, pen), over: true, t0: now };
+      press.G.vs.slice().sort((a, b) => press.G.dep.get(a) - press.G.dep.get(b)).slice(0, 10).forEach((v, k) => note(k, k * 0.045, 0.045));
+      kick();
+    }
   });
   cv.addEventListener('pointermove', e => {
     if (won) return;
@@ -603,32 +785,37 @@ const BD = (() => {
     else if (mode === 'erase' && col[f] === pen) eraseAt(f, e);
   });
   function up(e, cancel) {
-    if (mode === 'swap' && press) { const P = press; press = null; if (!cancel && P.over) doSwap(P, e); else { thud(); kick(); } }
+    if (mode === 'swap' && press) { const P = press; press = null; if (!cancel && P.over && !won) doSwap(P, e); else { thud(); wob[P.u] = performance.now(); kick(); } }
     mode = null; last = -1;
   }
   cv.addEventListener('pointerup', e => up(e, false));
   cv.addEventListener('pointercancel', e => up(e, true));
   cv.addEventListener('pointerleave', () => { if (hoverG) { hoverG = null; kick(); } });
-  document.getElementById('undo').addEventListener('pointerdown', e => {
-    e.preventDefault(); au(); touch();
-    if (won) { if (LAB.embedded) return; won = false; stamp.classList.remove('on'); confetti = []; }
-    if (!hist.length) { thud(); return; }
+  const nope = b => { thud(); if (!RM) { b.classList.remove('no'); void b.offsetWidth; b.classList.add('no'); } };
+  ['undo', 'again'].forEach(id => $(id).addEventListener('animationend', e => e.currentTarget.classList.remove('no')));
+  $('undo').addEventListener('pointerdown', e => {
+    e.preventDefault(); au();
+    if (won) { if (LAB.embedded) return; won = false; stamp.classList.remove('on'); drops = []; sweeps = []; syncPens(); }
+    touch();
+    if (!hist.length) { nope($('undo')); return; }
     const before = col; col = hist.pop(); const now = performance.now(); let k = 0;
     for (let i = 0; i < N; i++) if (before[i] !== col[i]) { const [x, y] = cen(i);
       anim[i] = RM ? null : col[i] < 0 ? { t0: now + 30 * k++, x, y, R: reach(i, x, y), from: before[i], rub: true } : { t0: now + 30 * k++, x, y, R: reach(i, x, y), from: before[i] }; }
-    lastClash = BD.clashes(ADJ, col).length; squeak(pen < 0 ? 0 : pen, 0, 0.12); teach(); kick();
+    lastClash = BD.clashes(ADJ, col).length; squeak(pen < 0 ? 0 : pen); count(true); teach(); cue(); kick();
   });
-  document.getElementById('again').addEventListener('pointerdown', e => {
-    e.preventDefault(); au(); touch();
+  $('again').addEventListener('pointerdown', e => {
+    e.preventDefault(); au();
     if (won) { if (!LAB.embedded) fresh(); return; }
+    touch();
     if (col.some(c => c >= 0)) { save(); const now = performance.now();
       col.forEach((c, i) => { if (c >= 0) { const [x, y] = cen(i); anim[i] = RM ? null : { t0: now + 15 * i, x, y, R: reach(i, x, y), from: c, rub: true }; } });
-      col = new Array(N).fill(-1); lastClash = 0; rub(); }
+      col = new Array(N).fill(-1); lastClash = 0; rub(); count(true); cue(); }
+    else nope($('again'));
     kick();
   });
   addEventListener('resize', layout);
   document.addEventListener('contextmenu', e => e.preventDefault());
-  if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => kick());
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { layout(); kick(); });
 
   window.PLAYLAB = { cen: i => cen(i).map(v => v / dpr), pen: i => { pen = i; syncPens(); }, get won() { return won; } };   // test hook (tools/embed_win_check.js)
   layout(); fresh();

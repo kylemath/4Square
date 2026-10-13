@@ -1,9 +1,10 @@
-// Ion Channels: a lab microscope. Dark teal-black field, glowing membranes, four ion shapes (matching lab/ions.html:
-// 0 green sphere, 1 red triangle, 2 gold cube, 3 violet diamond).
+// Ion Channels: a glowing lab microscope. Dark teal field, glowing membranes, four chunky ion shapes (matching
+// lab/ions.html: 0 green sphere, 1 red triangle, 2 gold cube, 3 violet diamond); a cyan signal docks in a freed chamber.
 (function () {
   const COL = ['#3ef0b4', '#ff5f8f', '#ffbd3a', '#8f93ff'], DEEP = ['#0d4a3c', '#4d1028', '#4a3208', '#1d1f5a'];
-  const NAMES = ['green', 'red', 'gold', 'violet'];
-  const FONT = "'Space Grotesk','Inter',system-ui,sans-serif", CY = '#5fe6ff';
+  const DK = ['#12805f', '#b02a58', '#b07a10', '#4a4fc0'], LT = ['#b8ffe6', '#ffc4d6', '#ffe8a8', '#d4d6ff'];
+  const FONT = "'Space Grotesk','Inter',system-ui,sans-serif", CY = '#5fe6ff', INK = '#04141a';
+  const BOLD = "'Arial Black','Space Grotesk',system-ui,sans-serif";
   const f1 = n => Math.round(n * 10) / 10;
   const hash = n => { let t = (Math.imul(n | 0, 0x9E3779B1) ^ 0x85EBCA6B) >>> 0; t = Math.imul(t ^ t >>> 15, 2246822519) >>> 0; t = Math.imul(t ^ t >>> 13, 3266489917) >>> 0; return ((t ^ t >>> 16) >>> 0) / 4294967296; };
   // ion shape path (radius about r) centred on 0,0
@@ -13,73 +14,155 @@
     if (e === 2) return '<rect x="' + f1(-.82 * r) + '" y="' + f1(-.82 * r) + '" width="' + f1(1.64 * r) + '" height="' + f1(1.64 * r) + '" rx="' + f1(.22 * r) + '"';
     return '<path d="M0 ' + f1(-1.22 * r) + 'L' + f1(r) + ' 0L0 ' + f1(1.22 * r) + 'L' + f1(-r) + ' 0Z"';
   }
-  // one glowing ion: soft halo, solid body, bright rim, specular dot (no ids, no gradients: safe to repeat)
+  // the old flat glowing ion (the level-map pin uses it)
   function ion(e, x, y, r, mark) {
     return '<g transform="translate(' + f1(x) + ' ' + f1(y) + ')"><circle r="' + f1(r * 1.9) + '" fill="' + COL[e] + '" opacity=".16"/>' +
       shape(e, r) + ' fill="' + COL[e] + '" stroke="#e9ffff" stroke-width="' + f1(Math.max(.8, r / 9)) + '" stroke-opacity=".8"/>' +
-      '<circle cx="' + f1(-r * .3) + '" cy="' + f1(-r * .3) + '" r="' + f1(r * .2) + '" fill="#fff" opacity=".8"/>' +
-      (mark ? '<path d="M' + f1(r * .9) + ' ' + f1(-r * 1.55) + 'l' + f1(r * .18) + ' ' + f1(r * .4) + 'l' + f1(r * .42) + ' 0l' + f1(-r * .34) + ' ' + f1(r * .28) + 'l' + f1(r * .13) + ' ' + f1(r * .42) + 'l' + f1(-r * .39) + ' ' + f1(-r * .26) + 'l' + f1(-r * .39) + ' ' + f1(r * .26) + 'l' + f1(r * .13) + ' ' + f1(-r * .42) + 'l' + f1(-r * .34) + ' ' + f1(-r * .28) + 'l' + f1(r * .42) + ' 0Z" fill="#fff"/>' : '') + '</g>';
+      '<circle cx="' + f1(-r * .3) + '" cy="' + f1(-r * .3) + '" r="' + f1(r * .2) + '" fill="#fff" opacity=".8"/></g>';
   }
-  const memb = (x, y, w, h, e, rx) => '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="' + (rx || 22) + '" fill="' + COL[e] + '" fill-opacity=".07" stroke="' + COL[e] + '" stroke-opacity=".7" stroke-width="2"/>' +
-    '<rect x="' + (x + 3) + '" y="' + (y + 3) + '" width="' + (w - 6) + '" height="' + (h - 6) + '" rx="' + ((rx || 22) - 3) + '" fill="none" stroke="' + COL[e] + '" stroke-opacity=".25" stroke-width="1"/>';
-  const say = (x, y, s, t, col, a) => '<text x="' + x + '" y="' + y + '" text-anchor="' + (a || 'middle') + '" font-family="' + FONT + '" font-size="' + s + '" font-weight="500" fill="' + (col || '#bfeaf2') + '">' + t + '</text>';
-  const field = '<rect width="300" height="250" fill="#031014"/><g stroke="#5fe6ff" stroke-opacity=".05">' + Array.from({ length: 9 }, (_, i) => '<path d="M' + (i * 38) + ' 0V250"/>').join('') + Array.from({ length: 7 }, (_, i) => '<path d="M0 ' + (i * 38) + 'H300"/>').join('') + '</g>';
+  const starD = (cx, cy, s) => { let d = ''; for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + i * Math.PI / 5, q = i % 2 ? s * .45 : s; d += (i ? 'L' : 'M') + f1(cx + q * Math.cos(a)) + ' ' + f1(cy + q * Math.sin(a)); } return d + 'Z'; };
+  const HL = [[-.34, -.4, .3, .16], [-.2, -.3, .2, .11], [-.36, -.4, .26, .13], [-.2, -.5, .2, .11]];
+  // a chunky cartoon ion, the Islands way: offset shadow, deep base, lit body up-left, highlight, dark outline (no ids)
+  function gem(e, x, y, r, o) {
+    o = o || {};
+    const sw = f1(Math.max(1.4, r * (o.sw || .2))), h = HL[e];
+    return '<g transform="translate(' + f1(x) + ' ' + f1(y) + ')">' +
+      (o.glow === 0 ? '' : '<circle r="' + f1(r * 1.75) + '" fill="' + COL[e] + '" opacity="' + (o.glow || .2) + '"/>') +
+      '<g transform="translate(' + f1(r * .14) + ' ' + f1(r * .2) + ')">' + shape(e, r) + ' fill="' + INK + '" opacity=".6"/></g>' +
+      shape(e, r) + ' fill="' + DK[e] + '"/>' +
+      '<g transform="translate(' + f1(-r * .08) + ' ' + f1(-r * .1) + ') scale(.82)">' + shape(e, r) + ' fill="' + COL[e] + '"/></g>' +
+      '<ellipse cx="' + f1(h[0] * r) + '" cy="' + f1(h[1] * r) + '" rx="' + f1(h[2] * r) + '" ry="' + f1(h[3] * r) + '" transform="rotate(-35 ' + f1(h[0] * r) + ' ' + f1(h[1] * r) + ')" fill="#fff" opacity=".9"/>' +
+      shape(e, r) + ' fill="none" stroke="' + INK + '" stroke-width="' + sw + '" stroke-linejoin="round"/>' +
+      (o.mark ? '<path d="' + starD(r * .82, -r * .82, r * .5) + '" fill="#fff" stroke="' + INK + '" stroke-width="' + f1(Math.max(1, r * .1)) + '" stroke-linejoin="round"/>' : '') + '</g>';
+  }
+  // a chunky membrane chamber (ellipse): soft fill, dark rim, coloured lit rim, a top-left glint
+  const memb = (cx, cy, rx, ry, e, hot) => '<ellipse cx="' + cx + '" cy="' + (cy + 3) + '" rx="' + rx + '" ry="' + ry + '" fill="' + INK + '" opacity=".5"/>' +
+    '<ellipse cx="' + cx + '" cy="' + cy + '" rx="' + rx + '" ry="' + ry + '" fill="' + COL[e] + '" fill-opacity="' + (hot ? .26 : .12) + '" stroke="' + INK + '" stroke-width="6"/>' +
+    '<ellipse cx="' + cx + '" cy="' + cy + '" rx="' + rx + '" ry="' + ry + '" fill="none" stroke="' + COL[e] + '" stroke-width="3"/>' +
+    '<path d="M' + f1(cx - rx * .8) + ' ' + f1(cy - ry * .35) + 'Q' + f1(cx - rx * .7) + ' ' + f1(cy - ry * .82) + ' ' + f1(cx - rx * .2) + ' ' + f1(cy - ry * .9) + '" fill="none" stroke="#fff" stroke-opacity=".55" stroke-width="2.6" stroke-linecap="round"/>';
+  // a glowing two-colour bond between two ions (dark core, a halo, one half in each colour)
+  const bond = (a, b, ea, eb, gold) => {
+    const mx = f1((a[0] + b[0]) / 2), my = f1((a[1] + b[1]) / 2), A = f1(a[0]) + ' ' + f1(a[1]), B = f1(b[0]) + ' ' + f1(b[1]);
+    return '<path d="M' + A + 'L' + B + '" stroke="' + (gold ? '#ffd36a' : CY) + '" stroke-opacity=".3" stroke-width="13" stroke-linecap="round"/>' +
+      '<path d="M' + A + 'L' + B + '" stroke="' + INK + '" stroke-width="7.5" stroke-linecap="round"/>' +
+      '<path d="M' + A + 'L' + mx + ' ' + my + '" stroke="' + COL[ea] + '" stroke-width="4" stroke-linecap="round"/><path d="M' + mx + ' ' + my + 'L' + B + '" stroke="' + COL[eb] + '" stroke-width="4" stroke-linecap="round"/>' +
+      '<path d="M' + A + 'L' + B + '" stroke="#fff" stroke-opacity=".6" stroke-width="1.2" stroke-linecap="round"/>';
+  };
+  // the signal: a cyan five-armed molecule (docked: filled; waiting: a hollow, dashed receptor)
+  const signal = (cx, cy, R, hollow) => {
+    let s = '<g transform="translate(' + cx + ' ' + cy + ')"><g class="sg"><circle r="' + f1(R * 2) + '" fill="' + CY + '" opacity=".16"/>';
+    if (hollow) return s + '<circle r="' + R + '" fill="#06232b" stroke="' + INK + '" stroke-width="6"/><circle r="' + R + '" fill="none" stroke="' + CY + '" stroke-width="3" stroke-dasharray="5 4"/><circle r="' + f1(R * .3) + '" fill="' + CY + '" opacity=".7"/></g></g>';
+    for (let i = 0; i < 5; i++) { const a = -Math.PI / 2 + i * Math.PI * 2 / 5, x = f1(Math.cos(a) * R * 1.55), y = f1(Math.sin(a) * R * 1.55); s += '<path d="M0 0L' + x + ' ' + y + '" stroke="' + INK + '" stroke-width="6" stroke-linecap="round"/><path d="M0 0L' + x + ' ' + y + '" stroke="#bff8ff" stroke-width="2.6" stroke-linecap="round"/><circle cx="' + x + '" cy="' + y + '" r="' + f1(R * .26) + '" fill="' + CY + '" stroke="' + INK + '" stroke-width="2"/>'; }
+    const hex = Array.from({ length: 6 }, (_, i) => f1(Math.cos(i * Math.PI / 3) * R) + ' ' + f1(Math.sin(i * Math.PI / 3) * R)).join('L');
+    return s + '<path d="M' + hex + 'Z" transform="translate(2 3)" fill="' + INK + '" opacity=".55"/><path d="M' + hex + 'Z" fill="#1fb0d4" stroke="' + INK + '" stroke-width="3" stroke-linejoin="round"/>' +
+      '<path d="M' + hex + 'Z" transform="translate(-1 -1.4) scale(.78)" fill="#9ff3ff"/><path d="' + starD(0, 0, R * .45) + '" fill="#fff"/>' +
+      '<path d="M' + hex + 'Z" fill="none" stroke="' + INK + '" stroke-width="3" stroke-linejoin="round"/></g></g>';
+  };
+  // a cartoon ghost finger, fingertip at 0,0 (wrap in a translated <g>, animate the class from CSS)
+  const finger = cls => '<g class="' + cls + '"><circle r="13" fill="#fff" opacity=".25" class="tap"/><g transform="rotate(-22)"><rect x="-12" y="18" width="28" height="30" rx="11" fill="#fff" stroke="' + INK + '" stroke-width="3"/>' +
+    '<rect x="-6.5" y="-2" width="13" height="34" rx="6.5" fill="#fff" stroke="' + INK + '" stroke-width="3"/><path d="M-3 4h6" stroke="#c9d8de" stroke-width="2" stroke-linecap="round"/></g></g>';
+  const field = '<rect width="300" height="250" fill="#04161c"/><circle cx="150" cy="120" r="150" fill="#0d3a44" opacity=".55"/><circle cx="150" cy="120" r="95" fill="#11505c" opacity=".35"/><g stroke="#5fe6ff" stroke-opacity=".06">' + Array.from({ length: 9 }, (_, i) => '<path d="M' + (i * 38) + ' 0V250"/>').join('') + Array.from({ length: 7 }, (_, i) => '<path d="M0 ' + (i * 38) + 'H300"/>').join('') + '</g>';
   const svg = (inner, css) => '<svg viewBox="0 0 300 250" xmlns="http://www.w3.org/2000/svg">' + (css ? '<style>@media (prefers-reduced-motion: no-preference){' + css + '}</style>' : '') + field + inner + '</svg>';
+  const svgBare = (inner, css) => '<svg viewBox="0 0 300 250" xmlns="http://www.w3.org/2000/svg">' + (css ? '<style>@media (prefers-reduced-motion: no-preference){' + css + '}</style>' : '') + inner + '</svg>';
   const pent = (cx, cy, R) => Array.from({ length: 5 }, (_, i) => { const a = -Math.PI / 2 + i * 2 * Math.PI / 5; return [cx + Math.cos(a) * R, cy + Math.sin(a) * R]; });
-  const signal = (cx, cy, R, dash) => '<g class="sg"><circle cx="' + cx + '" cy="' + cy + '" r="' + R * 1.5 + '" fill="' + CY + '" opacity=".1"/><circle cx="' + cx + '" cy="' + cy + '" r="' + R + '" fill="#06232b" stroke="' + CY + '" stroke-width="2"' + (dash ? ' stroke-dasharray="5 4"' : '') + '/>' +
-    '<circle cx="' + cx + '" cy="' + cy + '" r="' + f1(R * .35) + '" fill="' + CY + '" opacity=".85"/></g>';
-  const SG = '.sg{animation:sg 2.6s ease-in-out infinite;transform-box:fill-box;transform-origin:50% 50%}@keyframes sg{50%{transform:scale(1.1)}}';
+  const SG = '.sg{animation:sg 2.2s ease-in-out infinite;transform-box:fill-box;transform-origin:50% 50%}@keyframes sg{50%{transform:scale(1.12)}}';
   const rimCols = [0, 1, 2, 3, 1];
+  // a chamber chip: the chamber's shape and its count of starred ions (a red cross when blocked, a glow when free)
+  const chip = (x, y, e, n) => '<g transform="translate(' + x + ' ' + y + ')"><rect x="-25" y="-14" width="50" height="30" rx="10" fill="' + INK + '" transform="translate(0 3)" opacity=".7"/>' +
+    '<rect x="-25" y="-14" width="50" height="30" rx="10" fill="' + (n ? '#0a2a31' : '#1d6f7e') + '" stroke="' + (n ? COL[e] : '#fff6c8') + '" stroke-width="2.4"/>' + gem(e, -11, 1, 7, { glow: 0, sw: .26 }) +
+    '<path d="' + starD(5, 1, 6) + '" fill="#fff" stroke="' + INK + '" stroke-width="1.2"/><text x="17" y="7" text-anchor="middle" font-family="' + BOLD + '" font-weight="900" font-size="16" fill="' + (n ? '#ff9ab5' : '#fff6c8') + '" stroke="' + INK + '" stroke-width="3" paint-order="stroke">' + n + '</text></g>';
 
-  // title: the signal in the middle, five marked ions round it in all four colours
-  const tp = pent(150, 118, 66);
-  const titleSvg = svg(tp.map(p => '<path d="M150 118L' + f1(p[0]) + ' ' + f1(p[1]) + '" stroke="' + CY + '" stroke-opacity=".3" stroke-dasharray="3 4"/>').join('') +
-    tp.map((p, i) => ion(rimCols[i], p[0], p[1], 15, true)).join('') + signal(150, 118, 24, true) +
-    say(150, 222, 15, 'free a chamber for the signal', CY), SG);
+  // title: a membrane ring, five starred ions (all four kinds) round the signal's empty receptor
+  const tp = pent(150, 122, 64);
+  const titleSvg = svgBare('<circle cx="150" cy="126" r="100" fill="' + INK + '" opacity=".5"/><circle cx="150" cy="122" r="100" fill="#0a3a44" stroke="' + INK + '" stroke-width="8"/><circle cx="150" cy="122" r="100" fill="none" stroke="' + CY + '" stroke-width="3.5"/>' +
+    '<circle cx="150" cy="122" r="92" fill="none" stroke="' + CY + '" stroke-opacity=".3" stroke-width="2" stroke-dasharray="2 6"/><path d="M68 84Q82 46 124 30" fill="none" stroke="#fff" stroke-opacity=".6" stroke-width="4" stroke-linecap="round"/>' +
+    tp.map(p => '<path d="M150 122L' + f1(p[0]) + ' ' + f1(p[1]) + '" stroke="#ff9ab5" stroke-opacity=".55" stroke-width="2" stroke-dasharray="3 4"/>').join('') +
+    signal(150, 122, 20, true) + tp.map((p, i) => '<g class="b' + i + '">' + gem(rimCols[i], p[0], p[1], 17, { mark: true, glow: .28 }) + '</g>').join(''),
+    SG + tp.map((_, i) => '.b' + i + '{animation:bob 2.6s ease-in-out ' + (i * .3) + 's infinite}').join('') + '@keyframes bob{50%{transform:translateY(-4px)}}');
 
-  const p1 = svg(tp.map(p => '<path d="M150 112L' + f1(p[0]) + ' ' + f1(p[1] - 6) + '" stroke="' + CY + '" stroke-opacity=".3" stroke-dasharray="3 4"/>').join('') +
-    pent(150, 112, 62).map((p, i) => ion(rimCols[i], p[0], p[1], 14, true)).join('') + signal(150, 112, 22, true) +
-    say(150, 208, 14, 'the signal is repelled by 5 marked ions') + say(150, 228, 14, 'all four chambers are taken', '#ff9ab5'), SG);
+  // how to play: one picture each, one short sentence
+  const p1 = svg(tp.map(p => '<path d="M150 108L' + f1(p[0]) + ' ' + f1(p[1] - 14) + '" stroke="#ff9ab5" stroke-opacity=".6" stroke-width="2" stroke-dasharray="3 4"/>').join('') +
+    signal(150, 108, 19, true) + pent(150, 108, 58).map((p, i) => gem(rimCols[i], p[0], p[1], 14, { mark: true })).join('') +
+    chip(60, 214, 0, 1) + chip(120, 214, 1, 2) + chip(180, 214, 2, 1) + chip(240, 214, 3, 1), SG);
 
-  const cell = (marks) => memb(24, 22, 120, 92, 0) + memb(156, 22, 120, 92, 1) + memb(24, 128, 120, 92, 2) + memb(156, 128, 120, 92, 3) + marks;
-  const p2 = svg(cell(
-    [[60, 52, 0], [100, 84, 0], [190, 56, 1], [236, 90, 1], [58, 160, 2], [104, 190, 2], [200, 160, 3], [240, 192, 3]].map(q => ion(q[2], q[0], q[1], 11, false)).join('') +
-    '<path d="M100 84L60 52M236 90L190 56" stroke="#fff" stroke-opacity=".35" stroke-dasharray="3 3"/>') +
-    say(84, 240, 12, 'green', COL[0]) + say(216, 240, 12, 'violet', COL[3]) + say(150, 12, 11, 'four chambers, one colour each', CY));
+  const p2 = svg(memb(78, 112, 64, 84, 0) + memb(222, 112, 64, 84, 1, true) +
+    '<path d="M136 46H164M156 38l8 8l-8 8M164 178H136M144 170l-8 8l8 8" fill="none" stroke="' + INK + '" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/><path d="M136 46H164M156 38l8 8l-8 8M164 178H136M144 170l-8 8l8 8" fill="none" stroke="' + CY + '" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/>' +
+    bond([84, 92], [214, 104], 0, 1) + bond([214, 104], [100, 150], 1, 0) +
+    gem(1, 214, 104, 15) + gem(0, 100, 150, 15) + gem(0, 50, 168, 13, { glow: 0 }) + gem(1, 236, 160, 13, { glow: 0 }) +
+    '<g class="mv">' + gem(0, 84, 92, 17, { glow: .35 }) + '</g><g transform="translate(92 102)"><g class="gf">' + finger('') + '</g></g>',
+    '.mv{animation:mv 2.8s ease-in-out infinite}.gf{animation:mv 2.8s ease-in-out infinite}@keyframes mv{0%,20%{transform:translateX(0)}55%,80%{transform:translateX(58px)}100%{transform:translateX(0)}}' +
+    '.tap{animation:tp 2.8s ease-out infinite;transform-box:fill-box;transform-origin:50% 50%}@keyframes tp{0%{transform:scale(.4);opacity:.6}20%{transform:scale(1.6);opacity:0}100%{opacity:0}}');
 
-  const p3 = svg(
-    memb(22, 40, 120, 130, 0) + memb(158, 40, 120, 130, 1) +
-    ion(0, 62, 90, 14, false) + ion(0, 104, 120, 14, false) +
-    '<path d="M62 90L104 120" stroke="#ff4d6d" stroke-width="2" stroke-dasharray="2 4"/><g stroke="#ff4d6d" stroke-width="3" stroke-linecap="round"><path d="M78 98l10 10M88 98l-10 10"/></g>' +
-    ion(1, 220, 100, 14, false) +
-    say(150, 196, 14, 'ions that repel each other') + say(150, 216, 14, 'can never share a chamber') +
-    say(82, 32, 11, 'repelling pair, same chamber', '#ff9ab5'));
+  const lock = (x, y) => '<g transform="translate(' + x + ' ' + y + ')"><path d="M-8 -2V-9A8 8 0 0 1 8 -9V-2" fill="none" stroke="' + INK + '" stroke-width="7" stroke-linecap="round"/><path d="M-8 -2V-9A8 8 0 0 1 8 -9V-2" fill="none" stroke="#fff6c8" stroke-width="3.4" stroke-linecap="round"/>' +
+    '<rect x="-13" y="-3" width="26" height="21" rx="5" fill="#ffbd3a" stroke="' + INK + '" stroke-width="3"/><rect x="-10" y="0" width="12" height="5" rx="2.5" fill="#fff" opacity=".7"/><circle cy="9" r="3" fill="' + INK + '"/></g>';
+  const p3 = svg(memb(78, 112, 62, 80, 2) + memb(222, 112, 62, 80, 3) +
+    '<g class="lk">' + bond([78, 80], [214, 116], 2, 3, true) + bond([214, 116], [96, 152], 3, 2, true) + '</g>' +
+    gem(2, 78, 80, 16, { mark: true }) + gem(3, 214, 116, 16) + gem(2, 96, 152, 16, { mark: true }) + gem(3, 240, 66, 12, { glow: 0 }) + '<g class="sg">' + lock(150, 196) + '</g>',
+    SG + '.lk{animation:lk 1.4s ease-in-out infinite}@keyframes lk{50%{opacity:.55}}');
 
-  const p4 = svg(
-    memb(14, 28, 112, 110, 0) + memb(174, 28, 112, 110, 1) +
-    '<g class="mv">' + ion(0, 50, 70, 12, false) + '</g>' + ion(1, 232, 58, 12, false) + ion(1, 226, 108, 12, false) + ion(0, 78, 106, 12, false) +
-    '<path d="M50 70L78 106M232 58L226 108M50 70L226 108" stroke="' + CY + '" stroke-opacity=".5" stroke-width="1.6" stroke-dasharray="3 3"/>' +
-    '<path d="M132 84H168M160 77l8 7l-8 7M168 100H132M140 93l-8 7l8 7" fill="none" stroke="' + CY + '" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>' +
-    say(150, 170, 14, 'move one ion and its whole linked') + say(150, 190, 14, 'group (a chain) trades chambers') +
-    say(150, 218, 12, 'drag it across, or tap it then the chamber', CY),
-    '.mv{animation:mv 3s ease-in-out infinite}@keyframes mv{0%,30%{transform:translateX(0)}60%,100%{transform:translateX(0)}45%{transform:translateX(6px)}}');
+  const p4 = svg(memb(80, 64, 62, 46, 0, true) + memb(220, 64, 62, 46, 1) + memb(80, 176, 62, 46, 2) + memb(220, 176, 62, 46, 3) +
+    '<g class="rays">' + Array.from({ length: 10 }, (_, i) => { const a = i * Math.PI / 5; return '<path d="M' + f1(80 + Math.cos(a) * 30) + ' ' + f1(64 + Math.sin(a) * 30) + 'L' + f1(80 + Math.cos(a) * 44) + ' ' + f1(64 + Math.sin(a) * 44) + '" stroke="#fff6c8" stroke-width="3.4" stroke-linecap="round"/>'; }).join('') + '</g>' +
+    signal(80, 64, 15, false) + gem(0, 40, 50, 10, { glow: 0 }) + gem(0, 122, 82, 10, { glow: 0 }) +
+    gem(1, 200, 50, 12, { mark: true }) + gem(1, 244, 80, 12, { mark: true }) + gem(2, 70, 168, 12, { mark: true }) + gem(3, 210, 174, 12, { mark: true }) + gem(3, 246, 190, 12, { mark: true }),
+    SG + '.rays{animation:ry 1.6s ease-out infinite;transform-box:fill-box;transform-origin:50% 50%}@keyframes ry{0%{transform:scale(.7);opacity:0}30%{opacity:1}100%{transform:scale(1.25);opacity:0}}');
 
-  const p5 = svg(
-    memb(78, 24, 144, 96, 2) + ion(2, 120, 62, 12, true) + ion(2, 178, 86, 12, true) +
-    '<g transform="translate(150 150)"><path d="M-9 -2V-10A9 9 0 0 1 9 -10V-2" fill="none" stroke="#ff9ab5" stroke-width="3" stroke-linecap="round"/><rect x="-13" y="-2" width="26" height="20" rx="4" fill="#ffbd3a" stroke="#031014" stroke-width="2"/><circle cy="8" r="3" fill="#031014"/></g>' +
-    say(150, 196, 14, 'two marked ions in one chain: locked.', '#ff9ab5') + say(150, 216, 14, 'the chain cannot leave without both.', '#ff9ab5') + say(150, 238, 12, 'a locked move only rocks the chamber', CY));
+  // ---- icon, logo and card (SKIN-SPEC 13); every id carries the skin id and its piece (ions-ic-, ions-lg-, ions-cd-)
+  function logoArt(p) {
+    const T = (x, y, s, ls, fill, str) => '<text x="' + (x + 3) + '" y="' + (y + 4) + '" font-family="' + BOLD + '" font-weight="900" font-size="' + s + '" letter-spacing="' + ls + '" fill="' + INK + '" stroke="' + INK + '" stroke-width="8" stroke-linejoin="round" paint-order="stroke">' + str + '</text>' +
+      '<text x="' + x + '" y="' + y + '" font-family="' + BOLD + '" font-weight="900" font-size="' + s + '" letter-spacing="' + ls + '" fill="' + fill + '" stroke="' + INK + '" stroke-width="7" stroke-linejoin="round" paint-order="stroke">' + str + '</text>';
+    return '<defs><linearGradient id="' + p + '-t1" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset=".45" stop-color="#9ff6ff"/><stop offset="1" stop-color="#22bfe0"/></linearGradient>' +
+      '<linearGradient id="' + p + '-t2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fffbe6"/><stop offset=".5" stop-color="#ffd36a"/><stop offset="1" stop-color="#f29a1c"/></linearGradient>' +
+      '<radialGradient id="' + p + '-o" cx=".36" cy=".32" r=".75"><stop offset="0" stop-color="#ffffff"/><stop offset=".3" stop-color="#7df7d0"/><stop offset="1" stop-color="#0f7a5a"/></radialGradient></defs>' +
+      '<g transform="translate(34 40)"><circle r="31" fill="' + COL[0] + '" opacity=".22"/><circle cx="2.5" cy="3.5" r="19" fill="' + INK + '" opacity=".6"/>' +
+      '<g transform="rotate(-28)"><ellipse rx="30" ry="10" fill="none" stroke="' + INK + '" stroke-width="7"/><ellipse rx="30" ry="10" fill="none" stroke="#ffd36a" stroke-width="3"/></g>' +
+      '<circle r="19" fill="url(#' + p + '-o)" stroke="' + INK + '" stroke-width="3.5"/><ellipse cx="-7" cy="-8" rx="6" ry="3.5" transform="rotate(-35 -7 -8)" fill="#fff" opacity=".9"/>' +
+      '<g transform="rotate(-28)"><path d="M30 0A30 10 0 0 1 -30 0" fill="none" stroke="' + INK + '" stroke-width="7"/><path d="M30 0A30 10 0 0 1 -30 0" fill="none" stroke="#ffd36a" stroke-width="3"/><circle cx="-18" cy="8" r="5" fill="#fff6c8" stroke="' + INK + '" stroke-width="2.4"/></g></g>' +
+      T(70, 41, 40, 3, 'url(#' + p + '-t1)', 'ION') + T(70, 71, 23, 1, 'url(#' + p + '-t2)', 'CHANNELS') +
+      '<path d="' + starD(176, 22, 7) + '" fill="#fff" stroke="' + INK + '" stroke-width="2"/><path d="' + starD(194, 36, 4.5) + '" fill="' + CY + '" stroke="' + INK + '" stroke-width="1.6"/>';
+  }
+  const logo = '<svg viewBox="0 0 240 80" xmlns="http://www.w3.org/2000/svg">' + logoArt('ions-lg') + '</svg>';
 
-  const p6 = svg(
-    memb(22, 24, 120, 90, 0) + memb(158, 24, 120, 90, 3) + memb(22, 126, 120, 90, 2, 22) + memb(158, 126, 120, 90, 1) +
-    ion(0, 62, 60, 12, true) + ion(0, 104, 80, 12, true) + ion(3, 200, 56, 12, true) + ion(1, 222, 160, 12, true) + ion(1, 186, 184, 12, true) +
-    '<circle cx="82" cy="170" r="22" fill="' + CY + '" opacity=".14"/><circle cx="82" cy="170" r="14" fill="#06232b" stroke="#fff6c8" stroke-width="2.4"/>' +
-    '<path d="M76 170l4 4l8 -9" fill="none" stroke="#fff6c8" stroke-width="2.6" stroke-linecap="round"/>' +
-    say(150, 238, 13, 'one chamber free of marked ions: the signal docks', CY));
+  const icon = '<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg"><defs>' +
+    '<linearGradient id="ions-ic-bg" x1="0" y1="0" x2=".6" y2="1"><stop offset="0" stop-color="#14707e"/><stop offset=".55" stop-color="#0a3d48"/><stop offset="1" stop-color="#03161c"/></linearGradient>' +
+    '<radialGradient id="ions-ic-gl" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="#5fe6ff" stop-opacity=".55"/><stop offset="1" stop-color="#5fe6ff" stop-opacity="0"/></radialGradient>' +
+    '<radialGradient id="ions-ic-o" cx=".36" cy=".3" r=".78"><stop offset="0" stop-color="#ffffff"/><stop offset=".28" stop-color="#8dfbd8"/><stop offset=".7" stop-color="#22c792"/><stop offset="1" stop-color="#0b5a42"/></radialGradient>' +
+    '<linearGradient id="ions-ic-r" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#d8fbff"/><stop offset=".5" stop-color="#5fe6ff"/><stop offset="1" stop-color="#1590ae"/></linearGradient></defs>' +
+    '<rect width="120" height="120" rx="26" fill="url(#ions-ic-bg)"/><circle cx="60" cy="60" r="56" fill="url(#ions-ic-gl)"/>' +
+    '<g stroke="#5fe6ff" stroke-opacity=".08">' + [20, 40, 60, 80, 100].map(v => '<path d="M' + v + ' 0V120M0 ' + v + 'H120"/>').join('') + '</g>' +
+    // the membrane ring: shadow, dark rim, cyan glass, neon top-left rim light
+    '<circle cx="63" cy="65" r="40" fill="none" stroke="' + INK + '" stroke-opacity=".6" stroke-width="15"/><circle cx="60" cy="60" r="40" fill="none" stroke="' + INK + '" stroke-width="15"/>' +
+    '<circle cx="60" cy="60" r="40" fill="none" stroke="url(#ions-ic-r)" stroke-width="9"/><path d="M26 44A38 38 0 0 1 50 22" fill="none" stroke="#fff" stroke-width="3.4" stroke-linecap="round"/>' +
+    // the big glossy ion orb
+    '<g transform="translate(60 60) rotate(-28)"><path d="M-33 0A33 11 0 0 1 33 0" fill="none" stroke="' + INK + '" stroke-width="7.5"/><path d="M-33 0A33 11 0 0 1 33 0" fill="none" stroke="#ffd36a" stroke-width="3.4"/></g>' +
+    '<circle cx="60" cy="60" r="33" fill="#3ef0b4" opacity=".28"/><circle cx="64" cy="65" r="25" fill="' + INK + '" opacity=".6"/>' +
+    '<circle cx="60" cy="60" r="25" fill="url(#ions-ic-o)" stroke="' + INK + '" stroke-width="4"/>' +
+    '<circle cx="64" cy="64" r="12" fill="#b8ffe6" opacity=".35"/><path d="' + starD(66, 66, 7) + '" fill="#e9fff7" opacity=".7"/>' +
+    '<ellipse cx="49" cy="47" rx="9" ry="5" transform="rotate(-38 49 47)" fill="#fff" opacity=".95"/><circle cx="41" cy="58" r="2.2" fill="#fff" opacity=".8"/>' +
+    '<g transform="translate(60 60) rotate(-28)"><path d="M33 0A33 11 0 0 1 -33 0" fill="none" stroke="' + INK + '" stroke-width="7.5"/><path d="M33 0A33 11 0 0 1 -33 0" fill="none" stroke="#ffd36a" stroke-width="3.4"/><circle cx="-20" cy="8.6" r="5.5" fill="#fff6c8" stroke="' + INK + '" stroke-width="2.6"/></g>' +
+    // three more ions riding the ring
+    gem(1, 25, 84, 10.5, { glow: .35, sw: .26 }) + gem(2, 96, 30, 9.5, { glow: .35, sw: .28 }) + gem(3, 95, 88, 10.5, { glow: .35, sw: .26 }) +
+    '<path d="' + starD(24, 26, 6) + '" fill="#fff6c8" stroke="' + INK + '" stroke-width="1.8"/></svg>';
 
+  const cardIons = [[0, 36, 60], [0, 62, 26], [1, 196, 42], [1, 206, 84], [2, 40, 156], [2, 84, 180], [2, 50, 196], [3, 160, 154], [3, 206, 172], [3, 172, 198]];
+  const card = '<svg viewBox="0 0 240 320" xmlns="http://www.w3.org/2000/svg"><defs>' +
+    '<linearGradient id="ions-cd-bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0f5866"/><stop offset=".55" stop-color="#062832"/><stop offset="1" stop-color="#020c10"/></linearGradient>' +
+    '<radialGradient id="ions-cd-gl" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="#5fe6ff" stop-opacity=".5"/><stop offset="1" stop-color="#5fe6ff" stop-opacity="0"/></radialGradient></defs>' +
+    '<rect width="240" height="320" fill="url(#ions-cd-bg)"/><g stroke="#5fe6ff" stroke-opacity=".07">' + Array.from({ length: 8 }, (_, i) => '<path d="M' + (i * 32 + 8) + ' 0V320"/>').join('') + Array.from({ length: 10 }, (_, i) => '<path d="M0 ' + (i * 32 + 8) + 'H240"/>').join('') + '</g>' +
+    '<circle cx="120" cy="112" r="120" fill="url(#ions-cd-gl)"/>' +
+    memb(64, 62, 54, 46, 0) + memb(176, 62, 54, 46, 1, true) + memb(64, 164, 54, 46, 2) + memb(176, 164, 54, 46, 3) +
+    cardIons.map(q => gem(q[0], q[1], q[2], 11.5, { glow: .1 })).join('') +
+    // a chain being swapped: green and red ions linked across the membranes, a flip flash on the held one
+    signal(120, 113, 13, true) +
+    bond([84, 82], [148, 80], 0, 1) + bond([148, 80], [96, 42], 1, 0) +
+    '<circle cx="148" cy="80" r="24" fill="#fff" opacity=".2"/>' + gem(0, 84, 82, 14, { mark: true, glow: .35 }) + gem(0, 96, 42, 12, { glow: .3 }) + gem(1, 148, 80, 15, { glow: .45 }) +
+    Array.from({ length: 8 }, (_, i) => { const a = i * Math.PI / 4 + .4; return '<path d="M' + f1(148 + Math.cos(a) * 21) + ' ' + f1(80 + Math.sin(a) * 21) + 'L' + f1(148 + Math.cos(a) * 29) + ' ' + f1(80 + Math.sin(a) * 29) + '" stroke="#fff6c8" stroke-width="2.6" stroke-linecap="round"/>'; }).join('') +
+    '<g transform="translate(156 92)">' + finger('') + '</g>' +
+    '<rect y="226" width="240" height="94" fill="' + INK + '" opacity=".55"/><path d="M0 226H240" stroke="' + CY + '" stroke-opacity=".5" stroke-width="2"/>' +
+    '<g transform="translate(0 232)">' + logoArt('ions-cd-lg') + '</g></svg>';
   // ---- the level map: a journey through living tissue under the microscope ----
   const ZT = { cove: ['#5fe6ff', '#3ef0b4'], beach: ['#9be34a', '#ffe14d'], town: ['#8f93ff', '#d3b8ff'], harbour: ['#ffbd3a', '#ff8a3d'],
     forest: ['#ff6fb5', '#ffb0d8'], cape: ['#5fe6ff', '#ffffff'], reef: ['#ff7a6b', '#ffb08a'], cave: ['#b48cff', '#7ee8ff'], volcano: ['#ff5a3a', '#ffbd3a'] };
-  const DK = ['#12805f', '#b02a58', '#b07a10', '#4a4fc0'], MONO = "ui-monospace,'SF Mono',Menlo,Consolas,monospace";
+  const MONO = "ui-monospace,'SF Mono',Menlo,Consolas,monospace";
   const A = (x, y) => f1(x) + ' ' + f1(y);
   const ves = (x, y, r, c, o) => '<g transform="translate(' + A(x, y) + ')"><circle r="' + f1(r) + '" fill="' + c + '" fill-opacity="' + (o || .12) + '" stroke="' + c + '" stroke-opacity=".6" stroke-width="1.6"/><circle r="' + f1(r * .62) + '" fill="none" stroke="' + c + '" stroke-opacity=".25"/><path d="M' + A(-r * .6, -r * .25) + 'A' + f1(r * .65) + ' ' + f1(r * .65) + ' 0 0 1 ' + A(-r * .1, -r * .62) + '" fill="none" stroke="#fff" stroke-opacity=".55" stroke-width="' + f1(Math.max(1, r / 7)) + '" stroke-linecap="round"/></g>';
   const chl = s => '<g transform="scale(' + s + ')"><ellipse rx="26" ry="13" fill="#9be34a" fill-opacity=".16" stroke="#9be34a" stroke-opacity=".7" stroke-width="1.6"/><ellipse rx="22" ry="9.5" fill="none" stroke="#9be34a" stroke-opacity=".28"/>' + [-13, 0, 13].map(x => [-4, 0, 4].map(y => '<rect x="' + (x - 5) + '" y="' + (y - 1) + '" width="10" height="2" rx="1" fill="#c8ff7a" fill-opacity=".7"/>').join('')).join('') + '</g>';
@@ -219,9 +302,14 @@
 
   FTH_SKINS.register({
     id: 'ions', name: 'Ion Channels', ic: '⚛️', blurb: 'glowing ions in a living cell',
+    icon, card, logo,
     coin: { name: 'ion orb', plural: 'ion orbs', glyph: '⚛️', value: 35, pitch: 1.6,   // this skin's currency (SKIN-SPEC.md section 12)
       colors: { main: '#5fe6ff', edge: '#ffe14d' },
-      svg: FTH_SKINS.coinArt('<g transform="rotate(-28)"><path d="M-12 0A12 4.6 0 0 1 12 0" fill="none" stroke="#ffe14d" stroke-width="1.6" stroke-linecap="round"/></g><circle r="7.6" fill="#1fb8d8" stroke="#04141a" stroke-width="2"/><circle cx="-1.2" cy="-1.2" r="4.6" fill="#7ff3ff"/><path d="M0 -3.2V3.2M-3.2 0H3.2" stroke="#04141a" stroke-width="1.7" stroke-linecap="round"/><g transform="rotate(-28)"><path d="M12 0A12 4.6 0 0 1 -12 0" fill="none" stroke="#ffe14d" stroke-width="1.6" stroke-linecap="round"/><circle cx="-7.7" cy="3.5" r="2.2" fill="#ffe14d" stroke="#04141a" stroke-width="1.2"/></g>') },
+      svg: FTH_SKINS.coinArt('<circle cx="1.4" cy="2.2" r="9" fill="#02090c" opacity=".55"/>' +
+        '<g transform="rotate(-28)"><path d="M-12 0A12 4.6 0 0 1 12 0" fill="none" stroke="#04141a" stroke-width="3.6" stroke-linecap="round"/><path d="M-12 0A12 4.6 0 0 1 12 0" fill="none" stroke="#ffe14d" stroke-width="1.7" stroke-linecap="round"/></g>' +
+        '<circle r="8.4" fill="#1590ae" stroke="#04141a" stroke-width="2"/><circle cx="-1" cy="-1.2" r="6" fill="#5fe6ff"/><circle cx="-1.8" cy="-2" r="3.4" fill="#b8f8ff"/>' +
+        '<path d="M0 -3.4V3.4M-3.4 0H3.4" stroke="#04141a" stroke-width="1.8" stroke-linecap="round"/><ellipse cx="-4" cy="-4.6" rx="2.2" ry="1.2" transform="rotate(-38 -4 -4.6)" fill="#fff"/>' +
+        '<g transform="rotate(-28)"><path d="M12 0A12 4.6 0 0 1 -12 0" fill="none" stroke="#04141a" stroke-width="3.6" stroke-linecap="round"/><path d="M12 0A12 4.6 0 0 1 -12 0" fill="none" stroke="#ffe14d" stroke-width="1.7" stroke-linecap="round"/><circle cx="-7.7" cy="3.5" r="2.4" fill="#fff6c8" stroke="#04141a" stroke-width="1.3"/></g>') },
     src: 'lab/ions.html',
     hud: 'compact',
     theme: {
@@ -237,7 +325,7 @@
       '--sk-font': "'Space Grotesk', 'Inter', system-ui, sans-serif",
       '--sk-radius': '16px',
       '--sk-star-on': '#5fe6ff', '--sk-star-edge': '#031014', '--sk-star-off': '#3e8c9c', '--sk-star-off-edge': '#62b4c4',
-      '--sk-ctl': 'rgba(10,44,52,.9)', '--sk-ctl-ink': '#bff3ff', '--sk-ctl-edge': 'rgba(95,230,255,.7)',
+      '--sk-ctl': '#0c3a44', '--sk-ctl-ink': '#e9fdff', '--sk-ctl-edge': '#5fe6ff',
       '--sk-chip': 'linear-gradient(180deg, rgba(10,44,52,.9), rgba(4,20,25,.94))',
       '--sk-chip-ink': '#d6f6fb',
       '--sk-edge': 'rgba(95,230,255,.7)',
@@ -281,22 +369,23 @@
     fonts: ['https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&display=swap'],
     title: { svg: titleSvg },
     intro: [
-      { title: 'The signal needs a chamber', text: 'The signal is repelled by 5 marked ions. They sit in all four chambers, so it has nowhere to land.', svg: p1 },
-      { title: 'Chambers and repulsion', text: 'Every ion lives in one chamber. Ions that repel each other can never share one.', svg: p3 },
-      { title: 'Move a chain', text: 'Hold an ion over another chamber: the ions it repels there, and the ones they repel, link up into a chain. Let go and the whole chain flips and trades places.', svg: p4 },
-      { title: 'Locks', text: 'If a chain holds two marked ions it is locked: it only rocks, nothing moves.', svg: p5 },
-      { title: 'Free a chamber', text: 'When one chamber holds no marked ions, a channel opens and the signal docks.', svg: p6 },
+      { title: 'Dock the signal', text: 'Five starred ions keep the signal out of every chamber.', svg: p1 },
+      { title: 'Drag an ion', text: 'Drag an ion into another chamber: its whole chain trades places.', svg: p2 },
+      { title: 'Locked stars', text: 'Two stars on one chain always flip together.', svg: p3 },
+      { title: 'Free a chamber', text: 'Clear every star from one chamber and the signal docks.', svg: p4 },
     ],
     bonus: {
-      label: 'ION BONUS',
-      board: 'radial-gradient(ellipse at 50% 40%, #0a2a30, #031014 75%)',
+      label: 'ION',
+      games: ['snake', 'pop'],
+      intro: 'zoom',
+      board: 'radial-gradient(ellipse at 50% 40%, #0d3a44, #031014 75%)',
       line: '#5fe6ff',
+      // one big chunky ion per element: halo, offset shadow, deep base, lit body, highlight, dark outline
       tile(x, y, r, e, k) {
-        const s = r * 0.7;
+        const s = r * .6;
         return '<g class="tl e' + e + '" data-k="' + k + '" transform="translate(' + x + ' ' + y + ')"><g class="tin">' +
-          '<circle r="' + f1(r * .98) + '" fill="' + COL[e] + '" fill-opacity=".1" stroke="' + COL[e] + '" stroke-opacity=".55" stroke-width="1.4"/>' +
-          shape(e, s) + ' fill="' + COL[e] + '" stroke="#e9ffff" stroke-opacity=".8" stroke-width="1.2"/>' +
-          '<circle cx="' + f1(-s * .3) + '" cy="' + f1(-s * .3) + '" r="' + f1(s * .2) + '" fill="#fff" opacity=".8"/></g></g>';
+          '<circle r="' + f1(r * .96) + '" fill="' + COL[e] + '" fill-opacity=".16" stroke="' + COL[e] + '" stroke-opacity=".5" stroke-width="' + f1(Math.max(1, r * .05)) + '"/>' +
+          gem(e, 0, 0, s, { glow: 0, sw: .17 }).replace(/^<g transform="translate\(0 0\)">/, '<g>') + '</g></g>';
       },
     },
     map: {
@@ -319,6 +408,10 @@
       },
     },
     levelMap,
-    words: { win: 'Signal received!', perfect: 'Perfect route! No shorter way exists.', par: 'Par is {par}. Can you get ★★★?', chart: 'COLOURING SPACE' },
+    words: { win: 'Signal docked!', perfect: 'Perfect route!', par: 'Par {par}: go for ★★★', chart: 'COLOURING SPACE' },
+    eggs: [
+      { id: 'rogue-ion', on: 'page', note: 'now and then a rogue ion zips across the cell: tap it to catch it', pays: true },
+      { id: 'resonance', on: 'page', note: 'a solve in par moves makes the docked signal ring a resonance chord', pays: false },
+    ],
   });
 })();

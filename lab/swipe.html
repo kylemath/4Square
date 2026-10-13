@@ -28,9 +28,9 @@
       bubble shimmers g.chainAt(u, b); release on / tap a bubble -> g.swap(g.chainAt(u, b)). This is how lone tiles
       (single-region chains, no neighbour of either partner kind) are reached; it works on any tile.
     K.web (the only chain of that pair: flipping it renames two kinds everywhere, nothing changes) -> no swap: the coins
-      spill off the traced tiles and slide back, with a "nothing changes" line.
+      spill off the traced tiles and slide back, the ring readout wobbles (no copy on screen).
   Every action is exactly one g.swap(K) or nothing. Win: g.won() (the ring is 2 + 2 + 1) -> JACKPOT: the golden tile
-  turns into g.free(), a coin fountain, the happy jingle, then the 5-4-3-2-1 countdown and g.reset() (tap to skip).
+  turns into g.free(); the marquee races, every tile spins like a reel and lands in a wave, chips rain (about 3.6 s), then LAB.done() (standalone: the countdown and g.reset()).
   Idle hint: after a quiet spell a little snake of a g.good() chain bobs, like the bonus demo. Tiny undo / restart in
   the header (g.undo / g.reset). Coins are just juice: no score.
 -->
@@ -43,21 +43,39 @@
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body { height: 100%; margin: 0; overflow: hidden; }
   body {
-    background: radial-gradient(120% 80% at 50% 0%, #8a6cff 0%, #4a35c4 55%, #2e2090 100%); background-color: #2e2090; color: #fff;
+    background: radial-gradient(120% 80% at 50% 0%, #9a3cff 0%, #5a1fc8 50%, #2a0c7a 100%); background-color: #2a0c7a; color: #fff;
     font-family: ui-rounded, "SF Pro Rounded", system-ui, -apple-system, "Segoe UI", sans-serif;
     overscroll-behavior: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
     display: flex; flex-direction: column; padding: 8px 8px 8px; gap: 5px;
   }
   button { font: inherit; color: inherit; touch-action: manipulation; cursor: pointer; }
   .bhead { display: flex; align-items: center; gap: 7px; font-weight: 900; font-size: .92rem; min-height: 30px; }
-  .btag { background: #ffd84a; color: #4a2a00; border: 2px solid #fff; border-radius: 999px; padding: 1px 9px; font-size: .74rem; letter-spacing: .08em; box-shadow: 0 3px 0 #b06a00; white-space: nowrap; }
-  #ring { flex: 1; min-width: 0; height: 30px; display: flex; align-items: center; }
-  #ring svg { height: 30px; width: auto; max-width: 100%; overflow: visible; }
-  .bskip { background: var(--sk-ctl, rgba(18,22,70,.55)); color: var(--sk-ctl-ink, #fff); border: 2px solid var(--sk-ctl-edge, #fff); border-radius: 999px; width: 32px; height: 28px; padding: 0; font-weight: 900; font-size: .95rem; line-height: 1; flex: none; }
+  .btag { background: linear-gradient(180deg, #ff86ea, #d01a9e); color: #fff; border: 2px solid #1c1640; border-radius: 999px; padding: 2px 10px; font-size: .74rem; letter-spacing: .08em; box-shadow: 0 3px 0 #6a0a5a, 0 0 12px rgba(255,63,208,.6); white-space: nowrap; text-shadow: 0 2px 0 #1c1640; font-family: 'Lilita One', ui-rounded, system-ui, sans-serif; }
+  #ring { flex: 1; min-width: 0; height: 34px; display: flex; align-items: center; position: relative; transform-origin: left center; }
+  #ring svg { height: 34px; width: auto; max-width: 100%; overflow: visible; }
+  #ring .fly { position: absolute; top: 2px; width: 26px; height: 30px; pointer-events: none; }
+  .bskip { background: var(--sk-ctl, #3a1696); color: var(--sk-ctl-ink, #ffe9a6); border: 2px solid var(--sk-ctl-edge, #ffd84a); border-radius: 12px; width: 38px; height: 34px; padding: 0 0 2px; font-weight: 900; font-size: 1.1rem; line-height: 1; flex: none;
+    box-shadow: 0 4px 0 #1c1640, 0 0 10px rgba(255,216,74,.35), inset 0 2px 0 rgba(255,255,255,.25); transition: transform .08s, box-shadow .08s; }
+  .bskip:active { transform: translateY(3px); box-shadow: 0 1px 0 #1c1640, 0 0 8px rgba(255,216,74,.3); }
   body.inapp .btag { letter-spacing: .04em; }   /* ?hud=full|compact: the app's bar already has the title and stars; this page shows neither */
   .bskip:disabled { opacity: .35; }
-  #msg { height: 2.5em; line-height: 1.25; font-weight: 800; font-size: .86rem; display: flex; align-items: center; overflow: hidden; }
-  .bwrap { position: relative; flex: 1; min-height: 0; border-radius: 18px; background: rgba(18,22,70,.45); box-shadow: inset 0 0 0 2px rgba(255,255,255,.35); padding: 4px; }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
+  .bwrap { position: relative; flex: 1; min-height: 0; border-radius: 18px; background: radial-gradient(90% 70% at 50% 40%, rgba(160,80,255,.35), rgba(27,10,80,.6)); box-shadow: inset 0 0 0 3px #1c1640, 0 0 18px rgba(255,63,208,.45); padding: 10px; margin-top: 4px; }
+  .mq { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+  .mq rect { fill: none; stroke-linecap: round; }
+  .mq .b0 { stroke: #ff3fd0; stroke-opacity: .35; } .mq .b1 { stroke: #ffd84a; opacity: .6; } .mq .b2 { stroke: #fff; opacity: .45; }
+  .bwrap.win .mq .b1, .bwrap.win .mq .b2, .bwrap.spin .mq .b1, .bwrap.spin .mq .b2 { opacity: 1; }
+  .bwrap.win { box-shadow: inset 0 0 0 3px #1c1640, 0 0 30px rgba(255,216,74,.8); }
+  @media (prefers-reduced-motion: no-preference) {
+    .mq .b2 { animation: chase 2.4s linear infinite; } .bwrap.win .mq .b2 { animation-duration: .35s; } .bwrap.spin .mq .b2 { animation-duration: .12s; }
+    .bwrap.win .mq .b1 { animation: blink .35s steps(2) infinite; }
+    .tl.cand .tin { animation: cand .5s ease-in-out infinite alternate; }
+  }
+  @keyframes chase { to { stroke-dashoffset: -28px; } }
+  @keyframes blink { 50% { opacity: .3; } }
+  @keyframes cand { from { filter: drop-shadow(0 0 2px var(--n)); } to { filter: drop-shadow(0 0 8px var(--n)) drop-shadow(0 0 2px #fff) brightness(1.15); } }
+  .tl.cand .tr { stroke: #fff; }
+  .ghost { pointer-events: none; opacity: 0; }
   #bsvg { display: block; width: 100%; height: 100%; touch-action: none; overflow: visible; cursor: pointer; }
   #bsvg .tl, #bsvg .bcoin, #bsvg polyline, #bsvg .lk, #bsvg .fx { pointer-events: none; }
   .bglow { fill: none; stroke: #fff; stroke-width: 16; stroke-linecap: round; stroke-linejoin: round; stroke-opacity: .3; }
@@ -97,15 +115,18 @@
   .bcd.burst { font-size: 2.6rem; color: #fff; opacity: 1; }
   #ring .grp { transition: transform .25s; }
   #ring.win .cap { stroke: #ffd84a; filter: drop-shadow(0 0 4px #ffd84a); }
-  @media (max-width: 300px) { .btag { font-size: .62rem; padding: 1px 6px; } #msg { font-size: .76rem; } .bcd { font-size: 4rem; } .bcd.burst { font-size: 1.9rem; } }
-  @media (prefers-reduced-motion: reduce) { .bline, .tl.ahead .tin, .tl.gold .tin { animation: none !important; } .tl, .lk, .bcoin { transition: none; } }
+  #ring .tgt { stroke: #ffd84a; stroke-dasharray: 4 3; }
+  #ring.win .tgt { stroke-dasharray: none; fill: rgba(255,216,74,.25); }
+  .bcd.burst { font-family: 'Lilita One', ui-rounded, system-ui, sans-serif; font-size: 3rem; color: #ffd84a; }
+  @media (max-width: 300px) { .btag { font-size: .62rem; padding: 1px 6px; } .bcd { font-size: 4rem; } .bcd.burst { font-size: 2.1rem; } }
+  @media (prefers-reduced-motion: reduce) { .bline, .tl.ahead .tin, .tl.gold .tin, .tl.cand .tin { animation: none !important; } .tl, .lk, .bcoin { transition: none; } }
 </style>
 </head>
 <body>
-<div class="bhead"><span class="btag">JACKPOT</span><span id="ring" aria-label="the gold ring"></span><button class="bskip" id="bUndo" aria-label="undo" title="undo">↶</button><button class="bskip" id="bReset" aria-label="start over" title="start over">⟲</button></div>
-<div id="msg"><span>Swipe a trail of two kinds!</span></div>
-<div class="bwrap" id="wrap"><svg id="bsvg" aria-label="Bonus swipe board"></svg><div class="bcd" id="cd" aria-live="polite"></div></div>
-<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs><g id="coinG"><circle cy="1.8" r="11" fill="#c27a00" stroke="#1c1640" stroke-width="2"/><circle r="11" fill="#ffd84a" stroke="#1c1640" stroke-width="2"/><circle r="7.4" fill="none" stroke="#f0a91c" stroke-width="1.8"/><path d="M0 -4.8L1.4 -1.4 4.8 0 1.4 1.4 0 4.8-1.4 1.4-4.8 0-1.4-1.4Z" fill="#fff6c8" stroke="#c27a00" stroke-width=".8"/><path d="M-6.5 -6A9 9 0 0 1 1 -9.2" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round" opacity=".85"/></g></defs></svg>
+<div class="bhead"><span class="btag">JACKPOT</span><span id="ring" role="img" aria-label="the gold ring"></span><button class="bskip" id="bUndo" aria-label="undo" title="undo">↶</button><button class="bskip" id="bReset" aria-label="start over" title="start over">⟲</button></div>
+<div id="msg" class="sr" aria-live="polite">Swipe a trail of two kinds</div>
+<div class="bwrap" id="wrap"><svg class="mq" id="mq" aria-hidden="true"></svg><svg id="bsvg" role="application" aria-label="Bonus swipe board: swipe a trail of two alternating kinds across the bridges, or hold a tile to pick its kind. The gold ring pays out on two pairs and a single."></svg><div class="bcd" id="cd" aria-live="polite"></div></div>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs><g id="coinG"><circle cy="1.8" r="11.4" fill="#7a0f1e" stroke="#1c1640" stroke-width="2"/><circle r="11.4" fill="#e3263f" stroke="#1c1640" stroke-width="2"/><g fill="#fff"><rect x="-2.2" y="-10.4" width="4.4" height="3.6" rx=".8"/><rect x="-2.2" y="-10.4" width="4.4" height="3.6" rx=".8" transform="rotate(60)"/><rect x="-2.2" y="-10.4" width="4.4" height="3.6" rx=".8" transform="rotate(120)"/><rect x="-2.2" y="-10.4" width="4.4" height="3.6" rx=".8" transform="rotate(180)"/><rect x="-2.2" y="-10.4" width="4.4" height="3.6" rx=".8" transform="rotate(240)"/><rect x="-2.2" y="-10.4" width="4.4" height="3.6" rx=".8" transform="rotate(300)"/></g><circle r="6.6" fill="#b3142c" stroke="#fff" stroke-width="1.3" stroke-dasharray="2.2 1.25"/><path d="M0 -4.4L3.7 -1 0 4.4-3.7 -1Z" fill="#ffd84a" stroke="#1c1640" stroke-width="1.1" stroke-linejoin="round"/><path d="M0 -4.4L-3.7 -1H3.7Z" fill="#fff6c8"/><path d="M-7.6 -6.1A10 10 0 0 1 .4 -9.9" stroke="#fff" stroke-width="1.8" fill="none" stroke-linecap="round" opacity=".7"/></g></defs></svg>
 <script src="../levels.js"></script>
 <script src="../layout.js"></script>
 <script src="core.js"></script>
@@ -360,8 +381,9 @@ const SWIPE_CACHE = {"1spd2mn":[[1,0],[0,0],[0,-1],[2,-1],[2,0],[1,1],[0,1],[-1,
   const icons = sc => IPATH.map((d, e) => '<path class="ti ti' + e + '" d="' + d + '" transform="translate(' + q1(-12 * sc) + ' ' + q1(-12 * sc) + ') scale(' + q1(sc * 100) / 100 + ')"/>').join('');
   function tileSvg(hh, extra) {          // the game's cartoon tile (shadow, body, neon rim, black plate, icon) as a hexagon
     const sw = q1(hh * .1), sc = hh * .58 / 12;
-    return (extra || '') + '<polygon class="ts" points="' + hx(hh) + '" stroke-linejoin="round" transform="translate(0 ' + q1(hh * .16) + ')" stroke="#1c1640" stroke-width="' + sw + '"/>' +
+    return (extra || '') + '<polygon class="ts" points="' + hx(hh) + '" stroke-linejoin="round" transform="translate(' + q1(hh * .06) + ' ' + q1(hh * .16) + ')" stroke="#1c1640" stroke-width="' + sw + '"/>' +
       '<polygon class="tb" points="' + hx(hh) + '" stroke-linejoin="round" stroke="#1c1640" stroke-width="' + sw + '"/>' +
+      '<polyline points="' + (p => [p[4], p[5], p[0]].join(' '))(hx(hh * .89).split(' ')) + '" fill="none" stroke="#fff" stroke-opacity=".5" stroke-width="' + q1(hh * .08) + '" stroke-linecap="round" stroke-linejoin="round"/>' +
       '<polygon class="tr" points="' + hx(hh * .78) + '" stroke-linejoin="round" stroke-width="' + sw + '"/>' +
       '<polygon class="tp" points="' + hx(hh * .64) + '" stroke-linejoin="round"/>' + icons(sc);
   }
@@ -438,27 +460,45 @@ const SWIPE_CACHE = {"1spd2mn":[[1,0],[0,0],[0,-1],[2,-1],[2,0],[1,1],[0,1],[-1,
       c.animate(kf, { duration: 700 + Math.random() * 300, delay: i * 25, easing: 'linear', fill: 'both' }).onfinish = () => c.remove();
     }
   }
-  function say(t) { $('msg').innerHTML = '<span>' + t + '</span>'; }
-  const kindB = e => '<b style="color:' + NEONH[e] + '">' + NAMES[e] + '</b>';
+  function say(t) { $('msg').textContent = t.replace(/<[^>]*>/g, ''); }    // screen readers only: the board itself shows no copy
+  const kindB = e => NAMES[e];
 
   // ---------------- the jackpot ring readout (header): the 5 kinds grouped, a pair as a joined capsule ----------------
+  let ringSig = null, ringX = new Map();
   function ring() {
-    const G = ringGroups(g), box = $('ring'), m = 11, W = m * 2 * .9;
+    const G = ringGroups(g), box = $('ring'), m = 11, W = m * 2 * .9, X = new Map();
     let x = 2, s = '';
     G.forEach(([e, c]) => {
       const w = c * W + (c - 1) * 2 + 6;
-      s += '<g class="grp"><rect class="cap" x="' + q1(x) + '" y="2" width="' + q1(w) + '" height="26" rx="13" fill="rgba(18,22,70,.55)" stroke="' + (c > 1 ? '#fff' : 'rgba(255,255,255,.25)') + '" stroke-width="2"/>';
-      for (let i = 0; i < c; i++) { const cx = x + 3 + W / 2 + i * (W + 2); s += '<g class="tl e' + e + '" transform="translate(' + q1(cx) + ' 15)"><g class="tin">' + tileSvg(m * .92) + '</g></g>'; }
-      s += '</g>'; x += w + 5;
+      s += '<g class="grp"><rect class="cap" x="' + q1(x) + '" y="3" width="' + q1(w) + '" height="27" rx="13.5" fill="#1b0a50" stroke="' + (c > 1 ? '#fff' : 'rgba(255,255,255,.3)') + '" stroke-width="2"/>';
+      for (let i = 0; i < c; i++) { const cx = x + 3 + W / 2 + i * (W + 2); s += '<g class="tl e' + e + '" transform="translate(' + q1(cx) + ' 16)"><g class="tin">' + tileSvg(m * .92) + '</g></g>'; }
+      X.set(e, x + w / 2); s += '</g>'; x += w + 5;
     });
-    box.innerHTML = '<svg viewBox="0 0 ' + q1(x) + ' 32" aria-hidden="true">' + s + '</svg>';
+    // the target: a gold arrow, then ghost slots for two pairs + one (or just `goal` slots on the small maps)
+    const tg = FULL4 ? [2, 2, 1] : Array(g.goal).fill(1);
+    s += '<path d="M' + q1(x + 1) + ' 9.5L' + q1(x + 10) + ' 16.5 ' + q1(x + 1) + ' 23.5Z" fill="#ffd84a" stroke="#1c1640" stroke-width="1.8" stroke-linejoin="round"/>'; x += 15;
+    tg.forEach(c => { const w = c * 15 + 7; s += '<rect class="tgt" x="' + q1(x) + '" y="5" width="' + w + '" height="23" rx="11.5" fill="rgba(255,216,74,.12)" stroke-width="2.4"/>'; for (let i = 0; i < c; i++) s += '<circle cx="' + q1(x + 11 + i * 15) + '" cy="16.5" r="5" fill="#ffd84a" stroke="#1c1640" stroke-width="1.4"/><circle cx="' + q1(x + 9.6 + i * 15) + '" cy="15" r="1.6" fill="#fff"/>'; x += w + 4; });
+    box.innerHTML = '<svg viewBox="0 0 ' + q1(x) + ' 34" aria-hidden="true">' + s + '</svg>';
     box.classList.toggle('win', g.won());
+    const sig = G.map(q => q.join(':')).join(',');
+    if (ringSig !== null && sig !== ringSig && !reduced) {
+      if (box.animate) box.animate([{ transform: 'scale(1)' }, { transform: 'scale(1.14) translateY(-2px)' }, { transform: 'scale(.97)' }, { transform: 'scale(1)' }], { duration: 420, easing: 'cubic-bezier(.3,1.6,.5,1)' });
+      const sv = box.querySelector('svg'), k = sv && sv.getBoundingClientRect().height / 34;
+      ringX.forEach((cx, e) => {            // a kind that left the ring flies out of the readout
+        if (X.has(e) || !k) return;
+        const f = document.createElement('div'); f.className = 'fly';
+        f.innerHTML = '<svg viewBox="-13 -15 26 30" width="26" height="30"><g class="tl e' + e + '"><g class="tin">' + tileSvg(10.5) + '</g></g></svg>';
+        f.style.left = q1(cx * k - 13) + 'px'; box.appendChild(f);
+        f.animate([{ transform: 'translateY(0) scale(1) rotate(0)', opacity: 1 }, { transform: 'translateY(-26px) scale(1.5) rotate(-25deg)', opacity: 1, offset: .4 }, { transform: 'translate(30px,40px) scale(.6) rotate(40deg)', opacity: 0 }], { duration: 750, easing: 'ease-out', fill: 'forwards' }).onfinish = () => f.remove();
+      });
+      blip(G.length < ringX.size ? 990 : 660, .12, 'triangle', .035);
+    }
+    ringSig = sig; ringX = X;
   }
   function ringSay() {
     const G = ringGroups(g), pairs = G.filter(x => x[1] > 1).length;
     if (g.won()) return;
-    if (!FULL4) { say('Make the gold ring show ' + GOALTXT + ' for the jackpot!'); return; }
-    say(pairs >= 1 ? 'Gold ring: <b>one pair</b>. Make it <b>two pairs + one</b> for the jackpot!' : 'Make the gold ring <b>two pairs + one</b> for the jackpot!');
+    say('Gold ring: ' + G.map(([e, c]) => c + ' ' + NAMES[e]).join(', ') + '. Goal: ' + (FULL4 ? 'two pairs and one' : g.goal + ' kinds') + '.');
   }
 
   // ---------------- input ----------------
@@ -499,8 +539,11 @@ const SWIPE_CACHE = {"1spd2mn":[[1,0],[0,0],[0,-1],[2,-1],[2,0],[1,1],[0,1],[-1,
     }
     if (EL[H]) EL[H].classList.toggle('hot', !!K && g.preview(K).won);
   }
+  function cands(u) {           // the tiles a swipe from u can hop to next: they pulse
+    for (let w = 0; w < n; w++) if (EL[w]) EL[w].classList.toggle('cand', u >= 0 && w !== H && g.adj[u].includes(w) && g.col[w] !== g.col[u]);
+  }
   function addStep(u) {
-    const p = dr.path; p.push(u); dr.bad = -1;
+    const p = dr.path; p.push(u); dr.bad = -1; cands(p.length === 1 ? u : -1);
     EL.forEach(e => e && e.classList.remove('glow'));
     EL[u].classList.add('lit', 'glow'); pop(u, 1.35); line();
     note(p.length - 1); chaching(p.length);
@@ -509,32 +552,26 @@ const SWIPE_CACHE = {"1spd2mn":[[1,0],[0,0],[0,-1],[2,-1],[2,0],[1,1],[0,1],[-1,
   }
   function armSay() {
     const K = dr.K;
-    if (!K) { say('Drag across a <b>bridge</b> to another kind, or <b>hold</b>.'); return; }
-    if (K.web) say('Every ' + kindB(K.pair[0]) + ' and ' + kindB(K.pair[1]) + ' on the board? Flipping them all changes nothing…');
-    else if (g.preview(K).won) say('Let go: <b>JACKPOT!</b>');
-    else say('Only ' + kindB(K.pair[0]) + ' and ' + kindB(K.pair[1]) + '. Let go to flip all <b>' + K.size + '</b> glowing tiles!');
+    if (!K) { say(kindB(g.col[dr.path[0]]) + ' tile'); return; }
+    say(kindB(K.pair[0]) + ' and ' + kindB(K.pair[1]) + ': ' + K.size + ' tiles' + (K.web ? ', locked' : g.preview(K).won ? ', jackpot' : ''));
   }
   function cancelDrag() {
     if (!dr) return; clearTimeout(dr.hold);
     dr.path.forEach(u => EL[u] && EL[u].classList.remove('lit', 'glow'));
-    dr = null; if (svg.querySelector('.bline')) line(); shimmer(null);
+    dr = null; cands(-1); if (svg.querySelector('.bline')) line(); shimmer(null);
   }
   function step(v) {
     const r = swipeStep(g, dr.path, dr.K, v);
     if (r.type === 'none') { if (v === dr.path[dr.path.length - 1]) dr.bad = -1; return; }
     if (r.type === 'back') {
       const u = dr.path.pop(); EL[u].classList.remove('lit', 'glow'); EL[dr.path[dr.path.length - 1]].classList.add('glow');
-      if (dr.path.length < 2) dr.K = null;
+      if (dr.path.length < 2) { dr.K = null; cands(dr.path[0]); }
       line(); shimmer(dr.K); blip(600, .05, 'triangle', .02); armSay(); return;
     }
     if (r.type === 'start') { clearTimeout(dr.hold); dr.K = r.K; addStep(v); shimmer(dr.K); armSay(); return; }
     if (r.type === 'add') { addStep(v); shimmer(dr.K); armSay(); return; }
     if (dr.bad === v) return; dr.bad = v;           // wrong tile: shake + buzz once per visit, then ignore it
     shake(v); buzz();
-    if (r.why === 'gap') say('No bridge there! Follow the bridges.');
-    else if (r.why === 'gold') say('The golden tile pays out when its ring shows ' + GOALTXT + '.');
-    else if (dr.K) say('Only ' + kindB(dr.K.pair[0]) + ' and ' + kindB(dr.K.pair[1]) + ', across a bridge from the end!');
-    else say('Two <b>different</b> kinds: hop to a tile that is not ' + kindB(g.col[dr.path[0]]) + '.');
   }
   // press and hold: three kind bubbles
   function openBubbles(u) {
@@ -549,14 +586,14 @@ const SWIPE_CACHE = {"1spd2mn":[[1,0],[0,0],[0,-1],[2,-1],[2,0],[1,1],[0,1],[-1,
     });
     bub = { u, els, down: true, hov: -1 };
     EL[u].classList.add('lit'); blip(880, .06, 'triangle', .03); blip(1320, .08, 'triangle', .02);
-    say('Pick a kind: the glowing group flips to it.');
+    say('Pick a kind');
   }
   function bubAt(p) { if (!bub || !p) return -1; return bub.els.findIndex(b => Math.hypot(b.x - p.x, b.y - p.y) < h * 1.1); }
   function bubHover(i) {
     if (!bub || i === bub.hov) return; bub.hov = i;
     bub.els.forEach((b, j) => b.el.classList.toggle('hov', j === i));
     shimmer(i >= 0 ? g.chainAt(bub.u, bub.els[i].e) : null, [bub.u]);
-    if (i >= 0) { blip(1200, .04, 'triangle', .02); const K = g.chainAt(bub.u, bub.els[i].e); say(K.web ? 'Every ' + kindB(K.pair[0]) + ' and ' + kindB(K.pair[1]) + ' on the board? That changes nothing…' : g.preview(K).won ? 'Pick it: <b>JACKPOT!</b>' : 'Flip ' + (K.size === 1 ? 'this tile' : 'all <b>' + K.size + '</b> glowing tiles') + ' to ' + kindB(bub.els[i].e) + '?'); }
+    if (i >= 0) { blip(1200, .04, 'triangle', .02); const K = g.chainAt(bub.u, bub.els[i].e); say(kindB(bub.els[i].e) + ': ' + K.size + ' tiles' + (K.web ? ', locked' : '')); }
   }
   function closeBubbles() { if (!bub) return; bub.els.forEach(b => b.el.remove()); if (EL[bub.u]) EL[bub.u].classList.remove('lit'); bub = null; shimmer(null); }
   function pickBubble(i) {
@@ -572,10 +609,11 @@ const SWIPE_CACHE = {"1spd2mn":[[1,0],[0,0],[0,-1],[2,-1],[2,0],[1,1],[0,1],[-1,
     return out;
   }
   function doSwap(K, from) {
-    busy = true;
+    busy = true; hideFinger();
     const order = bfsOrder(K, K.set.has(from) ? from : K.vs[0]);
+    coinsAt(from != null && ANCH[from] ? from : order[0]);
     g.swap(K);
-    const dt = reduced ? 0 : Math.max(45, Math.min(90, 900 / order.length));
+    const dt = reduced ? 0 : Math.max(30, Math.min(60, 700 / order.length));
     order.forEach((u, i) => later(i * dt, () => flip(u, g.col[u], i)));
     later(order.length * dt + (reduced ? 0 : 260), () => {
       busy = false; paintAll();
@@ -589,27 +627,77 @@ const SWIPE_CACHE = {"1spd2mn":[[1,0],[0,0],[0,-1],[2,-1],[2,0],[1,1],[0,1],[-1,
     const t = e.querySelector('.tin'), rail = isRail(u);
     const k1 = rail ? [{ transform: 'scaleY(1)' }, { transform: 'scaleY(.2)' }] : [{ transform: 'scaleX(1)' }, { transform: 'scaleX(0)' }];
     const a = t.animate(k1, { duration: 110, easing: 'ease-in', fill: 'forwards' });
-    a.onfinish = () => { style(e, c); const b = t.animate(rail ? [{ transform: 'scaleY(.2)' }, { transform: 'scaleY(1.15)' }, { transform: 'scaleY(1)' }] : [{ transform: 'scaleX(0)' }, { transform: 'scaleX(1.15)' }, { transform: 'scaleX(1)' }], { duration: 220, easing: 'ease-out' }); a.cancel(); };
+    a.onfinish = () => { style(e, c); blip(520 + i * 40, .05, 'square', .012); t.animate(rail ? [{ transform: 'scaleY(.2)' }, { transform: 'scaleY(1.15)' }, { transform: 'scaleY(1)' }] : [{ transform: 'scale(0, 1) rotate(0)' }, { transform: 'scale(1.25) rotate(-8deg)' }, { transform: 'scale(1) rotate(0)' }], { duration: 260, easing: 'cubic-bezier(.3,1.6,.5,1)' }); a.cancel(); };
     if (CO[u]) CO[u].animate([{ transform: 'translateY(0) scaleY(1)' }, { transform: 'translateY(-10px) scaleY(-1)', offset: .5 }, { transform: 'translateY(0) scaleY(1)' }], { duration: 380, easing: 'ease-in-out' });   // pancakes flip
   }
   function spill(path, K) {                          // a web: coins spill off and slide back, nothing changes
     blip(220, .22, 'sawtooth', .03); setTimeout(() => blip(160, .3, 'sawtooth', .025), 160);
-    say('Every ' + kindB(K.pair[0]) + ' and ' + kindB(K.pair[1]) + ' would flip: nothing changes! Try another pair.');
+    say('Locked: ' + kindB(K.pair[0]) + ' and ' + kindB(K.pair[1]) + ' everywhere, nothing changes');
     if (reduced) return;
+    const rb = $('ring'); if (rb.animate) rb.animate([{ transform: 'translateX(0)' }, { transform: 'translateX(-5px)' }, { transform: 'translateX(5px)' }, { transform: 'translateX(-2px)' }, { transform: 'translateX(0)' }], { duration: 320 });
     path.forEach((u, i) => {
       if (!CO[u]) return; const a = Math.random() * Math.PI * 2, d = 14 + Math.random() * 10;
       CO[u].animate([{ transform: 'translate(0,0) rotate(0)' }, { transform: 'translate(' + q1(Math.cos(a) * d) + 'px,' + q1(Math.sin(a) * d + 8) + 'px) rotate(' + (Math.random() > .5 ? 70 : -70) + 'deg)', offset: .35 }, { transform: 'translate(' + q1(Math.cos(a) * d) + 'px,' + q1(Math.sin(a) * d + 8) + 'px) rotate(0deg)', offset: .6 }, { transform: 'translate(0,0) rotate(0)' }], { duration: 1100, delay: i * 40, easing: 'ease-in-out' });
       shake(u);
     });
   }
+  // coins: the shell flies this swap's chips from the touch point (page CSS px) into its counter
+  function coinsAt(u) {
+    const a = ANCH[u], m = svg.getScreenCTM(); if (!a || !m) return;
+    const q = new DOMPoint(a[0], a[1]).matrixTransform(m);
+    if (window.LAB && LAB.at) try { LAB.at(q.x, q.y); } catch (e) {}
+  }
+  // ---------------- the marquee: a frame of bulbs round the board (chases while idle, races at the jackpot) ----------------
+  function marquee() {
+    const w = $('wrap'), mq = $('mq'), W = w.clientWidth, Hh = w.clientHeight; if (!W || !Hh) return;
+    mq.setAttribute('viewBox', '0 0 ' + W + ' ' + Hh);
+    const r = (cls, sw, da, off) => '<rect class="' + cls + '" x="4" y="4" width="' + (W - 8) + '" height="' + (Hh - 8) + '" rx="14" stroke-width="' + sw + '"' + (da ? ' stroke-dasharray="' + da + '" stroke-dashoffset="' + (off || 0) + '"' : '') + '/>';
+    mq.innerHTML = r('b0', 7) + r('b1', 4.6, '0 14') + r('b2', 4.6, '0 28', 7);
+  }
+  // ---------------- the jackpot: lights race, every tile spins like a reel and lands in a wave, chips rain ----------------
+  function coinRain(k) {
+    if (reduced || !FX || !VB) return;
+    for (let i = 0; i < k; i++) {
+      const c = mk('g', {}, FX); mk('use', { href: '#coinG' }, c);
+      const x = VB[0] + Math.random() * VB[2], y0 = VB[1] - 30, y1 = VB[1] + VB[3] + 30, sp = (Math.random() - .5) * 60, sc = .55 + Math.random() * .4;
+      c.animate([{ transform: 'translate(' + q1(x) + 'px,' + q1(y0) + 'px) scale(' + sc + ') rotate(0deg)', opacity: 0 }, { transform: 'translate(' + q1(x + sp * .1) + 'px,' + q1(y0 + (y1 - y0) * .08) + 'px) scale(' + sc + ') rotate(30deg)', opacity: 1, offset: .08 }, { transform: 'translate(' + q1(x + sp) + 'px,' + q1(y1) + 'px) scale(' + sc + ') rotate(' + (360 + Math.random() * 360) + 'deg)' }],
+        { duration: 1100 + Math.random() * 700, delay: Math.random() * 700, easing: 'cubic-bezier(.4,0,.8,.6)', fill: 'both' }).onfinish = () => c.remove();
+    }
+  }
   function jackpot() {
-    won = true; paintAll(); const f = g.free(), c = P[H];
-    pop(H, 1.7); burst(c[0], c[1], '#ffd84a', 16); coinFly(c[0], c[1], 26, 2.6, 70); jingle();
-    g.rim.forEach((u, i) => later(i * 70, () => pop(u, 1.3)));
+    if (won) return;
+    won = true; busy = false; cancelDrag(); closeBubbles(); clearTimeout(idleT); hideFinger(); cands(-1);
+    paintAll(); const c = P[H];
+    $('wrap').classList.add('win');
+    pop(H, 1.8); burst(c[0], c[1], '#ffd84a', 18); jingle();
     const el = $('cd'); el.className = 'bcd burst'; el.textContent = 'JACKPOT!';
     if (!reduced && el.animate) el.animate([{ transform: 'scale(.2) rotate(-8deg)', opacity: 0 }, { transform: 'scale(1.25) rotate(4deg)', opacity: 1, offset: .5 }, { transform: 'scale(1)', opacity: 1 }], { duration: 600, easing: 'cubic-bezier(.3,1.6,.5,1)', fill: 'forwards' });
-    say('<b>' + (FULL4 ? 'Two pairs + one!' : 'Jackpot ring!') + '</b> The golden tile turns ' + kindB(f) + (LAB.embedded ? '.' : '. Tap to replay.'));
-    let cdn = 5;
+    say('Jackpot! The golden tile turns ' + kindB(g.free()) + '.');
+    if (reduced) { later(1200, after); return; }
+    // reels: ring by ring out from the golden tile, each tile spins through the four kinds and lands on its own
+    const dist = Array(n).fill(-1); dist[H] = 0; let fr = [H];
+    while (fr.length) { const nx = []; for (const u of fr) for (const w of g.adj[u]) if (dist[w] < 0) { dist[w] = dist[u] + 1; nx.push(w); } fr = nx; }
+    const md = Math.max(1, ...dist), gap = Math.min(260, 1500 / md), spinning = new Set();
+    for (let u = 0; u < n; u++) if (EL[u] && u !== H) spinning.add(u);
+    const spinT = setInterval(() => spinning.forEach(u => style(EL[u], Math.floor(Math.random() * Math.max(2, g.NC)))), 90); timers.push(spinT);
+    spinning.forEach(u => { const t = EL[u].querySelector('.tin'); if (t && t.animate) t.animate([{ transform: 'translateY(0) scaleY(1)' }, { transform: 'translateY(-4px) scaleY(.35)' }, { transform: 'translateY(4px) scaleY(.35)' }, { transform: 'translateY(0) scaleY(1)' }], { duration: 180, iterations: Math.ceil((300 + Math.max(dist[u], 1) * gap) / 180) }); });
+    for (let d = 1; d <= md; d++) later(300 + d * gap, () => {
+      let any = false;
+      spinning.forEach(u => { if (dist[u] === d || (d === md && (dist[u] >= md || dist[u] < 0))) { spinning.delete(u); style(EL[u], g.col[u]); pop(u, 1.3); any = true; } });
+      if (any) { blip(880 + d * 110, .09, 'triangle', .035); chaching(d); }
+      if (!spinning.size) clearInterval(spinT);
+    });
+    later(250, () => coinFly(c[0], c[1], 26, 2.6, 70));
+    later(500, () => coinRain(26));
+    later(1500, () => { burst(c[0], c[1], '#ff3fd0', 14); coinFly(c[0], c[1], 18, 2.2, 60); });
+    later(2300, () => { coinRain(18); g.rim.forEach((u, i) => later(i * 80, () => pop(u, 1.35))); });
+    later(3000, () => { jingle(); burst(c[0], c[1], '#ffd84a', 20); });
+    later(3600, after);
+  }
+  function after() {
+    if (!won) return;
+    if (LAB.embedded) { LAB.done(); return; }            // the app shows its win screen; no replay countdown
+    const el = $('cd'); let cdn = 5;
     const tick = () => {
       if (!won) return;
       if (cdn === 0) { doReset(); return; }
@@ -618,35 +706,70 @@ const SWIPE_CACHE = {"1spd2mn":[[1,0],[0,0],[0,-1],[2,-1],[2,0],[1,1],[0,1],[-1,
       blip(cdn === 1 ? 1046 : 784, .08, 'square', .035); blip(cdn === 1 ? 523 : 392, .05, 'sine', .03);
       cdn--; later(1000, tick);
     };
-    if (LAB.embedded) later(reduced ? 900 : 1800, () => LAB.done());       // the app shows its win screen; no replay countdown
-    else later(reduced ? 1500 : 2200, tick);
+    later(300, tick);
   }
   function doReset() {
-    timers.forEach(clearTimeout); timers = []; won = false; busy = false; cancelDrag(); closeBubbles();
+    timers.forEach(t => { clearTimeout(t); clearInterval(t); }); timers = []; won = false; busy = false; cancelDrag(); closeBubbles(); hideFinger();
+    $('wrap').classList.remove('win');
     const el = $('cd'); el.className = 'bcd'; el.textContent = ''; el.getAnimations && el.getAnimations().forEach(a => a.cancel());
     g.reset(); g.rim.forEach((u, i) => setTimeout(() => pop(u, 1.25), i * 60)); ringSay(); poke();
   }
   g.on((gg, info) => { if (info.type !== 'swap') paintAll(); });
-  // idle hint: a little snake of a helpful group bobs, like the bonus demo
+  // ---------------- the ghost finger: shows a helpful swipe (or a hold) on a quiet board ----------------
+  let GF = null;
+  function hideFinger() { if (GF) { GF.getAnimations && GF.getAnimations().forEach(a => a.cancel()); GF.remove(); GF = null; } }
+  function ghost(pts, hold) {
+    hideFinger(); if (!FX || !pts.length) return;
+    const sc = q1(h / 17);
+    GF = mk('g', { class: 'ghost' }, FX);
+    GF.innerHTML = '<g transform="scale(' + sc + ')"><circle class="gr" r="12" fill="none" stroke="#fff" stroke-width="3" opacity="0"/>' +
+      '<path d="M2 4 C-1 -4 -1 -14 4 -18 C8 -16 8 -8 7 -2 L16 0 C22 2 20 12 14 16 L4 20 C-2 18 -2 10 2 4Z" fill="#1c1640" opacity=".35" transform="translate(2 3)"/>' +
+      '<path d="M0 0 C-3 -8 -3 -18 2 -22 C6 -20 6 -12 5 -6 L14 -4 C20 -2 18 8 12 12 L2 16 C-4 14 -4 6 0 0Z" fill="#fff" fill-opacity=".92" stroke="#1c1640" stroke-width="2.4" stroke-linejoin="round"/></g>';
+    if (reduced) { GF.setAttribute('transform', 'translate(' + q1(pts[0][0]) + ' ' + q1(pts[0][1]) + ')'); GF.style.opacity = .9; return; }
+    const at = (p, o, s) => ({ transform: 'translate(' + q1(p[0] + 4) + 'px,' + q1(p[1] + 6) + 'px) scale(' + (s || 1) + ')', opacity: o });
+    const kf = [at(pts[0], 0, 1.2), at(pts[0], .95, 1.2)];
+    if (hold) kf.push(at(pts[0], .95, .9), at(pts[0], .95, .9), at(pts[0], .95, .9), at(pts[0], 0, 1));
+    else { kf.push(at(pts[0], .95, .92)); pts.slice(1).forEach(p => kf.push(at(p, .95, .92))); kf.push(at(pts[pts.length - 1], 0, 1)); }
+    const dur = hold ? 2000 : 700 + pts.length * 420;
+    GF.animate(kf.map((k, i) => Object.assign(k, { offset: i / (kf.length - 1) })), { duration: dur, easing: 'ease-in-out', fill: 'forwards' }).onfinish = hideFinger;
+    if (hold) { const rg = GF.querySelector('.gr'); rg.animate([{ opacity: 0, transform: 'scale(.6)' }, { opacity: 0, transform: 'scale(.6)', offset: .3 }, { opacity: .9, transform: 'scale(1)', offset: .45 }, { opacity: 0, transform: 'scale(1.7)', offset: .8 }, { opacity: 0 }], { duration: dur, fill: 'forwards' }); }
+  }
+  function walk(K) {               // a short traceable line through the group: each step crosses a bridge
+    const s0 = K.vs.find(u => ANCH[u] && !isRail(u)) ?? K.vs[0], out = [s0], seen = new Set(out);
+    while (out.length < 4) { const last = out[out.length - 1], nx = g.adj[last].find(w => K.set.has(w) && !seen.has(w) && ANCH[w]); if (nx == null) break; out.push(nx); seen.add(nx); }
+    return out;
+  }
   function poke() { clearTimeout(idleT); hints = 0; idleT = setTimeout(hint, 7000); }
   function hint() {
     if (busy || won || dr || bub) { idleT = setTimeout(hint, 3000); return; }
     const G = g.good(); if (!G.length || hints >= 3) return; hints++;
-    const K = G.find(k => k.size > 1) || G[0], snake = bfsOrder(K, K.vs[0]);
-    snake.forEach((u, i) => setTimeout(() => { if (!dr && !bub && !busy) pop(u, 1.25); }, i * 90));
-    if (K.size === 1) setTimeout(() => say('Psst: <b>hold</b> a tile to pick its kind.'), 300);
+    const K = G.find(k => k.size > 1) || G[0], line = K.size > 1 ? walk(K) : [K.vs[0]];
+    if (line.length < 2 && K.size > 1) line.push(...K.vs.filter(u => u !== line[0]).slice(0, 1));
+    const lone = line.length < 2;
+    ghost(line.map(u => ANCH[u]).filter(Boolean), lone);
+    line.forEach((u, i) => later(350 + i * 420, () => { if (!dr && !bub && !busy && !won) { pop(u, 1.25); EL[u] && EL[u].classList.add('glow'); later(400, () => EL[u] && !(dr && dr.path.includes(u)) && EL[u].classList.remove('glow')); } }));
     idleT = setTimeout(hint, 7000);
+  }
+  // the golden tile, tapped seven times in a row: the marquee spins (a quiet little bonus)
+  let goldTaps = 0, goldT = 0, eggPaid = false;
+  function goldTap() {
+    pop(H, 1.4); g.rim.forEach((r, i) => setTimeout(() => pop(r, 1.25), 120 + i * 70)); blip(1320 + goldTaps * 90, .1, 'triangle', .03);
+    clearTimeout(goldT); goldT = setTimeout(() => { goldTaps = 0; }, 1600);
+    if (++goldTaps < 7) return;
+    goldTaps = 0; const w = $('wrap'); w.classList.add('spin'); setTimeout(() => w.classList.remove('spin'), 2600);
+    jingle(); const c = P[H]; burst(c[0], c[1], '#ff3fd0', 14); coinFly(c[0], c[1], 7, 2.4, 60);
+    if (!eggPaid) { eggPaid = true; try { window.LAB && LAB.egg && LAB.egg('lucky-seven', 77); } catch (e) {} }
   }
   svg.addEventListener('pointerdown', e => {
     audio(); e.preventDefault(); try { svg.setPointerCapture(e.pointerId); } catch (_) {}
-    poke();
     if (won) { if (!LAB.embedded) doReset(); return; }   // in the app the shell owns the next step
+    poke(); hideFinger();
     if (busy) return;
     const p = pt(e);
     if (bub) { const i = bubAt(p); if (i >= 0) { pickBubble(i); return; } closeBubbles(); }
     if (dr) cancelDrag();
     const u = hit(p); if (u < 0) return;
-    if (u === H) { pop(H, 1.4); g.rim.forEach((r, i) => setTimeout(() => pop(r, 1.25), 120 + i * 70)); blip(1320, .1, 'triangle', .03); say('The golden tile pays out when its gold ring shows ' + GOALTXT + '.'); return; }
+    if (u === H) { goldTap(); say('The golden tile'); return; }
     dr = { path: [], K: null, bad: -1, p0: p, at0: isRail(u) ? nearIdx(u, p) : 0 };
     addStep(u); armSay();
     dr.hold = setTimeout(() => { if (dr && dr.path.length === 1) { const w = dr.path[0]; cancelDrag(); openBubbles(w); } }, 420);
@@ -659,14 +782,15 @@ const SWIPE_CACHE = {"1spd2mn":[[1,0],[0,0],[0,-1],[2,-1],[2,0],[1,1],[0,1],[-1,
     if (dr) {
       clearTimeout(dr.hold);
       if (dr.path.length >= 2 && dr.K) { const K = dr.K, path = dr.path.slice(); cancelDrag(); if (K.web) spill(path, K); else doSwap(K, path[0]); }
-      else { cancelDrag(); say('Swipe across bridges through <b>two kinds</b>, or <b>hold</b> a tile.'); }
+      else { const u = dr.path[0]; cancelDrag(); if (u != null) shake(u); }
     } else if (bub && bub.down) { bub.down = false; const i = bubAt(pt(e)); if (i >= 0) pickBubble(i); else { bubHover(-1); } }
   };
   svg.addEventListener('pointerup', up); svg.addEventListener('pointercancel', () => { if (dr) cancelDrag(); if (bub) bub.down = false; });
-  $('bUndo').onclick = () => { audio(); if (busy || won) return; cancelDrag(); closeBubbles(); g.undo(); blip(500, .08, 'triangle', .03); ringSay(); poke(); };
-  $('bReset').onclick = () => { audio(); if (won && LAB.embedded) return; doReset(); };
-  addEventListener('resize', () => { clearTimeout(fit.t); fit.t = setTimeout(fit, 80); });
-  fit(); ringSay(); poke();
+  $('bUndo').onclick = () => { audio(); if (busy || won) return; cancelDrag(); closeBubbles(); hideFinger(); g.undo(); blip(500, .08, 'triangle', .03); ringSay(); poke(); };
+  $('bReset').onclick = () => { audio(); if (won) return; hideFinger(); doReset(); };
+  addEventListener('resize', () => { clearTimeout(fit.t); fit.t = setTimeout(() => { fit(); marquee(); }, 80); });
+  fit(); marquee(); ringSay(); poke();
+  clearTimeout(idleT); idleT = setTimeout(hint, 1800);      // the first cue comes early
   window.SWIPE = { g, LAY, hit: (x, y) => hit({ x, y }), get P() { return P; }, get ANCH() { return ANCH; }, get dr() { return dr; }, get bub() { return bub; }, get won() { return won; }, jackpot };   // test hook
 })();
 </script>

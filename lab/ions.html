@@ -55,7 +55,16 @@
   true (chambers A and B would exchange all their ions, which changes nothing) g.swap is NOT called: the snake forms
   (dimmer bonds), then sags under its own weight and falls back into the same equilibrium. With prefers-reduced-motion
   the snake forms at once, the flip is instant (no wave) and the dominoes appear without folding. Undo (g.undo) and
-  restart (g.reset) are the two small glass buttons; they stream wrong-chambered ions home through membrane channels. After a win, a tap restarts (standalone only).
+  restart (g.reset) are the two chunky glass buttons; they stream wrong-chambered ions home through membrane channels. After a win, a tap restarts (standalone only).
+
+  No words on the board (SKIN-SPEC section 0): the goal is a row of chamber chips (shape + starred count) beside the
+  signal, the chain shows an icon chip (x count of each kind, a padlock when it links two starred ions), an idle ghost
+  finger drags a useful ion, and a dud only wobbles. Juice (section 14): a touched ion pops and its candidate chambers
+  and chain members pulse; the flip wave runs 35-60 ms per layer with a pop and a tone each; LAB.at(x, y) marks the
+  swap for the coin flight; badges and chips bounce and a star flies off a chamber that loses one. Win: the signal
+  docks with a burst, then three chain-reaction waves of light and electric arcs run hop by hop over the map (~3.3 s),
+  then LAB.done(). Easter eggs: a rogue ion zips across now and then (tap it: LAB.egg('rogue-ion', 40)); a solve in
+  par moves rings a resonance chord (LAB.egg('resonance', 0)).
 -->
 <html lang="en">
 <head>
@@ -68,11 +77,13 @@
   html, body { margin: 0; height: 100%; overflow: hidden; background: #03070d; touch-action: none;
     -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
   canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; cursor: grab; }
-  #ui { position: fixed; right: 6px; top: 6px; display: flex; flex-direction: column; gap: 6px; z-index: 2; }
-  #ui button { width: 30px; height: 30px; border-radius: 50%; border: 1px solid var(--sk-ctl-edge, rgba(160, 220, 255, .35));
-    background: var(--sk-ctl, rgba(20, 40, 60, .55)); color: var(--sk-ctl-ink, #bfe8ff); font: 700 15px/1 system-ui, sans-serif; padding: 0; cursor: pointer;
-    box-shadow: 0 0 10px rgba(90, 200, 255, .18), inset 0 0 6px rgba(160, 230, 255, .15); }
-  #ui button:active { transform: scale(.92); }
+  #ui { position: fixed; right: 8px; top: 8px; display: flex; flex-direction: column; gap: 10px; z-index: 2; }
+  #ui button { width: 38px; height: 38px; border-radius: 12px; border: 2px solid var(--sk-ctl-edge, #5fe6ff);
+    background: var(--sk-ctl, #0c3a44); color: var(--sk-ctl-ink, #e9fdff); font: 900 19px/1 system-ui, sans-serif; padding: 0 0 2px; cursor: pointer;
+    box-shadow: 0 4px 0 var(--sk-ctl-edge, #5fe6ff), 0 6px 0 #02090c, 0 8px 14px rgba(0, 0, 0, .45), inset 0 2px 0 rgba(255, 255, 255, .22);
+    text-shadow: 0 2px 0 rgba(0, 0, 0, .45); transition: transform .06s, box-shadow .06s; }
+  #ui button:active { transform: translateY(4px); box-shadow: 0 0 0 var(--sk-ctl-edge, #5fe6ff), 0 2px 0 #02090c, 0 3px 6px rgba(0, 0, 0, .4), inset 0 2px 0 rgba(255, 255, 255, .22); }
+  .won #ui button { opacity: .45; filter: saturate(.4); }
 </style>
 </head>
 <body>
@@ -87,10 +98,10 @@
 
   // ---------------------------------------------------------------- pure helpers (also used by the node smoke test)
   const KIND = [
-    { name: 'Tide', col: '#3ef0b4', rgb: [62, 240, 180], deep: '#0d4a3c' },
-    { name: 'Ember', col: '#ff5f8f', rgb: [255, 95, 143], deep: '#4d1028' },
-    { name: 'Amber', col: '#ffbd3a', rgb: [255, 189, 58], deep: '#4a3208' },
-    { name: 'Iris', col: '#8f93ff', rgb: [143, 147, 255], deep: '#1d1f5a' },
+    { name: 'Tide', col: '#3ef0b4', rgb: [62, 240, 180], deep: '#0d4a3c', dk: '#12805f' },
+    { name: 'Ember', col: '#ff5f8f', rgb: [255, 95, 143], deep: '#4d1028', dk: '#b02a58' },
+    { name: 'Amber', col: '#ffbd3a', rgb: [255, 189, 58], deep: '#4a3208', dk: '#b07a10' },
+    { name: 'Iris', col: '#8f93ff', rgb: [143, 147, 255], deep: '#1d1f5a', dk: '#4a4fc0' },
   ];
 
   // chambers as a 2x2 cell (1xNC when very wide, 2+1 for 3), under the receptor band; ion radius from capacity
@@ -305,9 +316,11 @@
     const b = document.createElement('canvas'); b.width = b.height = SP; const d = b.getContext('2d');
     d.translate(SP / 2, SP / 2);
     const cg = d.createRadialGradient(-SC * .35, -SC * .4, SC * .1, 0, 0, SC * 1.25);
-    cg.addColorStop(0, '#ffffff'); cg.addColorStop(.35, KIND[k].col); cg.addColorStop(1, KIND[k].deep);
+    cg.addColorStop(0, '#ffffff'); cg.addColorStop(.32, KIND[k].col); cg.addColorStop(.8, KIND[k].col); cg.addColorStop(1, KIND[k].dk);
+    d.save(); d.translate(SC * .14, SC * .2); glyph(d, k, SC); d.fillStyle = 'rgba(2,9,12,.6)'; d.fill(); d.restore();   // offset drop shadow
     glyph(d, k, SC); d.fillStyle = cg; d.fill();
-    d.lineWidth = SC * .1; d.strokeStyle = 'rgba(255,255,255,.75)'; d.stroke();
+    d.save(); d.translate(-SC * .3, -SC * .38); d.rotate(-.62); d.beginPath(); d.ellipse(0, 0, SC * .27, SC * .14, 0, 0, TAU); d.fillStyle = 'rgba(255,255,255,.9)'; d.fill(); d.restore();
+    glyph(d, k, SC); d.lineJoin = 'round'; d.lineWidth = SC * .2; d.strokeStyle = '#04141a'; d.stroke();
     coreSpr.push(b);
   }
 
@@ -321,6 +334,14 @@
   const rings = [], notes = [];
   let winTok = 0, held = null, sel = null, busy = false, won = false, hoverCh = null, hope = false;
   const mol = { x: 0, y: 0, R: 10, hx: 0, hy: 0, hR: 10, phase: 'wait', t0: 0, path: null, F: -1 };
+  // juice: membrane wobbles, badge / chip bounces, stars flying off the rim, sparks, the touched ion's candidate chains,
+  // the idle ghost finger, the rogue ion (an easter egg) and the win light show
+  const fx = { wob: [-1e9, -1e9, -1e9, -1e9], bump: [-1e9, -1e9, -1e9, -1e9], mol: -1e9 };
+  const flyers = [], sparks = [];
+  let cand = null, lastTouch = now(), cue = null, cueNext = 0, rogue = null, nextRogue = now() + 16000 + Math.random() * 14000, show = null;
+  let prevRiv = null, prevRim = g.rimCount();
+  const D0 = g.dist();   // fewest swaps from the start (a solve in this many rings the resonance chord)
+  const egg = (id, pts) => { try { window.LAB && LAB.egg && LAB.egg(id, pts); } catch (_) {} };
 
   // ---- the snake: chain K linking up along its map edges while you hold an ion over another chamber
   // phases: 'form' (linking, held) -> 'wave' (released: the chameleon flip runs down it) -> 'settle' (bonds relax,
@@ -410,7 +431,7 @@
   function loose(v, t) { return S && S.set.has(v) && (S.phase === 'form' || S.phase === 'wave' || S.phase === 'pair' || (S.phase === 'sag' && t < S.tr)) && linkOf(S, v, t) > 0; }
   function dropSnake() { if (S && S.phase === 'form') ghosts.push({ s: S, t0: now(), dur: 380 }); if (S && S.phase === 'form') S = null; }
 
-  window.IONS.live = { g, P, disp, layout: () => L, snake: () => S, targets: () => S && targets(S) }; // read-only handle for tests
+  window.IONS.live = { g, P, disp, layout: () => L, snake: () => S, targets: () => S && targets(S), show: () => show, rogue: () => rogue && roguePos(now()) }; // read-only handle for tests
 
   function counts() { const c = new Array(NC).fill(0); for (let v = 0; v < g.n; v++) if (v !== hole) c[disp[v]]++; return c; }
   function capacity() { return Math.max(Math.max(...counts()) + 1, Math.ceil((g.n - 1) / NC) + 2); }
@@ -613,7 +634,13 @@
   let lastPass = 0;
   const sfx = {
     pick: () => tone(700, .07, 'sine', .06, 900),
-    pass: (k, d) => { const t = now(); if (t - lastPass < 45) return; lastPass = t; tone(PENT[k] * 2 * (1 + (d || 0) * .06), .22, 'sine', .07, PENT[k] * 2.2 * (1 + (d || 0) * .06)); },
+    pass: (k, d) => { const t = now(); if (t - lastPass < 22) return; lastPass = t; const f = PENT[k] * 2 * (1 + (d || 0) * .06); tone(f, .2, 'sine', .065, f * 1.1); tone(f * 1.5, .06, 'triangle', .035, f * .9); },
+    wob: () => { tone(200, .16, 'sine', .06, 150); tone(150, .2, 'sine', .04, 120, .08); },
+    star: i => tone(880 + i * 120, .14, 'triangle', .045, 1320 + i * 120),
+    zap: d => tone(900 + d * 90, .05, 'square', .012, 600 + d * 90),
+    zip: () => tone(1400, .5, 'sine', .02, 500),
+    caught: () => { [1047, 1319, 1568, 2093].forEach((f, i) => tone(f, .25, 'triangle', .045, 0, i * .05)); },
+    res: () => { [196, 294, 392, 587, 784].forEach((f, i) => { tone(f, 2.6, 'sine', .05, 0, i * .12); tone(f * 1.003, 2.6, 'sine', .03, 0, i * .12 + .02); }); },
     link: i => tone(520 + i * 70, .06, 'sine', .035, 640 + i * 70),
     pair: () => { tone(660, .12, 'triangle', .05, 600); tone(880, .16, 'triangle', .04, 820, .07); },
     open: () => { tone(180, .35, 'sine', .08, 360); },
@@ -627,20 +654,21 @@
   function doMove(u, B) {
     const m = moveFor(g, u, B);
     held = null; sel = null; hoverCh = null; hope = false;
-    if (!m) { dropSnake(); sfx.drop(); return; }
+    if (!m) { dropSnake(); sfx.drop(); if (P[u]) P[u].wob = now(); cand = null; return; }
+    cand = null;
     busy = true;
     if (!S || S.K !== m.K || S.u !== u) { dropSnake(); S = makeSnake(m, u); } // a tap-tap move: link up now
     const t = now(), ready = Math.max(t + (RM ? 0 : 90), S.t0 + S.maxD * S.LINK + (RM ? 0 : BOND));
     if (m.web) { // the two chambers would simply exchange everything: the snake goes slack and falls back
       S.phase = 'sag'; S.tr = ready + (RM ? 0 : 250); S.relax = RM ? 300 : 1500;
-      sfx.dud();
-      const c = snakeCentre(S);
-      notes.push({ x: Math.max(70, Math.min(L.W - 70, c[0])), y: Math.max(L.top + 20, c[1] - R * 3), text: 'equilibrium', t0: S.tr, dur: 1500 });
+      sfx.dud(); fx.wob[m.from] = fx.wob[m.to] = S.tr;
+      S.order.forEach(v => { P[v].wob = S.tr; });
       return;
     }
     g.swap(m.K);
+    try { window.LAB && LAB.at && LAB.at(P[u].x, P[u].y); } catch (_) {}   // the shell flies this swap's coins from here
     sfx.open();
-    S.phase = 'wave'; S.tw = ready; S.STEP = RM ? 0 : Math.max(85, Math.min(170, 1300 / Math.max(1, S.maxD)));
+    S.phase = 'wave'; S.tw = ready; S.STEP = RM ? 0 : Math.max(35, Math.min(60, 700 / Math.max(1, S.maxD)));
     S.FL = RM ? 0 : 340; S.relax = RM ? 350 : 750;
   }
   function snakeCentre(s) {
@@ -660,7 +688,7 @@
         if (S.flip.has(v) || t < S.tw + S.depth.get(v) * S.STEP) continue;
         S.flip.add(v);
         const p = P[v], pv = S.par.has(v) ? P[S.par.get(v)] : null;
-        p.fl = RM ? null : t; p.flFrom = disp[v]; disp[v] = g.col[v];
+        p.fl = RM ? null : t; p.pop = RM ? null : t + FLIP_MS * .6; p.flFrom = disp[v]; disp[v] = g.col[v];
         p.flDir = pv ? Math.atan2(p.y - pv.y, p.x - pv.x) : Math.atan2(L.ch[S.to].cy - L.ch[S.from].cy, L.ch[S.to].cx - L.ch[S.from].cx);
         if (!RM) sfx.pass(g.col[v], S.depth.get(v));
       }
@@ -698,29 +726,50 @@
       const left = C.cx < L.W / 2, gx = left ? Math.min(L.W - L.pad / 2, C.x + C.w + 4) : Math.max(L.pad / 2, C.x - 4);
       mol.path = [[mol.hx, mol.hy], [mol.hx, ty], [gx, ty], [gx, C.cy], [left ? C.cx + C.rx * .98 : C.cx - C.rx * .98, C.cy], [C.cx, C.cy]];
     }
-    const T = RM ? 300 : 1700;
-    mol.dur = T;
+    const T = RM ? 300 : 1400, SHOW = RM ? 1000 : 3300;
+    mol.dur = T; rogue = null; cue = null; cand = null; sel = held = null;
+    document.documentElement.classList.add('won');
     const tok = ++winTok;
-    setTimeout(() => { if (tok === winTok) LAB.done(); }, T + 1100); // celebration over: tell the app (harmless if repeated)
+    setTimeout(() => { if (tok === winTok) LAB.done(); }, T + SHOW); // the light show is over: tell the app (harmless if repeated)
     setTimeout(() => {
       if (tok !== winTok) return;
       mol.phase = 'docked'; mol.x = C.cx; mol.y = C.cy; mol.R = R * 2; mol.t0 = now();
       sfx.win();
-      for (let i = 0; i < (RM ? 1 : 4); i++) rings.push({ x: C.cx, y: C.cy, t0: now() + i * 260, dur: 2200, k: F });
+      const perfect = D0 != null && g.moves <= D0;   // easter egg: a solve in par moves rings a resonance chord
+      if (perfect) { sfx.res(); egg('resonance', 0); }
+      for (let i = 0; i < (RM ? 1 : perfect ? 7 : 4); i++) rings.push({ x: C.cx, y: C.cy, t0: now() + i * 260, dur: 2200, k: perfect ? i % NC : F });
+      burst(C.cx, C.cy, RM ? 8 : 26, F, R * 9);
+      // the chain reaction: every ion lights up hop by hop across the map from the freed chamber, three waves
+      // (rings of distance from the docked signal; arcs jump along the map's links between rings)
+      const d = new Map(), ring = R * 3.2;
+      for (let v = 0; v < g.n; v++) if (v !== hole) d.set(v, Math.round(Math.hypot(P[v].x - C.cx, P[v].y - C.cy) / ring));
+      const maxD = Math.max(1, ...d.values());
+      show = { t0: now(), d, step: RM ? 0 : Math.min(110, 950 / maxD), waves: RM ? 1 : 3, gap: 1050, maxD, heard: -1 };
       setTimeout(() => { if (tok === winTok) busy = false; }, 900);
     }, T);
+  }
+  // how lit ion v is in the win light show (0..1)
+  function litOf(v, t) {
+    if (!show) return 0;
+    if (RM) return t - show.t0 < 900 ? 1 : 0;
+    let a = 0; const d = show.d.get(v) || 0;
+    for (let w = 0; w < show.waves; w++) { const x = (t - show.t0 - w * show.gap - d * show.step) / 520; if (x > 0 && x < 1) a = Math.max(a, Math.sin(Math.PI * x)); }
+    return a;
+  }
+  function burst(x, y, n, k, sp) {
+    for (let i = 0; i < n; i++) { const a = Math.random() * TAU, v = sp * (.4 + Math.random() * .8); sparks.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, t0: now(), dur: 500 + Math.random() * 500, k }); }
   }
 
   function restart() {
     winTok++; won = false; busy = false; mol.phase = 'wait'; mol.path = null; mol.x = mol.hx; mol.y = mol.hy; mol.R = mol.hR; mol.F = -1;
-    rings.length = 0;
+    rings.length = 0; show = null; lastTouch = now(); document.documentElement.classList.remove('won');
     g.reset();
   }
 
   // undo / reset (and any other outside change): every ion that is in the wrong chamber streams home
   g.on((_, info) => {
     if (info.type === 'swap') return;
-    held = sel = null; hoverCh = null;
+    held = sel = null; hoverCh = null; cand = null; cue = null;
     if (S) { S.order.forEach(v => { P[v].fl = null; }); S = null; busy = false; } // an outside undo/reset mid-wave
     ghosts.length = 0;
     let i = 0;
@@ -733,7 +782,7 @@
     const n = 72;
     ctx.beginPath();
     for (let i = 0; i <= n; i++) {
-      const a = i / n * TAU, w = 1 + (RM ? 0 : .012 * Math.sin(5 * a + t * .0009 + C.k * 2) + .008 * Math.sin(9 * a - t * .0013 + C.k)) + grow;
+      const a = i / n * TAU, wb = Math.max(0, 1 - (t - fx.wob[C.k]) / 520), w = 1 + (RM ? 0 : .012 * Math.sin(5 * a + t * .0009 + C.k * 2) + .008 * Math.sin(9 * a - t * .0013 + C.k) + wb * .05 * Math.sin(3 * a + C.k) * Math.sin((t - fx.wob[C.k]) * .03)) + grow;
       const x = C.cx + Math.cos(a) * C.rx * w, y = C.cy + Math.sin(a) * C.ry * w;
       i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
     }
@@ -741,6 +790,13 @@
   }
   const FLIP_MS = 340;
   function drawIon(p, scale, t) {
+    let ox = 0;
+    if (p.pop != null) { const e = (t - p.pop) / 260; if (e >= 1) p.pop = null; else if (e > 0) scale = (scale || 1) * (1 + .32 * Math.sin(Math.PI * e)); }
+    if (p.wob != null) { const e = (t - p.wob) / 420; if (e >= 1) p.wob = null; else if (e > 0 && !RM) ox = Math.sin(e * 22) * (1 - e) * R * .4; }
+    const lv = show ? litOf(p.v, t) : 0; if (lv) scale = (scale || 1) * (1 + .35 * lv);
+    if (ox) { ctx.save(); ctx.translate(ox, 0); drawIon2(p, scale, t); ctx.restore(); } else drawIon2(p, scale, t);
+  }
+  function drawIon2(p, scale, t) {
     const k = disp[p.v], s = R * p.s * (scale || 1), G = s * 2.6;
     if (p.fl != null) { // the chameleon flip: the new colour and shape wipe across the ion, the way the wave came
       const e = (t - p.fl) / FLIP_MS;
@@ -824,7 +880,7 @@
     }
     ctx.globalCompositeOperation = 'lighter';
     for (const e of s.edges) {
-      const al = e.s * mul * (s.web ? .6 : 1); if (al < .02) continue;
+      const al = e.s * mul * (s.web ? .6 : 1) * (s.phase === 'form' && !RM ? .78 + .22 * Math.sin(t * .012 - e.d * .9) : 1); if (al < .02) continue;
       const a = P[e.a], b = P[e.b], q = bondCurve(a, b, L0), st = q.d / L0;
       const w = Math.max(1.6, R * .46 / Math.sqrt(Math.max(.7, st)));
       const gr = ctx.createLinearGradient(a.x, a.y, b.x, b.y);
@@ -860,41 +916,29 @@
   // the caption over the snake: its shape while it links up and flips (plus the lock or web note), then the pairing
   // and the count of each kind while the dominoes hold
   function snakeCaption(t) {
-    if (!S) return;
-    let lines, al;
-    if (S.phase === 'form' || S.phase === 'wave' || (S.phase === 'sag' && t < S.tr + 400)) {
-      al = Math.min(1, (t - S.t0 - S.maxD * S.LINK) / 250);
-      if (S.phase === 'sag') al *= Math.max(0, 1 - (t - S.tr) / 400);
-      lines = [[[S.shape.text, '#e6f6ff']]];
-      if (S.web) lines.push([['takes both chambers whole: no change', '#b8cad6']]);
-      else if (S.rims.length >= 2) lines.push([[S.rims.length + ' \u2726 linked: they flip together', '#ffe39a']]);
-    } else if (S.phase === 'pair' || (S.phase === 'settle' && t < S.tr + 300)) {
-      al = S.phase === 'pair' ? Math.min(1, (t - S.tp) / 200) : 1 - (t - S.tr) / 300;
-      const np = S.shape.match.length, nl = S.shape.single.length, pw = np === 1 ? ' pair' : ' pairs';
-      lines = [[[nl ? np + pw + ' + ' + nl + ' left over' : np + pw + ', even', nl ? '#fff1c4' : '#e6f6ff']]];
-      const c = [0, 0], k = [-1, -1];
-      S.order.forEach(v => { const sd = S.shape.side.get(v); c[sd]++; k[sd] = disp[v]; });
-      const seg = i => [c[i] + ' ' + KIND[k[i]].name, KIND[k[i]].col];
-      lines.push(c[1] ? [seg(0), [' \u00b7 ', '#8fa6b4'], seg(1)] : [seg(0)]);
-    } else return;
+    if (!S || !(S.phase === 'form' || S.phase === 'wave' || (S.phase === 'sag' && t < S.tr + 400))) return;
+    let al = Math.min(1, (t - S.t0 - S.maxD * S.LINK) / 250);
+    if (S.phase === 'sag') al *= Math.max(0, 1 - (t - S.tr) / 400);
     if (al <= 0) return;
+    // an icon chip over the chain: how many of each kind it holds, a padlock when it links two starred ions
+    const c = [0, 0], k = [-1, -1];
+    S.order.forEach(v => { const sd = S.shape.side.get(v); c[sd]++; k[sd] = disp[v]; });
+    const segs = [0, 1].filter(i => c[i]), lock = !S.web && S.rims.length >= 2;
+    const h = Math.max(24, Math.min(32, R * 2.4)), gs = h * .28, segW = h * 1.45, w = segs.length * segW + (lock ? h * .9 : 0) + h * .3;
     let x = 0, y = Infinity, yb = -Infinity;
-    S.order.forEach(v => { x += P[v].x; y = Math.min(y, P[v].y); yb = Math.max(yb, P[v].y); }); // clear of the whole snake
-    x /= S.order.length;
-    const fs = Math.max(11, Math.min(15, R * 1.05)), lh = fs * 1.3, h = lines.length * lh + fs * .5;
-    y = y - R * 2.2 - h / 2; if (y - h / 2 < L.top) y = yb + R * 2.2 + h / 2;
-    const widths = lines.map((ln, i) => { ctx.font = `${i ? 500 : 700} ${fs}px ${FONT}`; return ln.reduce((w, sg) => w + ctx.measureText(sg[0]).width, 0); });
-    const tw = Math.max(...widths);
-    x = Math.max(tw / 2 + 10, Math.min(L.W - tw / 2 - 10, x)); y = Math.max(L.top + h / 2, Math.min(L.H - h / 2, y));
-    ctx.globalAlpha = Math.max(0, Math.min(1, al));
-    ctx.fillStyle = 'rgba(3,8,14,.72)'; ctx.beginPath();
-    ctx.roundRect ? ctx.roundRect(x - tw / 2 - 8, y - h / 2, tw + 16, h, Math.min(h / 2, fs)) : ctx.rect(x - tw / 2 - 8, y - h / 2, tw + 16, h); ctx.fill();
-    ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-    lines.forEach((ln, i) => {
-      ctx.font = `${i ? 500 : 700} ${fs}px ${FONT}`;
-      let cx = x - widths[i] / 2; const cy = y - h / 2 + fs * .25 + lh * (i + .5) + 1;
-      ln.forEach(([txt, col]) => { ctx.fillStyle = col; ctx.fillText(txt, cx, cy); cx += ctx.measureText(txt).width; });
+    S.order.forEach(v => { x += P[v].x; y = Math.min(y, P[v].y); yb = Math.max(yb, P[v].y); });
+    x /= S.order.length; y = y - R * 2.4 - h / 2; if (y - h / 2 < L.top) y = yb + R * 2.4 + h / 2;
+    x = Math.max(w / 2 + 8, Math.min(L.W - w / 2 - 8, x)); y = Math.max(L.top + h / 2, Math.min(L.H - h / 2, y));
+    ctx.globalAlpha = Math.max(0, Math.min(1, al)) * (S.web ? .6 : 1);
+    rrect(x - w / 2, y - h / 2 + 3, w, h, h / 2); ctx.fillStyle = '#02090c'; ctx.fill();
+    rrect(x - w / 2, y - h / 2, w, h, h / 2); ctx.fillStyle = '#0a2a31'; ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = lock ? '#ffd36a' : 'rgba(95,230,255,.8)'; ctx.stroke();
+    let cx = x - w / 2 + h * .15;
+    ctx.font = `800 ${Math.round(h * .5)}px ${FONT}`; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+    segs.forEach(i => {
+      ctx.drawImage(coreSpr[k[i]], cx + h * .32 - gs * 2.6, y - gs * 2.6, gs * 5.2, gs * 5.2);
+      ctx.fillStyle = '#e6f6ff'; ctx.fillText('\u00d7' + c[i], cx + h * .66, y + 1); cx += segW;
     });
+    if (lock) padlock(cx + h * .32, y + h * .02, h * .26);
     ctx.globalAlpha = 1;
   }
   function bezierTube(a, b, w, k1, k2, alpha, t) {
@@ -947,7 +991,7 @@
       ctx.beginPath(); ctx.moveTo(mol.hx - mol.hR * 1.3, cy); ctx.quadraticCurveTo(mol.hx, cy - mol.hR * 1.0, mol.hx + mol.hR * 1.3, cy); ctx.stroke();
     }
     if (mol.phase === 'wait') {
-      const tips = drawMolecule(t, mol.x, mol.y, mol.R, 0);
+      const mb = Math.min(1, Math.max(0, (t - fx.mol) / 420)), tips = drawMolecule(t, mol.x, mol.y, mol.R * (1 + (RM || mb >= 1 ? 0 : .28 * Math.sin(Math.PI * mb))), 0);
       const mr = Math.max(6, mol.R * .5);
       g.rim.forEach((v, i) => {
         const [tx, ty] = tips[i], k = disp[v], G = mr * 2.6, lit = (held === v || sel === v);
@@ -955,28 +999,46 @@
         ctx.drawImage(coreSpr[k], tx - G, ty - G, G * 2, G * 2);
       });
     }
-    // goal line
-    const x0 = mol.hx + mol.hR * 3.1, x1 = L.W - 44, w = x1 - x0;
-    if (w > 60) {
-      let l1, l2;
-      if (won) { l1 = mol.phase === 'docked' ? 'Signal received' : 'A channel opens…'; l2 = mol.phase === 'docked' && !busy && !LAB.embedded ? 'tap to play again' : ''; }
-      else { l1 = 'Free a chamber for the signal'; l2 = g.goal >= NC - 1 ? 'none of its ' + NR + ' ✦ ions may be inside' : 'the ' + NR + ' ✦ ions may use only ' + g.goal + ' chambers'; }
-      let f1 = Math.max(10, Math.min(20, gh * .17)); ctx.font = `700 ${f1}px ${FONT}`;
-      while (f1 > 9 && ctx.measureText(l1).width > w) { f1 -= .5; ctx.font = `700 ${f1}px ${FONT}`; }
-      ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
-      ctx.fillStyle = won ? '#fff6c8' : '#d8f3ff';
-      ctx.fillText(l1, x0, gh * (l2 ? .4 : .5));
-      if (l2) {
-        let f2 = Math.max(9, f1 * .72); ctx.font = `500 ${f2}px ${FONT}`;
-        while (f2 > 8 && ctx.measureText(l2).width > w) { f2 -= .5; ctx.font = `500 ${f2}px ${FONT}`; }
-        if (ctx.measureText(l2).width <= w) { ctx.fillStyle = 'rgba(190,225,240,.7)'; ctx.fillText(l2, x0, gh * .4 + f1 * .5 + f2 * .85); }
-      }
-    }
+    // the goal: one chip per chamber, its shape and how many starred ions are inside (no words: a free chamber glows)
+    const cs = chipRects(); if (!cs) return;
+    cs.forEach((q, k) => {
+      const n = rivalsIn(k), bf = Math.max(0, 1 - (t - fx.bump[k]) / 380), sc = 1 + (RM ? 0 : .3 * Math.sin(Math.PI * Math.min(1, (t - fx.bump[k]) / 380)) * (bf > 0 ? 1 : 0));
+      const free = n === 0, near = false;
+      ctx.save(); ctx.translate(q.x, q.y); ctx.scale(sc, sc);
+      const w = q.w, h = q.h, r = h * .32;
+      if (free || near) { ctx.globalCompositeOperation = 'lighter'; const G = w * (free ? .9 : .7) * (1 + (RM ? 0 : .06 * Math.sin(t * .006))); ctx.globalAlpha = free ? .9 : .45; ctx.drawImage(glowSpr[k], -G, -G, G * 2, G * 2); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; }
+      rrect(-w / 2, -h / 2 + 4, w, h, r); ctx.fillStyle = '#02090c'; ctx.fill();                       // 3D edge
+      rrect(-w / 2, -h / 2, w, h, r); ctx.fillStyle = free ? '#1d6f7e' : '#0a2a31'; ctx.fill();
+      ctx.lineWidth = 2.4; ctx.strokeStyle = free ? '#fff6c8' : rgba(k, .95); ctx.stroke();
+      rrect(-w / 2 + 3, -h / 2 + 2.5, w - 6, h * .32, r * .6); ctx.fillStyle = 'rgba(255,255,255,.08)'; ctx.fill();
+      const gs = Math.min(h * .24, w * .2), gx = -w / 2 + gs + Math.max(4, w * .1); ctx.drawImage(coreSpr[k], gx - gs * 2.6, 1 - gs * 2.6, gs * 5.2, gs * 5.2);
+      ctx.fillStyle = free ? '#fff6c8' : '#ffffff'; star(ctx, gx + gs * .9, 1 - gs * .9, gs * .55, 5); ctx.fill(); ctx.lineWidth = 1.2; ctx.strokeStyle = '#04141a'; ctx.stroke();
+      ctx.font = `800 ${Math.round(h * .46)}px ${FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      const nx = (gx + gs * 1.5 + w / 2) / 2;
+      ctx.lineWidth = 3; ctx.strokeStyle = '#04141a'; ctx.strokeText(String(n), nx, 1); ctx.fillStyle = free ? '#fff6c8' : '#ff9ab5'; ctx.fillText(String(n), nx, 1);
+      ctx.restore();
+    });
+  }
+  function rrect(x, y, w, h, r) { ctx.beginPath(); if (ctx.roundRect) ctx.roundRect(x, y, w, h, r); else ctx.rect(x, y, w, h); }
+  function chipRects() {
+    const x0 = mol.hx + mol.hR * 3.1, x1 = L.W - 54, w = x1 - x0;
+    if (w < 120) return null;
+    const gap = Math.max(6, Math.min(10, w * .03)), cw = Math.min(70, (w - gap * (NC - 1)) / NC), ch = Math.max(26, Math.min(40, L.gh * .3));
+    const tot = cw * NC + gap * (NC - 1), sx = x0 + (w - tot) / 2 + cw / 2;
+    return L.ch.map((_, k) => ({ x: sx + k * (cw + gap), y: L.gh * .5, w: cw, h: ch }));
+  }
+  function badgePos(C) { const a = -Math.PI * .28; return [C.cx + Math.cos(a) * C.rx * .99, C.cy + Math.sin(a) * C.ry * .99]; }
+  function padlock(x, y, s) {
+    ctx.save(); ctx.translate(x, y); ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(-s * .55, -s * .1); ctx.lineTo(-s * .55, -s * .55); ctx.arc(0, -s * .55, s * .55, Math.PI, 0); ctx.lineTo(s * .55, -s * .1);
+    ctx.lineWidth = s * .5; ctx.strokeStyle = '#04141a'; ctx.stroke(); ctx.lineWidth = s * .24; ctx.strokeStyle = '#fff6c8'; ctx.stroke();
+    rrect(-s * .9, -s * .2, s * 1.8, s * 1.4, s * .3); ctx.fillStyle = '#ffbd3a'; ctx.fill(); ctx.lineWidth = s * .2; ctx.strokeStyle = '#04141a'; ctx.stroke();
+    ctx.beginPath(); ctx.arc(0, s * .45, s * .22, 0, TAU); ctx.fillStyle = '#04141a'; ctx.fill(); ctx.restore();
   }
 
   function drawBadge(C, t) {
-    const n = rivalsIn(C.k), a = -Math.PI * .28, x = C.cx + Math.cos(a) * C.rx * .99, y = C.cy + Math.sin(a) * C.ry * .99;
-    const b = Math.max(9, Math.min(16, R * .95));
+    const n = rivalsIn(C.k), [x, y] = badgePos(C), bt = Math.min(1, Math.max(0, (t - fx.bump[C.k]) / 380));
+    const b = Math.max(10, Math.min(17, R * 1.05)) * (1 + (RM || bt >= 1 ? 0 : .45 * Math.sin(Math.PI * bt)));
     if (mol.phase === 'docked' && C.k === mol.F) return;
     ctx.beginPath(); ctx.arc(x, y, b, 0, TAU);
     if (n === 0) {
@@ -987,10 +1049,87 @@
       ctx.lineWidth = 2.2; ctx.strokeStyle = '#fff6c8'; ctx.stroke();
       ctx.fillStyle = '#fff6c8'; star(ctx, x, y, b * .6, 5); ctx.fill();
     } else {
-      ctx.fillStyle = 'rgba(8,14,20,.9)'; ctx.fill(); ctx.lineWidth = 1.5; ctx.strokeStyle = rgba(C.k, .45); ctx.stroke();
+      ctx.fillStyle = '#0a2a31'; ctx.fill(); ctx.lineWidth = 2.4; ctx.strokeStyle = rgba(C.k, .9); ctx.stroke();
       ctx.fillStyle = 'rgba(220,235,245,.85)'; star(ctx, x - b * .32, y, b * .38, 5); ctx.fill();
       ctx.font = `700 ${b * 1.05}px ${FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(n, x + b * .38, y + b * .05);
     }
+  }
+
+  function candHas(v) { if (!cand || S) return false; for (const c of cand) if (!c.web && c.K.set.has(v) && v !== held && v !== sel) return true; return false; }
+  // the win light show: electric arcs jump from ion to ion along the map as each wave passes
+  function drawArcs(t) {
+    ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    for (const [a, b] of g.edges) {
+      if (a === hole || b === hole) continue;
+      let da = show.d.get(a), db = show.d.get(b), u = a, v = b; if (da === db || Math.abs(da - db) > 3) continue; if (da > db) { u = b; v = a; [da, db] = [db, da]; }
+      for (let w = 0; w < show.waves; w++) {
+        const x = (t - show.t0 - w * show.gap - da * show.step) / Math.max(60, show.step * (db - da)); if (x <= 0 || x >= 1.6) continue;
+        const p = P[u], q = P[v], f = Math.min(1, x), al = x < 1 ? 1 : 1 - (x - 1) / .6, ln = Math.hypot(q.x - p.x, q.y - p.y) || 1, n = Math.max(3, Math.min(9, Math.round(ln / (R * 2.2)))), nx = -(q.y - p.y) / ln, ny = (q.x - p.x) / ln;
+        ctx.beginPath(); ctx.moveTo(p.x, p.y);
+        for (let i = 1; i <= n; i++) { const e = i / n * f, j = i < n || f < 1 ? (Math.random() - .5) * R * 1.3 : 0; ctx.lineTo(p.x + (q.x - p.x) * e + nx * j, p.y + (q.y - p.y) * e + ny * j); }
+        ctx.globalAlpha = al * .5; ctx.strokeStyle = rgba(disp[v], 1); ctx.lineWidth = R * .55; ctx.stroke();
+        ctx.globalAlpha = al; ctx.strokeStyle = '#eaffff'; ctx.lineWidth = Math.max(1.2, R * .14); ctx.stroke();
+      }
+    }
+    ctx.restore(); ctx.globalAlpha = 1;
+  }
+  // easter egg: a rogue ion zipping across the cell; tap it to catch it
+  function roguePos(t) { const r = rogue, f = (t - r.t0) / r.dur, x = r.dir > 0 ? -30 + (L.W + 60) * f : L.W + 30 - (L.W + 60) * f; return [x, r.y0 + Math.sin(f * TAU * 1.3 + r.ph) * r.amp, f]; }
+  function drawRogue(t) {
+    if (!rogue) return;
+    const [x, y, f] = roguePos(t); if (f >= 1) { rogue = null; nextRogue = t + 30000 + Math.random() * 30000; return; }
+    ctx.save(); ctx.globalCompositeOperation = 'lighter';
+    for (let i = 1; i <= 8; i++) { const [tx, ty] = roguePos(t - i * 28), G = R * (1.6 - i * .14); ctx.globalAlpha = .5 - i * .05; ctx.drawImage(glowSpr[(i + Math.floor(t / 90)) % 4], tx - G, ty - G, G * 2, G * 2); }
+    ctx.globalAlpha = 1; const G = R * 2.4; ctx.drawImage(glowSpr[Math.floor(t / 120) % 4], x - G, y - G, G * 2, G * 2);
+    ctx.globalCompositeOperation = 'source-over'; ctx.translate(x, y); ctx.rotate(t * .012);
+    star(ctx, 0, 0, R * 1.05, 6); ctx.fillStyle = '#ffffff'; ctx.fill(); ctx.lineWidth = Math.max(1.5, R * .18); ctx.strokeStyle = '#04141a'; ctx.stroke();
+    ctx.beginPath(); ctx.arc(0, 0, R * .3, 0, TAU); ctx.fillStyle = '#5fe6ff'; ctx.fill();
+    ctx.restore();
+  }
+  // the idle ghost finger: it presses an ion of a useful chain and drags it into the chamber it should go to
+  function fingerAt(x, y, press, al) {
+    ctx.save(); ctx.translate(x, y); ctx.globalAlpha = al;
+    if (press > 0) { ctx.beginPath(); ctx.arc(0, 0, R * (1.4 + press * 1.4), 0, TAU); ctx.strokeStyle = `rgba(255,255,255,${(.7 * (1 - press)).toFixed(3)})`; ctx.lineWidth = 3; ctx.stroke(); }
+    ctx.rotate(-.38); ctx.lineWidth = 3; ctx.strokeStyle = '#04141a'; ctx.fillStyle = '#ffffff';
+    const u = Math.max(.8, R / 12);
+    ctx.save(); ctx.translate(3 * u, 4 * u); rrect(-12 * u, 18 * u, 28 * u, 30 * u, 11 * u); ctx.fillStyle = 'rgba(2,9,12,.45)'; ctx.fill(); ctx.restore();
+    rrect(-12 * u, 18 * u, 28 * u, 30 * u, 11 * u); ctx.fill(); ctx.stroke();
+    rrect(-6.5 * u, -2 * u, 13 * u, 34 * u, 6.5 * u); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(-3 * u, 4 * u); ctx.lineTo(3 * u, 4 * u); ctx.strokeStyle = '#c9d8de'; ctx.lineWidth = 2; ctx.stroke();
+    ctx.restore(); ctx.globalAlpha = 1;
+  }
+  function drawCue(t) {
+    if (!cue) return;
+    const e = t - cue.t0, D = 2600, p = P[cue.u], C = L.ch[cue.B];
+    if (e > D || !p || busy || won || held != null || g.col[cue.u] === cue.B) { cue = null; cueNext = t + 2200; return; }
+    const al = Math.min(1, e / 250, (D - e) / 300);
+    // the chain the finger is about to move pulses in its two colours
+    ctx.save(); ctx.globalCompositeOperation = 'lighter';
+    cue.K.vs.forEach(v => { const q = P[v]; if (!q) return; const G = R * 2.6 * (1.3 + .25 * Math.sin(t * .012)); ctx.globalAlpha = al * .7; ctx.drawImage(glowSpr[disp[v]], q.x - G, q.y - G, G * 2, G * 2); });
+    membrane(C, t, 0); ctx.globalAlpha = al; ctx.lineWidth = 4; ctx.strokeStyle = rgba(C.k, .4 + .3 * Math.sin(t * .012)); ctx.stroke();
+    ctx.restore(); ctx.globalAlpha = 1;
+    if (RM) { fingerAt(p.x, p.y, 0, al); return; }
+    const m = Math.max(0, Math.min(1, (e - 700) / 1100)), em = ease(m), tx = C.cx + (p.x - C.cx) * .25, ty = C.cy + (p.y - C.cy) * .25;
+    const x = p.x + (tx - p.x) * em, y = p.y + (ty - p.y) * em, press = e > 450 && e < 900 ? (e - 450) / 450 : 0;
+    if (m > 0) { const G = R * 2.8; ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = al * .8; ctx.drawImage(glowSpr[disp[cue.u]], x - G, y - G, G * 2, G * 2); ctx.globalAlpha = al * .6; ctx.drawImage(coreSpr[disp[cue.u]], x - G, y - G, G * 2, G * 2); ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1; }
+    fingerAt(x, y, press, al);
+  }
+  function drawFlyers(t) {
+    for (let i = flyers.length - 1; i >= 0; i--) {
+      const f = flyers[i], e = (t - f.t0) / f.dur; if (e < 0) continue;
+      if (e >= 1) { flyers.splice(i, 1); fx.bump[f.k] = t; continue; }
+      const m = ease(e), x = f.x0 + (f.x1 - f.x0) * m, y = f.y0 + (f.y1 - f.y0) * m - Math.sin(Math.PI * e) * 60, sz = R * (.9 + .5 * Math.sin(Math.PI * e));
+      ctx.globalCompositeOperation = 'lighter'; const G = sz * 2.4; ctx.drawImage(glowSpr[f.k], x - G, y - G, G * 2, G * 2); ctx.globalCompositeOperation = 'source-over';
+      ctx.save(); ctx.translate(x, y); ctx.rotate(e * 6); star(ctx, 0, 0, sz, 5); ctx.fillStyle = '#ffffff'; ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = '#04141a'; ctx.stroke(); ctx.restore();
+    }
+    ctx.globalCompositeOperation = 'lighter';
+    for (let i = sparks.length - 1; i >= 0; i--) {
+      const q = sparks[i], e = (t - q.t0) / q.dur; if (e >= 1) { sparks.splice(i, 1); continue; }
+      const k = (t - q.t0) / 1000, x = q.x + q.vx * k * (1 - e * .5), y = q.y + q.vy * k * (1 - e * .5) + 40 * k * k;
+      ctx.strokeStyle = e < .3 ? '#ffffff' : rgba(q.k, 1); ctx.globalAlpha = 1 - e; ctx.lineWidth = Math.max(1.5, R * .22); ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x - q.vx * .03, y - q.vy * .03); ctx.stroke();
+    }
+    ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
   }
 
   function draw(t) {
@@ -1004,6 +1143,14 @@
       membrane(C, t, 0); ctx.lineWidth = hot ? 9 : 6; ctx.strokeStyle = rgba(C.k, hot ? .22 : .1); ctx.stroke();
       ctx.lineWidth = 1.2; ctx.strokeStyle = rgba(C.k, hot ? .95 : .55);
       membrane(C, t, -2.2 / C.rx); ctx.stroke(); membrane(C, t, 2.2 / C.rx); ctx.stroke();
+      ctx.globalCompositeOperation = 'source-over';
+    });
+    // the touched ion's candidate moves: every chamber it can go to pulses (brightest where it would free a chamber)
+    if (cand && !S) cand.forEach(c => {
+      const C = L.ch[c.B], pu = .5 + .5 * Math.sin(t * .012);
+      ctx.globalCompositeOperation = 'lighter'; membrane(C, t, 0);
+      ctx.fillStyle = c.win ? `rgba(255,246,200,${(.08 + .08 * pu).toFixed(3)})` : rgba(C.k, c.web ? .03 : .05 + .05 * pu); ctx.fill();
+      ctx.lineWidth = c.win ? 5 : 3; ctx.strokeStyle = c.win ? `rgba(255,246,200,${(.5 + .4 * pu).toFixed(3)})` : rgba(C.k, c.web ? .2 : .35 + .35 * pu); ctx.stroke();
       ctx.globalCompositeOperation = 'source-over';
     });
     // open channels
@@ -1037,12 +1184,15 @@
     P.forEach(p => {
       if (!p) return;
       const k = disp[p.v], lk = S ? linkOf(S, p.v, t) : 0;
-      const boost = (rep && rep.has(p.v)) ? 1.5 : (p.v === focus ? 1.7 : 1 + .45 * lk), s = R * p.s * 2.6 * boost;
+      const lv = show ? litOf(p.v, t) : 0, cm = candHas(p.v) ? 1.25 + .2 * Math.sin(t * .012 + p.ph) : 1;
+      const boost = ((rep && rep.has(p.v)) ? 1.5 : (p.v === focus ? 1.9 : 1 + .45 * lk)) * cm * (1 + 1.3 * lv), s = R * p.s * 2.6 * boost;
       ctx.drawImage(glowSpr[k], p.x - s, p.y - s, s * 2, s * 2);
+      if (lv > .05) { const G = R * p.s * 1.6 * (1 + lv); ctx.globalAlpha = lv * .8; ctx.drawImage(glowSpr[(k + 1 + Math.floor((t - show.t0) / 1000)) % NC], p.x - G, p.y - G, G * 2, G * 2); ctx.globalAlpha = 1; }
       if (p.fl != null) { const e = (t - p.fl) / FLIP_MS; if (e < 1) { const G = R * p.s * 2.6 * (1.4 + 1.6 * e); ctx.globalAlpha = 1 - e; ctx.drawImage(glowSpr[k], p.x - G, p.y - G, G * 2, G * 2); ctx.globalAlpha = 1; } }
       if (p.tr && p.px != null) { ctx.strokeStyle = rgba(k, .45); ctx.lineWidth = R * .9; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(p.px - (p.x - p.px) * 3, p.py - (p.y - p.py) * 3); ctx.lineTo(p.x, p.y); ctx.stroke(); }
     });
     ctx.globalCompositeOperation = 'source-over';
+    if (show && !RM) drawArcs(t);
     // the snake: bonds between members, field lines to the outsiders
     ghosts.forEach(gh => drawSnake(gh.s, t, Math.max(0, 1 - (t - gh.t0) / gh.dur)));
     if (S) drawSnake(S, t, 1);
@@ -1083,6 +1233,7 @@
     L.ch.forEach(C => drawBadge(C, t));
     snakeCaption(t);
     drawBand(t);
+    drawRogue(t); drawCue(t); drawFlyers(t);
     // floating notes ("equilibrium")
     for (let i = notes.length - 1; i >= 0; i--) {
       const n = notes[i], f = (t - n.t0) / n.dur; if (f < 0) continue; if (f >= 1) { notes.splice(i, 1); continue; }
@@ -1091,12 +1242,41 @@
     }
   }
 
+  // progress: a chamber's starred count changes -> its badge and chip bounce; a star that leaves flies up to the chips
+  function juiceTick(t) {
+    const riv = L.ch.map(C => rivalsIn(C.k));
+    if (prevRiv) riv.forEach((n, k) => {
+      if (n === prevRiv[k]) return;
+      fx.bump[k] = t;
+      if (n < prevRiv[k]) {
+        const cs = chipRects(), [bx, by] = badgePos(L.ch[k]), tgt = cs ? cs[k] : { x: mol.hx, y: mol.hy };
+        for (let i = 0; i < prevRiv[k] - n; i++) flyers.push({ x0: bx, y0: by, x1: tgt.x, y1: tgt.y, t0: t + i * 120, dur: RM ? 200 : 650, k });
+        sfx.star(n);
+        if (n === 0) burst(bx, by, RM ? 4 : 14, k, R * 7);
+      }
+    });
+    prevRiv = riv;
+    const rc = g.rimCount(); if (rc !== prevRim) { prevRim = rc; fx.mol = t; }
+    // the win light show: a soft crackle per hop of each wave
+    if (show && !RM) { const h = Math.floor((t - show.t0) / Math.max(60, show.step)); if (h !== show.heard && t - show.t0 < show.waves * show.gap) { show.heard = h; sfx.zap(h % 8); } }
+    if (won || busy) return;
+    // the idle ghost finger (soon at the start, later only after a long pause)
+    if (!cue && down == null && sel == null && !S && t > cueNext && t - lastTouch > (g.moves ? 9000 : 2200)) {
+      const good = g.good(), K = good[0] || g.chains.find(c => !c.web);
+      if (K) {
+        const u = K.vs.slice().sort((a, b) => (rimSet.has(b) - rimSet.has(a)))[0], B = K.pair[0] === g.col[u] ? K.pair[1] : K.pair[0];
+        if (P[u] && !P[u].tr) cue = { u, B, K, t0: t };
+      }
+    }
+    // the rogue ion (an easter egg): now and then it zips across, never during a move
+    if (!rogue && t > nextRogue && down == null && !S) { rogue = { t0: t, dur: RM ? 4200 : 2600, dir: Math.random() < .5 ? 1 : -1, y0: L.top + (L.H - L.top) * (.25 + Math.random() * .5), amp: R * (2 + Math.random() * 3), ph: Math.random() * TAU }; sfx.zip(); }
+  }
   let last = now();
   function frame() {
     const t = now();
     const dt = Math.min(.033, Math.max(0, (t - last) / 1000)); last = t;
     if (L.r !== R) R += (L.r - R) * Math.min(1, dt * 4);
-    snakeTick(t); transits(t);
+    snakeTick(t); transits(t); juiceTick(t);
     if (S) { physics(dt / 2, t); physics(dt / 2, t); } else physics(dt, t); // springs get two substeps
     draw(t);
     requestAnimationFrame(frame);
@@ -1105,6 +1285,11 @@
   // ---- input (pointer events: drag, swipe or flick; or tap an ion then tap a chamber)
   let down = null;
   function pt(e) { const b = cv.getBoundingClientRect(); return [e.clientX - b.left, e.clientY - b.top]; }
+  function candidates(u) {
+    const out = [];
+    for (let B = 0; B < NC; B++) { const m = moveFor(g, u, B); if (m) out.push({ B, K: m.K, web: m.web, win: !m.web && g.preview(m.K).won }); }
+    return out;
+  }
   function ionAt(x, y) {
     let best = null, bd = Math.max(R * 1.8, 22);
     P.forEach(p => { if (!p || p.tr) return; const d = Math.hypot(p.x - x, p.y - y); if (d < bd) { bd = d; best = p.v; } });
@@ -1115,15 +1300,19 @@
     else if (ac.state === 'suspended') ac.resume();
     if (won && !busy) { if (!LAB.embedded) restart(); return; }   // in the app the shell owns the next step
     if (busy || won) return;
-    const [x, y] = pt(e), u = ionAt(x, y);
+    lastTouch = now(); cue = null;
+    const [x, y] = pt(e);
+    if (rogue) { const [rx, ry] = roguePos(now()); if (Math.hypot(rx - x, ry - y) < Math.max(30, R * 2.6)) { burst(rx, ry, 16, Math.floor(Math.random() * 4), R * 8); sfx.caught(); egg('rogue-ion', 40); rogue = null; nextRogue = now() + 40000 + Math.random() * 30000; return; } }
+    const u = ionAt(x, y);
     if (u == null) {
       if (sel != null) { const B = chamberFor(L, x, y, null, 0, 0); if (B != null && B !== disp[sel]) { doMove(sel, B); return; } }
-      sel = null; return;
+      sel = null; cand = null; return;
     }
     try { cv.setPointerCapture(e.pointerId); } catch (_) {}
     down = { u, x0: x, y0: y, moved: false, hist: [[x, y, now()]], wasSel: sel === u };
     held = u; sel = null; hoverCh = null; sfx.pick();
-    P[u].vx = P[u].vy = 0;
+    P[u].vx = P[u].vy = 0; P[u].pop = now();
+    cand = candidates(u);
   });
   cv.addEventListener('pointermove', e => {
     if (!down) return;
@@ -1145,8 +1334,8 @@
     if (!down) return;
     const d = down; down = null; hoverCh = null; hope = false;
     const [x, y] = pt(e);
-    if (cancel) { held = null; dropSnake(); return; }
-    if (!d.moved) { held = null; dropSnake(); sel = d.wasSel ? null : d.u; return; }
+    if (cancel) { held = null; dropSnake(); cand = null; return; }
+    if (!d.moved) { held = null; dropSnake(); sel = d.wasSel ? null : d.u; if (sel == null) cand = null; return; }
     const from = disp[d.u];
     let B = chamberFor(L, x, y, from, x - d.x0, y - d.y0);
     if (B === from) {

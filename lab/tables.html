@@ -38,10 +38,28 @@
   svg { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
     font-family: Nunito, 'Avenir Next', 'Trebuchet MS', system-ui, sans-serif; }
   .serif { font-family: 'Playfair Display', Georgia, 'Times New Roman', serif; }
-  #ui { position: fixed; right: 6px; top: 6px; display: flex; flex-direction: column; gap: 6px; z-index: 2; }
-  #ui button { width: 30px; height: 30px; border-radius: 50%; border: 2px solid var(--sk-ctl-edge, #b48a2c); background: var(--sk-ctl, #fbf3e2); color: var(--sk-ctl-ink, #5b3a4f);
-    font: 700 16px/1 system-ui, sans-serif; padding: 0; cursor: pointer; box-shadow: 0 2px 0 var(--sk-ctl-edge, #b48a2c); }
-  #ui button:active { transform: translateY(2px); box-shadow: none; }
+  #ui { position: fixed; right: 8px; top: 8px; display: flex; flex-direction: column; gap: 7px; z-index: 2; }
+  #ui button { width: 36px; height: 36px; border-radius: 12px; border: 2.5px solid #1c1640; border-bottom-width: 2.5px;
+    background: var(--sk-ctl, #fbf3e2); color: var(--sk-ctl-ink, #5b3a4f); font: 900 19px/1 system-ui, sans-serif; padding: 0; cursor: pointer;
+    box-shadow: 0 4px 0 var(--sk-ctl-edge, #b48a2c), 0 5px 0 #1c1640, inset 0 2px 0 rgba(255,255,255,.7); transition: transform .06s, box-shadow .06s; }
+  #ui button:active { transform: translateY(4px); box-shadow: 0 0 0 var(--sk-ctl-edge, #b48a2c), 0 1px 0 #1c1640, inset 0 2px 0 rgba(255,255,255,.7); }
+  .won #ui button { opacity: .45; }
+  .gst .nm { display: none; } .gst.held .nm, .gst.sel .nm { display: inline; }
+  .gst .fl { display: none; } .gst.toast .fl { display: inline; }
+  .fli, .pt, .cdi, .tbl, .boom, .flyo, .bunt, .cat .cb, .cat .ct, #gran .tea { transform-box: fill-box; transform-origin: 50% 50%; }
+  .fli { transform-origin: 50% 100%; }
+  .toast .fli { animation: raise .45s cubic-bezier(.3,1.6,.5,1) both, clinkS .38s ease-in-out .45s 4 alternate; }
+  .tbl.cand .hi { opacity: .9; animation: pulse .55s ease-in-out infinite alternate; }
+  .tbl.wob { animation: wob .5s ease-in-out; }
+  .pt.bnc { animation: bnc .5s cubic-bezier(.3,1.7,.5,1); }
+  .cdi.ok { animation: cardpop .55s cubic-bezier(.3,1.8,.5,1); } .cdi.bad { animation: wob .45s ease-in-out; }
+  .flyo { animation: flyo .7s ease-in forwards; }
+  .boom { animation: boom .9s ease-out forwards; }
+  .bunt { animation: bunt .8s cubic-bezier(.3,1.5,.5,1) both; }
+  .cat .ct { transform-origin: 0% 100%; animation: tail .7s ease-in-out infinite alternate; }
+  .cat .cb { animation: catbob .32s ease-in-out infinite alternate; }
+  #gran .tea { animation: pour 2.4s ease-in-out forwards; }
+  .nosign { transform-box: fill-box; transform-origin: 50% 50%; animation: nos 2.4s ease-in-out infinite; }
   .gst { cursor: grab; }
   .mo, .mg, .brow, .gst .ring, .gst .halo { display: none; }
   .grump .ms, .bump .ms, .party .ms, .hope .ms { display: none; }
@@ -70,9 +88,22 @@
   @keyframes clinkL { from { transform: rotate(-4deg); } to { transform: rotate(14deg); } }
   @keyframes clinkR { from { transform: rotate(4deg); } to { transform: rotate(-14deg); } }
   @keyframes fadeio { 0% { opacity: 0; } 15%, 80% { opacity: 1; } 100% { opacity: 0; } }
+  @keyframes raise { from { transform: translateY(.5px) rotate(30deg) scale(.4); } to { transform: none; } }
+  @keyframes clinkS { from { transform: rotate(0); } to { transform: rotate(-22deg); } }
+  @keyframes wob { 0%, 100% { transform: rotate(0); } 25% { transform: rotate(-4deg); } 60% { transform: rotate(3deg); } 85% { transform: rotate(-1.5deg); } }
+  @keyframes bnc { 0% { transform: scale(1); } 35% { transform: scale(1.35) translateY(-3px); } 100% { transform: scale(1); } }
+  @keyframes cardpop { 0% { transform: scale(.6); } 60% { transform: scale(1.25); } 100% { transform: scale(1); } }
+  @keyframes flyo { from { transform: none; opacity: 1; } to { transform: translate(0, -46px) scale(1.6) rotate(40deg); opacity: 0; } }
+  @keyframes boom { from { transform: scale(.2); opacity: 1; } to { transform: scale(3.2); opacity: 0; } }
+  @keyframes bunt { from { transform: translateY(-80px); } to { transform: none; } }
+  @keyframes tail { from { transform: rotate(-14deg); } to { transform: rotate(16deg); } }
+  @keyframes catbob { from { transform: translateY(0); } to { transform: translateY(-1.5px); } }
+  @keyframes pour { 0% { transform: rotate(0) scale(.2); opacity: 0; } 15% { transform: rotate(0) scale(1); opacity: 1; } 35%, 75% { transform: rotate(-35deg); opacity: 1; } 100% { transform: rotate(0); opacity: 0; } }
+  @keyframes nos { 0%, 80%, 100% { transform: scale(1); } 88% { transform: scale(1.18); } }
   @media (prefers-reduced-motion: reduce) {
     .bob, .gst.lit .bob, .gst.grump .bob, .gst.party .bob, #gran .bob, .bulb, .flL, .flR { animation: none !important; }
-    .gst.lit .ring { animation: none; }
+    .gst.lit .ring, .toast .fli, .tbl.cand .hi, .tbl.wob, .pt.bnc, .cdi.ok, .cdi.bad, .flyo, .boom, .bunt, .cat .ct, .cat .cb, .nosign { animation: none !important; }
+    .boom, .flyo { display: none; }
   }
 </style>
 </head>
@@ -301,6 +332,7 @@
   const gBg = el('g', {}, svg), gTables = el('g', {}, svg), gCards = el('g', {}, svg), gSpark = el('g', { 'pointer-events': 'none', filter: 'url(#spk)' }, svg);
   const gGst = el('g', {}, svg), gBanner = el('g', {}, svg), gTop = el('g', {}, svg), gFx = el('g', { 'pointer-events': 'none' }, svg);
 
+  const FLUTE = `<path d="M-.18-1.1H.18L.12-.35Q0-.15-.12-.35Z" fill="#fff6c8" fill-opacity=".9" stroke="#1c1640" stroke-width=".06"/><path d="M-.14-.95H.14L.1-.4Q0-.25-.1-.4Z" fill="#f6d36a"/><path d="M0-.2V.35M-.22 .38H.22" stroke="#1c1640" stroke-width=".08" stroke-linecap="round"/>`;
   const A = []; // guests: { v, g, ring, nm, P, name, x, y, tw, slot }
   let k = 0;
   for (let v = 0; v < g.n; v++) {
@@ -314,6 +346,7 @@
     G.innerHTML = `<circle class="halo" r="1.15" fill="#fff6d6" fill-opacity=".35" stroke="#ffd36a" stroke-width=".14"/>` +
       `<circle class="ring" r="1.18" fill="none" stroke-width=".18" stroke-dasharray=".35 .2"/>` +
       `<g class="bob">${personMarkup(P, true)}${rimSet.has(v) ? PIN : ''}</g>` +
+      `<g class="fl" transform="translate(${k % 2 ? -.72 : .72} .2) scale(.62)"><g class="fli">${FLUTE}</g></g>` +
       `<text class="nm" y="1.42" text-anchor="middle" font-size=".5" font-weight="800" fill="#fff6e6" stroke="#241c38" stroke-width=".16" paint-order="stroke">${name}</text>`;
     A[v] = { v, g: G, ring: G.querySelector('.ring'), nm: G.querySelector('.nm'), P, name, x: 0, y: 0, tw: null };
     k++;
@@ -369,8 +402,10 @@
   function drawTable(t) {
     const T = TABLE[t.k], G = el('g', { class: 'tbl' }, gTables), R = t.Rt;
     el('circle', { cx: t.cx, cy: t.cy, r: t.S - 2, fill: T.hem, 'fill-opacity': .08, class: 'hi', stroke: T.hem, 'stroke-width': 3, 'stroke-dasharray': '6 6' }, G);
-    el('circle', { cx: t.cx, cy: t.cy + 3, r: R + 2, fill: '#0b0716', opacity: .35 }, G);
-    el('circle', { cx: t.cx, cy: t.cy, r: R, fill: `url(#cl${t.k})`, stroke: T.hem, 'stroke-width': 2 }, G);
+    el('circle', { cx: t.cx + R * .05, cy: t.cy + R * .09, r: R + 3, fill: '#0b0716', opacity: .5 }, G);
+    el('circle', { cx: t.cx, cy: t.cy, r: R + 1.5, fill: T.hem, stroke: '#1c1640', 'stroke-width': 3 }, G);
+    el('circle', { cx: t.cx, cy: t.cy, r: R - 2.5, fill: `url(#cl${t.k})`, stroke: '#1c1640', 'stroke-width': 1.6 }, G);
+    el('path', { d: `M${f2(t.cx - R * .66)} ${f2(t.cy - R * .3)}A${f2(R * .72)} ${f2(R * .72)} 0 0 1 ${f2(t.cx - R * .22)} ${f2(t.cy - R * .68)}`, fill: 'none', stroke: '#fff', 'stroke-width': Math.max(2.5, R * .05), 'stroke-linecap': 'round', opacity: .9 }, G);
     // hem pattern: scallops / dots / stripes / leafy zigzag
     let d = ''; const n = Math.max(14, Math.round(2 * Math.PI * R / 13));
     for (let i = 0; i < n; i++) {
@@ -388,55 +423,83 @@
     t.el = G;
   }
 
-  // ---- the banner: Gran + "won't sit with" the five
-  let gGran = null, granPos = null, portraits = [], banner = null;
+  // ---- the banner: Gran, a "no" sign, the five she won't sit with (each on a disc of the table they sit at now)
+  let gGran = null, granPos = null, portraits = [], banner = null, gRow = null, gNo = null, gYes = null;
   function drawBanner() {
     gBanner.innerHTML = ''; gTop.innerHTML = '';
     const gh = L.gh, W = L.W, lr = gh * .3, ax = gh * .48;
-    el('rect', { x: 4, y: 4, width: W - 8, height: gh - 8, rx: 12, fill: '#fbf5ea', stroke: '#c9a34a', 'stroke-width': 2, filter: 'url(#sh)' }, gBanner);
-    el('rect', { x: 8, y: 8, width: W - 16, height: gh - 16, rx: 9, fill: 'none', stroke: '#c9a34a', 'stroke-width': .8, 'stroke-dasharray': '2 3' }, gBanner);
-    el('circle', { cx: ax, cy: gh * .5, r: lr * 1.3, fill: '#efe2f6', stroke: '#9b7fc2', 'stroke-width': 2 }, gBanner);
+    el('title', {}, gBanner).textContent = 'Gran will not sit at a table with any of these five guests';
+    el('rect', { x: 7, y: 9, width: W - 10, height: gh - 8, rx: 14, fill: '#0b0716', opacity: .5 }, gBanner);
+    el('rect', { x: 4, y: 4, width: W - 8, height: gh - 8, rx: 14, fill: '#fbf5ea', stroke: '#1c1640', 'stroke-width': 2.6 }, gBanner);
+    el('rect', { x: 9, y: 9, width: W - 18, height: gh - 18, rx: 10, fill: 'none', stroke: '#d9a441', 'stroke-width': 1.3, 'stroke-dasharray': '2 3' }, gBanner);
+    el('path', { d: `M14 ${gh * .3}Q${W * .3} 8 ${W - 60} 12`, stroke: '#fff', 'stroke-width': 3, fill: 'none', 'stroke-linecap': 'round', opacity: .8 }, gBanner);
+    el('circle', { cx: ax + 2, cy: gh * .5 + 3, r: lr * 1.3, fill: '#5b3a7a', opacity: .45 }, gBanner);
+    el('circle', { cx: ax, cy: gh * .5, r: lr * 1.3, fill: '#efe2f6', stroke: '#1c1640', 'stroke-width': 2.6 }, gBanner);
     granPos = { x: ax, y: gh * .5, r: lr };
-    const bx = ax + lr * 1.6, bw = W - bx - 44, by = 8, bh = gh - 16;
-    const fs = Math.max(10, Math.min(16, bh * .18, bw / (goalText().length * .5)));
-    const msg = el('text', { x: bx + bw / 2, y: by + fs + 2, 'text-anchor': 'middle', 'font-size': fs, 'font-weight': 700, 'font-style': 'italic', fill: '#5b3a4f', class: 'serif' }, gBanner);
-    banner = { msg, bw }; setMsg(goalText());
-    const n = g.rim.length, avail = bh - fs - 8, pr = Math.max(7, Math.min(avail * .36, (bw - 8) / n * .38));
+    const ns = Math.max(8, gh * .13), nx = ax + lr * 1.3 + ns + 6;
+    gYes = el('g', { transform: `translate(${f2(nx)} ${f2(gh * .5)})` }, gBanner, `<circle cx="1.5" cy="2" r="${ns}" fill="#1f5a22" opacity=".5"/><circle r="${ns}" fill="#3f9a3a" stroke="#1c1640" stroke-width="${f2(ns * .22)}"/><path d="M${f2(-ns * .5)} 0l${f2(ns * .35)} ${f2(ns * .4)}l${f2(ns * .6)} ${f2(-ns * .8)}" fill="none" stroke="#fff" stroke-width="${f2(ns * .3)}" stroke-linecap="round" stroke-linejoin="round"/>`);
+    gYes.style.display = won ? '' : 'none';
+    gNo = el('g', { transform: `translate(${f2(nx)} ${f2(gh * .5)})` }, gBanner, `<g class="nosign"><circle cx="1.5" cy="2" r="${ns}" fill="#7a1020" opacity=".5"/><circle r="${ns}" fill="#fff" stroke="#1c1640" stroke-width="${f2(ns * .5)}"/><circle r="${ns}" fill="none" stroke="#e8384f" stroke-width="${f2(ns * .3)}"/><path d="M${f2(-ns * .66)} ${f2(ns * .66)}L${f2(ns * .66)} ${f2(-ns * .66)}" stroke="#1c1640" stroke-width="${f2(ns * .5)}"/><path d="M${f2(-ns * .66)} ${f2(ns * .66)}L${f2(ns * .66)} ${f2(-ns * .66)}" stroke="#e8384f" stroke-width="${f2(ns * .3)}"/></g>`);
+    const bx = nx + ns + 4, bw = W - bx - 52, by = 8, bh = gh - 16;
+    const fs = Math.max(13, Math.min(24, bh * .32));
+    const msg = el('text', { x: bx + bw / 2, y: gh * .5 + fs * .35, 'text-anchor': 'middle', 'font-size': fs, 'font-weight': 700, 'font-style': 'italic', fill: '#5b3a4f', class: 'serif' }, gBanner);
+    banner = { msg, bw }; setMsg(won ? 'A toast to Gran!' : '');
+    gRow = el('g', { 'aria-hidden': 'true' }, gBanner);
+    const n = g.rim.length, pr = Math.max(7, Math.min(bh * .33, (bw - 8) / n * .38));
     portraits = g.rim.map((v, i) => {
-      const cx = bx + bw * (i + .5) / n, cy = by + fs + 4 + avail / 2;
-      const G = el('g', { transform: `translate(${f2(cx)} ${f2(cy)})` }, gBanner);
-      const disc = el('circle', { r: pr * 1.22, 'stroke-width': 2.2 }, G);
+      const cx = bx + bw * (i + .5) / n, cy = gh * .5;
+      const O = el('g', { transform: `translate(${f2(cx)} ${f2(cy)})` }, gRow), G = el('g', { class: 'pt' }, O);
+      el('circle', { cx: 1.5, cy: 2.5, r: pr * 1.22, fill: '#0b0716', opacity: .35 }, G);
+      const disc = el('circle', { r: pr * 1.22, 'stroke-width': 2.4 }, G);
       el('g', { transform: `scale(${f2(pr * .92)})` }, G, `<g transform="translate(0 .05)">${personMarkup(A[v].P, false)}</g>`);
-      el('path', { d: `M${-pr * 1.05} ${-pr * 1.05}L${pr * 1.05} ${pr * 1.05}`, stroke: '#d8424f', 'stroke-width': Math.max(1.5, pr * .14), opacity: .55, 'stroke-linecap': 'round' }, G);
+      el('circle', { r: pr * 1.22, fill: 'none', stroke: '#1c1640', 'stroke-width': 1.6 }, G);
       const ico = el('g', { transform: `translate(${f2(pr * .95)} ${f2(-pr * .85)}) scale(${f2(pr * .42)})` }, G);
-      return { v, disc, ico };
+      return { v, G, disc, ico, cx, cy, pr, t: null };
     });
+    if (won) gRow.style.display = gNo.style.display = 'none';
     gGran = el('g', { id: 'gran' }, gTop, `<g class="bob"><g class="gchair">${CHAIR}</g>${personMarkup(GRAN, false)}<g transform="translate(.42 -.78) rotate(20)"><ellipse rx=".42" ry=".12" fill="#9b7fc2"/><circle cx=".1" cy="-.06" r=".1" fill="#f6b6c1"/></g></g>`);
     setGran(granPos.x, granPos.y, granPos.r);
     if (won) gGran.classList.add('party', 'seated');
   }
-  function goalText() { return L.W > 440 ? 'Gran needs a table with none of these:' : L.W > 320 ? 'Gran won\'t sit with:' : 'Gran won\'t sit with'; }
   function setMsg(t) {
     const m = banner.msg; m.textContent = t; m.removeAttribute('textLength');
-    try { if (m.getComputedTextLength() > banner.bw - 8) { m.setAttribute('textLength', banner.bw - 8); m.setAttribute('lengthAdjust', 'spacingAndGlyphs'); } } catch (_) {}
+    try { if (t && m.getComputedTextLength() > banner.bw - 8) { m.setAttribute('textLength', banner.bw - 8); m.setAttribute('lengthAdjust', 'spacingAndGlyphs'); } } catch (_) {}
   }
   function setGran(x, y, r) { gGran.setAttribute('transform', `translate(${x.toFixed(1)} ${y.toFixed(1)}) scale(${r.toFixed(2)})`); }
 
-  // ---- place cards: a tick if none of Gran's five sit at that table, else a cross; plus the banner discs
+  // ---- place cards: a tick if none of Gran's five sit at that table, else a cross; plus the banner discs.
+  // Progress shows here: a rival changing tables bounces their portrait (the old table's flower flies out), a table
+  // that comes free pops its card; one that fills up again wobbles.
+  const cardOk = [];
   function rivalsAt(t) { return g.rim.filter(v => disp[v] === t).length; }
   function drawCards() {
     gCards.innerHTML = '';
     L.tables.forEach(t => {
       const ok = rivalsAt(t.k) === 0, w = Math.max(30, t.Rt * .78), h = w * .44, x = t.cx - w / 2, y = t.cy + t.Rt * .38;
-      const G = el('g', { filter: 'url(#sh)' }, gCards);
-      el('rect', { x, y, width: w, height: h, rx: 4, fill: ok ? '#eaf8df' : '#fffaf0', stroke: ok ? '#3f8a3a' : '#c9a34a', 'stroke-width': ok ? 2.2 : 1.4 }, G);
+      const was = cardOk[t.k]; cardOk[t.k] = ok;
+      const G = el('g', { class: 'cdi' + (was == null || was === ok ? '' : ok ? ' ok' : ' bad') }, gCards);
+      el('rect', { x: x + 1.5, y: y + 2.5, width: w, height: h, rx: 5, fill: '#0b0716', opacity: .4 }, G);
+      el('rect', { x, y, width: w, height: h, rx: 5, fill: ok ? '#eaf8df' : '#fffaf0', stroke: '#1c1640', 'stroke-width': ok ? 2.4 : 1.8 }, G);
       el('g', { transform: `translate(${f2(x + h * .55)} ${f2(y + h * .52)}) scale(${f2(h * .4)})` }, G, personMarkup(GRAN, false));
       const cx = x + w - h * .55, cy = y + h / 2, s = h * .34;
-      el('circle', { cx, cy, r: s, fill: ok ? '#3f9a3a' : '#d8424f' }, G);
+      el('circle', { cx, cy, r: s, fill: ok ? '#3f9a3a' : '#d8424f', stroke: '#1c1640', 'stroke-width': 1.4 }, G);
       el('path', { d: ok ? `M${cx - s * .5} ${cy}l${s * .35} ${s * .38}l${s * .6} ${-s * .75}` : `M${cx - s * .42} ${cy - s * .42}l${s * .84} ${s * .84}M${cx + s * .42} ${cy - s * .42}l${-s * .84} ${s * .84}`,
         stroke: '#fff', 'stroke-width': Math.max(1.6, s * .3), fill: 'none', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }, G);
+      if (was === false && ok && !won) { burst(t.cx, y, 14, ['#ffd84a', '#ffffff', TABLE[t.k].hem]); sfx.free(); }
     });
-    portraits.forEach(P => { const t = disp[P.v]; P.disc.setAttribute('fill', TABLE[t].cloth); P.disc.setAttribute('stroke', TABLE[t].hem); P.ico.innerHTML = `<circle r="1.05" fill="#fffaf0" stroke="${TABLE[t].hem}" stroke-width=".14"/><g transform="scale(.82)">${flower(t)}</g>`; });
+    portraits.forEach(P => {
+      const t = disp[P.v];
+      if (P.t != null && P.t !== t) { // the old flower flies out, the portrait bounces with the new one
+        const O = el('g', { transform: `translate(${f2(P.cx + P.pr * .95)} ${f2(P.cy - P.pr * .85)}) scale(${f2(P.pr * .42)})` }, gFx);
+        el('g', { class: 'flyo' }, O, `<circle r="1.05" fill="#fffaf0" stroke="${TABLE[P.t].hem}" stroke-width=".14"/><g transform="scale(.82)">${flower(P.t)}</g>`);
+        setTimeout(() => O.remove(), 800);
+        P.G.classList.remove('bnc'); void P.G.getBBox; requestAnimationFrame(() => P.G.classList.add('bnc'));
+        setTimeout(() => P.G.classList.remove('bnc'), 600);
+      }
+      P.t = t;
+      P.disc.setAttribute('fill', TABLE[t].cloth); P.disc.setAttribute('stroke', TABLE[t].hem);
+      P.ico.innerHTML = `<circle r="1.05" fill="#fffaf0" stroke="#1c1640" stroke-width=".16"/><circle r=".9" fill="none" stroke="${TABLE[t].hem}" stroke-width=".14"/><g transform="scale(.82)">${flower(t)}</g>`;
+    });
   }
 
   // ---- motion
@@ -457,7 +520,8 @@
         const a = A[v]; a.slot = S;
         if (v === held) return;
         if (snap) { a.x = S[0]; a.y = S[1]; a.tw = null; }
-        else if (Math.hypot(a.x - S[0], a.y - S[1]) > .5) { const mv = movers && movers.has(v); tweenTo(a, S[0], S[1], mv ? 460 : 320, mv ? L.r * 1.2 : 0); }
+        else if (a.tw && Math.hypot(a.tw.tx - S[0], a.tw.ty - S[1]) > .5) { a.tw.tx = S[0]; a.tw.ty = S[1]; }   // already on the way: just retarget
+        else if (!a.tw && Math.hypot(a.x - S[0], a.y - S[1]) > .5) { const mv = movers && movers.has(v); tweenTo(a, S[0], S[1], mv ? 460 : 320, mv ? L.r * 1.2 : 0); }
       });
     });
     A.forEach(a => { if (a) a.nm.style.display = L.r >= 14 ? '' : 'none'; });
@@ -473,8 +537,10 @@
         lift = a.tw.hop * Math.sin(Math.PI * p); jit = a.tw.hop ? Math.sin(p * 40) * 1.2 : 0; // chair scrape judder
         if (p >= 1) a.tw = null;
       }
-      const s = L.r * (a.v === held ? 1.15 : 1);
-      a.g.setAttribute('transform', `translate(${(x + jit).toFixed(1)} ${(y - lift).toFixed(1)}) scale(${s.toFixed(2)})`);
+      let s = L.r * (a.v === held ? 1.18 : 1), rot = 0;
+      if (a.pop) { const p = (t - a.pop) / 280; if (p >= 1 || p < 0) { if (p >= 1) a.pop = 0; } else { s *= 1 + .38 * Math.sin(Math.PI * p); rot = (a.v % 2 ? 14 : -14) * Math.sin(Math.PI * p); } }
+      if (a.shk) { const p = (t - a.shk) / 420; if (p >= 1) a.shk = 0; else jit += Math.sin(p * 28) * L.r * .22 * (1 - p); }
+      a.g.setAttribute('transform', `translate(${(x + jit).toFixed(1)} ${(y - lift).toFixed(1)}) scale(${s.toFixed(2)})` + (rot ? ` rotate(${rot.toFixed(1)})` : ''));
     });
     if (granTw) {
       const p = Math.min(1, (t - granTw.t0) / granTw.dur);
@@ -484,7 +550,8 @@
         if (p >= 1) { granTw = null; if (onGranDone) { const f = onGranDone; onGranDone = null; f(); } }
       }
     }
-    sparks(t); fx();
+    sparks(t); fx(); catStep(t);
+    if (!won && !busy && !cat && held == null && sel == null && t - lastTouch > (catN ? 40000 : 20000) && catN < 3) spawnCat();
     requestAnimationFrame(frame);
   }
 
@@ -578,14 +645,22 @@
     drop: () => tone(300, .08, 'sine', .07, 240),
     clink: () => { tone(2637, .5, 'sine', .07); tone(3520, .4, 'sine', .05, 0, .01); },
     win: () => [523, 659, 784, 1047, 784, 1047, 1319].forEach((f, i) => tone(f, .28, 'triangle', .1, 0, .5 + i * .12)),
+    trace: n => { for (let i = 0; i < Math.min(n, 9); i++) tone(440 * Math.pow(2, i * 2 / 12), .09, 'sine', .04, 0, i * .05); },   // a rising tone per guest in the chain
+    pop: i => { const f = 520 * Math.pow(2, Math.min(i, 12) / 12); tone(f, .07, 'triangle', .06, f * 1.5); },
+    free: () => { tone(988, .14, 'sine', .07); tone(1319, .22, 'sine', .06, 0, .1); },
+    purr: () => { for (let i = 0; i < 6; i++) tone(60 + (i % 2) * 8, .12, 'sawtooth', .025, 0, i * .13); tone(700, .25, 'sine', .05, 1100, .85); },
+    whistle: () => { if (!ac) return; const t = ac.currentTime, o = ac.createOscillator(), l = ac.createOscillator(), lg = ac.createGain(), v = ac.createGain();
+      o.frequency.setValueAtTime(1500, t); o.frequency.linearRampToValueAtTime(2100, t + .9); l.frequency.value = 9; lg.gain.value = 40; l.connect(lg).connect(o.frequency);
+      v.gain.setValueAtTime(0, t); v.gain.linearRampToValueAtTime(.035, t + .3); v.gain.setValueAtTime(.035, t + 1); v.gain.exponentialRampToValueAtTime(.001, t + 1.4);
+      o.connect(v).connect(ac.destination); o.start(t); l.start(t); o.stop(t + 1.45); l.stop(t + 1.45); },
   };
 
   // ---- holding: rivals scowl, sparks fly, the would-be cascade lights up, the gossip names the feud
-  let held = null, sel = null, busy = false, won = false, granTw = null, onGranDone = null, hoverTable = null;
+  let held = null, sel = null, busy = false, won = false, granTw = null, onGranDone = null, hoverTable = null, hoverSeen = null, lastTouch = performance.now();
   function rivals(v) { return g.adj[v].filter(w => w !== hole); }
   function clearMarks() {
     A.forEach(a => { if (a) a.g.classList.remove('grump', 'lit', 'held', 'sel', 'bump'); });
-    L.tables.forEach(t => t.el.classList.remove('hover'));
+    L.tables.forEach(t => t.el.classList.remove('hover', 'cand'));
     if (gGran) gGran.classList.remove('grump', 'hope');
     gossip(null);
   }
@@ -596,6 +671,7 @@
     const rv = rivals(u);
     rv.forEach(w => A[w].g.classList.add('grump'));
     if (rimSet.has(u)) gGran.classList.add('grump');
+    if (B == null) { hoverSeen = null; for (let b = 0; b < NC; b++) if (b !== g.col[u] && moveFor(g, u, b)) L.tables[b].el.classList.add('cand'); }   // where this guest could go
     const m = moveFor(g, u, B);
     let w = null;
     if (m) {
@@ -603,22 +679,24 @@
       m.K.vs.forEach(x => { if (x === u) return; A[x].g.classList.add('lit'); A[x].ring.setAttribute('stroke', TABLE[g.col[x] === m.from ? m.to : m.from].hem); });
       if (!m.web && g.preview(m.K).won) { gGran.classList.remove('grump'); gGran.classList.add('hope'); }
       w = rv.find(x => disp[x] === B);
-      if (w == null) { gossip(`${A[u].name} has no feuds at the ${TABLE[B].name} table`); return; }
+      if (B !== hoverSeen) { hoverSeen = B; sfx.trace(m.K.size); }
+      if (w == null) { gossip(null); return; }
     }
     if (w == null) w = rv[0];
-    gossip(w == null ? `${A[u].name} gets on with everyone!` : `${A[u].name} vs ${A[w].name}: ${reasonFor(u, w)}`);
+    gossip(w == null ? null : `${A[u].name} \u26A1 ${A[w].name}`);
   }
 
-  // ---- the move: one gesture -> one g.swap(K)
+  // ---- the move: one gesture -> one g.swap(K). (px, py): where the gesture ended, in page px (the coins fly from there)
   const HUFF = ['Well!', 'Hmph!', 'I never!', 'Fine!', 'Ugh.', 'Rude!'];
-  function doMove(u, B) {
+  function doMove(u, B, px, py) {
     const m = moveFor(g, u, B);
     clearMarks(); held = null; sel = null;
-    if (!m) { place(false); sfx.drop(); return; }
+    if (!m) { place(false); sfx.drop(); A[u].shk = now(); return; }   // nowhere new to sit: a soft wobble
     busy = true;
-    if (m.web) { // both whole tables would just trade seats: nothing really changes. The planner facepalms.
+    if (m.web) { // both whole tables would just trade seats: nothing really changes. The tables wobble, the planner facepalms.
       const P = L.tables[m.from], Q = L.tables[m.to];
       place(false);
+      [P, Q].forEach(t => { t.el.classList.add('wob'); setTimeout(() => t.el.classList.remove('wob'), 520); });
       m.K.vs.forEach((w, i) => {
         const a = A[w], other = g.col[w] === m.from ? Q : P;
         const tx = a.slot[0] + (other.cx - a.slot[0]) * .25, ty = a.slot[1] + (other.cy - a.slot[1]) * .25;
@@ -626,67 +704,151 @@
         setTimeout(() => { tweenTo(a, a.slot[0], a.slot[1], 420, L.r * .2); }, 850 + i * 18);
       });
       const pl = el('g', { class: 'palm', transform: `translate(${f2((P.cx + Q.cx) / 2)} ${f2((P.cy + Q.cy) / 2)}) scale(${f2(L.r * 1.5)})` }, gFx,
-        `<circle r="1.25" fill="#fbf5ea" stroke="#c9a34a" stroke-width=".08"/>${planner()}`);
+        `<circle cx=".08" cy=".12" r="1.25" fill="#0b0716" opacity=".45"/><circle r="1.25" fill="#fbf5ea" stroke="#1c1640" stroke-width=".1"/>${planner()}`);
       setTimeout(() => pl.remove(), 2000);
-      setTimeout(() => { sfx.meh(); gossip('Planner: so... both tables just swapped seats. Same thing.'); }, 600);
-      setTimeout(() => { gossip(null); busy = false; }, 2300);
+      setTimeout(() => sfx.meh(), 600);
+      setTimeout(() => { busy = false; }, 1700);
       return;
     }
+    if (window.LAB && LAB.at && px != null) LAB.at(px, py);
+    const d0 = g.dist();
     g.swap(m.K);
-    const STEP = RM ? 60 : 340;
-    m.layers.forEach((layer, i) => setTimeout(() => {
-      layer.forEach(w => { seatMove(w, disp[w], g.col[w]); disp[w] = g.col[w]; });
-      place(false, new Set(layer));
-      drawCards();
+    // the cascade as a wave from the moved guest, one chair every ~55 ms in BFS order, each with a pop
+    const seq = [].concat(...m.layers), depth = new Map(), movers = new Set(), STEP = RM ? 25 : 55;
+    m.layers.forEach((ly, i) => ly.forEach(w => depth.set(w, i)));
+    let puffs = 0;
+    seq.forEach((w, i) => setTimeout(() => {
+      seatMove(w, disp[w], g.col[w]); disp[w] = g.col[w]; movers.add(w);
+      place(false, movers); drawCards();
+      A[w].pop = now(); sfx.pop(i);
       if (i === 0) sfx.sit();
-      else { sfx.huff(); layer.forEach((w, j) => { A[w].g.classList.add('bump'); puff(w, HUFF[(w + i + j) % HUFF.length], 900); setTimeout(() => A[w].g.classList.remove('bump'), 800); }); }
+      else {
+        if (i % 3 === 1) sfx.huff();
+        A[w].g.classList.add('bump'); setTimeout(() => A[w].g.classList.remove('bump'), 800);
+        if (depth.get(w) > 0 && puffs++ < 4) puff(w, HUFF[(w + i) % HUFF.length], 900);
+      }
     }, i * STEP));
-    setTimeout(() => { busy = false; if (g.won()) win(); }, m.layers.length * STEP + 420);
+    setTimeout(() => {
+      busy = false;
+      if (g.won()) return win();
+      const d1 = g.dist();
+      if (d0 != null && d1 != null && d1 >= d0) { // no closer (a lock): Gran tuts and shakes her head
+        gGran.classList.add('grump'); setTimeout(() => gGran.classList.remove('grump'), 700); sfx.meh();
+      }
+    }, seq.length * STEP + 480);
   }
 
+  // ---- the win (>= 3 s): Gran walks over and takes her seat with a burst, the guests raise their glasses in a wave
+  // round the hall, bunting drops, confetti; then LAB.done()
   function win() {
-    won = true; busy = true;
-    const F = g.free(), t = L.tables[F];
-    setMsg('Gran has found her table!');
+    if (g.col.some((c, v) => v !== hole && disp[v] !== c)) resync();   // a swap from outside the page: seat everyone first
+    won = true; busy = true; document.documentElement.classList.add('won');
+    gNo.style.display = 'none'; gYes.style.display = '';
+    const F = g.free(), t = L.tables[F], CONF = [TABLE[F].hem, '#ffffff', '#ffd84a', '#f6b6c1', '#9b7fc2', '#5ab4ff'];
+    gRow.style.display = 'none'; setMsg('A toast to Gran!');
     gGran.classList.add('party');
     order[F].splice(seatIndexFor(Math.atan2(granPos.y - t.cy, granPos.x - t.cx), order[F].length + 1), 0, GRANID);
     place(false);
     granTw = { fx: granPos.x, fy: granPos.y, fr: granPos.r, tx: granSlot[0], ty: granSlot[1], tr: L.r * 1.05, t0: now(), dur: RM ? 200 : 1500, h: Math.max(6, L.r * .25) };
     onGranDone = () => {
       sfx.clink(); sfx.win(); svg.classList.add('glowing'); gGran.classList.add('seated');
+      const [sx, sy] = granSlot;
+      el('g', { transform: `translate(${f2(sx)} ${f2(sy)})` }, gFx, `<circle class="boom" r="${f2(L.r * 1.4)}" fill="#ffe7a0" fill-opacity=".5" stroke="#fff" stroke-width="3"/>`);
+      burst(sx, sy, 50, CONF);
       const s = t.Rt * .3, G = el('g', { transform: `translate(${f2(t.cx)} ${f2(t.cy - t.Rt * .1)})` }, gFx);
-      const flute = `<path d="M-.18-1.1H.18L.12-.35Q0-.15-.12-.35Z" fill="#fff6c8" fill-opacity=".9" stroke="#b48a2c" stroke-width=".05"/><path d="M-.14-.95H.14L.1-.4Q0-.25-.1-.4Z" fill="#f6d36a"/><path d="M0-.2V.35M-.22 .38H.22" stroke="#b48a2c" stroke-width=".07" stroke-linecap="round"/>`;
-      el('g', { transform: `translate(${-s * .45} 0) scale(${s})` }, G, `<g class="flL">${flute}</g>`);
-      el('g', { transform: `translate(${s * .45} 0) scale(${s})` }, G, `<g class="flR">${flute}</g>`);
-      burst(t.cx, t.cy - t.Rt * .3, 60, [TABLE[F].hem, '#ffffff', '#ffd84a', '#f6b6c1', '#9b7fc2']);
-      A.forEach(a => { if (a) a.g.classList.add('party'); });
+      el('g', { transform: `translate(${-s * .45} 0) scale(${s})` }, G, `<g class="flL">${FLUTE}</g>`);
+      el('g', { transform: `translate(${s * .45} 0) scale(${s})` }, G, `<g class="flR">${FLUTE}</g>`);
+      // glasses up, in a wave from Gran's seat outwards
+      const ord = A.filter(Boolean).sort((p, q) => Math.hypot(p.x - sx, p.y - sy) - Math.hypot(q.x - sx, q.y - sy));
+      ord.forEach((a, i) => setTimeout(() => { a.g.classList.add('party', 'toast'); a.pop = now(); if (i % 4 === 0) sfx.clink(); }, RM ? 0 : 150 + i * 45));
+      // bunting in the four table colours drops across the hall
+      const W = L.W, y0 = L.gh + 4, n = Math.max(8, Math.round(W / 26)), sag = Math.min(34, L.H * .04);
+      let fl = '';
+      for (let i = 0; i < n; i++) { const q = (i + .5) / n, x = W * q, y = y0 + sag * 4 * q * (1 - q), c = TABLE[i % NC].hem, w = W / n * .42;
+        fl += `<path d="M${f2(x - w)} ${f2(y)}L${f2(x + w)} ${f2(y)}L${f2(x)} ${f2(y + w * 2)}Z" fill="${c}" stroke="#1c1640" stroke-width="1.6" stroke-linejoin="round"/><path d="M${f2(x - w * .5)} ${f2(y + 2)}L${f2(x - w * .1)} ${f2(y + w)}" stroke="#fff" stroke-width="1.4" opacity=".6" stroke-linecap="round"/>`; }
+      el('g', { class: 'bunt' }, gBg, `<path d="M0 ${y0}Q${W / 2} ${y0 + sag * 2} ${W} ${y0}" fill="none" stroke="#1c1640" stroke-width="2"/>` + fl);
+      if (!RM) [700, 1300].forEach((d, j) => setTimeout(() => L.tables.forEach(q => { if (q.k !== F || j) burst(q.cx, q.cy - q.Rt * .4, 18, CONF); }), d));
       setTimeout(() => sfx.clink(), 450);
-      setTimeout(() => { setMsg(IN_APP || LAB.embedded ? 'A toast to Gran!' : 'A toast to Gran! Tap to plan another'); busy = false; G.remove(); }, 1900);
-      setTimeout(LAB.done, 2200);
+      const END = RM ? 900 : 2600;
+      setTimeout(() => { busy = false; G.remove(); }, END - 300);
+      setTimeout(LAB.done, END);
     };
   }
 
   function restart() {
-    won = false; granTw = null; onGranDone = null; busy = false;
+    won = false; granTw = null; onGranDone = null; busy = false; document.documentElement.classList.remove('won');
     order.forEach(o => { const i = o.indexOf(GRANID); if (i >= 0) o.splice(i, 1); });
-    A.forEach(a => { if (a) a.g.classList.remove('party'); });
+    A.forEach(a => { if (a) a.g.classList.remove('party', 'toast'); });
     svg.classList.remove('glowing');
-    setMsg(goalText());
+    svg.querySelectorAll('.bunt').forEach(e => e.remove());
+    setMsg(''); gRow.style.display = ''; gNo.style.display = ''; gYes.style.display = 'none';
     gGran.classList.remove('party', 'seated');
     setGran(granPos.x, granPos.y, granPos.r);
     g.reset();
     place(false);
   }
 
+  // ---- easter eggs (SKIN-SPEC 15; declared in skins/tables.js). Never needed, never explained, never in the way.
+  const egg = (id, pts) => { try { if (window.LAB && LAB.egg) LAB.egg(id, pts); } catch (_) {} };
+  // gran-cat: leave the hall alone a while and Gran's ginger cat strolls across the tables; tap it for a purr
+  let cat = null, catN = 0, catPaid = false;
+  const gCat = el('g', { class: 'cat' }, svg);
+  function spawnCat() {
+    catN++; const dir = catN % 2 ? 1 : -1, z = Math.max(.9, L.r / 14), y = L.gh + 40 + Math.random() * Math.max(20, L.H - L.gh - 90);
+    gCat.innerHTML = `<g><ellipse cx="2" cy="15" rx="22" ry="4" fill="#0b0716" opacity=".35"/>` +
+      `<g class="ct"><path d="M-17 2Q-30 -4 -27 -20Q-26 -26 -21 -24Q-22 -10 -13 -4Z" fill="#f39a3d" stroke="#1c1640" stroke-width="2.2" stroke-linejoin="round"/></g>` +
+      `<g class="cb"><path d="M-12 6V15M-5 7V15M6 7V15M13 6V15" stroke="#1c1640" stroke-width="6" stroke-linecap="round"/><path d="M-12 6V14M-5 7V14M6 7V14M13 6V14" stroke="#f39a3d" stroke-width="3.4" stroke-linecap="round"/>` +
+      `<ellipse rx="19" ry="11" fill="#f39a3d" stroke="#1c1640" stroke-width="2.4"/><path d="M-6-10Q-4-2-7 4M1-11Q3-2 0 6M8-10Q10-3 7 3" stroke="#c96a1c" stroke-width="2.4" fill="none" stroke-linecap="round"/>` +
+      `<ellipse cx="-6" cy="-6" rx="8" ry="3" fill="#ffd2a0" opacity=".8"/>` +
+      `<g transform="translate(19 -8)"><path d="M-9-6L-8-17L-2-9ZM9-6L8-17L2-9Z" fill="#f39a3d" stroke="#1c1640" stroke-width="2" stroke-linejoin="round"/><circle r="10" fill="#f39a3d" stroke="#1c1640" stroke-width="2.4"/>` +
+      `<ellipse cx="0" cy="4" rx="5" ry="3.4" fill="#fff2df"/><circle cx="-3.6" cy="-1.4" r="1.6" fill="#1c1640"/><circle cx="3.6" cy="-1.4" r="1.6" fill="#1c1640"/><path d="M-1.2 2H1.2L0 3.4Z" fill="#e8587a"/>` +
+      `<path d="M3 3H11M3 5L10 7M-3 3H-11M-3 5L-10 7" stroke="#1c1640" stroke-width=".8"/><circle cx="-4.4" cy="-6" r="2" fill="#fff" opacity=".7"/></g></g></g>`;
+    cat = { t0: now(), dir, z, y, x0: dir > 0 ? -40 * z : L.W + 40 * z, sp: (L.W + 80 * z) / (RM ? 6000 : 9000), jump: 0 };
+  }
+  function catStep(t) {
+    if (!cat) return;
+    const c = cat, node = gCat.firstChild; if (!node) { cat = null; return; }
+    const x = c.x0 + c.dir * (t - c.t0) * c.sp;
+    let y = c.y; if (c.jump) { const p = (t - c.jump) / 450; if (p < 1) y -= Math.sin(Math.PI * p) * 26 * c.z; else c.jump = 0; }
+    c.x = x; c.cy = y;
+    node.setAttribute('transform', `translate(${x.toFixed(1)} ${y.toFixed(1)}) scale(${(c.dir * c.z).toFixed(2)} ${c.z.toFixed(2)})`);
+    if ((c.dir > 0 && x > L.W + 50 * c.z) || (c.dir < 0 && x < -50 * c.z)) { gCat.innerHTML = ''; cat = null; lastTouch = now(); }
+  }
+  function catHit(x, y) {
+    if (!cat || cat.x == null || Math.hypot(x - cat.x, y - cat.cy) > 30 * cat.z) return false;
+    const t = now(); cat.x0 = cat.x; cat.t0 = t; cat.sp *= 2.2; cat.jump = t;   // a happy hop, then off at a trot
+    sfx.purr();
+    for (let i = 0; i < 6; i++) setTimeout(() => { if (cat) burst(cat.x, cat.cy - 20 * cat.z, 1, ['#ff6f91']); }, i * 90);
+    if (!catPaid) { catPaid = true; egg('gran-cat', 40); }
+    return true;
+  }
+  // gran-tea: tap Gran five times and the kettle whistles; she pours herself a cuppa
+  let teaTaps = [], teaDone = false;
+  function granHit(x, y) {
+    if (!granPos || won || granTw || Math.hypot(x - granPos.x, y - granPos.y) > granPos.r * 1.35) return false;
+    const t = now(); teaTaps = teaTaps.filter(s => t - s < 2500); teaTaps.push(t);
+    sfx.pick(); gGran.classList.add('hope'); setTimeout(() => gGran.classList.remove('hope'), 300);
+    if (teaTaps.length >= 5) {
+      teaTaps = []; sfx.whistle();
+      const T = el('g', { transform: 'translate(1 .1) scale(.55)' }, gGran.firstChild,
+        `<g class="tea"><path d="M-.62-.5Q-.9 .1-.4 .45H.4Q.9 .1 .62-.5Z" fill="#fbf5ea" stroke="#1c1640" stroke-width=".09"/><path d="M.6-.3Q1.15-.55 1.05-.95" fill="none" stroke="#1c1640" stroke-width=".22" stroke-linecap="round"/><path d="M.6-.3Q1.15-.55 1.05-.95" fill="none" stroke="#fbf5ea" stroke-width=".1" stroke-linecap="round"/>` +
+        `<path d="M-.62-.15Q-1.05-.25-.95.15Q-.85.35-.55.25" fill="none" stroke="#1c1640" stroke-width=".1"/><ellipse cy="-.52" rx=".5" ry=".12" fill="#e8587a" stroke="#1c1640" stroke-width=".07"/><circle cy="-.68" r=".1" fill="#e8587a" stroke="#1c1640" stroke-width=".06"/>` +
+        `<circle cx="-.2" cy="0" r=".14" fill="#e8587a"/><circle cx=".18" cy=".05" r=".1" fill="#3f8a3a"/><path d="M1.05-1.1q.15-.3 0-.5q-.15-.25 0-.5" fill="none" stroke="#fff" stroke-width=".08" stroke-linecap="round" opacity=".85"/></g>`);
+      setTimeout(() => T.remove(), 2500);
+      if (!teaDone) { teaDone = true; egg('gran-tea', 0); }
+    }
+    return true;
+  }
+
   // undo / reset (and any other outside change): everyone walks back to where they really sit
-  g.on((_, info) => {
-    if (info.type === 'swap') return;
+  g.on((_, info) => { if (info.type !== 'swap') resync(); });
+  function resync() {
     const moved = new Set();
     for (let v = 0; v < g.n; v++) if (v !== hole && disp[v] !== g.col[v]) { seatMove(v, disp[v], g.col[v]); disp[v] = g.col[v]; moved.add(v); }
     clearMarks(); held = sel = null;
     place(false, moved); drawCards();
     if (moved.size) sfx.sit();
-  });
+  }
 
   // ---- input (pointer events: drag, swipe or flick; or tap a guest then tap a table)
   let down = null;
@@ -699,11 +861,15 @@
   svg.addEventListener('pointerdown', e => {
     if (!ac) { try { ac = new (window.AudioContext || window.webkitAudioContext)(); } catch (_) { ac = null; } }
     else if (ac.state === 'suspended') ac.resume();
+    lastTouch = now();
     if (won && !busy) { if (!LAB.embedded) restart(); return; }   // in the app the shell owns the next step
     if (busy) return;
-    const [x, y] = pt(e), u = guestAt(x, y);
+    const [x, y] = pt(e);
+    if (catHit(x, y)) return;
+    if (held == null && granHit(x, y)) { sel = null; clearMarks(); return; }
+    const u = guestAt(x, y);
     if (u == null) {
-      if (sel != null) { const B = tableFor(L, x, y, null, 0, 0); if (B != null && B !== disp[sel]) { doMove(sel, B); return; } }
+      if (sel != null) { const B = tableFor(L, x, y, null, 0, 0); if (B != null && B !== disp[sel]) { doMove(sel, B, x, y); return; } }
       sel = null; clearMarks(); return;
     }
     try { svg.setPointerCapture(e.pointerId); } catch (_) {}
@@ -739,7 +905,7 @@
       if (pl > cap) { px *= cap / pl; py *= cap / pl; }
       B = tableFor(L, x + px, y + py, from, x - d.x0 + px, y - d.y0 + py);
     }
-    doMove(d.u, B);
+    doMove(d.u, B, x, y);
   }
   svg.addEventListener('pointerup', e => release(e, false));
   svg.addEventListener('pointercancel', e => release(e, true));
