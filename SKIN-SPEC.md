@@ -480,7 +480,7 @@ that shifts the spot swings the edge (π: two rim places, one star step) and log
 
 | hud | where |
 |---|---|
-| `full` | between the rim (goal bar) and the star meter |
+| `full` | right after the rim (goal bar); the star meter keeps the right end |
 | `compact` | after the star meter, left-aligned under the slim bar (clear of the floating MAP) |
 | `minimal` | left of the floating star meter, at its scale |
 

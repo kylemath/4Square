@@ -45,6 +45,7 @@
   @keyframes rsHop { 35% { transform: scale(1.16) rotate(-4deg); } }
   @keyframes rsRing { 0% { transform: scale(1.8); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
   body:not([data-skin="islands"]) .rimstar { background: var(--sk-chip, var(--sk-card)); color: var(--sk-chip-ink, var(--sk-card-ink)); border-color: var(--sk-edge, color-mix(in srgb, var(--sk-card-ink) 28%, transparent)); }
+  #game.hud-full .rimstar { margin-right: auto; }          /* next to the rim it draws; the star meter keeps the right */
   #game.hud-compact .stats { justify-content: flex-start; }
   #game.hud-compact .rimstar { order: 2; }
   #game.hud-minimal .rimstar { pointer-events: auto; }
