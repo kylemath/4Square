@@ -15,9 +15,9 @@ The levels come from real research data: maps from an exhaustive census of spher
 ([site](https://kylemath.github.io/GraphColourDeductiveSolver/)). The Four Colour Theorem is already proved; this
 game explores the Kempe-swap dynamics behind Kempe's 1879 attempt and Heawood's 1890 objection.
 
-**Game styles (skins).** The same levels play in sixteen styles, chosen on the title screen: Islands, Islands Free,
+**Game styles (skins).** The same levels play in seventeen styles, chosen on the title screen: Islands, Islands Free,
 Islands 3D, Dots, Line Doodle, Blank Doodle, Island Map, Bonus Swipe, Ion Channels, Gran's Table, Rat Maze, Candy,
-Rim Word, Spheres and Gears (`lab/gears.html`: regions as meshing gears; the hub holds a tetrahedral die showing the die counter, Fisk's degree of the colouring, from `degree.js`, checked on every level by `node tools/degree_check.js`) and Signs (`lab/signs.html`: Flip's picture of the real level, the map cut along a Hamiltonian loop into two triangulated polygons, every triangle sun or sea by its elements' orientation; a swap flips exactly the triangles its chain touches, checked on every reachable state by `node tools/signs_check.js`; [lab/SIGNS-DESIGN.md](lab/SIGNS-DESIGN.md)). Each skin restyles the whole game, not just the board: theme, HUD level (full, compact, minimal), title art,
+Rim Word, Spheres, Gears (`lab/gears.html`: regions as meshing gears; the hub holds a tetrahedral die showing the die counter, Fisk's degree of the colouring, from `degree.js`, checked on every level by `node tools/degree_check.js`) and Signs (`lab/signs.html`: Flip's picture of the real level, the map cut along a Hamiltonian loop into two triangulated polygons, every triangle sun or sea by its elements' orientation; a swap flips exactly the triangles its chain touches, checked on every reachable state by `node tools/signs_check.js`; [lab/SIGNS-DESIGN.md](lab/SIGNS-DESIGN.md)) and Star (`lab/star.html`: no map, the rim star is the board and every move is a branch to a child star, the state tree climbed in star coordinates; its flask is a heuristic lab that tests your own rule on every level, see [lab/STAR-DESIGN.md](lab/STAR-DESIGN.md), `node tools/star_rules_check.js`, `node tools/star_check.js`). Each skin restyles the whole game, not just the board: theme, HUD level (full, compact, minimal), title art,
 how-to-play pages, bonus-round tiles and the look of the exploration map, which every skin charts as you swap.
 Islands and Islands Free are two layouts of one board renderer (`board/island.js`: walls, or no walls with tiles that
 settle like soft bubbles; `node tools/free_check.js` checks the free layout on every level); Islands 3D is a three.js
@@ -25,10 +25,10 @@ scene (`lab/islands3d.html`, `node tools/islands3d_check.js`). The contract is i
 is `skins/<id>.js` plus an optional play page `lab/<id>.html`, checked with `node tools/skin_check.js`.
 `lab/Families.html` shows the experimental styles side by side.
 
-**Coins and skin tickets.** Each skin earns its own currency (ink beads, letter tiles, sugar cubes, sweets, doubloons, glass marbles, cheese wedges, cogs, trigons,
+**Coins and skin tickets.** Each skin earns its own currency (ink beads, letter tiles, sugar cubes, sweets, doubloons, glass marbles, cheese wedges, cogs, trigons, comets,
 pearls, crystal shards...), worth between 1 and 100 G. A new player
 owns Islands only; every other skin is unlocked with a **skin ticket** (`tickets.js`, the 🎟️ Skins button). Ticket *n* opens
-once enough levels are beaten (1, 3, 5, 7, 9, 12, 14, 16, 18, 20, 23, 26, 28, 30, 33) and costs coins from one wallet (900 points'
+once enough levels are beaten (1, 3, 5, 7, 9, 12, 14, 16, 18, 20, 23, 26, 28, 30, 32, 35) and costs coins from one wallet (900 points'
 worth at first, about one level's pay, rising by 300 a ticket to 5,100): each skin comes a little further on and costs a little more. Each
 wallet buys ONE ticket: doubloons buy the first, and each later ticket is paid in the coins of a skin a ticket unlocked, so every
 new skin you play earns its way to the next (a used currency's deli sign shows 🎟️✓). The ticket then unlocks any locked skin. The title screen picks a skin on the **skin reel** (`reel.js`: swipe the ribbon of skin cards; resting on

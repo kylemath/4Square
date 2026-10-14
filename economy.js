@@ -21,11 +21,12 @@
     ['tables', 'blank', .05], ['islands', 'map', .02], ['islands', 'swipe', .03], ['swipe', 'ions', .05],
     ['rimword', 'doodle', .02], ['rimword', 'blank', .03], ['crush', 'tables', .02], ['crush', 'dots', .03], ['maze', 'map', .03], ['maze', 'swipe', .04],
     ['spheres', 'islands-free', .03], ['spheres', 'islands-3d', .02], ['gears', 'maze', .02], ['gears', 'ions', .03], ['signs', 'gears', .03], ['signs', 'spheres', .02],
+    ['star', 'islands-3d', .02], ['star', 'gears', .03],
   ];
-  // node centres in a 360 x 630 stage (no node box overlaps, no edge passes through another node)
+  // node centres in a 360 x 700 stage (no node box overlaps, no edge passes through another node)
   const POS = { dots: [180, 70], doodle: [268, 128], blank: [304, 255], map: [290, 400], ions: [228, 500], 'islands-3d': [132, 500],
-    'islands-free': [50, 408], islands: [56, 255], tables: [92, 128], swipe: [150, 366], rimword: [220, 254], crush: [140, 214], maze: [310, 494], spheres: [50, 494], gears: [270, 586], signs: [100, 586] };
-  const STAGE = [360, 630];
+    'islands-free': [50, 408], islands: [56, 255], tables: [92, 128], swipe: [150, 366], rimword: [220, 254], crush: [140, 214], maze: [310, 494], spheres: [50, 494], gears: [270, 586], signs: [60, 586], star: [165, 655] };
+  const STAGE = [360, 700];
 
   const skinsAll = () => (window.FTH_SKINS && FTH_SKINS.list) || [];
   function model() {
@@ -75,8 +76,8 @@
 #eco .ec-head small{display:block;font-weight:600;font-size:.72rem;opacity:.8;margin-top:2px}
 #eco .ec-x,#eco .ec-zb{width:44px;height:44px;border-radius:14px;border:2px solid var(--sk-edge,rgba(255,255,255,.4));background:var(--sk-chip,rgba(0,0,0,.28));color:var(--sk-chip-ink,inherit);font-size:1.15rem;font-weight:800;display:grid;place-items:center;padding:0}
 #eco .ec-g{position:relative;flex:1 1 auto;min-height:240px;overflow:hidden;touch-action:none}
-#eco .ec-st{position:absolute;left:0;top:0;width:360px;height:630px;transform-origin:0 0}
-#eco .ec-st>svg{position:absolute;inset:0;width:360px;height:630px;overflow:visible;pointer-events:none}
+#eco .ec-st{position:absolute;left:0;top:0;width:360px;height:700px;transform-origin:0 0}
+#eco .ec-st>svg{position:absolute;inset:0;width:360px;height:700px;overflow:visible;pointer-events:none}
 #eco .ec-e{stroke:var(--sk-card-ink,#fff);stroke-opacity:.34;stroke-width:2.2;stroke-linecap:round;transition:stroke-opacity .15s}
 #eco .ec-e.hi{stroke:var(--sk-accent,#ffd84a);stroke-opacity:.95;stroke-width:4}
 #eco .ec-e.route{stroke:var(--sk-accent,#ffd84a);stroke-opacity:1;stroke-width:6}
@@ -163,7 +164,7 @@
 
   // ---------------------------------------------------------------- the graph
   function stage() {
-    const el = $('#ecSt'); let svg = '<svg viewBox="0 0 360 630" aria-hidden="true">', hit = '';
+    const el = $('#ecSt'); let svg = '<svg viewBox="0 0 360 700" aria-hidden="true">', hit = '';
     M.edges.forEach(e => { const [x1, y1] = POS[e.a], [x2, y2] = POS[e.b]; svg += '<line class="ec-e" data-e="' + e.a + '|' + e.b + '" x1="' + x1 + '" y1="' + y1 + '" x2="' + x2 + '" y2="' + y2 + '"/>'; });
     svg += '<g class="ec-els"></g></svg>';
     M.ids.forEach(id => {

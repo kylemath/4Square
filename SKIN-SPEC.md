@@ -401,6 +401,7 @@ coin: { name: 'pearl', plural: 'pearls',        // singular and plural, lower ca
 | cog | Gears | 30 | machined brass, a working part |
 | trigon | Signs | 42 | a triangular token, half sun half sea |
 | ion orb | Ion Channels | 35 | charged, short-lived, scarce |
+| comet | Star | 45 | a rare sighting that traces the star |
 | pearl | Islands Free | 60 | rare and valuable |
 | crystal shard | Islands 3D | 100 | the rarest |
 
@@ -474,7 +475,8 @@ eggs: [
 ## 16. The star rim (shell HUD, `rimstar.js` on `rim.js`)
 
 The shell draws a small pentagram chip in the HUD's stats row for every skin, from its own state (a framed page's
-swaps arrive as `col` anyway), so **a play page does nothing for it** and must not draw its own copy. The 5 rim tiles
+swaps arrive as `col` anyway), so **a play page does nothing for it** and must not draw its own copy. (Star, whose page *is* the
+rim star, hides it with `.rimstar{display:none!important}` in its `css`.) The 5 rim tiles
 are the star's points in rim order (turned like the map's drawing), each drawn with the skin's `bonus.tile` gem (else
 the shell's); the trouble spot (the element on two rim tiles one apart) is a star edge in `--sk-accent`, its two tiles
 ringed; the edges it sat on this level stay brighter; one or two padlocks say how many of Kempe's two rim chains are

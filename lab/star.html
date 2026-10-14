@@ -1,0 +1,819 @@
+<!doctype html>
+<!--
+  STAR: the play page of the Star skin (skins/star.js). Design note: lab/STAR-DESIGN.md. Model: star-rules.js (FTH_STAR).
+
+  No map is drawn. The game is the level's state tree in star coordinates:
+    the big star            = the current colouring, read through rim.js's frame: the 5 rim elements are its points (gems,
+                              rim order clockwise from the top), the trouble spot (one element on two rim tiles one apart)
+                              is the star edge t..t+2 in gold with its two gems ringed; Kempe's two rim chains are the star
+                              edges x1..x3 and x1..x4 (t+1..t+3, t+1..t+4), each a chain of its two elements' colours with
+                              a padlock on it: shut when the chain loops back onto the rim (blocked), open and glowing when
+                              that swap would fill. At a double lock a dashed arc marks π's hop (t -> t+3). The hole in the
+                              middle shows Fisk's degree N x eps (degree.js, label-free).
+    the branches            = every Kempe move (non-web chain), merged by the star it leads to (star-rules.js), each to a
+                              smaller child star drawn the same way: one step of lookahead, in star terms only. The tag on
+                              a branch: the pair (two gems), the chain size, quiet (touches no rim tile) or loud; the child's
+                              gems that the swap repaints are ringed; the forced move at a double lock wears a π badge.
+                              A child that fills is a broken-open star; a child already on the path wears a loop ring ↻.
+    tap a child             = exactly one g.swap(K) (K = that move's chain in g.chains); the child grows into the centre,
+                              the old star flies into the trail.
+    the trail (top)         = the path so far as mini stars; π steps joined in gold; a star met again wears its loop
+                              colour and count (a cycle). Tap a trail star to backtrack to it (g.undo() back to there).
+    bar (bottom)            = undo, start over, swaps / par (par = dF of the start, levels.js), π-run, and the flask: the
+                              heuristic lab (a rule built from star features, run on every level; star-rules.js).
+    win                     = the star breaks open, the free element drops into the hole, ~3.4 s, then LAB.done().
+  Watching a rule (the lab) runs in a sandbox on any level and never touches g, so the app never sees it.
+  Keys: 1-9 take a branch, Backspace / U undo, R start over, L the lab. ?tut=0 skips the first-time tutorial.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>Star</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Righteous&display=swap" rel="stylesheet">
+<style>
+  :root { --ink: #140d33; --gold: #ffd84a; --gold-d: #c2840c; --loop: #ff5fc8; --font: 'Righteous', 'Arial Rounded MT Bold', system-ui, sans-serif;
+    --ctl: var(--sk-ctl, #2c2170); --ctl-ink: var(--sk-ctl-ink, #fff6d6); --ctl-edge: var(--sk-ctl-edge, #0b0722); }
+  html, body { margin: 0; height: 100%; overflow: hidden; touch-action: manipulation; -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent;
+    background: radial-gradient(ellipse at 30% 18%, #3b2a86 0%, #1d1452 42%, #0a0626 100%); color: #fff6d6; font-family: var(--font); }
+  * { box-sizing: border-box; }
+  button { font: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+  :focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
+  #sky { position: fixed; inset: 0; pointer-events: none; }
+  #sky svg { width: 100%; height: 100%; display: block; }
+  @media (prefers-reduced-motion: no-preference) { #sky .tw { animation: tw 3.2s ease-in-out infinite; } }
+  @keyframes tw { 50% { opacity: .15; } }
+  #app { position: fixed; inset: 0; display: flex; flex-direction: column; transition: right .3s; }
+  /* the trail: the path so far */
+  #trail { flex: none; height: 62px; display: flex; align-items: center; gap: 0; padding: 6px 12px 0; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; scroll-behavior: smooth; }
+  #trail::-webkit-scrollbar { display: none; }
+  #trail .tb { flex: none; width: 44px; height: 50px; border: 0; padding: 0; background: none; position: relative; border-radius: 12px; }
+  #trail .tb svg { width: 44px; height: 44px; display: block; overflow: visible; }
+  #trail .tb.cur svg { filter: drop-shadow(0 0 6px rgba(255,216,74,.8)); }
+  #trail .tb .vn { position: absolute; right: -2px; top: -2px; min-width: 17px; height: 17px; padding: 0 4px; border-radius: 9px; font-size: 11px; line-height: 14px; color: #fff; border: 2px solid var(--ink); }
+  #trail .tj { flex: none; width: 14px; height: 4px; border-radius: 2px; background: rgba(255,246,214,.35); position: relative; }
+  #trail .tj.pi { background: var(--gold); height: 6px; }
+  #trail .tj.pi::after { content: 'π'; position: absolute; left: 50%; top: -15px; transform: translateX(-50%); font-size: 12px; color: var(--gold); }
+  #stage { position: relative; flex: 1 1 auto; min-height: 0; }
+  #sv { position: absolute; inset: 0; width: 100%; height: 100%; display: block; overflow: visible; }
+  #sv .kid { cursor: pointer; }
+  #sv .kid .hit { fill: transparent; }
+  #sv .kid:focus { outline: none; }
+  #sv .kid:focus-visible .hit { stroke: var(--gold); stroke-width: 3; stroke-dasharray: 5 4; }
+  #sv.inert .kid { cursor: default; }
+  @media (prefers-reduced-motion: no-preference) {
+    #sv .kid.fills .bob { animation: bob 1.3s ease-in-out infinite; }
+    #sv .kid.pi .bob { animation: bob 1.8s ease-in-out infinite; }
+    #sv .pulse { animation: pls 1.6s ease-in-out infinite; }
+    #sv .spin { animation: spn 14s linear infinite; }
+  }
+  @keyframes bob { 50% { transform: translateY(-4px) scale(1.04); } }
+  @keyframes pls { 50% { opacity: .35; } }
+  @keyframes spn { to { transform: rotate(360deg); } }
+  #sv .press .bob { transform: scale(1.12); transition: transform .05s; }
+  /* bar */
+  #bar { flex: none; display: flex; align-items: center; gap: 10px; padding: 8px 14px max(12px, env(safe-area-inset-bottom)); }
+  .ctl { width: 50px; height: 50px; flex: none; border-radius: 50%; border: 3px solid var(--ctl-edge); background: var(--ctl); color: var(--ctl-ink); box-shadow: 0 4px 0 var(--ctl-edge);
+    display: grid; place-items: center; padding: 0; position: relative; }
+  .ctl svg { width: 26px; height: 26px; display: block; }
+  .ctl:active { transform: translateY(3px); box-shadow: 0 1px 0 var(--ctl-edge); }
+  .ctl[disabled] { opacity: .45; }
+  .ctl.go { background: linear-gradient(#ffe979, #ffbf1f); color: var(--ink); width: 58px; height: 58px; }
+  #chips { flex: 1; display: flex; gap: 8px; justify-content: center; align-items: center; min-width: 0; }
+  .chip { display: inline-flex; align-items: center; gap: 5px; height: 34px; padding: 0 11px; border-radius: 17px; background: rgba(11,7,34,.6); border: 2px solid rgba(255,246,214,.25); font-size: 17px; white-space: nowrap; }
+  .chip svg { width: 18px; height: 18px; }
+  .chip.pi { color: var(--ink); background: var(--gold); border-color: var(--ink); }
+  .chip.loop { color: #fff; background: var(--loop); border-color: var(--ink); }
+  .chip.over { color: #ffb0a0; }
+  .chip.hide { display: none; }
+  #flags { position: absolute; right: 10px; top: 6px; z-index: 2; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; pointer-events: none; }
+  #stage.watching #flags { top: 50px; }
+  @media (prefers-reduced-motion: no-preference) { .chip.bump { animation: cb .45s cubic-bezier(.3,1.7,.5,1); } }
+  @keyframes cb { 40% { transform: scale(1.25); } }
+  /* the watch banner (a rule playing itself in the sandbox) */
+  #stage.watching #sv { top: 44px; height: calc(100% - 44px); }
+  #watch { position: absolute; left: 50%; top: 4px; transform: translateX(-50%); display: flex; align-items: center; gap: 8px; padding: 4px 6px 4px 12px; border-radius: 20px; background: rgba(11,7,34,.82);
+    border: 2px solid var(--gold); color: var(--gold); font-size: 15px; z-index: 3; max-width: calc(100% - 24px); white-space: nowrap; }
+  #watch[hidden] { display: none; }
+  #watch b { overflow: hidden; text-overflow: ellipsis; font-weight: 400; }
+  #watch button { width: 30px; height: 30px; border-radius: 50%; border: 2px solid var(--ink); background: var(--gold); color: var(--ink); padding: 0; font-size: 14px; flex: none; }
+  /* the heuristic lab */
+  #lab { position: fixed; inset: 0; z-index: 10; display: flex; flex-direction: column; background: linear-gradient(180deg, #241a62, #120b38); color: #fff6d6; }
+  #lab[hidden] { display: none; }
+  @media (min-width: 900px) { #lab { left: auto; width: 440px; border-left: 4px solid var(--ink); box-shadow: -8px 0 30px rgba(0,0,0,.4); } body.labon #app { right: 440px; } }
+  .lb-head { flex: none; display: flex; align-items: center; gap: 10px; height: 58px; padding: 0 12px; border-bottom: 2px solid rgba(255,246,214,.15); font-size: 22px; }
+  .lb-head svg { width: 30px; height: 30px; }
+  .lb-head b { flex: 1; font-weight: 400; }
+  .lb-body { flex: 1; overflow-y: auto; padding: 10px 12px 30px; font-family: system-ui, -apple-system, sans-serif; font-size: 14px; }
+  .lb-body h3 { font: 400 15px var(--font); color: var(--gold); margin: 14px 0 6px; letter-spacing: .03em; }
+  .lb-name { width: 100%; height: 38px; border-radius: 10px; border: 2px solid rgba(255,246,214,.3); background: rgba(0,0,0,.25); color: #fff; padding: 0 10px; font: 400 16px var(--font); }
+  #lbCards { list-style: none; margin: 8px 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+  .cd { display: flex; align-items: flex-start; gap: 6px; padding: 6px 6px 6px 8px; border-radius: 12px; background: rgba(255,246,214,.08); border: 2px solid rgba(255,246,214,.18); }
+  .cd .bd { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+  .cd .mv { flex: none; display: flex; gap: 3px; margin-left: auto; }
+  .cd .mv .sm { width: 26px; height: 26px; font-size: 11px; }
+  .cd select[data-r=pick] { max-width: 170px; }
+  .cd .ix { width: 22px; height: 22px; border-radius: 50%; background: var(--gold); color: var(--ink); display: grid; place-items: center; font: 400 13px var(--font); flex: none; }
+  .cd select, .cd input { height: 30px; border-radius: 8px; border: 2px solid rgba(255,246,214,.25); background: #1b1350; color: #fff; font: 600 13px system-ui, sans-serif; padding: 0 4px; }
+  .cd input { width: 46px; }
+  .cd .ar { color: var(--gold); font-size: 16px; padding: 0 2px; }
+  .cd .tst { display: inline-flex; gap: 2px; align-items: center; padding: 2px; border-radius: 9px; background: rgba(0,0,0,.2); }
+  .cd .sm { width: 28px; height: 28px; border-radius: 8px; border: 2px solid rgba(255,246,214,.25); background: rgba(0,0,0,.25); color: #fff6d6; padding: 0; font-size: 13px; line-height: 1; }
+  .cd .sp { flex: 1; }
+  .lb-btn { height: 36px; padding: 0 14px; border-radius: 18px; border: 3px solid var(--ink); background: #fff6d6; color: var(--ink); font: 400 15px var(--font); box-shadow: 0 3px 0 var(--ink); }
+  .lb-btn:active { transform: translateY(2px); box-shadow: 0 1px 0 var(--ink); }
+  .lb-btn.go { background: linear-gradient(#ffe979, #ffbf1f); height: 44px; font-size: 19px; padding: 0 22px; }
+  .lb-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .pre { height: 30px; padding: 0 10px; border-radius: 15px; border: 2px solid rgba(255,246,214,.3); background: rgba(0,0,0,.2); color: #fff6d6; font: 600 12px system-ui, sans-serif; }
+  .seg { display: inline-flex; border-radius: 18px; border: 2px solid rgba(255,246,214,.3); overflow: hidden; }
+  .seg button { height: 32px; padding: 0 12px; border: 0; background: transparent; color: #fff6d6; font: 600 13px system-ui, sans-serif; }
+  .seg button.on { background: var(--gold); color: var(--ink); }
+  #lbBar { height: 8px; border-radius: 4px; background: rgba(255,246,214,.12); overflow: hidden; margin: 10px 0 4px; }
+  #lbBar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #ffbf1f, #ffe979); transition: width .15s; }
+  .res { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 8px; }
+  .res div { border-radius: 12px; background: rgba(0,0,0,.25); padding: 6px 4px; text-align: center; font: 400 12px system-ui, sans-serif; color: rgba(255,246,214,.75); }
+  .res div b { display: block; font: 400 22px var(--font); color: #fff6d6; }
+  .fails { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
+  .fails button { height: 28px; padding: 0 9px; border-radius: 14px; border: 2px solid var(--ink); background: var(--loop); color: #fff; font: 400 13px var(--font); }
+  .fails button.cap { background: #ff8a3c; }
+  .fails .ok { color: #8ef59a; font: 400 15px var(--font); }
+  table.board { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  table.board th { text-align: right; font-weight: 600; color: rgba(255,246,214,.6); padding: 3px 4px; }
+  table.board th:nth-child(2), table.board td:nth-child(2) { text-align: left; }
+  table.board td { text-align: right; padding: 5px 4px; border-top: 1px solid rgba(255,246,214,.1); vertical-align: top; }
+  table.board td small { display: block; color: rgba(255,246,214,.55); font-size: 11px; word-break: break-word; }
+  table.board tr.me td { background: rgba(255,216,74,.12); }
+  table.board tr { cursor: pointer; }
+  .note { color: rgba(255,246,214,.55); font-size: 12px; margin-top: 4px; }
+  /* tutorial */
+  #tut { position: fixed; inset: 0; z-index: 20; background: rgba(8,5,26,.62); }
+  #tut[hidden] { display: none; }
+  #tut .say { position: absolute; left: 50%; transform: translateX(-50%); padding: 10px 18px; border-radius: 20px; background: #fff6d6; color: var(--ink); border: 4px solid var(--ink); box-shadow: 0 5px 0 var(--ink);
+    font-size: 24px; white-space: nowrap; }
+  #tut .ring { position: absolute; border-radius: 50%; border: 4px dashed var(--gold); box-shadow: 0 0 0 9999px rgba(8,5,26,.0); pointer-events: none; }
+  #tut .fing { position: absolute; width: 56px; height: 70px; pointer-events: none; }
+  @media (prefers-reduced-motion: no-preference) { #tut .ring { animation: spn 12s linear infinite; } #tut .fing { animation: tap 1.4s ease-in-out infinite; } }
+  @keyframes tap { 0%, 100% { transform: translate(0, 0); } 50% { transform: translate(-6px, -10px); } }
+  #tut .dots { position: absolute; left: 50%; bottom: 24px; transform: translateX(-50%); display: flex; gap: 8px; }
+  #tut .dots i { width: 12px; height: 12px; border-radius: 50%; background: rgba(255,246,214,.35); border: 2px solid var(--ink); }
+  #tut .dots i.on { background: var(--gold); }
+  [hidden] { display: none !important; }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .fly { position: fixed; left: 0; top: 0; pointer-events: none; z-index: 5; }
+  .embed #bNext, .embed #bPrev { display: none; }
+</style>
+</head>
+<body>
+<div id="sky" aria-hidden="true"></div>
+<div id="app">
+  <div id="trail" aria-label="Path"></div>
+  <div id="stage">
+    <svg id="sv" role="group" aria-label="Star tree"><defs id="defs"></defs><g id="gB"></g><g id="gK"></g><g id="gM"></g><g id="gFx"></g></svg>
+    <div id="flags"><span class="chip pi hide" id="cRun"></span><span class="chip loop hide" id="cLoop"></span></div>
+    <div id="watch" hidden><span aria-hidden="true">▶</span><b id="wName"></b><button id="wPlay" aria-label="Pause">❚❚</button><button id="wX" aria-label="Back to my game">✕</button></div>
+  </div>
+  <div id="bar">
+    <button class="ctl" id="bUndo" aria-label="Undo"><svg viewBox="0 0 24 24"><path d="M9 7H4V2M4 7a9 9 0 1 1 1.6 8.5" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+    <button class="ctl" id="bReset" aria-label="Start over"><svg viewBox="0 0 24 24"><path d="M5 4v16" stroke="currentColor" stroke-width="3" stroke-linecap="round"/><path d="M19.5 5.2v13.6L9 12z" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg></button>
+    <div id="chips">
+      <span class="chip" id="cSteps" role="status"></span>
+    </div>
+    <button class="ctl go" id="bNext" aria-label="Next level" hidden><svg viewBox="0 0 24 24"><path d="M7 4l12 8-12 8z" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg></button>
+    <button class="ctl" id="bLab" aria-label="Rules"><svg viewBox="0 0 24 24"><path d="M9 2.5h6M10 2.5v6.2L4.6 18.4A2 2 0 0 0 6.4 21.5h11.2a2 2 0 0 0 1.8-3.1L14 8.7V2.5" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linejoin="round" stroke-linecap="round"/><path d="M7.2 15h9.6l2 3.6a1 1 0 0 1-.9 1.4H6.1a1 1 0 0 1-.9-1.4z" fill="currentColor"/></svg></button>
+  </div>
+</div>
+<div id="lab" hidden role="dialog" aria-label="Rules">
+  <div class="lb-head"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 2.5h6M10 2.5v6.2L4.6 18.4A2 2 0 0 0 6.4 21.5h11.2a2 2 0 0 0 1.8-3.1L14 8.7V2.5" fill="none" stroke="#ffd84a" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/><path d="M7.2 15h9.6l2 3.6a1 1 0 0 1-.9 1.4H6.1a1 1 0 0 1-.9-1.4z" fill="#ffd84a"/></svg><b>Rules</b>
+    <button class="ctl" id="lbX" aria-label="Close" style="width:42px;height:42px">✕</button></div>
+  <div class="lb-body">
+    <h3>✦ RULE</h3>
+    <input class="lb-name" id="lbName" maxlength="32" aria-label="Rule name">
+    <ol id="lbCards"></ol>
+    <div class="lb-row"><button class="lb-btn" id="lbAdd">＋ card</button><span class="note">top card first · ties: small chain</span></div>
+    <h3>▶ TEST</h3>
+    <div class="lb-row"><div class="seg" id="lbScope"><button data-sc="start" class="on">40 starts</button><button data-sc="class">every hard star</button></div>
+      <button class="lb-btn go" id="lbGo">▶ Test</button><button class="lb-btn" id="lbHere" aria-label="Watch on this level">👁 here</button></div>
+    <div id="lbBar"><i></i></div>
+    <div id="lbRes"></div>
+    <h3>🏆 BOARD</h3>
+    <table class="board" id="lbBoard"></table>
+    <div class="lb-row" style="margin-top:10px"><button class="lb-btn" id="lbCopy">⧉ rule JSON</button><button class="lb-btn" id="lbCopyAll">⧉ board JSON</button><span class="note" id="lbCopied"></span></div>
+    <h3>★ BASELINES</h3>
+    <div class="lb-row" id="lbPre"></div>
+  </div>
+</div>
+<div id="tut" hidden></div>
+<div id="live" class="sr" aria-live="polite"></div>
+<script src="../levels.js"></script>
+<script src="core.js"></script>
+<script src="../rim.js"></script>
+<script src="../degree.js"></script>
+<script src="star-rules.js"></script>
+<script>
+(function () {
+  'use strict';
+  const clampN = x => Math.max(.05, Math.min(4, x));
+  const g = LAB.game(), ST = window.FTH_STAR, RIM = window.FTH_RIM, GAME = window.GAME;
+  const QS = new URLSearchParams(location.search), HUD = QS.get('hud') || '', EMB = LAB.embedded, DEMO = LAB.demo, WSP = clampN(+QS.get('wsp') || 1);
+  const ELEM = LAB.ELEM, COL = ELEM.map(e => e.hex), DK = ELEM.map(e => e.dark), NEON = ELEM.map(e => e.neon);
+  const INK = '#140d33', GOLD = '#ffd84a', LOOPC = ['#ff5fc8', '#5fe3ff', '#b78cff', '#ff9a52', '#7dff8a'];
+  const RM = matchMedia('(prefers-reduced-motion: reduce)'), reduce = () => RM.matches;
+  const $ = id => document.getElementById(id), f1 = v => Math.round(v * 10) / 10, P = (x, y) => f1(x) + ' ' + f1(y);
+  const clamp = (x, a, b) => x < a ? a : x > b ? b : x;
+  const sv = $('sv'), gB = $('gB'), gK = $('gK'), gM = $('gM'), gFx = $('gFx');
+  const hashHue = s => { let h = 7; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0; return LOOPC[h % LOOPC.length]; };
+
+  // ---------------------------------------------------------------- sound (tiny synth; silent until a gesture)
+  let AC = null;
+  const ac = () => { if (!AC) { try { AC = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { AC = null; } } if (AC && AC.state === 'suspended') AC.resume().catch(() => 0); return AC; };
+  function tone(f, d, type, vol, f2, delay) {
+    const a = AC; if (!a || a.state !== 'running') return;
+    const t = a.currentTime + (delay || 0), o = a.createOscillator(), v = a.createGain();
+    o.type = type || 'sine'; o.frequency.setValueAtTime(f, t); if (f2) o.frequency.exponentialRampToValueAtTime(f2, t + d);
+    v.gain.setValueAtTime(0, t); v.gain.linearRampToValueAtTime(vol || .08, t + .01); v.gain.exponentialRampToValueAtTime(.0001, t + d);
+    o.connect(v).connect(a.destination); o.start(t); o.stop(t + d + .05);
+  }
+  addEventListener('pointerdown', ac, { capture: true, passive: true });
+  const pop = (k, d) => tone(520 * Math.pow(1.122, k), .09, 'triangle', .07, 0, d);
+
+  // ---------------------------------------------------------------- art: gems, padlocks, stars
+  const ICON = LAB.ICON, FILLED = [true, true, false, false];
+  function gem(e, x, y, r, cls) {
+    if (e < 0) return '';
+    const sw = f1(Math.max(1.2, r * .16)), s = f1(r * .058 * 100) / 100;
+    return '<g transform="translate(' + P(x, y) + ')"><g class="gi' + (cls ? ' ' + cls : '') + '">' +
+      '<circle cy="' + f1(r * .16) + '" r="' + f1(r) + '" fill="' + INK + '" opacity=".55"/>' +
+      '<circle r="' + f1(r) + '" fill="' + DK[e] + '"/><circle cy="' + f1(-r * .07) + '" r="' + f1(r * .86) + '" fill="' + COL[e] + '"/>' +
+      (r >= 5 ? '<path d="' + ICON[e] + '" transform="scale(' + s + ') translate(-12 -11.5)" ' + (FILLED[e] ? 'fill="#fff"' : 'fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"') + ' opacity=".95"/>' : '') +
+      '<ellipse cx="' + f1(-r * .36) + '" cy="' + f1(-r * .42) + '" rx="' + f1(r * .3) + '" ry="' + f1(r * .15) + '" transform="rotate(-35 ' + P(-r * .36, -r * .42) + ')" fill="#fff" opacity=".6"/>' +
+      '<circle r="' + f1(r) + '" fill="none" stroke="' + INK + '" stroke-width="' + sw + '"/></g></g>';
+  }
+  function padlock(x, y, s, open) {
+    const sw = f1(Math.max(1, 2 * s));
+    return '<g transform="translate(' + P(x, y) + ') scale(' + f1(s * 100) / 100 + ')">' + (open ? '<circle r="13" fill="' + GOLD + '" opacity=".35" class="pulse"/>' : '') +
+      '<rect x="-7" y="-1" width="14" height="11" rx="2.5" fill="' + INK + '" transform="translate(1 1.6)" opacity=".5"/>' +
+      '<path d="' + (open ? 'M-4.4 -1V-6a4.4 4.4 0 0 1 8.8 0V-8' : 'M-4.4 -1V-5a4.4 4.4 0 0 1 8.8 0V-1') + '" fill="none" stroke="' + INK + '" stroke-width="4.6" stroke-linecap="round"/>' +
+      '<path d="' + (open ? 'M-4.4 -1V-6a4.4 4.4 0 0 1 8.8 0V-8' : 'M-4.4 -1V-5a4.4 4.4 0 0 1 8.8 0V-1') + '" fill="none" stroke="' + (open ? '#fff6d6' : '#c9c2e6') + '" stroke-width="2.2" stroke-linecap="round"/>' +
+      '<rect x="-7" y="-1" width="14" height="11" rx="2.5" fill="' + (open ? '#7dff8a' : GOLD) + '" stroke="' + INK + '" stroke-width="' + sw + '"/>' +
+      '<circle cy="4" r="1.7" fill="' + INK + '"/></g>';
+  }
+  const ang = (i, k) => -Math.PI / 2 + i * 2 * Math.PI / k;
+  const pts = (R, k) => Array.from({ length: k }, (_, i) => [R * Math.cos(ang(i, k)), R * Math.sin(ang(i, k))]);
+  function bodyPath(R, k, ri) {                // a chunky k-pointed star: tips at radius R, valleys at ri
+    let d = ''; for (let i = 0; i < 2 * k; i++) { const a = -Math.PI / 2 + i * Math.PI / k, q = i % 2 ? ri : R; d += (i ? 'L' : 'M') + P(q * Math.cos(a), q * Math.sin(a)); } return d + 'Z';
+  }
+  const chord = (a, b, cls, st) => '<line x1="' + f1(a[0]) + '" y1="' + f1(a[1]) + '" x2="' + f1(b[0]) + '" y2="' + f1(b[1]) + '"' + (cls ? ' class="' + cls + '"' : '') + ' ' + st + '/>';
+  const freeOf = (rim, nc) => { for (let e = 0; e < nc; e++) if (!rim.includes(e)) return e; return -1; };
+  const degTxt = d => d > 0 ? '+' + d : d < 0 ? '−' + (-d) : '0';
+  // one star of radius R at (0, 0): f = FTH_STAR.feat; o = { big, touched: [rim places], ring: loop colour, nc }
+  function starSVG(f, R, o) {
+    o = o || {};
+    const k = f.rim.length, Pt = pts(R, k), gr = R * (o.big ? .25 : .27), ri = R * .5, sw = f1(Math.max(1.6, R * .055));
+    let s = '';
+    if (f.filled) {                              // broken open: the arms burst apart, the free element sits in the hole
+      const fe = freeOf(f.rim, o.nc || 4), off = R * .17;
+      s += '<g class="' + (o.big ? 'spin' : '') + '">' + Array.from({ length: 10 }, (_, i) => { const a = i * Math.PI / 5 + .25, w = (r, d, op) => '<path d="M0 0L' + P(Math.cos(a - d) * R * r, Math.sin(a - d) * R * r) + 'L' + P(Math.cos(a + d) * R * r, Math.sin(a + d) * R * r) + 'Z" fill="#fff6c0" opacity="' + op + '"/>'; return w(1.6, .09, .14) + w(1.45, .035, .5); }).join('') + '</g>';
+      for (let i = 0; i < k; i++) {
+        const a = ang(i, k), h = Math.PI / k, A = [R * Math.cos(a), R * Math.sin(a)], B = [ri * Math.cos(a - h), ri * Math.sin(a - h)], C = [ri * Math.cos(a + h), ri * Math.sin(a + h)];
+        const dx = Math.cos(a) * off, dy = Math.sin(a) * off, rot = (i % 2 ? 9 : -9);
+        const tri = 'M' + P(A[0], A[1]) + 'L' + P(B[0], B[1]) + 'L' + P(B[0] * .2, B[1] * .2) + 'L' + P(C[0] * .2, C[1] * .2) + 'L' + P(C[0], C[1]) + 'Z';
+        s += '<g transform="translate(' + P(dx, dy) + ') rotate(' + rot + ' ' + P(A[0] * .5, A[1] * .5) + ')"><path d="' + tri + '" transform="translate(' + P(R * .04, R * .06) + ')" fill="' + INK + '" opacity=".45"/>' +
+          '<path d="' + tri + '" fill="url(#stG)" stroke="' + INK + '" stroke-width="' + sw + '" stroke-linejoin="round"/></g>';
+      }
+      s += '<circle r="' + f1(R * .42) + '" fill="' + (fe >= 0 ? NEON[fe] : GOLD) + '" opacity=".35" class="pulse"/>' + gem(fe, 0, 0, R * .3);
+      Pt.forEach((p, i) => { const a = ang(i, k); s += gem(f.rim[i], p[0] + Math.cos(a) * off, p[1] + Math.sin(a) * off, gr); });
+      return s;
+    }
+    const body = bodyPath(R * .96, k, ri);
+    if (o.ring) s += '<circle r="' + f1(R * 1.34) + '" fill="none" stroke="' + o.ring + '" stroke-width="' + f1(Math.max(2, R * .07)) + '" stroke-dasharray="' + f1(R * .16) + ' ' + f1(R * .1) + '" opacity=".95"/>';
+    s += '<path d="' + body + '" transform="translate(' + P(R * .05, R * .08) + ')" fill="' + INK + '" opacity=".5"/>' +
+      '<path d="' + body + '" fill="url(#stB)" stroke="' + INK + '" stroke-width="' + sw + '" stroke-linejoin="round"/>' +
+      '<path d="' + bodyPath(R * .8, k, ri * .82) + '" transform="translate(' + P(-R * .05, -R * .06) + ')" fill="#fff" opacity=".07"/>';
+    const thin = 'stroke="#fff6d6" stroke-opacity=".2" stroke-width="' + f1(Math.max(1, R * .03)) + '" stroke-linecap="round"';
+    if (k === 5) for (let i = 0; i < 5; i++) s += chord(Pt[i], Pt[(i + 2) % 5], '', thin);
+    else for (let i = 0; i < k; i++) s += chord(Pt[i], Pt[(i + 1) % k], '', thin);
+    const fr = f.frame, t = f.t;
+    if (fr && t >= 0 && k === 5) {
+      const X = i => Pt[(t + i) % 5], lw = f1(Math.max(2, R * .07));
+      // Kempe's two rim chains: x1..x3 {beta, gamma} and x1..x4 {beta, delta}: a two-colour chain, shut padlock when blocked
+      [[3, fr[2], f.l1], [4, fr[3], f.l2]].forEach(([j, c2, shut]) => {
+        const a = X(1), b = X(j), dash = f1(R * .11);
+        if (shut) s += chord(a, b, '', 'stroke="' + INK + '" stroke-width="' + f1(lw * 1.9) + '" stroke-linecap="round"') + chord(a, b, '', 'stroke="' + COL[fr[1]] + '" stroke-width="' + lw + '" stroke-linecap="round"') +
+          chord(a, b, '', 'stroke="' + COL[c2] + '" stroke-width="' + lw + '" stroke-dasharray="' + dash + ' ' + dash + '"');
+        else s += chord(a, b, '', 'stroke="' + GOLD + '" stroke-opacity=".5" stroke-width="' + f1(lw * .6) + '" stroke-dasharray="' + f1(R * .05) + ' ' + f1(R * .07) + '" stroke-linecap="round"');
+        const q = .72, px = a[0] + (b[0] - a[0]) * q, py = a[1] + (b[1] - a[1]) * q;
+        s += padlock(px, py, R * (o.big ? .015 : .02), !shut);
+      });
+      // the trouble spot: edge x0..x2 in gold
+      s += chord(X(0), X(2), '', 'stroke="' + INK + '" stroke-width="' + f1(R * .17) + '" stroke-linecap="round"') + chord(X(0), X(2), 'hot', 'stroke="' + GOLD + '" stroke-width="' + f1(R * .1) + '" stroke-linecap="round"');
+      if (o.big && f.pi) {                       // π's hop: x2 hands the spot to x3, a dashed arc outside
+        const a0 = ang((t + 2) % 5, 5), a1 = ang((t + 3) % 5, 5), RA = R * 1.36, d = .2, sg = 1;
+        const p0 = [RA * Math.cos(a0 + d), RA * Math.sin(a0 + d)], p1 = [RA * Math.cos(a1 - d), RA * Math.sin(a1 - d)], tg = [-Math.sin(a1 - d), Math.cos(a1 - d)], nr = [Math.cos(a1 - d), Math.sin(a1 - d)], H = R * .09;
+        const am = (a0 + a1) / 2 + (Math.abs(a1 - a0) > Math.PI ? Math.PI : 0), lp = [R * 1.56 * Math.cos(am), R * 1.56 * Math.sin(am)];
+        s += '<g class="pulse"><path d="M' + P(p0[0], p0[1]) + 'A' + f1(RA) + ' ' + f1(RA) + ' 0 0 ' + sg + ' ' + P(p1[0], p1[1]) + '" fill="none" stroke="' + GOLD + '" stroke-width="' + f1(R * .045) + '" stroke-dasharray="' + f1(R * .07) + ' ' + f1(R * .06) + '" stroke-linecap="round"/>' +
+          '<path d="M' + P(p1[0] + tg[0] * H * 1.4, p1[1] + tg[1] * H * 1.4) + 'L' + P(p1[0] + nr[0] * H, p1[1] + nr[1] * H) + 'L' + P(p1[0] - nr[0] * H, p1[1] - nr[1] * H) + 'Z" fill="' + GOLD + '"/>' +
+          '<text x="' + f1(lp[0]) + '" y="' + f1(lp[1] + R * .07) + '" text-anchor="middle" font-family="Righteous, system-ui" font-size="' + f1(R * .2) + '" fill="' + GOLD + '" stroke="' + INK + '" stroke-width="' + f1(R * .05) + '" paint-order="stroke">π</text></g>';
+      }
+    }
+    // the hole, with the degree
+    s += '<circle r="' + f1(R * .26) + '" fill="#07041a" stroke="' + INK + '" stroke-width="' + sw + '"/><circle r="' + f1(R * .2) + '" fill="none" stroke="#fff6d6" stroke-opacity=".18" stroke-width="' + f1(Math.max(1, R * .025)) + '" stroke-dasharray="' + f1(R * .05) + ' ' + f1(R * .05) + '"/>';
+    if (f.ok && R >= 24) s += '<text y="' + f1(R * .085) + '" text-anchor="middle" font-family="Righteous, system-ui" font-size="' + f1(R * (o.big ? .22 : .25)) + '" fill="#fff6d6" opacity=".9">' + degTxt(f.deg) + '</text>';
+    const hot = fr && t >= 0 ? [t, (t + 2) % 5] : [];
+    Pt.forEach((p, i) => {
+      if (hot.includes(i)) s += '<circle cx="' + f1(p[0]) + '" cy="' + f1(p[1]) + '" r="' + f1(gr * 1.32) + '" fill="none" stroke="' + GOLD + '" stroke-width="' + f1(Math.max(2, gr * .2)) + '"/>';
+      if (o.touched && o.touched.includes(i)) s += '<circle cx="' + f1(p[0]) + '" cy="' + f1(p[1]) + '" r="' + f1(gr * 1.5) + '" fill="#fff" opacity=".22"/>';
+      s += gem(f.rim[i], p[0], p[1], gr, 'g' + i);
+    });
+    return s;
+  }
+  // a mini star for the trail (and the leaderboard), 44 x 44
+  function miniSVG(f, ring, cur) {
+    const R = 15, k = f.rim.length, Pt = pts(R, k);
+    let s = '<svg viewBox="-22 -22 44 44" aria-hidden="true">';
+    if (ring) s += '<circle r="20" fill="none" stroke="' + ring + '" stroke-width="3" stroke-dasharray="5 3"/>';
+    if (f.filled) {
+      s += '<path d="' + bodyPath(R, k, R * .5) + '" fill="' + GOLD + '" stroke="' + INK + '" stroke-width="2" stroke-linejoin="round" stroke-dasharray="7 3"/>';
+      const fe = freeOf(f.rim, g.NC); if (fe >= 0) s += '<circle r="5" fill="' + COL[fe] + '" stroke="' + INK + '" stroke-width="1.5"/>';
+    } else {
+      s += '<path d="' + bodyPath(R, k, R * .5) + '" transform="translate(1 1.6)" fill="' + INK + '" opacity=".5"/><path d="' + bodyPath(R, k, R * .5) + '" fill="url(#stB)" stroke="' + INK + '" stroke-width="2" stroke-linejoin="round"/>';
+      if (f.frame && f.t >= 0 && k === 5) { const a = Pt[f.t], b = Pt[(f.t + 2) % 5]; s += chord(a, b, '', 'stroke="' + INK + '" stroke-width="5" stroke-linecap="round"') + chord(a, b, '', 'stroke="' + GOLD + '" stroke-width="2.6" stroke-linecap="round"'); }
+      for (let i = 0; i < f.lock; i++) s += '<rect x="' + (-5 + i * 6) + '" y="-2" width="4.4" height="4.4" rx="1" fill="' + GOLD + '" stroke="' + INK + '" stroke-width="1.2"/>';
+    }
+    Pt.forEach((p, i) => { s += '<circle cx="' + f1(p[0]) + '" cy="' + f1(p[1]) + '" r="4.6" fill="' + COL[f.rim[i]] + '" stroke="' + INK + '" stroke-width="1.6"/>'; });
+    return s + '</svg>';
+  }
+  $('defs').innerHTML = '<radialGradient id="stB" cx=".35" cy=".28" r=".85"><stop offset="0" stop-color="#8a74ff"/><stop offset=".55" stop-color="#4b37b8"/><stop offset="1" stop-color="#2a1d78"/></radialGradient>' +
+    '<radialGradient id="stG" cx=".35" cy=".3" r=".9"><stop offset="0" stop-color="#fff6c0"/><stop offset=".5" stop-color="#ffd84a"/><stop offset="1" stop-color="#e08a10"/></radialGradient>';
+  // the night sky behind (deterministic twinkles)
+  (function sky() {
+    let s = '<svg viewBox="0 0 100 100" preserveAspectRatio="none">', r = 9;
+    const rnd = () => { r = (r * 16807) % 2147483647; return r / 2147483647; };
+    for (let i = 0; i < 70; i++) s += '<circle class="' + (i % 3 ? '' : 'tw') + '" style="animation-delay:' + f1(rnd() * 3) + 's" cx="' + f1(rnd() * 100) + '" cy="' + f1(rnd() * 100) + '" r="' + f1(.12 + rnd() * .22) + '" fill="#fff6d6" opacity="' + f1(.25 + rnd() * .5) + '"/>';
+    $('sky').innerHTML = s + '</svg>';
+  })();
+
+  // ---------------------------------------------------------------- drivers: the real game (g) or a sandbox level
+  function realDriver() {
+    const D = { kind: 'real', L: g.level, G: ST.prep(GAME.graphs[g.level.g]), nc: g.NC, subs: [],
+      col: () => g.col, moves: () => g.moves, won: () => g.won(),
+      apply(m) { const K = g.chains.find(k => !k.web && k.pair[0] === m.a && k.pair[1] === m.b && k.vs[0] === m.vs[0] && k.size === m.size); if (K) g.swap(K); return !!K; },
+      undo() { g.undo(); }, reset() { g.reset(); } };
+    g.on((_, info) => { if (D === drv) onChange(info.type); });
+    return D;
+  }
+  function sandDriver(L) {
+    const Gr = GAME.graphs[L.g], start = L.start.slice(); start[Gr.hole] = -1;
+    let col = start.slice(), hist = [];
+    const D = { kind: 'sand', L, G: ST.prep(Gr), nc: Gr.ncol || 4, col: () => col, moves: () => hist.length, won: () => ST.feat(D.G, col).filled,
+      apply(m) { hist.push(col); col = m.col.slice(); col[Gr.hole] = -1; onChange('swap'); return true; },
+      undo() { if (hist.length) { col = hist.pop(); onChange('undo'); } }, reset() { col = start.slice(); hist = []; onChange('reset'); } };
+    return D;
+  }
+  // ---------------------------------------------------------------- the view state
+  let drv = null, REAL = null, trail = [], cur = null, kids = [], lay = null, celebrating = null, batch = false, watch = null;
+  function look(D, col) { const f = ST.feat(D.G, col), mv = ST.moves(D.G, col, f); return { f, mv, col: col.slice() }; }
+  function enter(D) {
+    drv = D; trail = []; celebrating = null;
+    const c = look(D, D.col()); trail.push({ key: c.f.key, f: c.f, pi: false });
+    // replay the real game's history into the trail (the app may hand us a game in progress: undo keeps working)
+    if (D.kind === 'real' && g.history.length) { trail = g.history.concat([g.col]).map((col, i, a) => { const f = ST.feat(D.G, col); return { key: f.key, f, pi: i > 0 && ST.feat(D.G, a[i - 1]).pi === f.key }; }); }
+    cur = c; render({ how: 'enter' });
+  }
+  const runLen = () => { let r = 0; for (let i = trail.length - 1; i > 0 && trail[i].pi; i--) r++; return r; };
+  function onChange(type) {
+    if (batch) return;
+    const prev = cur, prevKids = kids, c = look(drv, drv.col());
+    let how = type, from = -1;
+    if (type === 'swap') {
+      from = prev ? prev.mv.findIndex(m => m.key === c.f.key) : -1;
+      trail.push({ key: c.f.key, f: c.f, pi: from >= 0 && prev.mv[from].pi });
+    } else if (type === 'undo') { if (trail.length > 1) trail.pop(); }
+    else if (type === 'reset') trail = [{ key: c.f.key, f: c.f, pi: false }];
+    cur = c; render({ how, from, prev, prevKids });
+    if (type === 'swap') afterSwap(prev, from);
+  }
+  function backTo(i) {                          // backtrack along the trail to step i
+    if (!interactive() || i >= trail.length - 1) return;
+    const n = trail.length - 1 - i; batch = true;
+    for (let k = 0; k < n; k++) drv.undo();
+    batch = false; trail = trail.slice(0, i + 1); cur = look(drv, drv.col());
+    tone(660, .12, 'sine', .07, 330); render({ how: 'back' });
+  }
+  const interactive = () => !celebrating && !(watch && watch.auto) && !(EMB && drv.kind === 'real' && g.won()) && !DEMO;
+
+  // ---------------------------------------------------------------- layout: the big star and its children
+  // the children sit on an ellipse round the big star (a fan below it for up to 6, a full ring beyond); the shape that lets
+  // the big star come out largest (children never closer than ~2.8 child radii) wins
+  function geom(n) {
+    const W = sv.clientWidth || 390, H = sv.clientHeight || 600, ring = n >= 7, Rb = .4, pad = 10;
+    let best = null;
+    const steps = n <= 1 ? [0] : ring ? [2 * Math.PI / n] : [.5, .6, .7, .8, .9, 1, 1.1];
+    for (const step of steps) for (const ax of [1, 1.15, 1.3]) for (const ay of [1, 1.15, 1.3, 1.5, 1.7]) for (const st of [0]) {
+      const a0 = ring ? -Math.PI / 2 + (n % 2 ? 0 : step / 2) : Math.PI / 2 - step * (n - 1) / 2;
+      const K = Array.from({ length: n }, (_, k) => { const a = a0 + k * step, q = 1 + st * (k % 2); return [Math.cos(a) * ax * q, Math.sin(a) * ay * q, Math.atan2(Math.sin(a) * ay, Math.cos(a) * ax)]; });
+      let md = 9; for (let k = 0; k < n; k++) for (let j = k + 1; j < n; j++) md = Math.min(md, Math.hypot(K[k][0] - K[j][0], K[k][1] - K[j][1]));
+      const rc = n ? Math.min(n <= 4 ? .25 : .21, md / 2.8) : 0; if (n && rc < .13) continue;
+      let x0 = -Rb * 1.5, x1 = Rb * 1.5, y0 = -Rb * 1.6, y1 = Rb * 1.45;
+      K.forEach(([x, y]) => { x0 = Math.min(x0, x - rc * 1.45); x1 = Math.max(x1, x + rc * 1.45); y0 = Math.min(y0, y - rc * 1.45); y1 = Math.max(y1, y + rc * 1.6); });
+      const s = Math.min((W - 2 * pad) / (x1 - x0), (H - 2 * pad) / (y1 - y0), 150 / Rb), score = s * (1 + 1.5 * rc) * (1 + .03 * ay);
+      if (!best || score > best.score + 1e-9) best = { score, s, rc, K, x0, x1, y0, y1 };
+      if (n <= 1) break;
+    }
+    // tall screens: rows of children under the big star (centred rows, a brick offset between rows)
+    if (n >= 3 && n <= 6 && H > W * 1.15) for (let c = 2; c <= Math.min(n, 4); c++) for (const rc of [.2, .24, .28, .32, .36]) {
+      const rows = Math.ceil(n / c), dx = 3 * rc, dy = 3.1 * rc + .12, y0r = Rb * 1.45 + rc * 1.45 + .16, K = [];
+      for (let j = 0; j < rows; j++) { const m = Math.min(c, n - j * c); for (let i = 0; i < m; i++) { const x = (i - (m - 1) / 2) * dx + (rows > 1 && m === c && j % 2 ? dx * .25 : rows > 1 && m === c ? -dx * .25 : 0), y = y0r + j * dy; K.push([x, y, Math.atan2(y, x)]); } }
+      let x0 = -Rb * 1.5, x1 = Rb * 1.5, y0 = -Rb * 1.6, y1 = Rb * 1.45;
+      K.forEach(([x, y]) => { x0 = Math.min(x0, x - rc * 1.45); x1 = Math.max(x1, x + rc * 1.45); y0 = Math.min(y0, y - rc * 1.45); y1 = Math.max(y1, y + rc * 1.6); });
+      const s = Math.min((W - 2 * pad) / (x1 - x0), (H - 2 * pad) / (y1 - y0), 150 / Rb), score = s * (1 + 1.5 * Math.min(rc, .3)) * .97;
+      if (!best || score > best.score + 1e-9) best = { score, s, rc, K, x0, x1, y0, y1 };
+    }
+    if (!best) { const step = 2 * Math.PI / Math.max(1, n); best = { s: Math.min(W, H) / 3.2, rc: .13, K: Array.from({ length: n }, (_, k) => { const a = -Math.PI / 2 + k * step; return [Math.cos(a) * 1.2, Math.sin(a) * 1.2, a]; }), x0: -1.4, x1: 1.4, y0: -1.4, y1: 1.4 }; }
+    const { s, rc, K } = best, ox = W / 2 - s * (best.x0 + best.x1) / 2, oy = H / 2 - s * (best.y0 + best.y1) / 2;
+    return { W, H, s, cx: ox, cy: oy, R: Rb * s, rc: rc * s, ring, kids: K.map(([x, y, a]) => ({ x: ox + x * s, y: oy + y * s, a })) };
+  }
+  const SPK = '<path d="M1 4.2h2.6L7 1v10L3.6 7.8H1z" fill="currentColor"/>';
+  function tag(m, x, y, sc) {                   // the branch tag: pair, chain size, quiet / loud
+    const w = 58, h = 22;
+    return '<g transform="translate(' + P(x, y) + ') scale(' + f1(sc * 100) / 100 + ')" class="tag"><rect x="' + (-w / 2) + '" y="' + (-h / 2) + '" width="' + w + '" height="' + h + '" rx="11" fill="' + INK + '" opacity=".88" stroke="' + (m.pi ? GOLD : 'rgba(255,246,214,.35)') + '" stroke-width="2"/>' +
+      '<circle cx="-19" cy="0" r="6" fill="' + COL[m.a] + '" stroke="' + INK + '" stroke-width="1.6"/><circle cx="-11" cy="0" r="6" fill="' + COL[m.b] + '" stroke="' + INK + '" stroke-width="1.6"/>' +
+      '<text x="5" y="5" text-anchor="middle" font-family="Righteous, system-ui" font-size="14" fill="#fff6d6">' + m.size + '</text>' +
+      '<g transform="translate(14 -6)" color="' + (m.quiet ? '#9fe8ff' : '#ffb27a') + '">' + SPK + (m.quiet ? '<path d="M8.6 4l3.2 4M11.8 4L8.6 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>' : '<path d="M8.6 3.4q2 2.6 0 5.2M10.4 1.8q3.4 4.2 0 8.4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>') + '</g></g>';
+  }
+  function kidLabel(m, c) {
+    return ELEM[m.a].name + ' and ' + ELEM[m.b].name + ', ' + m.size + (m.size === 1 ? ' region' : ' regions') + ', ' + (m.quiet ? 'quiet' : 'loud') + (m.pi ? ', the π move' : '') +
+      (c.f.filled ? ', fills the hole' : ', ' + ['no lock', 'one lock', 'double lock'][c.f.lock] + ' after') + (c.seen ? ', seen before' : '');
+  }
+  function render(o) {
+    o = o || {};
+    const f = cur.f, won = f.filled, mv = won ? [] : cur.mv, seen = new Map();
+    trail.forEach((t, i) => { if (!seen.has(t.key)) seen.set(t.key, []); seen.get(t.key).push(i); });
+    kids = mv.map(m => { const cf = ST.feat(drv.G, m.col); return { m, f: cf, seen: seen.has(m.key) }; });
+    lay = geom(kids.length);
+    const L = lay, curSeen = (seen.get(f.key) || []).length > 1;
+    // branches and tags
+    let b = '';
+    kids.forEach((k, i) => {
+      const p = L.kids[i], a = p.a, x0 = L.cx + Math.cos(a) * L.R * 1.05, y0 = L.cy + Math.sin(a) * L.R * 1.05, x1 = p.x - Math.cos(a) * L.rc * 1.2, y1 = p.y - Math.sin(a) * L.rc * 1.2;
+      const mx = (x0 + x1) / 2 + Math.sin(a) * 8, my = (y0 + y1) / 2 - Math.cos(a) * 8;
+      const colr = k.f.filled ? '#7dff8a' : k.m.pi ? GOLD : k.seen ? '#ff5fc8' : '#b9a8ff';
+      b += '<path class="br" data-k="' + i + '" d="M' + P(x0, y0) + 'Q' + P(mx, my) + ' ' + P(x1, y1) + '" fill="none" stroke="' + INK + '" stroke-width="9" stroke-linecap="round" opacity=".55"/>' +
+        '<path class="br" data-k="' + i + '" d="M' + P(x0, y0) + 'Q' + P(mx, my) + ' ' + P(x1, y1) + '" fill="none" stroke="' + colr + '" stroke-width="' + (k.m.pi || k.f.filled ? 5 : 3.4) + '" stroke-linecap="round"' + (k.m.pi ? ' stroke-dasharray="9 6"' : '') + ' opacity=".9"/>';
+    });
+    const tsc = clamp(L.rc / 40, .62, 1.05);
+    kids.forEach((k, i) => { const p = L.kids[i], a = p.a, d = L.rc * 1.35 + 14 * tsc; b += tag(k.m, p.x - Math.cos(a) * d * .98, p.y - Math.sin(a) * d * .98 + (Math.abs(Math.sin(a)) < .5 ? 0 : 0), tsc); });
+    gB.innerHTML = b;
+    // children
+    gK.innerHTML = kids.map((k, i) => {
+      const p = L.kids[i];
+      const bs = f1(Math.max(1, L.rc / 42) * 100) / 100, badge = k.m.pi ? '<g transform="translate(' + P(L.rc * .95, -L.rc * .95) + ') scale(' + bs + ')"><circle r="12" fill="' + GOLD + '" stroke="' + INK + '" stroke-width="3"/><text y="5" text-anchor="middle" font-family="Righteous, system-ui" font-size="15" fill="' + INK + '">π</text></g>' : '';
+      const loop = k.seen ? '<g transform="translate(' + P(-L.rc * .98, -L.rc * .95) + ') scale(' + bs + ')"><circle r="11" fill="' + hashHue(k.m.key) + '" stroke="' + INK + '" stroke-width="3"/><path d="M-4.5 1.5a4.8 4.8 0 1 0 1.6-5.4" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round"/><path d="M-5.6-6.4l3 2.6-3.6 1.4z" fill="#fff"/></g>' : '';
+      return '<g class="kid' + (k.f.filled ? ' fills' : '') + (k.m.pi ? ' pi' : '') + '" data-k="' + i + '" role="button" tabindex="0" aria-label="' + (i + 1) + ': ' + kidLabel(k.m, k) + '" style="transform:translate(' + f1(p.x) + 'px,' + f1(p.y) + 'px)">' +
+        '<g class="bob"><circle class="hit" r="' + f1(L.rc * 1.45) + '"/>' + starSVG(k.f, L.rc, { touched: k.m.hits, ring: k.seen ? hashHue(k.m.key) : '', nc: drv.nc }) + badge + loop + '</g></g>';
+    }).join('');
+    // the big star
+    gM.innerHTML = '<g id="me" style="transform:translate(' + f1(L.cx) + 'px,' + f1(L.cy) + 'px)" role="img" aria-label="' + bigLabel(f) + '">' + starSVG(f, L.R, { big: true, nc: drv.nc, ring: curSeen ? hashHue(f.key) : '' }) + '</g>';
+    sv.classList.toggle('inert', !interactive());
+    trailRender(seen);
+    hud(seen, curSeen);
+    animate(o);
+  }
+  function bigLabel(f) {
+    if (f.filled) return 'Star broken open: the hole is filled';
+    if (!f.ok || f.t < 0) return 'Rim star';
+    return 'Trouble spot at star edge ' + (f.t + 1) + ', ' + ['no lock', 'one lock', 'double lock'][f.lock] + (f.pi ? ', π is forced' : '') + ', degree ' + f.deg;
+  }
+  function trailRender(seen) {
+    const T = $('trail'); let h = '';
+    trail.forEach((t, i) => {
+      const occ = seen.get(t.key), rep = occ.length > 1, ring = rep ? hashHue(t.key) : '', vn = rep ? occ.indexOf(i) + 1 : 0;
+      if (i) h += '<i class="tj' + (t.pi ? ' pi' : '') + '"></i>';
+      h += '<button class="tb' + (i === trail.length - 1 ? ' cur' : '') + '" data-i="' + i + '" aria-label="Step ' + i + (rep ? ', visit ' + vn : '') + '">' + miniSVG(t.f, ring) +
+        (rep ? '<span class="vn" style="background:' + ring + '">' + vn + '</span>' : '') + '</button>';
+    });
+    T.innerHTML = h; T.scrollLeft = T.scrollWidth;
+  }
+  function hud(seen, curSeen) {
+    const n = trail.length - 1, par = drv.L.par, run = runLen();
+    $('cSteps').innerHTML = '<svg viewBox="0 0 20 20" aria-hidden="true"><ellipse cx="6" cy="12" rx="3.2" ry="5" fill="currentColor"/><ellipse cx="14" cy="7" rx="3.2" ry="5" fill="currentColor" opacity=".7"/></svg>' + n +
+      '<span style="opacity:.55">/</span><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 2v17" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/><path d="M5 3h11l-3 4 3 4H5z" fill="' + GOLD + '"/></svg>' + par;
+    $('cSteps').classList.toggle('over', n > par);
+    $('cSteps').setAttribute('aria-label', n + ' swaps, par ' + par);
+    const cr = $('cRun'); cr.textContent = 'π×' + run; cr.classList.toggle('hide', run < 1);
+    let cyc = 0; if (curSeen) { const o = seen.get(cur.f.key); cyc = o[o.length - 1] - o[o.length - 2]; }
+    const cl = $('cLoop'); cl.textContent = '↻' + cyc; cl.classList.toggle('hide', !cyc); cl.style.background = cyc ? hashHue(cur.f.key) : '';
+    const real = drv.kind === 'real', inert = !interactive();
+    $('bUndo').disabled = inert || n < 1; $('bReset').disabled = inert || n < 1;
+    $('bNext').hidden = !(real && !EMB && cur.f.filled && !celebrating);
+    $('bLab').hidden = EMB && real && g.won();
+  }
+  // ---------------------------------------------------------------- motion
+  const A = (el, kf, o) => { if (!el || reduce() || !el.animate) return null; try { return el.animate(kf, o); } catch (e) { return null; } };
+  function animate(o) {
+    const L = lay, me = $('me');
+    if (o.how === 'swap' && o.from >= 0 && o.prevKids && o.prevKids.length) {
+      // the chosen child grows into the centre; the new children sprout along their branches; the old star flies to the trail
+      const pl = o.prevLay || prevLay, p = pl && pl.kids[o.from], sc = pl ? pl.rc / L.R : .4;
+      if (p) A(me, [{ transform: 'translate(' + f1(p.x) + 'px,' + f1(p.y) + 'px) scale(' + f1(sc * 100) / 100 + ')' }, { transform: 'translate(' + f1(L.cx) + 'px,' + f1(L.cy) + 'px) scale(1)' }], { duration: 520, easing: 'cubic-bezier(.3,1.35,.5,1)' });
+      ghost(pl, o.prev);
+      flipGems(o.prev.f, cur.f, 260);
+      sprout(380);
+    } else if (o.how === 'back' || o.how === 'undo') {
+      A(me, [{ transform: 'translate(' + f1(L.cx) + 'px,' + f1(L.cy) + 'px) scale(.55) rotate(-40deg)', opacity: .3 }, { transform: 'translate(' + f1(L.cx) + 'px,' + f1(L.cy) + 'px) scale(1)', opacity: 1 }], { duration: 420, easing: 'cubic-bezier(.3,1.5,.5,1)' });
+      sprout(160);
+    } else if (o.how === 'reset' || o.how === 'enter') {
+      A(me, [{ transform: 'translate(' + f1(L.cx) + 'px,' + f1(L.cy) + 'px) scale(.2) rotate(144deg)' }, { transform: 'translate(' + f1(L.cx) + 'px,' + f1(L.cy) + 'px) scale(1)' }], { duration: 640, easing: 'cubic-bezier(.3,1.4,.5,1)' });
+      sprout(360);
+    } else if (o.how === 'swap') { flipGems(o.prev ? o.prev.f : null, cur.f, 0); sprout(200); }
+    prevLay = L;
+  }
+  let prevLay = null;
+  function sprout(delay) {
+    const L = lay;
+    [...gK.children].forEach((el, i) => {
+      const p = L.kids[i]; if (!p) return;
+      A(el, [{ transform: 'translate(' + f1(L.cx) + 'px,' + f1(L.cy) + 'px) scale(0)', opacity: 0 }, { transform: 'translate(' + f1(p.x) + 'px,' + f1(p.y) + 'px) scale(1)', opacity: 1 }],
+        { duration: 460, delay: delay + i * 45, easing: 'cubic-bezier(.3,1.5,.5,1)', fill: 'backwards' });
+    });
+    A(gB, [{ opacity: 0 }, { opacity: 1 }], { duration: 360, delay, fill: 'backwards' });
+    kids.forEach((k, i) => setTimeout(() => tone(700 + i * 55, .05, 'sine', .025), delay + i * 45));
+  }
+  function flipGems(pf, nf, delay) {
+    if (!pf || pf.filled || nf.filled) return;
+    let w = 0;
+    nf.rim.forEach((e, i) => { if (pf.rim[i] === e) return; const el = gM.querySelector('.gi.g' + i); A(el, [{ transform: 'scale(1)' }, { transform: 'scale(0,1.2)' }, { transform: 'scale(1.25)' }, { transform: 'scale(1)' }], { duration: 420, delay: delay + w * 60 }); pop(w + 2, (delay + w * 60) / 1000); w++; });
+    if (pf.lock > nf.lock) setTimeout(() => { tone(880, .14, 'triangle', .07); tone(1320, .2, 'sine', .05, 0, .08); }, delay + 200);
+  }
+  function ghost(pl, prev) {                     // the old big star shrinks into the trail
+    if (!pl || reduce()) return;
+    const T = $('trail'), tb = T.querySelector('.tb[data-i="' + (trail.length - 2) + '"]'), sr = sv.getBoundingClientRect();
+    if (!tb) return;
+    const r = tb.getBoundingClientRect(), d = document.createElement('div');
+    d.className = 'fly'; d.innerHTML = '<svg width="' + f1(pl.R * 3) + '" height="' + f1(pl.R * 3) + '" viewBox="' + P(-pl.R * 1.5, -pl.R * 1.5) + ' ' + P(pl.R * 3, pl.R * 3) + '"><defs>' + $('defs').innerHTML.replace(/id="st/g, 'id="gh') + '</defs>' + starSVG(prev.f, pl.R, { big: true, nc: drv.nc }).replace(/url\(#st/g, 'url(#gh') + '</svg>';
+    document.body.appendChild(d);
+    const x0 = sr.left + pl.cx - pl.R * 1.5, y0 = sr.top + pl.cy - pl.R * 1.5, x1 = r.left + r.width / 2 - pl.R * 1.5, y1 = r.top + r.height / 2 - pl.R * 1.5, s1 = 22 / (pl.R * 1.5);
+    const an = d.animate([{ transform: 'translate(' + f1(x0) + 'px,' + f1(y0) + 'px) scale(1)', opacity: 1 }, { transform: 'translate(' + f1(x1) + 'px,' + f1(y1) + 'px) scale(' + f1(s1 * 1000) / 1000 + ')', opacity: .6 }], { duration: 480, easing: 'cubic-bezier(.5,0,.6,1)' });
+    an.onfinish = () => d.remove(); setTimeout(() => d.remove(), 900);
+  }
+  function wobble() {
+    A($('me'), [{ transform: 'translate(' + f1(lay.cx) + 'px,' + f1(lay.cy) + 'px) rotate(0)' }, { transform: 'translate(' + f1(lay.cx - 6) + 'px,' + f1(lay.cy) + 'px) rotate(-6deg)' }, { transform: 'translate(' + f1(lay.cx + 6) + 'px,' + f1(lay.cy) + 'px) rotate(6deg)' }, { transform: 'translate(' + f1(lay.cx) + 'px,' + f1(lay.cy) + 'px) rotate(0)' }], { duration: 420 });
+  }
+  function burst(x, y, n, cols, spread) {
+    let s = '';
+    for (let i = 0; i < n; i++) {
+      const a = i / n * Math.PI * 2 + (i % 3) * .3, r = spread * (.6 + (i * 37 % 40) / 100), c = cols[i % cols.length];
+      s += '<g class="sp" data-x="' + f1(Math.cos(a) * r) + '" data-y="' + f1(Math.sin(a) * r) + '" style="transform:translate(' + f1(x) + 'px,' + f1(y) + 'px)"><path d="M0-7L2-2 7 0 2 2 0 7-2 2-7 0-2-2Z" fill="' + c + '" stroke="' + INK + '" stroke-width="1.4"/></g>';
+    }
+    gFx.insertAdjacentHTML('beforeend', s);
+    [...gFx.querySelectorAll('.sp:not(.go)')].forEach((el, i) => {
+      el.classList.add('go');
+      const an = A(el, [{ transform: 'translate(' + f1(x) + 'px,' + f1(y) + 'px) scale(.3)', opacity: 1 }, { transform: 'translate(' + f1(x + +el.dataset.x) + 'px,' + f1(y + +el.dataset.y) + 'px) scale(1.4) rotate(200deg)', opacity: 0 }], { duration: 900 + (i % 5) * 120, easing: 'cubic-bezier(.2,.8,.4,1)', fill: 'forwards' });
+      if (an) an.onfinish = () => el.remove(); else el.remove();
+    });
+  }
+  // ---------------------------------------------------------------- after a swap: progress, loops, eggs, the win
+  let eggDone = false;
+  function afterSwap(prev, from) {
+    const f = cur.f, k = trail.length - 1, occ = trail.filter(t => t.key === f.key).length;
+    $('live').textContent = bigLabel(f);
+    if (occ > 1 && !f.filled) { wobble(); tone(220, .25, 'sawtooth', .04, 160); const c = $('cLoop'); c.classList.remove('bump'); void c.offsetWidth; c.classList.add('bump'); }
+    if (trail[k].pi) { const c = $('cRun'); c.classList.remove('bump'); void c.offsetWidth; c.classList.add('bump'); tone(990, .12, 'triangle', .05, 1320); }
+    // egg: twenty π swaps in a row that bring the identical board back (a closed π loop)
+    if (!eggDone && drv.kind === 'real' && runLen() >= 20 && trail[k - 20] && trail[k - 20].key === f.key) { eggDone = true; try { LAB.egg('pi-twenty', 500); } catch (e) { /* older shell */ } burst(lay.cx, lay.cy, 30, [GOLD, '#fff6d6', '#ff5fc8'], lay.R * 2); tone(1046, .5, 'sine', .08); tone(1568, .6, 'sine', .06, 0, .15); }
+    if (f.filled) celebrate();
+  }
+  function celebrate() {
+    if (celebrating) return;
+    const real = drv.kind === 'real', t0 = performance.now(); celebrating = { t0 }; render({ how: 'win' });
+    const L = lay, me = $('me');
+    A(me, [{ transform: 'translate(' + f1(L.cx) + 'px,' + f1(L.cy) + 'px) scale(.6)' }, { transform: 'translate(' + f1(L.cx) + 'px,' + f1(L.cy) + 'px) scale(1.18)', offset: .35 }, { transform: 'translate(' + f1(L.cx) + 'px,' + f1(L.cy) + 'px) scale(1)' }], { duration: 900, easing: 'ease-out' });
+    [0, 4, 7, 12].forEach((s, i) => tone(523 * Math.pow(2, s / 12), .5, 'triangle', .07, 0, i * .11));
+    const cols = COL.concat([GOLD, '#fff6d6']);
+    [0, 500, 1100, 1800].forEach((d, i) => setTimeout(() => { burst(L.cx, L.cy, 18 + i * 4, cols, L.R * (1.6 + i * .5)); tone(1200 + i * 200, .2, 'sine', .04); }, d));
+    setTimeout(() => [0, 4, 7, 12, 16].forEach((s, i) => tone(784 * Math.pow(2, s / 12), .6, 'sine', .05, 0, i * .09)), 2000);
+    gM.querySelectorAll('.gi').forEach((el, i) => A(el, [{ transform: 'translateY(0)' }, { transform: 'translateY(-14px) scale(1.15)' }, { transform: 'translateY(0)' }], { duration: 520, delay: 300 + i * 110, iterations: 4 }));
+    setTimeout(() => { celebrating = null; hud(new Map(trail.map(t => [t.key, [0]])), false); if (real) LAB.done(); if (watch) watchEnd(true); }, 3400);
+  }
+  // ---------------------------------------------------------------- input
+  function take(i) {
+    if (!interactive() || !kids[i]) return;
+    const k = kids[i], p = lay.kids[i];
+    const r = sv.getBoundingClientRect(); try { LAB.at(r.left + p.x, r.top + p.y); } catch (e) { /* older shell */ }
+    tone(k.f.filled ? 880 : k.m.pi ? 740 : 600, .08, 'triangle', .08);
+    drv.apply(k.m);
+  }
+  sv.addEventListener('pointerdown', e => { const el = e.target.closest('.kid'); if (el && interactive()) { el.classList.add('press'); tone(560, .03, 'sine', .04); } });
+  addEventListener('pointerup', () => gK.querySelectorAll('.press').forEach(el => el.classList.remove('press')));
+  sv.addEventListener('click', e => { const el = e.target.closest('.kid'); if (el) take(+el.dataset.k); else if (interactive() && e.target.closest('#me')) wobble(); });
+  sv.addEventListener('keydown', e => { const el = e.target.closest('.kid'); if (el && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); take(+el.dataset.k); } });
+  $('trail').addEventListener('click', e => { const b = e.target.closest('.tb'); if (b) backTo(+b.dataset.i); });
+  $('bUndo').onclick = () => { if (interactive() && trail.length > 1) { tone(500, .1, 'sine', .06, 300); drv.undo(); } };
+  $('bReset').onclick = () => { if (interactive() && trail.length > 1) { tone(400, .2, 'sine', .06, 200); drv.reset(); } };
+  $('bNext').onclick = () => { const i = GAME.levels.findIndex(l => l.id === g.level.id), nx = GAME.levels[(i + 1) % GAME.levels.length]; location.search = '?lvl=' + encodeURIComponent(nx.id); };
+  addEventListener('keydown', e => {
+    if (!$('lab').hidden || e.target.closest('input,select,textarea')) return;
+    if (/^[1-9]$/.test(e.key)) take(+e.key - 1);
+    else if (e.key === 'Backspace' || e.key === 'u') $('bUndo').click();
+    else if (e.key === 'r') $('bReset').click();
+    else if (e.key === 'l') openLab();
+  });
+  addEventListener('resize', () => { if (cur) { render({ how: 'resize' }); } });
+
+  // ---------------------------------------------------------------- research log (heuristic_test): the app's log when embedded
+  let telP = null;
+  function logEv(type, data) {
+    try { if (EMB && parent.FTH_LOG) { parent.FTH_LOG.ev(type, data); return 'shell'; } } catch (e) { /* cross-origin: post it */ }
+    if (EMB) { parent.postMessage({ fth: 1, type: 'log', id: g.level.id, ev: type, data }, '*'); return 'post'; }
+    if (!telP) telP = new Promise(res => { if (window.FTH_LOG) return res(); const s = document.createElement('script'); s.src = '../telemetry.js'; s.onload = res; s.onerror = res; document.head.appendChild(s); });
+    telP.then(() => { if (!window.FTH_LOG) return; FTH_LOG.start({ num: 'star-lab', id: 'star-lab', skin: 'star', map: '', par: 0, state: '' }); FTH_LOG.ev(type, data); FTH_LOG.end('lab'); });
+    return 'local';
+  }
+  window.__starLog = [];
+  // ---------------------------------------------------------------- the heuristic lab
+  const BKEY = 'fth-star-board', RKEY = 'fth-star-rule';
+  const lsGet = (k, d) => { try { const v = JSON.parse(localStorage.getItem(k)); return v == null ? d : v; } catch (e) { return d; } };
+  const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* private mode */ } };
+  const clone = o => JSON.parse(JSON.stringify(o));
+  let rule = lsGet(RKEY, null); if (!ST.valid(rule)) rule = { name: 'My rule', cards: [{ pick: 'fill', when: [] }, { pick: 'fewlocks', when: [] }] };
+  let board = lsGet(BKEY, []).filter(r => r && ST.valid(r.rule)), scope = 'start', LGs = null, building = null, lastRes = null;
+  const COND_OPTS = Object.keys(ST.CONDS), PICK_OPTS = Object.keys(ST.PICKS);
+  const CNAME = { lock: '🔒 locks', pi: 'π? forced', run: 'π× run', seen: '↻ seen', steps: '👣 steps', star: '✦ spot', deg: '◐ degree', N: '⛓ chains', nm: '⑂ moves' };
+  const opt = (v, t, s) => '<option value="' + v + '"' + (s ? ' selected' : '') + '>' + t + '</option>';
+  function cardsRender() {
+    $('lbName').value = rule.name || '';
+    $('lbCards').innerHTML = rule.cards.map((c, i) => {
+      const tests = (c.when || []).map((w, j) => '<span class="tst" data-j="' + j + '"><select data-r="f" aria-label="Test">' + COND_OPTS.map(k => opt(k, CNAME[k], k === w.f)).join('') + '</select>' +
+        '<select data-r="op" aria-label="Compare">' + Object.keys(ST.OPS).map(k => opt(k, k.replace('>=', '≥').replace('<=', '≤').replace('!=', '≠'), k === w.op)).join('') + '</select>' +
+        '<input data-r="v" type="number" step="1" value="' + w.v + '" aria-label="Value"><button class="sm" data-a="untest" aria-label="Remove test">✕</button></span>').join('');
+      const pk = ST.PICKS[c.pick], arg = c.pick === 'hop' ? '<select data-r="arg" aria-label="Hop">' + [0, 1, 2, 3, 4].map(k => opt(k, '+' + k, +c.arg === k)).join('') + '</select>'
+        : c.pick === 'pair' ? '<select data-r="arg" aria-label="Pair">' + ST.PAIRS.map(k => opt(k, k, c.arg === k)).join('') + '</select>' : '';
+      return '<li class="cd" data-i="' + i + '"><span class="ix">' + (i + 1) + '</span><span class="bd">' + (tests || '<span class="note">always</span>') + '<button class="sm" data-a="test" aria-label="Add a test">＋</button>' +
+        '<span class="ar">→</span><select data-r="pick" aria-label="Prefer">' + PICK_OPTS.map(k => opt(k, ST.PICKS[k][0] + ' ' + ST.PICKS[k][1], k === c.pick)).join('') + '</select>' + arg +
+        '<span class="mv"><button class="sm" data-a="up" aria-label="Move up">▲</button><button class="sm" data-a="dn" aria-label="Move down">▼</button><button class="sm" data-a="del" aria-label="Delete card">✕</button></span></span></li>';
+    }).join('');
+    lsSet(RKEY, rule);
+  }
+  $('lbCards').addEventListener('change', e => {
+    const li = e.target.closest('.cd'), i = +li.dataset.i, c = rule.cards[i], r = e.target.dataset.r, ts = e.target.closest('.tst');
+    if (ts) { const w = c.when[+ts.dataset.j]; if (r === 'v') w.v = Math.round(+e.target.value || 0); else w[r] = e.target.value; }
+    else if (r === 'pick') { c.pick = e.target.value; delete c.arg; if (c.pick === 'hop') c.arg = 3; if (c.pick === 'pair') c.arg = 'αγ'; }
+    else if (r === 'arg') c.arg = c.pick === 'hop' ? +e.target.value : e.target.value;
+    rule.id = ''; cardsRender();
+  });
+  $('lbCards').addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return; const li = b.closest('.cd'), i = +li.dataset.i, C = rule.cards, a = b.dataset.a;
+    if (a === 'test') C[i].when.push({ f: 'lock', op: '=', v: 2 });
+    if (a === 'untest') C[i].when.splice(+b.closest('.tst').dataset.j, 1);
+    if (a === 'up' && i > 0) [C[i - 1], C[i]] = [C[i], C[i - 1]];
+    if (a === 'dn' && i < C.length - 1) [C[i + 1], C[i]] = [C[i], C[i + 1]];
+    if (a === 'del') C.splice(i, 1);
+    rule.id = ''; cardsRender();
+  });
+  $('lbName').oninput = e => { rule.name = e.target.value.slice(0, 32); lsSet(RKEY, rule); };
+  $('lbAdd').onclick = () => { rule.cards.push({ pick: 'new', when: [] }); rule.id = ''; cardsRender(); };
+  $('lbPre').innerHTML = ST.BUILTIN.map(r => '<button class="pre" data-id="' + r.id + '">' + r.name + '</button>').join('');
+  $('lbPre').onclick = e => { const b = e.target.closest('.pre'); if (!b) return; const r = ST.BUILTIN.find(x => x.id === b.dataset.id); rule = clone(r); cardsRender(); };
+  $('lbScope').onclick = e => { const b = e.target.closest('button'); if (!b) return; scope = b.dataset.sc; $('lbScope').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); };
+  const pct = x => Math.round(x * 1000) / 10 + '%';
+  const sig = r => JSON.stringify(r.cards);
+  function ensureGraphs() {                     // every level's state tree, built a level at a time (a few seconds once)
+    if (LGs) return Promise.resolve(LGs);
+    if (building) return building;
+    const out = [], cache = new Map(), Ls = GAME.levels;
+    building = new Promise(res => {
+      let i = 0;
+      const step = () => { const t = performance.now(); while (i < Ls.length && performance.now() - t < 40) { out.push(ST.graph(GAME, Ls[i], cache)); i++; } bar(i / Ls.length * .6); if (i < Ls.length) setTimeout(step, 0); else { LGs = out; res(out); } };
+      setTimeout(step, 30);
+    });
+    return building;
+  }
+  const bar = x => { $('lbBar').firstChild.style.width = Math.round(x * 100) + '%'; };
+  function scoreAsync(r, sc) {                   // the evaluator, level by level so the page stays live
+    return ensureGraphs().then(Ls => new Promise(res => {
+      const parts = [], seen = new Set(); let i = 0;
+      const step = () => {
+        const t = performance.now();
+        while (i < Ls.length && performance.now() - t < 30) { const LG = Ls[i++]; if (sc === 'class' && seen.has(LG.key)) continue; seen.add(LG.key); parts.push(ST.score(r, [LG], sc)); }
+        bar(.6 + .4 * i / Ls.length);
+        if (i < Ls.length) return setTimeout(step, 0);
+        const out = { scope: sc, n: 0, solved: 0, steps: 0, par: 0, loops: 0, stuck: 0, fails: [], per: [], ms: 0 };
+        parts.forEach(p => { ['n', 'solved', 'steps', 'par', 'loops', 'stuck', 'ms'].forEach(k => { out[k] += p[k]; }); out.fails.push(...p.fails); out.per.push(...p.per); });
+        out.rate = out.n ? out.solved / out.n : 0; out.excess = out.solved ? (out.steps - out.par) / out.solved : 0;
+        res(out);
+      };
+      step();
+    }));
+  }
+  function test(r, sc, quiet) {
+    r = clone(r);
+    return scoreAsync(r, sc).then(res => {
+      const row = board.find(b => sig(b.rule) === sig(r)) || (board.push({ rule: r, sc: {} }), board[board.length - 1]);
+      row.rule.name = r.name || row.rule.name; row.sc[sc] = { n: res.n, solved: res.solved, rate: res.rate, excess: +res.excess.toFixed(3), loops: res.loops, stuck: res.stuck, fails: res.fails.map(f => f.num) };
+      lsSet(BKEY, board);
+      const ev = { v: 1, skin: 'star', rule: { name: r.name || '', cards: r.cards }, builtin: r.id || '', scope: sc, n: res.n, solved: res.solved, rate: +res.rate.toFixed(4), excess: +res.excess.toFixed(3),
+        loops: res.loops, stuck: res.stuck, fails: res.fails.map(f => f.num + ':' + f.why), lvl: drv ? drv.L.id : '', ms: res.ms };
+      ev.sink = logEv('heuristic_test', ev); window.__starLog.push(ev);
+      if (!quiet) { lastRes = { rule: r, res }; resRender(); }
+      boardRender();
+      return res;
+    });
+  }
+  function resRender() {
+    if (!lastRes) { $('lbRes').innerHTML = ''; return; }
+    const R = lastRes.res, cls = R.scope === 'class';
+    $('lbRes').innerHTML = '<div class="res"><div><b>' + pct(R.rate) + '</b>' + R.solved + '/' + R.n + (cls ? ' hard' : ' levels') + '</div><div><b>+' + R.excess.toFixed(2) + '</b>swaps over par</div><div><b>' + R.loops + '</b>↻ loops met</div><div><b>' + R.stuck + '</b>stuck</div></div>' +
+      '<div class="fails">' + (R.fails.length ? R.fails.map(f => '<button data-l="' + f.lvl + '" class="' + (/cap/.test(f.why) ? 'cap' : '') + '" aria-label="Watch level ' + f.num + ' fail">' + f.num + (cls ? ' · ' + f.why : f.why === 'loop' ? ' ↻' : ' ⌛') + '</button>').join('') : '<span class="ok">✓ every one filled</span>') + '</div>';
+  }
+  function boardRender() {
+    const rows = board.slice().sort((a, b) => ((b.sc.start || {}).rate || 0) - ((a.sc.start || {}).rate || 0) || ((a.sc.start || {}).excess || 0) - ((b.sc.start || {}).excess || 0));
+    $('lbBoard').innerHTML = '<tr><th>#</th><th>rule</th><th>starts</th><th>+swaps</th><th>hard</th></tr>' + rows.map((b, i) => {
+      const s = b.sc.start, c = b.sc.class;
+      return '<tr data-s="' + encodeURIComponent(sig(b.rule)) + '" class="' + (sig(b.rule) === sig(rule) ? 'me' : '') + '"><td>' + (i + 1) + '</td><td>' + (b.rule.name || '·') + '<small>' + b.rule.cards.map(ST.label).join(' · ') + '</small></td><td>' + (s ? pct(s.rate) : '–') + '</td><td>' + (s ? '+' + s.excess.toFixed(2) : '–') + '</td><td>' + (c ? pct(c.rate) : '–') + '</td></tr>';
+    }).join('');
+  }
+  $('lbBoard').onclick = e => { const tr = e.target.closest('tr[data-s]'); if (!tr) return; const b = board.find(x => sig(x.rule) === decodeURIComponent(tr.dataset.s)); if (b) { rule = clone(b.rule); cardsRender(); boardRender(); } };
+  $('lbGo').onclick = () => { if (!rule.cards.length) return; $('lbGo').disabled = true; test(rule, scope).then(() => { $('lbGo').disabled = false; tone(880, .15, 'triangle', .06); }); };
+  $('lbRes').onclick = e => { const b = e.target.closest('button[data-l]'); if (b) watchStart(lastRes.rule, b.dataset.l); };
+  $('lbHere').onclick = () => watchStart(rule, drv.L.id);
+  const copy = (txt) => { const done = () => { $('lbCopied').textContent = '✓'; setTimeout(() => { $('lbCopied').textContent = ''; }, 1500); };
+    try { navigator.clipboard.writeText(txt).then(done, () => fallback()); } catch (e) { fallback(); }
+    function fallback() { const t = document.createElement('textarea'); t.value = txt; document.body.appendChild(t); t.select(); try { document.execCommand('copy'); } catch (e) { /* no clipboard */ } t.remove(); done(); }
+    window.__starCopied = txt; };
+  const exp = b => ({ kind: 'fth-star-rule', v: 1, rule: { name: b.rule.name || '', cards: b.rule.cards }, scores: b.sc, language: 'lab/STAR-DESIGN.md' });
+  $('lbCopy').onclick = () => { const b = board.find(x => sig(x.rule) === sig(rule)) || { rule, sc: {} }; copy(JSON.stringify(exp(b), null, 1)); };
+  $('lbCopyAll').onclick = () => copy(JSON.stringify(board.map(exp), null, 1));
+  function openLab() {
+    if (EMB && drv.kind === 'real' && g.won()) return;
+    $('lab').hidden = false; document.body.classList.add('labon'); cardsRender(); boardRender(); resRender(); if (cur) setTimeout(() => render({ how: 'resize' }), 320);
+    // the baselines: every built-in rule on the 40 starts, once (they fill the board)
+    const todo = ST.BUILTIN.filter(r => !board.some(b => sig(b.rule) === sig(r) && b.sc.start));
+    todo.reduce((p, r) => p.then(() => test(r, 'start', true)), Promise.resolve()).then(() => bar(1));
+  }
+  function closeLab() { $('lab').hidden = true; document.body.classList.remove('labon'); if (cur) setTimeout(() => render({ how: 'resize' }), 320); }
+  $('bLab').onclick = openLab; $('lbX').onclick = closeLab;
+  // watching a rule: a sandbox on that level plays the rule's walk (from the level's start), a step every 0.75 s
+  function watchStart(r, lvl) {
+    const L = GAME.levels.find(l => l.id === lvl); if (!L) return;
+    if (innerWidth < 900) closeLab();
+    ensureGraphs().then(Ls => {
+      const LG = Ls.find(x => x.L.id === lvl), w = ST.run(r, LG, LG.start);
+      if (watch) clearTimeout(watch.t);
+      watch = { r, L, LG, w, j: 0, auto: true, t: 0 };
+      $('watch').hidden = false; $('stage').classList.add('watching'); $('wName').textContent = (r.name || 'rule') + ' · ' + L.num; $('wPlay').textContent = '❚❚';
+      enter(sandDriver(L)); watchStep();
+    });
+  }
+  function watchStep() {
+    const W = watch; if (!W || !W.auto) return;
+    clearTimeout(W.t);
+    W.t = setTimeout(() => {
+      if (watch !== W || !W.auto) return;
+      const next = W.w.path[W.j + 1];
+      if (next == null) { W.auto = false; $('wPlay').textContent = '▶'; if (!W.w.solved) { wobble(); tone(196, .4, 'sawtooth', .04, 150); } return; }
+      const key = W.LG.S[next].key, i = kids.findIndex(k => k.m.key === key);
+      if (i < 0) { W.auto = false; return; }
+      const el = gK.children[i]; if (el) el.classList.add('press');
+      setTimeout(() => { if (watch !== W) return; W.j++; drv.apply(kids[i].m); watchStep(); }, 260 * WSP);
+    }, (W.j ? 620 : 900) * WSP);
+  }
+  function watchEnd() { if (watch) { watch.auto = false; $('wPlay').textContent = '▶'; } }
+  $('wPlay').onclick = () => { if (!watch) return; if (watch.auto) { watch.auto = false; $('wPlay').textContent = '▶'; } else { if (watch.j >= watch.w.path.length - 1) { watch.j = 0; drv.reset(); } watch.auto = true; $('wPlay').textContent = '❚❚'; watchStep(); } sv.classList.toggle('inert', !interactive()); };
+  $('wX').onclick = () => { if (watch) clearTimeout(watch.t); watch = null; $('watch').hidden = true; $('stage').classList.remove('watching'); enter(REAL); };
+
+  // ---------------------------------------------------------------- the first-time tutorial: three pictures, a few words
+  const TKEY = 'fth-star-tut';
+  function tutorial() {
+    let seen = null; try { seen = localStorage.getItem(TKEY); } catch (e) { seen = '1'; }
+    if (seen || DEMO || QS.get('tut') === '0') return;
+    const T = $('tut'), finger = '<svg class="fing" viewBox="0 0 56 70"><g transform="rotate(-18 28 35)"><rect x="12" y="34" width="30" height="32" rx="12" fill="#fff" stroke="' + INK + '" stroke-width="4"/><rect x="18" y="6" width="14" height="40" rx="7" fill="#fff" stroke="' + INK + '" stroke-width="4"/></g></svg>';
+    let step = 0;
+    const show = () => {
+      const r = sv.getBoundingClientRect(), L = lay, k0 = L.kids[0];
+      const spot = [[L.cx, L.cy, L.R * 1.5, 'Your rim star'], k0 ? [k0.x, k0.y, L.rc * 1.6, 'Tap a branch'] : [L.cx, L.cy, L.R * 1.5, 'Tap a branch'], [L.cx, L.cy, L.R * 1.5, 'Break it open!']][step];
+      const x = r.left + spot[0], y = r.top + spot[1], rr = spot[2];
+      T.innerHTML = '<div class="ring" style="left:' + (x - rr) + 'px;top:' + (y - rr) + 'px;width:' + 2 * rr + 'px;height:' + 2 * rr + 'px"></div>' +
+        (step === 1 ? '<div style="position:absolute;left:' + (x + 4) + 'px;top:' + (y + 4) + 'px">' + finger + '</div>' : '') +
+        (step === 2 ? '<svg viewBox="-60 -60 120 120" style="position:absolute;left:' + (x - 60) + 'px;top:' + (y - 60) + 'px;width:120px;height:120px"><defs>' + $('defs').innerHTML.replace(/id="st/g, 'id="tt') + '</defs>' +
+          starSVG({ rim: [0, 1, 0, 2, 1], filled: true, ok: true }, 34, { nc: 4 }).replace(/url\(#st/g, 'url(#tt') + '</svg>' : '') +
+        '<div class="say" style="top:' + Math.max(12, Math.min(innerHeight - 160, step === 1 ? y - rr - 70 : y + rr + 16)) + 'px">' + spot[3] + '</div>' +
+        '<div class="dots">' + [0, 1, 2].map(i => '<i class="' + (i === step ? 'on' : '') + '"></i>').join('') + '</div>';
+      T.hidden = false;
+    };
+    T.onclick = () => { step++; tone(700 + step * 120, .08, 'triangle', .05); if (step > 2) { T.hidden = true; try { localStorage.setItem(TKEY, '1'); } catch (e) { /* private */ } } else show(); };
+    setTimeout(show, 900);
+  }
+
+  // ---------------------------------------------------------------- go
+  if (HUD === 'minimal' || DEMO) $('trail').style.paddingLeft = '64px';
+  if (DEMO) { $('bar').style.visibility = 'hidden'; }
+  REAL = realDriver(); enter(REAL); tutorial();
+  window.STAR = { g, get lay() { return lay; }, get kids() { return kids.map(k => ({ key: k.m.key, pair: k.m.pair, size: k.m.size, quiet: k.m.quiet, pi: k.m.pi, hits: k.m.hits, fills: k.f.filled, lock: k.f.lock, t: k.f.t, seen: k.seen, deg: k.f.deg })); },
+    get cur() { return cur && { key: cur.f.key, t: cur.f.t, lock: cur.f.lock, pi: cur.f.pi, filled: cur.f.filled, deg: cur.f.deg }; }, get trail() { return trail.map(t => ({ key: t.key, pi: t.pi })); },
+    take, backTo, good: () => { const K = g.good()[0]; if (!K) return -1; const c = g.preview(K).col; c[g.hole] = -1; const key = RIM.canon(drv.G, c); return kids.findIndex(k => k.m.key === key); }, kidXY: i => { const r = sv.getBoundingClientRect(), p = lay.kids[i]; return [r.left + p.x, r.top + p.y]; }, trailXY: i => { const b = $('trail').querySelector('.tb[data-i="' + i + '"]').getBoundingClientRect(); return [b.left + b.width / 2, b.top + b.height / 2]; },
+    openLab, closeLab, test: (r, sc) => test(r || rule, sc || 'start'), setRule: r => { rule = clone(r); cardsRender(); }, watchStart, get watch() { return watch && { j: watch.j, auto: watch.auto, solved: watch.w.solved, why: watch.w.why, len: watch.w.path.length }; },
+    get drv() { return drv.kind; }, get celebrating() { return !!celebrating; } };
+})();
+</script>
+</body>
+</html>
