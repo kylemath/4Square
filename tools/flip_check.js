@@ -1,6 +1,6 @@
 // Signed diagonal flips (lab/flip-model.js): the formulation, checked exhaustively for small n.   node tools/flip_check.js [--quick | --full] [--n 11]
 //   default: n <= 11 (sign-level B, C and the sign-based BFS to 9, per-pair E to 8; ~20 s); --quick n <= 9; --full B, C, BFS to
-//   10 and E to 9 (~7 min)
+//   10, E and K to 9 (~3.5 min)
 //   A. triangulations: Catalan(n-2) of them, the unsigned flip graph is connected, its diameter (rotation distance) as known;
 //   B. signs <-> colourings: every signing of T is the sign pattern of exactly one proper F4 colouring (col0 = 0, col1 = 1),
 //      round trip, and T has exactly 2^(n-2) such colourings (counted by brute force, independently of signs);

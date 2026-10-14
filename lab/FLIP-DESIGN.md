@@ -7,7 +7,7 @@ in [arena/FLIP-ENV.md](arena/FLIP-ENV.md). Checks:
 
 | command | what it checks | time |
 |---|---|---|
-| `node tools/flip_check.js` | the formulation, exhaustively, n ≤ 11 (`--quick`: n ≤ 9; `--full`: the slow sections further) | ~20 s |
+| `node tools/flip_check.js` | the formulation, exhaustively, n ≤ 11 (`--quick`: n ≤ 9; `--full`: the slow sections further, ~3.5 min) | ~20 s |
 | `node tools/flip_ui_check.js [--shots dir]` | the page, end to end, in headless Chrome | ~25 s |
 | `node tools/flip_env_check.js` | the environment API and the baseline agents | ~2 min |
 
