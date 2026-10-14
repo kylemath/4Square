@@ -1,0 +1,577 @@
+<!doctype html>
+<!--
+  FLIP (lab game, stand-alone: not a Kempe level, not on the skin reel or in the tickets). Design note: lab/FLIP-DESIGN.md.
+
+  What the player sees: two polygons with the same numbered corners. Yours (left, or below on a phone) is cut into
+  triangles, each one tinted sun (+) or sea (-). The target (right, or above) is another triangulation. Tap a
+  diagonal to flip it to the other diagonal of its four-sided patch. Only a diagonal between two triangles of the SAME
+  sign may flip, and both new triangles take the other sign. Make your diagonals match the target's.
+
+  Mapping (lab/flip-model.js, window.FTH_FLIP; every tap is exactly one F.flip(state, code) or nothing):
+    a triangle's tint and glyph   = its sign, +1 (sun, ＋) or -1 (sea, −)
+    tap a diagonal ac             = F.legal(st, ac): its triangles abc, acd must have equal signs; F.flip -> bd, both new
+                                    triangles get the opposite sign. Unequal signs: the diagonal shakes, the two
+                                    triangles flash, and the status line shows ＋ | − (no flip)
+    win                           = F.same(st.T, target)
+    par                           = the solver's optimal signed-flip count (F.solve, BFS), hint = its next move
+    colours toggle                = F.colouringFromSigns: the 4-colouring the signs encode (a flip never changes it;
+                                    a diagonal may flip iff its two far corners differ in colour)
+    sphere toggle                 = the two polygons glued along the n-cycle: yours inside, the target outside, one map
+    free-signs levels             = the target shows no signs; before your first flip, tap triangles to choose signs
+                                    (the "there exist signs" of Eliahou's conjecture). Target edges whose two ends get
+                                    one colour under your signs are marked ✕: those signs can never reach it.
+  Keys: Tab / arrows move between diagonals (and triangles while choosing signs), Enter or Space flips, U or Ctrl+Z undo,
+  R reset, H hint, C colours, G sphere, N next level. ?lvl=<1..> opens a level; ?n=<5..12>&len=<k>&seed=<s>[&free=1] a
+  generated puzzle.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Flip</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,700;9..144,900&family=Nunito:wght@600;800;900&display=swap" rel="stylesheet">
+<style>
+  :root { color-scheme: light dark;
+    --bg: #f4eee2; --bg2: #e9dfcb; --ink: #2a2238; --dim: #7a6f8c; --card: #fffaf1; --line: #e2d6c0; --edge: #b9a98d;
+    --pos: #ffc74d; --pos-ink: #7a4b00; --neg: #8db6ff; --neg-ink: #173f8a; --good: #23935a; --bad: #d1443a; --accent: #6b4fd6;
+    --vtx: #fffaf1; --tri-a: .78; --shadow: #2a223822; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+    --bg: #15121f; --bg2: #1d1830; --ink: #ece6ff; --dim: #a39abd; --card: #201a31; --line: #352d4d; --edge: #5b5078;
+    --pos: #e7a93a; --pos-ink: #fff0c9; --neg: #4d7fd6; --neg-ink: #e1ebff; --good: #42c47f; --bad: #ff6a5a; --accent: #a993ff;
+    --vtx: #2a2340; --tri-a: .72; --shadow: #00000066; } }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html, body { margin: 0; background: var(--bg); color: var(--ink); font: 600 15px/1.35 Nunito, system-ui, -apple-system, Segoe UI, sans-serif;
+    -webkit-tap-highlight-color: transparent; }
+  body { min-height: 100vh; background: radial-gradient(120% 70% at 50% 0%, var(--card) 0%, var(--bg) 55%, var(--bg2) 100%) fixed; overflow-x: hidden; }
+  main { max-width: 1000px; margin: 0 auto; padding: 10px 16px 28px; }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
+  header { display: flex; align-items: center; gap: 8px; }
+  h1 { margin: 0; font: 900 1.45rem/1 Fraunces, Georgia, serif; letter-spacing: .01em; }
+  h1 small { display: block; font: 800 .72rem Nunito, sans-serif; color: var(--dim); letter-spacing: .03em; margin-top: 3px; }
+  .grow { flex: 1; min-width: 0; }
+  button, select { font: inherit; color: var(--ink); }
+  .ic { width: 44px; height: 44px; border-radius: 14px; border: 2px solid var(--line); background: var(--card); cursor: pointer; display: grid; place-items: center;
+    padding: 0; box-shadow: 0 3px 0 var(--edge); transition: transform .08s, box-shadow .08s, border-color .15s; flex: none; }
+  .ic svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+  .ic[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+  .ic:active:not(:disabled) { transform: translateY(2px); box-shadow: 0 1px 0 var(--edge); }
+  .ic:disabled { opacity: .4; cursor: default; }
+  :focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  .bar { display: flex; gap: 8px; align-items: center; margin: 10px 0 6px; }
+  select { flex: 1; min-width: 0; height: 44px; border-radius: 14px; border: 2px solid var(--line); background: var(--card); padding: 0 10px; font-weight: 800; box-shadow: 0 3px 0 var(--edge); }
+  .hud { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-weight: 800; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; border-radius: 999px; background: var(--card); border: 2px solid var(--line); white-space: nowrap; }
+  .chip b { font: 900 1.05rem Fraunces, Georgia, serif; }
+  .chip.over b { color: var(--bad); }
+  .chip.free { border-color: var(--accent); color: var(--accent); }
+  .stars { letter-spacing: 2px; color: var(--dim); }
+  .stars i { font-style: normal; } .stars i.on { color: #f2b51d; }
+  /* the two boards: side by side on wide screens, target above (smaller) on phones */
+  .boards { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 10px; align-items: start; }
+  figure { margin: 0; background: var(--card); border: 2px solid var(--line); border-radius: 22px; padding: 6px 8px 8px; box-shadow: 0 6px 18px var(--shadow); position: relative; min-width: 0; }
+  figcaption { display: flex; justify-content: space-between; align-items: baseline; font-weight: 900; font-size: .8rem; letter-spacing: .1em; text-transform: uppercase; color: var(--dim); padding: 2px 6px 0; }
+  figcaption span { letter-spacing: 0; text-transform: none; font-weight: 800; }
+  svg.board { display: block; width: 100%; height: auto; max-height: 70vh; touch-action: manipulation; -webkit-user-select: none; user-select: none; }
+  #goal .side { display: none; }
+  #glue { display: none; grid-column: 1 / -1; }
+  #glue svg.board { max-height: 74vh; }
+  body.glue #you, body.glue #goal { display: none; } body.glue #glue { display: block; }
+  @media (max-width: 719px) {
+    .boards { grid-template-columns: 1fr; gap: 10px; }
+    #goal { order: -1; padding: 4px 6px 6px; }
+    #goal .wrap { display: flex; align-items: center; gap: 8px; }
+    #goal svg.board { width: 44%; flex: none; }
+    #goal .side { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; min-width: 0; font-size: .8rem; color: var(--dim); font-weight: 700; }
+    #goal .side .hud { flex-direction: column; align-items: flex-start; gap: 6px; }
+    #goal figcaption span { display: none; }
+    .tools { margin-top: 8px; }
+    h1 { font-size: 1.25rem; }
+  }
+  /* board pieces */
+  .tri { stroke: none; fill-opacity: var(--tri-a); transition: fill .25s; }
+  .tri.p { fill: var(--pos); } .tri.m { fill: var(--neg); } .tri.u { fill: var(--line); fill-opacity: .55; }
+  .tri.flash { animation: flash .55s 2; }
+  @keyframes flash { 50% { fill: var(--bad); fill-opacity: .9; } }
+  .tri.pop { animation: pop .45s ease-out; transform-box: fill-box; transform-origin: center; }
+  @keyframes pop { 0% { transform: scale(.82); fill-opacity: .2; } 60% { transform: scale(1.03); } 100% { transform: scale(1); } }
+  .tri.pick { cursor: pointer; } .tri.pick:hover { fill-opacity: 1; }
+  .gly { font-family: Nunito, sans-serif; font-weight: 900; text-anchor: middle; dominant-baseline: central; pointer-events: none; opacity: .8; }
+  .gly.p { fill: var(--pos-ink); } .gly.m { fill: var(--neg-ink); } .gly.u { fill: var(--dim); }
+  .side { fill: none; stroke: var(--ink); stroke-width: .03; stroke-linejoin: round; }
+  .dg .vis { stroke: var(--ink); stroke-width: .022; stroke-linecap: round; transition: stroke .2s; }
+  .dg.match .vis { stroke: var(--good); stroke-width: .03; }
+  .dg .hit { stroke: transparent; stroke-width: .2; stroke-linecap: round; cursor: pointer; }
+  .dg:focus { outline: none; } .dg:focus-visible .ring, .tri-g:focus-visible .ring { stroke: var(--accent); stroke-opacity: .55; }
+  .dg .ring { stroke: transparent; stroke-width: .1; stroke-linecap: round; fill: none; }
+  .dg.hint .ring { stroke: var(--accent); stroke-opacity: .6; animation: pulse 1s ease-in-out infinite; }
+  @keyframes pulse { 50% { stroke-opacity: .15; } }
+  .dg.shake { animation: shake .42s; } @keyframes shake { 20%, 60% { transform: translate(.03px, -.02px); } 40%, 80% { transform: translate(-.03px, .02px); } }
+  .tri-g { outline: none; } .tri-g .ring { fill: none; stroke: transparent; stroke-width: .035; stroke-linejoin: round; }
+  .tri-g.hint .ring { stroke: var(--accent); stroke-opacity: .7; animation: pulse 1s ease-in-out infinite; }
+  .tgt { stroke-width: .03; stroke-linecap: round; fill: none; }
+  .tgt.match { stroke: var(--good); } .tgt.todo { stroke: var(--ink); stroke-dasharray: .07 .055; opacity: .75; } .tgt.clash { stroke: var(--bad); stroke-dasharray: .05 .04; opacity: 1; }
+  .xx { fill: var(--bad); font: 900 .16px Nunito, sans-serif; text-anchor: middle; dominant-baseline: central; }
+  .vt circle { fill: var(--vtx); stroke: var(--ink); stroke-width: .022; transition: fill .4s; }
+  .vt text { font: 900 .105px Nunito, sans-serif; fill: var(--ink); text-anchor: middle; dominant-baseline: central; pointer-events: none; }
+  .vt.c text { fill: #1b1426; } .vt.c0 circle { fill: #ef5a3c; } .vt.c1 circle { fill: #3d8fe8; } .vt.c2 circle { fill: #e8c547; } .vt.c3 circle { fill: #4caf50; }
+  .vt.bloom circle { animation: bloom .6s ease-out both; transform-box: fill-box; transform-origin: center; }
+  @keyframes bloom { 0% { transform: scale(.6); } 55% { transform: scale(1.35); } 100% { transform: scale(1); } }
+  .gl-out { fill: none; stroke: var(--ink); stroke-width: .022; opacity: .9; }
+  .gl-out.match { stroke: var(--good); }
+  .conf { pointer-events: none; }
+  /* controls under the boards */
+  .tools { display: flex; gap: 10px; justify-content: center; margin: 12px 0 4px; flex-wrap: wrap; }
+  .big { min-width: 104px; height: 48px; border-radius: 16px; border: 2.5px solid var(--ink); background: var(--card); font-weight: 900; font-size: 1rem; cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center; gap: 7px; box-shadow: 0 4px 0 var(--edge); padding: 0 14px; }
+  .big svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+  .big:active:not(:disabled) { transform: translateY(3px); box-shadow: 0 1px 0 var(--edge); }
+  .big:disabled { opacity: .4; cursor: default; }
+  .big.go { background: var(--accent); color: #fff; border-color: var(--accent); }
+  #msg { min-height: 2.8em; text-align: center; margin: 10px auto 0; max-width: 620px; font-weight: 700; color: var(--dim); }
+  #msg .sg { display: inline-grid; place-items: center; min-width: 1.6em; height: 1.6em; border-radius: 6px; font-weight: 900; margin: 0 1px; }
+  #msg .sg.p { background: var(--pos); color: var(--pos-ink); } #msg .sg.m { background: var(--neg); color: var(--neg-ink); }
+  #msg .bad { color: var(--bad); font-weight: 900; } #msg .good { color: var(--good); font-weight: 900; }
+  .legend { display: flex; justify-content: center; gap: 18px; flex-wrap: wrap; font-size: .82rem; color: var(--dim); margin-top: 6px; }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  /* overlays */
+  .ov { position: fixed; inset: 0; display: none; place-items: center; background: #0f0b1a88; z-index: 20; padding: 16px; }
+  .ov.on { display: grid; }
+  .card { background: var(--card); border: 2px solid var(--line); border-radius: 24px; padding: 20px 20px 18px; max-width: 460px; width: 100%; box-shadow: 0 18px 50px #0008; max-height: calc(100vh - 32px); overflow: auto; }
+  .card h2 { margin: 0 0 6px; font: 900 1.6rem Fraunces, Georgia, serif; }
+  .card p { margin: 8px 0; font-weight: 600; }
+  .card .row { display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end; margin-top: 14px; }
+  .win h2 { text-align: center; font-size: 2rem; }
+  .win .stars { text-align: center; font-size: 2.2rem; letter-spacing: 6px; }
+  .win .stars i { display: inline-block; }
+  .win .stars i.on { animation: star .5s cubic-bezier(.3,1.6,.5,1) both; }
+  .win .stars i:nth-child(2) { animation-delay: .18s; } .win .stars i:nth-child(3) { animation-delay: .36s; }
+  @keyframes star { 0% { transform: scale(0) rotate(-40deg); } 100% { transform: scale(1); } }
+  .win .score { text-align: center; font-weight: 900; font-size: 1.1rem; }
+  .win .row { justify-content: center; }
+  .help li { margin: 6px 0; }
+  .help ul { padding-left: 1.1em; margin: 6px 0; }
+  .card .k { display: inline-block; border: 1.5px solid var(--edge); border-radius: 6px; padding: 0 5px; font-size: .8em; font-weight: 900; }
+  @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div class="grow"><h1>Flip <small id="sub">signed diagonal flips</small></h1></div>
+    <button class="ic" id="bHelp" title="How to play" aria-label="How to play"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9.5"/><path d="M9.3 9.3a2.8 2.8 0 1 1 3.9 2.6c-.8.4-1.2 1-1.2 1.9v.6M12 17.6v.1"/></svg></button>
+    <button class="ic" id="bCol" title="Show the colouring (C)" aria-label="Show the 4-colouring" aria-pressed="false"><svg viewBox="0 0 24 24"><circle cx="8" cy="8" r="3.4"/><circle cx="16" cy="8" r="3.4"/><circle cx="8" cy="16" r="3.4"/><circle cx="16" cy="16" r="3.4"/></svg></button>
+    <button class="ic" id="bGlue" title="Glue into a sphere (G)" aria-label="Glue the two polygons into one sphere map" aria-pressed="false"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9.5"/><circle cx="12" cy="12" r="5"/><path d="M12 7v10M7.7 9.5l8.6 5M16.3 9.5l-8.6 5"/></svg></button>
+    <button class="ic" id="bSnd" title="Sound" aria-label="Sound" aria-pressed="true"><svg viewBox="0 0 24 24"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path class="w" d="M15.5 9a4.2 4.2 0 0 1 0 6M18 6.5a8 8 0 0 1 0 11"/></svg></button>
+  </header>
+  <div class="bar">
+    <label class="sr" for="sel">Level</label>
+    <select id="sel"></select>
+    <button class="ic" id="bRand" title="A new random puzzle of this size" aria-label="Random puzzle of this size"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="3.5"/><circle cx="9" cy="9" r=".9" fill="currentColor"/><circle cx="15" cy="15" r=".9" fill="currentColor"/><circle cx="15" cy="9" r=".9" fill="currentColor"/><circle cx="9" cy="15" r=".9" fill="currentColor"/></svg></button>
+  </div>
+  <div class="hud" id="hud">
+    <span class="chip">Flips <b id="mv">0</b> / par <b id="par">0</b></span>
+    <span class="stars" id="hudStars" aria-label=""></span>
+    <span class="chip free" id="freeChip" hidden>choose signs, then flip</span>
+  </div>
+  <section class="boards">
+    <figure id="you"><figcaption>Yours <span id="youNote"></span></figcaption><svg class="board" id="svgA" viewBox="-1.3 -1.3 2.6 2.6" role="group" aria-label="Your triangulation"></svg></figure>
+    <figure id="goal"><figcaption>Target <span id="goalNote"></span></figcaption><div class="wrap"><svg class="board" id="svgB" viewBox="-1.3 -1.3 2.6 2.6" role="img" aria-label="Target triangulation"></svg><div class="side"><span id="goalSide"></span></div></div></figure>
+    <figure id="glue"><figcaption>One sphere <span>yours inside the ring · target outside</span></figcaption><svg class="board" id="svgG" viewBox="-1.3 -1.3 2.6 2.6" role="group" aria-label="Both triangulations glued along the ring"></svg></figure>
+  </section>
+  <div id="msg" role="status" aria-live="polite"></div>
+  <div class="tools">
+    <button class="big" id="bUndo" aria-label="Undo (U)"><svg viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>Undo</button>
+    <button class="big" id="bReset" aria-label="Reset (R)"><svg viewBox="0 0 24 24"><path d="M3.5 12a8.5 8.5 0 1 0 2.6-6.1"/><path d="M3.5 4v5h5"/></svg>Reset</button>
+    <button class="big" id="bHint" aria-label="Hint (H)"><svg viewBox="0 0 24 24"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2V16h5v-.1c0-.8.4-1.5 1-2A6 6 0 0 0 12 3z"/></svg>Hint</button>
+  </div>
+  <div class="legend" aria-hidden="true">
+    <span><svg width="46" height="22" viewBox="0 0 46 22"><path d="M2 20 L22 2 L22 20Z" fill="var(--pos)"/><path d="M22 2 L44 20 L22 20Z" fill="var(--pos)"/><path d="M22 2V20" stroke="var(--ink)" stroke-width="2"/></svg>same signs: flips</span>
+    <span><svg width="46" height="22" viewBox="0 0 46 22"><path d="M2 20 L22 2 L22 20Z" fill="var(--pos)"/><path d="M22 2 L44 20 L22 20Z" fill="var(--neg)"/><path d="M22 2V20" stroke="var(--ink)" stroke-width="2"/></svg>different: stuck</span>
+    <span><svg width="30" height="22" viewBox="0 0 30 22"><path d="M3 11H27" stroke="var(--good)" stroke-width="3" stroke-linecap="round"/></svg>matches the target</span>
+  </div>
+</main>
+
+<div class="ov" id="ovWin" role="dialog" aria-modal="true" aria-labelledby="winT">
+  <div class="card win">
+    <h2 id="winT">Matched!</h2>
+    <div class="stars" id="winStars"></div>
+    <p class="score" id="winScore"></p>
+    <p id="winWhy"></p>
+    <div class="row">
+      <button class="big" id="wSphere">See the sphere</button>
+      <button class="big" id="wAgain">Replay</button>
+      <button class="big go" id="wNext">Next level</button>
+    </div>
+  </div>
+</div>
+<div class="ov" id="ovHelp" role="dialog" aria-modal="true" aria-labelledby="helpT">
+  <div class="card help">
+    <h2 id="helpT">Flip</h2>
+    <ul>
+      <li>Both polygons have the same numbered corners. Make <b>your</b> diagonals match the <b>target</b>'s.</li>
+      <li>Tap a diagonal to <b>flip</b> it: it swaps to the other diagonal of its four-sided patch.</li>
+      <li>Each triangle has a sign, <b>＋</b> (sun) or <b>−</b> (sea). A diagonal can only flip when the triangles on both sides have the <b>same</b> sign, and then both new triangles take the <b>other</b> sign.</li>
+      <li>Green diagonals already match. Par is the fewest flips possible.</li>
+      <li><b>Free signs</b> levels: before your first flip, tap triangles to choose their signs. A ✕ on the target means your signs can never reach that diagonal.</li>
+    </ul>
+    <p><b>Why?</b> Glue the two polygons along their rim and you get a map on a sphere. The signs are a secret <b>4-colouring</b> of the corners (the colour button shows it): a flip is allowed exactly when the two far corners have different colours, and it never changes the colours. Shalom Eliahou conjectured that any two triangulations can be joined by signed flips for some choice of signs, and Gravier and Payan proved this is the same as the Four Colour Theorem.</p>
+    <p>Keys: <span class="k">Tab</span> / arrows pick a diagonal, <span class="k">Enter</span> flips, <span class="k">U</span> undo, <span class="k">R</span> reset, <span class="k">H</span> hint, <span class="k">C</span> colours, <span class="k">G</span> sphere.</p>
+    <div class="row"><button class="big go" id="hOk">Play</button></div>
+  </div>
+</div>
+
+<script src="../sfx.js"></script>
+<script src="flip-model.js"></script>
+<script>
+(function () {
+  'use strict';
+  const F = window.FTH_FLIP, LV = F.LEVELS, QS = new URLSearchParams(location.search);
+  const $ = id => document.getElementById(id), NS = 'http://www.w3.org/2000/svg';
+  const RM = matchMedia('(prefers-reduced-motion: reduce)'), reduce = () => RM.matches;
+  const SAVE = 'fth-flip-v1';
+  let save = {}; try { save = JSON.parse(localStorage.getItem(SAVE) || '{}') || {}; } catch (e) { save = {}; }
+  save.best = save.best || {};
+  const persist = () => { try { localStorage.setItem(SAVE, JSON.stringify(save)); } catch (e) { /* private mode */ } };
+  // ---------------------------------------------------------------- sound (sfx.js, one shared context made on the first gesture)
+  let actx = null; const sndOn = () => save.sound !== false;
+  const sfx = window.FTH_SFX ? FTH_SFX.create({ ctx: () => { if (!actx) { const A = window.AudioContext || window.webkitAudioContext; actx = A ? new A() : null; } return actx; }, on: sndOn }) : null;
+  const play = (name, ...a) => { try { if (sfx && sfx[name]) sfx[name](...a); } catch (e) { /* no audio */ } };
+
+  // ---------------------------------------------------------------- the puzzle
+  const cache = new Map();
+  function puzzle(i) {
+    if (i < 0) return custom;
+    if (!cache.has(i)) cache.set(i, F.generate(LV[i].n, LV[i].seed, LV[i]));
+    return cache.get(i);
+  }
+  let custom = null, li = 0, P = null, n = 0, st = null, hist = [], hints = 0, won = false, showCol = !!save.colours, glue = false, hintCode = -1, hintTri = -1, focusKey = null;
+  let freeStart = null;   // free levels: the initial signs offered (a signing that does NOT reach the target)
+  const moves = () => hist.filter(h => h.kind === 'flip').length;
+  const signPhase = () => P.free && moves() === 0 && !won;
+  function load(i, P0) {
+    li = i; P = P0 || puzzle(i); n = P.n; hist = []; hints = 0; won = false; hintCode = hintTri = -1;
+    if (P.free) {
+      if (!P.start) {   // offer a signing that cannot reach the target, so the choice is the player's
+        const all = F.allSignings(n, P.T), R = F.rng(P.seed * 31 + 7), bad = all.filter(s => !F.solve(F.state(n, P.T, s), P.target));
+        P.start = (bad.length ? bad : all)[R.int((bad.length ? bad : all).length)];
+      }
+      freeStart = P.start; st = F.state(n, P.T, P.start);
+    } else st = F.state(n, P.T, P.s);
+    if (i >= 0) { save.lvl = i; persist(); }
+    $('ovWin').classList.remove('on');
+    say(P.free ? 'Choose the signs first: tap triangles to switch ＋/−. Your first flip locks them in.' : i === 0 ? 'Tap a diagonal whose two triangles share a sign.' : '');
+    render(); fillSelect();
+  }
+
+  // ---------------------------------------------------------------- geometry
+  const R0 = 1, ang = v => 2 * Math.PI * v / n;
+  const pt = (v, r) => [(r || R0) * Math.sin(ang(v)), -(r || R0) * Math.cos(ang(v))];
+  const fmt = x => +x.toFixed(4);
+  const el = (tag, at, par) => { const e = document.createElementNS(NS, tag); for (const k in at) e.setAttribute(k, at[k]); if (par) par.appendChild(e); return e; };
+  const triCodeOf = t => F.triCode(n, t[0], t[1], t[2]);
+  // incentre and inradius: the sign glyph sits there, sized to fit thin triangles
+  const incentre = (t, r) => { const p = t.map(v => pt(v, r)), L = [1, 2, 0].map((j, i) => Math.hypot(p[j][0] - p[(j + 1) % 3][0], p[j][1] - p[(j + 1) % 3][1])), S = L[0] + L[1] + L[2];
+    const A = Math.abs((p[1][0] - p[0][0]) * (p[2][1] - p[0][1]) - (p[2][0] - p[0][0]) * (p[1][1] - p[0][1])) / 2;
+    return [(L[0] * p[0][0] + L[1] * p[1][0] + L[2] * p[2][0]) / S, (L[0] * p[0][1] + L[1] * p[1][1] + L[2] * p[2][1]) / S, 2 * A / S]; };
+  // the glyph: at the incentre, or slid toward the longest side's midpoint until it clears the corner dots -> [x, y, size]
+  function glyphAt(t, r) {
+    const c = incentre(t, r), fs = Math.max(.07, Math.min(.17, c[2] * 1.25)), p = t.map(v => pt(v, r)), vr = (n > 10 ? .085 : .095) * r / R0;
+    const L = [0, 1, 2].map(i => Math.hypot(p[i][0] - p[(i + 1) % 3][0], p[i][1] - p[(i + 1) % 3][1])), k = L.indexOf(Math.max(...L));
+    const M = [(p[k][0] + p[(k + 1) % 3][0]) / 2, (p[k][1] + p[(k + 1) % 3][1]) / 2];
+    for (const need of [.6, .35]) for (const u of [0, .25, .45, .6, .75]) {
+      const q = [c[0] + (M[0] - c[0]) * u, c[1] + (M[1] - c[1]) * u];
+      if (p.every(v => Math.hypot(v[0] - q[0], v[1] - q[1]) >= vr + fs * need)) return [q[0], q[1], fs];
+    }
+    return null;   // a sliver under the corner dots: its tint alone shows the sign
+  }
+  const lab = v => String(v + 1);
+  const dname = d => { const [a, b] = F.ends(n, d); return lab(a) + '–' + lab(b); };
+  const colouring = () => F.colouringFromSigns(n, st.T, st.s);
+  const tgtSet = () => new Set(P.target);
+  const signOf = (s, t) => s[triCodeOf(t)] > 0 ? 'p' : 'm';
+  const GLY = { p: '＋', m: '−', u: '?' };
+
+  // a board: triangles (tinted by sign), sides, diagonals (yours: tappable), corners
+  function drawPolygon(svg, T, s, opt) {
+    svg.innerHTML = '';
+    const r = opt.r || R0, tris = F.triangles(n, T), col = opt.col, gT = el('g', {}, svg), gD = el('g', {}, svg), gV = el('g', {}, svg);
+    tris.forEach(t => {
+      const sg = s ? signOf(s, t) : 'u', code = triCodeOf(t), pick = opt.pick;
+      const g = el('g', { class: 'tri-g', 'data-t': code }, gT);
+      const pts = t.map(v => pt(v, r).map(fmt).join(',')).join(' ');
+      el('polygon', { class: 'tri ' + sg + (pick ? ' pick' : '') + (opt.pop && opt.pop.includes(code) ? ' pop' : ''), points: pts }, g);
+      el('polygon', { class: 'ring', points: pts }, g);
+      const c = glyphAt(t, r);
+      if (c) { const gl = el('text', { class: 'gly ' + sg, x: fmt(c[0]), y: fmt(c[1]), 'font-size': fmt(c[2]) }, g); gl.textContent = GLY[sg]; }
+      if (pick) { g.setAttribute('tabindex', '0'); g.setAttribute('role', 'button'); g.setAttribute('aria-label', 'Triangle ' + t.map(lab).join(' ') + ', sign ' + (sg === 'p' ? 'plus' : 'minus') + '. Press Enter to switch.'); }
+      if (code === hintTri && pick) g.classList.add('hint');
+    });
+    const poly = []; for (let v = 0; v < n; v++) poly.push(pt(v, r).map(fmt).join(','));
+    el('polygon', { class: 'side', points: poly.join(' ') }, gD);
+    const TS = tgtSet();
+    T.forEach(d => {
+      const [a, b] = F.ends(n, d), A = pt(a, r), B = pt(b, r), at = { x1: fmt(A[0]), y1: fmt(A[1]), x2: fmt(B[0]), y2: fmt(B[1]) };
+      if (opt.mode === 'target') {
+        const cls = opt.mine.has(d) ? 'match' : col && col[a] === col[b] ? 'clash' : 'todo';
+        el('line', Object.assign({ class: 'tgt ' + cls }, at), gD);
+        if (cls === 'clash') { const m = el('text', { class: 'xx', x: fmt((A[0] + B[0]) / 2), y: fmt((A[1] + B[1]) / 2) }, gD); m.textContent = '✕'; }
+        return;
+      }
+      const g = el('g', { class: 'dg' + (TS.has(d) ? ' match' : '') + (d === hintCode ? ' hint' : ''), 'data-d': d, tabindex: '0', role: 'button',
+        'aria-label': 'Diagonal ' + dname(d) + (TS.has(d) ? ', matches the target' : '') }, gD);
+      el('line', Object.assign({ class: 'ring' }, at), g); el('line', Object.assign({ class: 'hit' }, at), g); el('line', Object.assign({ class: 'vis' }, at), g);
+    });
+    for (let v = 0; v < n; v++) {
+      const p = pt(v, r), cl = col && opt.showCol ? ' c c' + col[v] : '';
+      const g = el('g', { class: 'vt' + cl + (opt.bloom ? ' bloom' : '') }, gV);
+      if (opt.bloom) g.style.animationDelay = (v * 60) + 'ms';
+      el('circle', { cx: fmt(p[0]), cy: fmt(p[1]), r: n > 10 ? .085 : .095, style: opt.bloom && !reduce() ? 'animation-delay:' + (v * 60) + 'ms' : '' }, g);
+      const tx = el('text', { x: fmt(p[0]), y: fmt(p[1]) }, g); tx.textContent = lab(v);
+    }
+  }
+  // the glued view: the n-cycle as a ring, your triangles inside, the target's diagonals as arcs outside. Each outside
+  // arc runs round the side of the ring away from one cut gap (chosen to keep arcs short) and bulges out in proportion
+  // to its span, so nested arcs never cross.
+  function drawGlue(svg, opt) {
+    const r = 0.66;
+    drawPolygon(svg, st.T, st.s, Object.assign({}, opt, { r, mode: 'you' }));
+    const gO = el('g', {}, svg); svg.insertBefore(gO, svg.firstChild.nextSibling);
+    const spans = g => P.target.map(d => { const [a, b] = F.ends(n, d); return g > a && g <= b ? n - (b - a) : b - a; });
+    let cut = 0, best = 1e9; for (let g = 0; g < n; g++) { const m = Math.max(...spans(g)); if (m < best) { best = m; cut = g; } }
+    const mine = new Set(st.T), maxS = Math.max(2, best);
+    P.target.forEach(d => {
+      let [a, b] = F.ends(n, d); if (cut > a && cut <= b) { const t = a; a = b; b = t + n; }   // walk a -> b clockwise, away from the cut
+      const span = b - a, off = 0.5 * span / maxS, pts = [];
+      for (let k = 0; k <= 40; k++) { const u = k / 40, th = 2 * Math.PI * (a + u * span) / n, rr = r + off * Math.pow(Math.sin(Math.PI * u), 0.5); pts.push(fmt(rr * Math.sin(th)) + ',' + fmt(-rr * Math.cos(th))); }
+      el('polyline', { class: 'gl-out' + (mine.has(d) ? ' match' : ''), points: pts.join(' ') }, gO);
+    });
+  }
+
+  // ---------------------------------------------------------------- render
+  function render(anim) {
+    const col = colouring(), mine = new Set(st.T), m = moves();
+    const colOn = showCol || won || glue;
+    drawPolygon($('svgA'), st.T, st.s, { mode: 'you', col, showCol: colOn, pick: signPhase(), pop: anim && anim.add, bloom: anim && anim.bloom });
+    // target: its forced signs (same colouring, so they are what yours will be when it matches); free levels: no signs
+    const ts = P.free ? (won ? st.s : null) : F.signsFromColouring(n, P.target, col);
+    drawPolygon($('svgB'), P.target, ts, { mode: 'target', col, showCol: colOn && (!P.free || won || showCol), mine, clashOn: P.free });
+    if (glue) drawGlue($('svgG'), { col, showCol: true, pick: signPhase(), pop: anim && anim.add });
+    const left = P.target.filter(d => !mine.has(d)).length;
+    $('mv').textContent = m; $('par').textContent = P.par; $('mv').parentNode.classList.toggle('over', m > P.par);
+    $('youNote').textContent = signPhase() ? 'tap triangles to set signs' : left ? left + ' to match' : 'matched';
+    $('goalNote').textContent = P.free ? 'signs are yours to choose' : n + ' corners';
+    $('goalSide').textContent = left ? left + ' diagonal' + (left > 1 ? 's' : '') + ' to go' : 'all matched';
+    $('freeChip').hidden = !signPhase();
+    const name = li >= 0 ? (li + 1) + '. ' + LV[li].name : 'Random ' + n + '-gon';
+    $('sub').textContent = name + (P.free ? ' · free signs' : '');
+    $('bUndo').disabled = !hist.length || won; $('bReset').disabled = !hist.length && !won; $('bHint').disabled = won;
+    $('bCol').setAttribute('aria-pressed', String(showCol)); $('bGlue').setAttribute('aria-pressed', String(glue)); $('bSnd').setAttribute('aria-pressed', String(sndOn()));
+    $('bSnd').querySelector('.w').style.display = sndOn() ? '' : 'none';
+    document.body.classList.toggle('glue', glue);
+    $('hudStars').innerHTML = starsHTML(li >= 0 ? save.best[key()] && save.best[key()].stars || 0 : 0);
+    $('hudStars').setAttribute('aria-label', 'best ' + ((li >= 0 && save.best[key()] && save.best[key()].stars) || 0) + ' stars');
+    if (anim && anim.flip && !reduce()) animateFlip(anim.flip);
+    if (focusKey) { const f = document.querySelector(focusKey); if (f) f.focus({ preventScroll: true }); focusKey = null; }
+  }
+  const key = () => 'L' + li;
+  const starsHTML = k => [0, 1, 2].map(i => '<i class="' + (i < k ? 'on' : '') + '">★</i>').join('');
+  // the flip through the crossing point: the old diagonal shrinks into it, the new one grows out of it
+  function animateFlip(fl) {
+    const svgs = glue ? [[$('svgG'), 0.66]] : [[$('svgA'), R0]];
+    svgs.forEach(([svg, r]) => {
+      const [a, b, c, e] = fl.quad, A = pt(a, r), B = pt(b, r), C = pt(c, r), E = pt(e, r);
+      // crossing of AC and BE
+      const d1 = [C[0] - A[0], C[1] - A[1]], d2 = [E[0] - B[0], E[1] - B[1]], den = d1[0] * d2[1] - d1[1] * d2[0];
+      const t = ((B[0] - A[0]) * d2[1] - (B[1] - A[1]) * d2[0]) / (den || 1e-9), X = [A[0] + t * d1[0], A[1] + t * d1[1]];
+      const nd = svg.querySelector('.dg[data-d="' + fl.nd + '"] .vis'); if (nd) nd.style.opacity = '0';
+      const g = el('g', { class: 'conf' }, svg), mk = () => el('line', { stroke: 'currentColor', 'stroke-width': .024, 'stroke-linecap': 'round', style: 'color: var(--ink)' }, g);
+      const o1 = mk(), o2 = mk(), n1 = mk(), n2 = mk(), t0 = performance.now(), D = 300;
+      const set = (L, P1, P2) => { L.setAttribute('x1', P1[0]); L.setAttribute('y1', P1[1]); L.setAttribute('x2', P2[0]); L.setAttribute('y2', P2[1]); };
+      const lerp = (P1, P2, u) => [P1[0] + (P2[0] - P1[0]) * u, P1[1] + (P2[1] - P1[1]) * u];
+      (function step(now) {
+        const u = Math.min(1, (now - t0) / D), k1 = Math.min(1, u * 2), k2 = Math.max(0, u * 2 - 1), ez = x => 1 - Math.pow(1 - x, 3);
+        set(o1, lerp(A, X, ez(k1)), X); set(o2, lerp(C, X, ez(k1)), X);
+        set(n1, X, lerp(X, B, ez(k2))); set(n2, X, lerp(X, E, ez(k2)));
+        if (u < 1) requestAnimationFrame(step); else { g.remove(); if (nd) nd.style.opacity = ''; }
+      })(t0);
+    });
+  }
+
+  // ---------------------------------------------------------------- moves
+  function say(html) { $('msg').innerHTML = html; }
+  const chip = sg => '<span class="sg ' + (sg > 0 ? 'p' : 'm') + '">' + (sg > 0 ? '＋' : '−') + '</span>';
+  let flipCount = 0;
+  function tapDiag(d) {
+    if (won) return;
+    const L = F.legal(st, d);
+    if (!L.ok) {
+      if (L.why !== 'signs') return;
+      play('nope');
+      const svg = glue ? $('svgG') : $('svgA'), g = svg.querySelector('.dg[data-d="' + d + '"]');
+      if (g) { g.classList.remove('shake'); void g.getBBox(); g.classList.add('shake'); }
+      L.tris.forEach(t => { const p = svg.querySelector('.tri-g[data-t="' + t + '"] .tri'); if (p) { p.classList.remove('flash'); void p.getBBox(); p.classList.add('flash'); } });
+      say('<span class="bad">' + chip(L.signs[0]) + ' | ' + chip(L.signs[1]) + ' no flip</span> · ' + dname(d) + ' sits between two different signs. Only ' + chip(1) + chip(1) + ' or ' + chip(-1) + chip(-1) + ' can flip.');
+      return;
+    }
+    const nx = F.flip(st, d);
+    hist.push({ kind: 'flip', st, d }); st = nx; hintCode = hintTri = -1;
+    play('tryTone', flipCount++ % 4);
+    focusKey = '#' + (glue ? 'svgG' : 'svgA') + ' .dg[data-d="' + L.nd + '"]';
+    const left = P.target.filter(x => st.T.indexOf(x) < 0).length;
+    say(chip(L.signs[0]) + chip(L.signs[1]) + ' → ' + chip(-L.signs[0]) + chip(-L.signs[0]) + ' · ' + dname(d) + ' flipped to ' + dname(L.nd) + (left ? '' : '.') + (left && P.target.indexOf(L.nd) >= 0 ? ' <span class="good">matches!</span>' : ''));
+    if (F.same(st.T, P.target)) { win(); return; }
+    render({ add: L.f.add, flip: { quad: L.quad, nd: L.nd } });
+    if (moves() === P.par * 3 && hints === 0) say($('msg').innerHTML + ' Stuck? A hint shows the next best flip.');
+  }
+  function tapTri(t) {
+    if (!signPhase()) return;
+    const s = Object.assign({}, st.s); s[t] = -s[t];
+    hist.push({ kind: 'sign', st }); st = F.state(n, st.T, s); hintCode = hintTri = -1;
+    play('tryTone', s[t] > 0 ? 2 : 0);
+    focusKey = '#' + (glue ? 'svgG' : 'svgA') + ' .tri-g[data-t="' + t + '"]';
+    const col = colouring(), clash = P.target.filter(d => { const [a, b] = F.ends(n, d); return col[a] === col[b]; }).length;
+    say('Signs set. ' + (clash ? '<span class="bad">' + clash + ' ✕</span> on the target: these signs cannot reach ' + (clash > 1 ? 'those diagonals' : 'that diagonal') + '.' : 'No ✕ on the target: these signs might work. Flip to lock them in.'));
+    render({ add: [t] });
+  }
+  function undo() {
+    if (!hist.length || won) return;
+    const h = hist.pop(); st = h.st; hintCode = hintTri = -1; play('thump');
+    say(h.kind === 'flip' ? 'Undid ' + dname(h.d) + '.' + (signPhase() ? ' Signs are unlocked again.' : '') : 'Sign change undone.');
+    render();
+  }
+  function reset() { if (!hist.length && !won) return; hist = []; won = false; hintCode = hintTri = -1; st = F.state(n, P.T, P.free ? freeStart : P.s); $('ovWin').classList.remove('on'); say('Back to the start.'); render(); }
+  function hint() {
+    if (won) return;
+    hints++;
+    if (signPhase()) {
+      // the best signing nearest to the current one: point at one triangle that must change, or say "flip now"
+      const S = F.solveFree(n, P.T, P.target), bestLen = S.best.path.length, cur = st.s;
+      const dist = s => Object.keys(s).filter(k => s[k] !== cur[k]).length;
+      const opt = S.solutions.filter(x => x.path.length === bestLen).sort((x, y) => dist(x.s) - dist(y.s))[0];
+      const diff = Object.keys(opt.s).filter(k => opt.s[k] !== cur[k]).map(Number);
+      if (diff.length) { hintTri = diff[0]; play('hunt', 1); say('Hint: switch the glowing triangle (' + diff.length + ' sign' + (diff.length > 1 ? 's' : '') + ' to change for a par solution).'); render(); return; }
+      hintCode = opt.path[0];
+    } else {
+      const p = F.solve(st, P.target);
+      if (!p) { play('nope'); say('<span class="bad">No way through from here:</span> these signs cannot reach the target. Undo back to the start and choose other signs.'); return; }
+      hintCode = p[0];
+      if (p.length > P.par - moves()) say('Hint: flip the glowing diagonal (' + p.length + ' flips left from here).');
+    }
+    play('hunt', 2);
+    if (!$('msg').textContent.startsWith('Hint')) say('Hint: flip ' + dname(hintCode) + ', the glowing diagonal.');
+    focusKey = '#' + (glue ? 'svgG' : 'svgA') + ' .dg[data-d="' + hintCode + '"]';
+    render();
+  }
+  function win() {
+    won = true; const m = moves(), stars = (m <= P.par ? 3 : m <= P.par + 2 ? 2 : 1) - (hints && m <= P.par ? 1 : 0);
+    if (li >= 0) { const b = save.best[key()] || {}; if (!b.moves || m < b.moves || stars > (b.stars || 0)) save.best[key()] = { moves: Math.min(m, b.moves || 1e9), stars: Math.max(stars, b.stars || 0) }; persist(); }
+    render({ bloom: true });
+    play('find'); setTimeout(() => play('flourish'), 260);
+    confetti();
+    const col = colouring(), used = new Set(col).size;
+    say('<span class="good">Matched in ' + m + '.</span> The colours were there all along.');
+    setTimeout(() => {
+      if (!won) return;
+      $('winStars').innerHTML = starsHTML(stars); [0, 1, 2].forEach(i => setTimeout(() => play('star', i, i < stars), 300 + i * 180));
+      $('winScore').textContent = m + ' flip' + (m === 1 ? '' : 's') + ' · par ' + P.par + (hints ? ' · ' + hints + ' hint' + (hints > 1 ? 's' : '') : '');
+      $('winWhy').textContent = 'Your signs were a ' + used + '-colouring of the corners, and flips never change it. It fits the target too, so the two triangulations glue into one sphere map with no two neighbours the same colour. Eliahou: some signs always work, for any two triangulations; that is the Four Colour Theorem.';
+      $('wNext').style.display = li >= 0 && li + 1 < LV.length || li < 0 ? '' : 'none';
+      $('wNext').textContent = li < 0 ? 'Another' : 'Next level';
+      $('ovWin').classList.add('on'); $('wNext').focus();
+    }, reduce() ? 300 : 1300);
+  }
+  function confetti() {
+    if (reduce()) return;
+    const svg = $('svgA'), g = el('g', { class: 'conf' }, svg), bits = [], cols = ['#ef5a3c', '#3d8fe8', '#e8c547', '#4caf50'];
+    for (let i = 0; i < 36; i++) { const a = Math.random() * Math.PI * 2, v = .6 + Math.random() * 1.2; bits.push({ x: 0, y: 0, vx: Math.cos(a) * v, vy: Math.sin(a) * v - .6, r: Math.random() * 6, w: (Math.random() - .5) * 12,
+      e: el('polygon', { points: '0,-.05 .045,.03 -.045,.03', fill: cols[i % 4] }, g) }); }
+    const t0 = performance.now();
+    (function step(now) { const t = (now - t0) / 1000; bits.forEach(b => { const x = b.vx * t, y = b.vy * t + 1.4 * t * t; b.e.setAttribute('transform', 'translate(' + x.toFixed(3) + ',' + y.toFixed(3) + ') rotate(' + ((b.r + b.w * t) * 57.3).toFixed(1) + ')'); b.e.setAttribute('opacity', Math.max(0, 1 - t / 1.3).toFixed(2)); });
+      if (t < 1.3) requestAnimationFrame(step); else g.remove(); })(t0);
+  }
+
+  // ---------------------------------------------------------------- input: nearest diagonal to the pointer (at least a 44 px band)
+  function boardPoint(svg, ev) { const p = svg.createSVGPoint(); p.x = ev.clientX; p.y = ev.clientY; const m = svg.getScreenCTM(); return m ? p.matrixTransform(m.inverse()) : null; }
+  const segDist = (p, A, B) => { const dx = B[0] - A[0], dy = B[1] - A[1], L = dx * dx + dy * dy; let t = ((p.x - A[0]) * dx + (p.y - A[1]) * dy) / L; t = Math.max(0, Math.min(1, t)); return Math.hypot(p.x - A[0] - t * dx, p.y - A[1] - t * dy); };
+  function inTri(p, t, r) { const q = t.map(v => pt(v, r)); const s = (a, b) => (b[0] - a[0]) * (p.y - a[1]) - (b[1] - a[1]) * (p.x - a[0]); const s1 = s(q[0], q[1]), s2 = s(q[1], q[2]), s3 = s(q[2], q[0]); return (s1 >= 0 && s2 >= 0 && s3 >= 0) || (s1 <= 0 && s2 <= 0 && s3 <= 0); }
+  function onTap(svg, r, ev) {
+    if (won) return;
+    const p = boardPoint(svg, ev); if (!p) return;
+    const unit = svg.getBoundingClientRect().width / 2.6, near = 22 / unit;   // svg units per 22 px
+    let best = -1, bd = 1e9;
+    st.T.forEach(d => { const [a, b] = F.ends(n, d), dd = segDist(p, pt(a, r), pt(b, r)); if (dd < bd) { bd = dd; best = d; } });
+    if (signPhase()) {
+      // choosing signs: a tap well inside a triangle switches it; near a diagonal it is a flip
+      const t = F.triangles(n, st.T).find(tt => inTri(p, tt, r));
+      if (t && bd > Math.min(near * 0.6, 0.12)) { tapTri(triCodeOf(t)); return; }
+    }
+    if (best >= 0 && bd <= Math.max(near, 0.09)) tapDiag(best);
+  }
+  $('svgA').addEventListener('click', ev => onTap($('svgA'), R0, ev));
+  $('svgG').addEventListener('click', ev => { const p = boardPoint($('svgG'), ev); if (p && Math.hypot(p.x, p.y) < 0.66 * 1.06) onTap($('svgG'), 0.66, ev); });
+  // keyboard on the boards: Enter / Space acts on the focused piece, arrows walk between pieces
+  ['svgA', 'svgG'].forEach(id => $(id).addEventListener('keydown', ev => {
+    const g = ev.target.closest && ev.target.closest('.dg, .tri-g'); if (!g) return;
+    if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); if (g.classList.contains('dg')) tapDiag(+g.dataset.d); else tapTri(+g.dataset.t); return; }
+    if (/^Arrow/.test(ev.key)) {
+      ev.preventDefault(); const all = [...$(id).querySelectorAll('.dg, .tri-g[tabindex]')], i = all.indexOf(g), k = /Right|Down/.test(ev.key) ? 1 : -1;
+      all[(i + k + all.length) % all.length].focus();
+    }
+  }));
+  addEventListener('keydown', ev => {
+    if (ev.target.tagName === 'SELECT') return;
+    if ($('ovHelp').classList.contains('on')) { if (ev.key === 'Escape' || ev.key === 'Enter') closeHelp(); return; }
+    if ($('ovWin').classList.contains('on')) { if (ev.key === 'Escape') $('ovWin').classList.remove('on'); else if (ev.key.toLowerCase() === 'n') next(); return; }
+    const k = ev.key.toLowerCase();
+    if ((ev.ctrlKey || ev.metaKey) && k === 'z') { ev.preventDefault(); undo(); return; }
+    if (ev.ctrlKey || ev.metaKey || ev.altKey) return;
+    if (k === 'u') undo(); else if (k === 'r') reset(); else if (k === 'h') hint(); else if (k === 'c') toggleCol(); else if (k === 'g') toggleGlue(); else if (k === 'n' && won) next(); else if (k === '?') openHelp();
+  });
+
+  // ---------------------------------------------------------------- chrome
+  function fillSelect() {
+    const s = $('sel'); s.innerHTML = ''; let og = null, ch = null;
+    LV.forEach((L, i) => {
+      if (L.ch !== ch) { ch = L.ch; og = document.createElement('optgroup'); og.label = ch; s.appendChild(og); }
+      const o = document.createElement('option'), b = save.best['L' + i];
+      o.value = i; o.textContent = (i + 1) + '. ' + L.name + ' · ' + L.n + '-gon' + (b ? '  ' + '★'.repeat(b.stars) + '☆'.repeat(3 - b.stars) : ''); og.appendChild(o);
+    });
+    if (li < 0) { const o = document.createElement('option'); o.value = -1; o.textContent = 'Random ' + n + '-gon, par ' + P.par; s.appendChild(o); }
+    s.value = String(li);
+  }
+  $('sel').addEventListener('change', () => { const i = +$('sel').value; if (i >= 0) { glue = false; load(i); } });
+  function next() { if (li < 0) randomPuzzle(); else if (li + 1 < LV.length) { glue = false; load(li + 1); } }
+  function randomPuzzle() {
+    const base = li >= 0 ? LV[li] : { n, len: P.par, free: P.free }, seed = (Math.random() * 1e9) | 0;
+    custom = F.generate(base.n, seed, { len: base.len, detour: base.detour, free: base.free }); glue = false; load(-1, custom);
+  }
+  function toggleCol() { showCol = !showCol; save.colours = showCol; persist(); render(); say(showCol ? 'The colouring your signs make. A diagonal can flip exactly when its two far corners differ in colour.' : ''); }
+  function toggleGlue() { glue = !glue; render(); if (glue) say('The ring is the shared rim. Your triangles inside, the target\'s diagonals outside: one map on a sphere. When they match, it is properly 4-coloured.'); }
+  const openHelp = () => { $('ovHelp').classList.add('on'); $('hOk').focus(); };
+  const closeHelp = () => { $('ovHelp').classList.remove('on'); save.seenHelp = 1; persist(); };
+  $('bUndo').onclick = undo; $('bReset').onclick = reset; $('bHint').onclick = hint; $('bCol').onclick = toggleCol; $('bGlue').onclick = toggleGlue;
+  $('bSnd').onclick = () => { save.sound = !sndOn(); persist(); render(); if (sndOn()) play('tryTone', 1); };
+  $('bHelp').onclick = openHelp; $('hOk').onclick = closeHelp; $('bRand').onclick = randomPuzzle;
+  $('wNext').onclick = next; $('wAgain').onclick = () => { $('ovWin').classList.remove('on'); reset(); };
+  $('wSphere').onclick = () => { $('ovWin').classList.remove('on'); glue = true; render(); say('Your triangles inside, the target\'s outside, glued along the ring: a sphere map, 4-coloured by your signs.'); };
+  $('ovWin').addEventListener('click', e => { if (e.target === $('ovWin')) $('ovWin').classList.remove('on'); });
+  $('ovHelp').addEventListener('click', e => { if (e.target === $('ovHelp')) closeHelp(); });
+
+  // phones: the flip counter sits beside the small target, saving a row
+  const MQ = matchMedia('(max-width: 719px)'), hudHome = $('hud').parentNode, hudNext = $('hud').nextSibling;
+  const placeHud = () => { if (MQ.matches) document.querySelector('#goal .side').prepend($('hud')); else hudHome.insertBefore($('hud'), hudNext); };
+  (MQ.addEventListener ? MQ.addEventListener('change', placeHud) : MQ.addListener(placeHud)); placeHud();
+
+  // ---------------------------------------------------------------- start
+  const qn = +QS.get('n');
+  if (qn >= 4 && qn <= 13) { custom = F.generate(qn, +QS.get('seed') || 1, { len: +QS.get('len') || qn - 2, free: QS.get('free') === '1', detour: +QS.get('detour') || 0 }); load(-1, custom); }
+  else { const q = parseInt(QS.get('lvl'), 10); load(q >= 1 && q <= LV.length ? q - 1 : Math.min(save.lvl || 0, LV.length - 1)); }
+  if (!save.seenHelp && !QS.has('nohelp')) openHelp();
+  // test hooks (tools/flip_ui_check.js)
+  window.FLIP_PAGE = { get state() { return st; }, get puzzle() { return P; }, get won() { return won; }, moves, level: () => li, solve: () => F.solve(st, P.target) };
+})();
+</script>
+</body>
+</html>

@@ -83,6 +83,17 @@ census state, splice variants and evolved trap maps with exact distances) comes 
 and 4-core training from `node tools/arena_scale.js`. Results, and what scaling up would take:
 [lab/arena/PRETRAINING.md](lab/arena/PRETRAINING.md).
 
+**Flip (lab game).** [Flip](lab/flip.html) is the 4CT in polygon form (Eliahou's signed diagonal flips, which
+Gravier–Payan showed are equivalent to it). Two triangulations of an n-gon share their corners, and every triangle is
+signed ＋ or −. A diagonal may flip only between two triangles of the same sign, and the new ones take the other sign.
+Match the target. The signs secretly encode a 4-colouring that suits both, so gluing the two polygons gives a
+4-coloured sphere map; the page shows it on a win. It has 25 levels (5- to 12-gons, par from the solver) and a
+free-signs chapter. Maths and solver: `lab/flip-model.js`, checked exhaustively for n ≤ 11 against direct 4-colourings,
+Tait colourings and Kauffman's two-bracketings form (`node tools/flip_check.js`). The page is checked by
+`node tools/flip_ui_check.js`. An RL environment with random and greedy baselines is in `lab/flip-env.js`
+([lab/arena/FLIP-ENV.md](lab/arena/FLIP-ENV.md), `node tools/flip_env_check.js`). Design note:
+[lab/FLIP-DESIGN.md](lab/FLIP-DESIGN.md). It is lab-only: not a skin, no tickets.
+
 Research logging is off unless the player agrees on the title screen, and it stays on the device unless an upload
 form is configured in `telemetry.js` (none is).
 
