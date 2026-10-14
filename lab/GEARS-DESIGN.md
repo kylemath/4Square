@@ -1,7 +1,9 @@
-# Gears: design note (lab prototype)
+# Gears: design note
 
-Prototype page: `lab/gears.html` (open `lab/gears.html?lvl=<id or number>`; it is not on the skin reel or in the tickets).
-The maths behind the "jam" is `~/GraphColour/SolvingFrameworkPlan/docs/working/GearPolarity.md` (exploratory).
+The Gears skin: spec `skins/gears.js`, play page `lab/gears.html` (standalone: `lab/gears.html?lvl=<id or number>`).
+Ticket 14 (30 levels, 4,800 points); coin: the cog (30 G), trading with cheese wedges and ion orbs.
+The maths behind the "jam" is `~/GraphColourDeductiveSolver/SolvingFrameworkPlan/docs/working/GearPolarity.md` (exploratory);
+behind the die, `MathPathwayPF-degree.md` in the same folder.
 
 ## Why gears
 
@@ -80,12 +82,37 @@ The hub meshes with every rim gear. When the cascade reaches a rim gear, the hub
 - Then `LAB.done()`.
 - Embedded, nothing restarts afterwards; standalone, a tap starts over.
 
-## To make it a real skin later (not done)
+## The die (the die counter in the hub)
 
-- `skins/gears.js` with theme and `--sk-ctl*` and star tokens, intro pages, bonus tile, coin (a cog, a unique value), icon,
-  card.
-- `index.html` script tag (shell owner), `sw.js` files list, a ticket gate and price in `tickets.js`, and market lines in
-  `economy.js`.
-- Checks: `skin_check`, `tickets_check`, `economy_check`, `contrast_check`, `embed_win_check gears`.
-- These were left out on purpose. Adding `skins/gears.js` alone would make `tickets_check` and `economy_check` fail until
-  the ticket and market entries exist.
+A tetrahedral die sits in the drive hub: the four elements are its four faces (face k is the one element k does not
+touch). Every corner of the map (three regions meeting) lands on one face, read clockwise (+1) or anticlockwise (−1).
+
+- **Definition** (`degree.js`, `FTH_DEGREE.counts(g, col)`): orient the corners clockwise on screen (`rot` faces, voted by
+  `pos`); D = the map minus the hole's 5 corners; n_k = the signed count of D's corners that miss element k. The rim loop
+  (5 elements, clockwise) cancels to one triangle, the face m it wraps (when unfilled: the apex element between the two
+  copies of the trouble spot), with sign eps. Lemma 1 of the research note: n_k = N for the three k ≠ m, and n_m = N − eps.
+  **N is the die counter**; it does not depend on which face you count, once the rim face is corrected. A filled board's
+  whole sphere has Fisk's degree N − eps. An odd renaming of the elements flips N and eps, so N × eps is the label-free form.
+  Onboarding ponds (2-3 elements, not triangulations) have no counter and show no die.
+- **Look:** an SVG over the hub (a 3D-projected tetrahedron, shaded faces in the element colours with their icons, a dark
+  outline, a brass plate with N), `role="img"` with the label "Die counter N" and a polite live region. The die sits on face
+  m and is turned N × 120°: a swap that changes N clicks it round one notch per unit, in the direction of the change, with
+  ratchet clicks and a "+k" / "−k" float; a swap that moves m tumbles it onto the new face. Reduced motion: it jumps, the
+  float only fades. It fades out when the hub gear drops in.
+- **Always shown** where defined, never a hint: it shows nothing about future moves, so the "no lock badge" rule above stands.
+  `degree.js` also has the frame, locks and π (the order of `Gr.link`, as `kempe_engine.py` and `piChain`), for the checks,
+  the arena and the sibling star-rim HUD; the page does not use them.
+- **Egg** `die-six`: the counter reaches ±6 on a level: a chime, 150 points, quietly.
+
+**What π does to it (measured, `node tools/degree_check.js`; a measurement, not a proof).** The hope was a crank: each forced
+π move turning N by a fixed amount in one direction, so a treadmill of π could never repeat a board. On all 31 maps:
+
+- Lemma 1 holds on all 793,611 states checked (every census state of every level and every state one swap beyond).
+- π, from each of the 14,984 doubly locked census states: ΔN × eps takes 17 values, −17 to +15, **always odd**, both signs
+  about equally often (−1: 3,838, +1: 3,320, ±3: 2,409 / 1,988, ...). Not a constant. No variant tried is one either
+  (ΔN × eps after the move, Δ(N × eps), Δ(N − eps) × eps, ΔN × hop direction).
+- Two regularities did show: eps never changes under π, and the trouble spot always hops the same way (3 steps along
+  `Gr.link`, which on these maps runs anticlockwise: 2 steps clockwise round the star).
+- π treadmills close up: on r1, c30, p32r111, p31r12, p32r11, p34r28, π repeated while doubly locked returns to the very
+  same labelled board after 60 moves (160 runs), the counter up about as often as down, net 0. So on these maps π is no crank.
+- For comparison: quiet swaps change N by even amounts (symmetric about 0), swaps through the rim by any amount.

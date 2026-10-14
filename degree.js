@@ -6,7 +6,8 @@
  *
  * DEFINITION (precise; follows MathPathwayPF-degree.md, Lemma 1, in our own sign convention):
  *   - orientation: the graph's rotation system `rot` gives the faces; they are oriented so that a corner (p, q, r) runs
- *     clockwise on screen in the graph's own drawing `pos` (y down). Maps that are not 4-element triangulations with a
+ *     clockwise on screen in the graph's own drawing `pos` (y down); without `pos` (the arena's generated maps) the
+ *     rotation system's own orientation is used. Maps that are not 4-element triangulations with a
  *     degree-5 hole (the onboarding ponds) have no counter: of() returns null.
  *   - the disc D = the map minus the hole and its 5 corners. For each die face k:
  *       n_k = sum over corners (p, q, r) of D with elements {a, b, c} = all but k of  sign(a, b, c, k)
@@ -56,7 +57,7 @@
     if (CACHE && CACHE.has(G)) return CACHE.get(G);
     const n = G.n, hole = G.hole, rot = G.rot, pos = G.pos;
     const out = { ok: false, faces: [], ring: [], link: (G.link || G.rim || []).slice() };
-    if (!rot || !pos || (G.ncol || G.NC || 4) !== 4) { if (CACHE) CACHE.set(G, out); return out; }
+    if (!rot || (G.ncol || G.NC || 4) !== 4) { if (CACHE) CACHE.set(G, out); return out; }
     // faces of the rotation system: after the dart a -> b comes b -> (the neighbour before a round b)
     const seen = new Set(), faces = [];
     for (let u = 0; u < n; u++) for (const v of rot[u]) {
@@ -68,7 +69,7 @@
     const tri = faces.every(f => f.length === 3) && faces.length === 2 * n - 4;
     // clockwise on screen (y down) = positive shoelace area; the outer face of the drawing votes the other way, so use the majority
     let vote = 0;
-    for (const f of faces) { if (f.length !== 3) continue; const [p, q, r] = f.map(u => pos[u]); const A = (q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0]); vote += A > 0 ? 1 : A < 0 ? -1 : 0; }
+    if (pos) for (const f of faces) { if (f.length !== 3) continue; const [p, q, r] = f.map(u => pos[u]); const A = (q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0]); vote += A > 0 ? 1 : A < 0 ? -1 : 0; }
     if (vote < 0) faces.forEach(f => f.reverse());
     const star = faces.filter(f => f.includes(hole)), D = faces.filter(f => !f.includes(hole));
     out.faces = D;

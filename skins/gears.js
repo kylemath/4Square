@@ -138,7 +138,7 @@
     const T = (x, y, s, ls, fill, str) => '<text x="' + (x + 3) + '" y="' + (y + 4) + '" font-family="' + FONT + '" font-size="' + s + '" letter-spacing="' + ls + '" fill="' + INK + '" stroke="' + INK + '" stroke-width="8" stroke-linejoin="round" paint-order="stroke">' + str + '</text>' +
       '<text x="' + x + '" y="' + y + '" font-family="' + FONT + '" font-size="' + s + '" letter-spacing="' + ls + '" fill="' + fill + '" stroke="' + INK + '" stroke-width="6" stroke-linejoin="round" paint-order="stroke">' + str + '</text>';
     return '<defs><linearGradient id="' + p + '-t" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff6d8"/><stop offset=".45" stop-color="' + BRASS + '"/><stop offset="1" stop-color="#b9751c"/></linearGradient></defs>' +
-      '<g transform="translate(' + tx + ' 0)">' + gear(0, 38, 40, 27, { rot: 6 }) + gear(1, 70, 62, 13, { rot: 14 }) + T(86, 52, 42, 2, 'url(#' + p + '-t)', 'GEARS') + spark(216, 20, 6) + '</g>';
+      '<g transform="translate(' + tx + ' 0)">' + gear(0, 38, 40, 27, { rot: 6 }) + gear(1, 70, 62, 13, { rot: 14 }) + T(84, 52, 38, 2, 'url(#' + p + '-t)', 'GEARS') + spark(96, 12, 5) + '</g>';
   }
   const logo = '<svg viewBox="0 0 240 80" xmlns="http://www.w3.org/2000/svg">' + logoArt('gears-lg') + '</svg>';
 
@@ -188,10 +188,13 @@
         '<path d="' + z.path + '" fill="' + c + '" fill-opacity=".35" stroke="' + BRASS + '" stroke-opacity=".55" stroke-width="2.5" stroke-dasharray="2 8"/>' +
         bolt(z.x0 + 34, z.y0 + 30, 5) + bolt(z.x1 - 34, z.y0 + 30, 5) + bolt(z.x0 + 34, z.y1 - 30, 5) + bolt(z.x1 - 34, z.y1 - 30, 5) + '</g>';
     },
-    decor(theme, r, r2) {
-      if (r < .5) return '<g transform="rotate(' + f1(r2 * 60) + ')"><path d="' + cogD(9 + r2 * 6, 8, 'block') + '" fill="' + STEEL_D + '" stroke="' + INK + '" stroke-width="1.6"/><circle r="3" fill="' + INK + '"/></g>';
-      if (r < .75) return bolt(0, 0, 5 + r2 * 3);
-      return '<g transform="rotate(' + f1(r2 * 90) + ')"><rect x="-12" y="-3" width="24" height="6" rx="3" fill="' + BRASS_D + '" stroke="' + INK + '" stroke-width="1.6"/>' + bolt(-8, 0, 2.4) + bolt(8, 0, 2.4) + '</g>';
+    decor(theme, r, r2) {        // about half the free spots stay empty: a meshing pair of small gears, a lone cog, a bolt, a strap
+      const e = Math.floor(r2 * 4) % 4;
+      if (r < .14) return gear(e, -6, 2, 10, { rot: f1(r2 * 40) }) + gear((e + 1) % 4, 10, -8, 7, { rot: f1(r2 * 70) });
+      if (r < .26) return '<g transform="rotate(' + f1(r2 * 60) + ')"><path d="' + cogD(9 + r2 * 5, 8, 'block') + '" fill="' + STEEL_D + '" stroke="' + INK + '" stroke-width="1.6"/><circle r="3" fill="' + INK + '"/></g>';
+      if (r < .36) return bolt(0, 0, 4 + r2 * 3);
+      if (r < .44) return '<g transform="rotate(' + f1(r2 * 90) + ')"><rect x="-12" y="-3" width="24" height="6" rx="3" fill="' + BRASS_D + '" stroke="' + INK + '" stroke-width="1.6"/>' + bolt(-8, 0, 2.4) + bolt(8, 0, 2.4) + '</g>';
+      return '';
     },
     sign(label, w) {
       return '<rect x="2" y="4" width="' + w + '" height="30" rx="7" fill="' + INK + '" opacity=".5"/><rect width="' + w + '" height="30" rx="7" fill="' + BRASS + '" stroke="' + INK + '" stroke-width="3"/>' +
