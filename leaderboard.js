@@ -1,7 +1,8 @@
-/* leaderboard.js: the account + leaderboard screen. One standings table, Mario Kart style: slanted position numbers
- * (gold, silver, bronze, then plain), banded rows sliding in from the right, your own row lit and pulsing, ranked by
- * coins earned in one skin (FTH_ACCT.podium). A strip of skin icons picks the skin; two icon tabs pick this device or
- * everyone. Not joined yet: a bright join banner on top, with Google sign-in right there (disabled in LOCAL mode).
+/* leaderboard.js: the account + leaderboard screen. ONE standings table over every skin, Mario Kart style: slanted
+ * position numbers (gold, silver, bronze, then plain), banded rows sliding in from the right, your own row lit and pulsing.
+ * Ranked by overall progress, the furthest level beaten in any skin (FTH_ACCT.standings); columns: the level the player
+ * is on, levels beaten summed over the skins, and their favourite skin (most levels beaten there). Two icon tabs pick
+ * this device or everyone. Not joined yet: a bright join banner on top, with Google sign-in right there (disabled in LOCAL mode).
  * Lazy-loaded (after account-config.js and account.js) the first time the trophy button is tapped, so the game itself
  * stays fast and offline-capable. Styled only with the skin's --sk-* tokens (SKIN-SPEC.md), so it fits every skin.
  *   window.FTH_LB.open(skinId)
@@ -50,16 +51,6 @@
 #lb .lb-err{font-size:13px;font-weight:800;min-height:0;color:#b3001b}
 #lb .lb-err:empty{display:none}
 #lb .lb-card .lb-err{color:#ff8a80}
-/* skin strip */
-#lb .lb-skins{flex:none;display:flex;gap:8px;overflow-x:auto;padding:10px 2px 12px;margin-top:-6px!important;margin:0 -12px;padding-left:12px;padding-right:12px;scrollbar-width:none;scroll-snap-type:x proximity}
-#lb .lb-skins::-webkit-scrollbar{display:none}
-#lb .lb-sk{position:relative;flex:none;width:56px;height:56px;border-radius:16px;border:3px solid #1c1640;padding:0;background:#fff;display:grid;place-items:center;font-size:28px;line-height:1;scroll-snap-align:center;box-shadow:0 4px 0 #1c1640;overflow:visible}
-#lb .lb-sk .ic{width:100%;height:100%;display:grid;place-items:center;border-radius:13px;overflow:hidden}
-#lb .lb-sk .ic svg{width:100%;height:100%;display:block}
-#lb .lb-sk[aria-checked="true"]{transform:translateY(-3px) scale(1.1);box-shadow:0 6px 0 #1c1640,0 0 0 4px var(--sk-accent,#ffd84a)}
-#lb .lb-sk:not([aria-checked="true"]) .ic{opacity:.8}
-#lb .lb-sk .bd{position:absolute;right:-6px;top:-7px;font-size:15px;line-height:1;filter:drop-shadow(0 2px 0 rgba(0,0,0,.35))}
-#lb .lb-sk.lock .ic{filter:grayscale(.85) brightness(.85)}
 /* the standings */
 #lb .lb-card{flex:none;border-radius:var(--sk-radius,22px);background:var(--sk-card);color:var(--sk-card-ink,#e6edf3);padding:10px 10px 12px;border:3px solid var(--sk-edge,rgba(0,0,0,.35));box-shadow:0 6px 0 rgba(0,0,0,.25)}
 #lb .lb-bh{display:flex;align-items:center;gap:8px;padding:2px 4px 10px}
@@ -84,13 +75,27 @@
 #lb .lb-av{width:38px;height:38px;flex:none;border-radius:50%;border:3px solid #1c1640;display:grid;place-items:center;color:#fff;font-weight:900;font-size:17px;text-shadow:0 2px 0 rgba(0,0,0,.3);box-shadow:inset 0 -4px 0 rgba(0,0,0,.18),inset 0 3px 0 rgba(255,255,255,.35)}
 #lb .lb-n{flex:1;min-width:0;font-weight:900;font-size:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #lb .lb-c{display:flex;align-items:center;gap:5px;font-weight:900;font-size:18px;flex:none}
+#lb .lb-cols{display:flex;align-items:center;gap:7px;padding:0 12px 6px 4px;font-size:11px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;opacity:.7}
+#lb .lb-cols .sp{flex:1}
+#lb .lb-lv,#lb .lb-sum,#lb .lb-fav{flex:none;text-align:center;font-weight:900}
+#lb .lb-lv{width:46px;font-size:17px}
+#lb .lb-cols .lb-lv,#lb .lb-cols .lb-sum,#lb .lb-cols .lb-fav{font-size:11px;width:auto;min-width:0}
+#lb .lb-cols .lb-lv{width:46px}#lb .lb-cols .lb-sum{width:36px}#lb .lb-cols .lb-fav{width:38px}
+#lb .lb-cols .av{width:38px;flex:none}
+#lb .lb-body .lb-r{gap:7px}
+#lb .lb-body .lb-pos{width:44px}
+#lb .lb-lv.done{font-size:20px}
+#lb .lb-sum{width:36px;font-size:16px}
+#lb .lb-fav{width:38px;height:38px;display:grid;place-items:center}
+#lb .lb-fav .ic{width:34px;height:34px;border-radius:10px;overflow:hidden;display:grid;place-items:center;font-size:24px;line-height:1;background:#fff;border:2px solid #1c1640}
+#lb .lb-fav .ic svg{width:100%;height:100%;display:block}
+@media (max-width:380px){#lb .lb-body .lb-r,#lb .lb-cols{gap:5px}#lb .lb-body .lb-pos{width:38px}#lb .lb-pos b{font-size:26px}#lb .lb-n{font-size:15px}}
 #lb .lb-r.gap{height:18px;background:none;justify-content:center;font-weight:900;letter-spacing:4px;opacity:.6;clip-path:none}
 #lb .lb-r.ghost{background:none;outline:3px dashed color-mix(in srgb,var(--sk-card-ink,#fff) 28%,transparent);outline-offset:-3px;clip-path:none;border-radius:12px}
 #lb .lb-r.ghost .lb-av{background:color-mix(in srgb,var(--sk-card-ink,#fff) 20%,transparent);border-style:dashed}
 #lb .lb-r.ghost .bar{flex:1;height:12px;border-radius:6px;background:color-mix(in srgb,var(--sk-card-ink,#fff) 14%,transparent)}
 #lb .lb-r.you{background:none;outline:3px dashed var(--sk-accent,#ffd84a);outline-offset:-3px;clip-path:none;border-radius:12px;cursor:pointer}
 #lb .lb-r.you .tag{font-size:12px;font-weight:900;padding:3px 8px;border-radius:99px;background:var(--sk-accent,#ffd84a);color:#1c1640}
-#lb .lb-pod{display:block;width:100%;max-width:280px;margin:0 auto 6px}
 #lb .lb-state{padding:30px 8px;text-align:center;font-size:40px}
 #lb .lb-state .b3{margin:10px auto 0;width:140px}
 /* you */
@@ -121,14 +126,11 @@
 #lb .lb-jt .flag{animation:lbwig 2.4s ease-in-out infinite}
 @keyframes lbpop{0%{transform:scale(.7);opacity:0}100%{transform:none;opacity:1}}
 @keyframes lbwig{0%,70%,100%{transform:rotate(0)}76%{transform:rotate(-14deg) scale(1.1)}84%{transform:rotate(12deg) scale(1.1)}92%{transform:rotate(-6deg)}}
-#lb .lb-pod .gh{animation:lbfloat 2.6s ease-in-out infinite}
 @keyframes lbfloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}}
 `;
-  let root, skin, scope = 'device', seq = 0, nickDraft = '';
+  let root, scope = 'device', seq = 0, nickDraft = '';
   const skins = () => (window.FTH_SKINS && FTH_SKINS.list || []).filter(k => k.id);
   const specOf = id => skins().find(x => x.id === id) || { id, name: id, ic: '' };
-  const coinOf = k => window.FTH_SKINS ? FTH_SKINS.coinOf(k) : { plural: 'coins', svg: () => '' };
-  const own = id => !window.FTH_OWNS || FTH_OWNS(id);
   const iconOf = k => typeof k.icon === 'string' && /^\s*<svg[\s>]/.test(k.icon) && !/<script/i.test(k.icon) ? k.icon : '<span aria-hidden="true">' + esc(k.ic || '•') + '</span>';
   const hue = s => { let h = 0; for (const c of String(s || '')) h = (h * 31 + c.charCodeAt(0)) | 0; return AV[Math.abs(h) % AV.length]; };
   const initial = s => esc((String(s || '?').trim()[0] || '?').toUpperCase());
@@ -138,7 +140,7 @@
     const st = document.createElement('style'); st.textContent = CSS; document.head.appendChild(st);
     root = document.createElement('div'); root.id = 'lb'; root.setAttribute('role', 'dialog'); root.setAttribute('aria-modal', 'true'); root.setAttribute('aria-labelledby', 'lbTitle');
     root.innerHTML = '<div class="lb-head"><button class="lb-x" aria-label="Close leaderboard">✕</button><h2 id="lbTitle">🏆 Scores</h2><div class="lb-tabs" role="tablist" aria-label="Who to show"></div></div>' +
-      '<div class="lb-scroll"><div id="lbJoin"></div><div class="lb-skins" role="radiogroup" aria-label="Skin"></div><div class="lb-card" id="lbBody" aria-live="polite"></div><div id="lbYou"></div></div>';
+      '<div class="lb-scroll"><div id="lbJoin"></div><div class="lb-card lb-body" id="lbBody" aria-live="polite"></div><div id="lbYou"></div></div>';
     document.body.appendChild(root);
     $('.lb-x', root).onclick = close;
     root.addEventListener('keydown', e => { if (e.key === 'Escape') close(); });
@@ -146,10 +148,9 @@
     addEventListener('fth-cloud', () => { if (root.classList.contains('on') && !(window.FTH_CLOUD && FTH_CLOUD.state().busy)) render(); });
   }
   function close() { root.classList.remove('on'); if (root._from && root._from.focus) root._from.focus(); }
-  async function open(skinId) {
-    build(); const S = skins();
-    skin = S.some(k => k.id === skinId) ? skinId : (S[0] && S[0].id) || 'islands';
-    root._from = document.activeElement; root._center = true; root.classList.add('on');
+  async function open() {
+    build();
+    root._from = document.activeElement; root.classList.add('on');
     await A.init(); scope = A.state().kind === 'local' ? 'device' : 'everyone'; render();
     setTimeout(() => $('.lb-x', root).focus(), 30);
   }
@@ -159,46 +160,35 @@
       `<button role="tab" aria-selected="${scope === 'everyone'}" data-t="everyone" aria-label="Everyone" ${s.kind === 'local' ? 'disabled title="Everyone: needs the online setup"' : 'title="Everyone"'}>🌍</button>`;
     t.querySelectorAll('button').forEach(b => b.onclick = () => { if (b.disabled || scope === b.dataset.t) return; scope = b.dataset.t; render(); });
   }
-  function strip(P) {
-    const el = $('.lb-skins', root), by = {}; (P || []).forEach(p => { by[p.skin] = p; });
-    el.innerHTML = skins().map(k => { const p = by[k.id], r = p && p.me ? p.me.rank : 0;
-      const bd = !own(k.id) ? '🔒' : r === 1 ? '🥇' : r === 2 ? '🥈' : r === 3 ? '🥉' : '';
-      return `<button class="lb-sk${own(k.id) ? '' : ' lock'}" role="radio" aria-checked="${k.id === skin}" data-s="${esc(k.id)}" aria-label="${esc(k.name)}${r ? ', you are ' + r + ord(r) : ''}" title="${esc(k.name)}"><span class="ic">${iconOf(k)}</span>${bd ? `<span class="bd" aria-hidden="true">${bd}</span>` : ''}</button>`; }).join('');
-    el.querySelectorAll('.lb-sk').forEach(b => b.onclick = () => { if (skin === b.dataset.s) return; skin = b.dataset.s; el.querySelectorAll('.lb-sk').forEach(x => x.setAttribute('aria-checked', x === b)); board(P); });
-    const f = $('.lb-sk[aria-checked="true"]', el); if (f && root._center) { root._center = false; el.scrollLeft = Math.max(0, f.offsetLeft - el.clientWidth / 2 + f.offsetWidth / 2); }
-  }
-  const row = (r, i, C) => `<li class="lb-r${r.me ? ' me' : ''}${r.rank === 1 ? ' top1' : ''}" style="animation-delay:${i * 70}ms${r.me ? `,${i * 70 + 600}ms` : ''}" aria-label="${r.rank}${ord(r.rank)}: ${esc(r.nick)}${r.me ? ' (you)' : ''}, ${fmt(r.coins)} ${esc(C.plural)}">` +
+  const lvNum = id => { const l = ((window.GAME && GAME.levels) || []).find(x => x.id === id); return l ? String(l.num != null ? l.num : '') : ''; };
+  const lvCell = r => r.on === null && r.far >= 0 ? '<span class="lb-lv done" title="Every level beaten">🏆</span>' : `<span class="lb-lv" title="On level ${esc(lvNum(r.on))}">${esc(lvNum(r.on))}</span>`;
+  const favCell = r => { const k = r.fav && specOf(r.fav); return `<span class="lb-fav" title="${k ? esc(k.name) + ': ' + r.per[r.fav] + (r.per[r.fav] === 1 ? ' level' : ' levels') : ''}">${k ? `<span class="ic">${iconOf(k)}</span>` : ''}</span>`; };
+  const say = r => `${r.rank ? r.rank + ord(r.rank) + ': ' : ''}${esc(r.nick)}${r.me ? ' (you)' : ''}, ${r.on === null && r.far >= 0 ? 'every level beaten' : 'on level ' + esc(lvNum(r.on))}, ${r.sum} level${r.sum === 1 ? '' : 's'} over all skins${r.fav ? ', favourite ' + esc(specOf(r.fav).name) : ''}`;
+  const row = (r, i) => `<li class="lb-r${r.me ? ' me' : ''}${r.rank === 1 ? ' top1' : ''}" style="animation-delay:${i * 70}ms${r.me ? `,${i * 70 + 600}ms` : ''}" aria-label="${say(r)}">` +
     `<span class="lb-pos ${r.rank <= 3 ? 'p' + r.rank : 'pn'}" aria-hidden="true"><b>${r.rank}</b><i>${ord(r.rank)}</i></span>` +
     `<span class="lb-av" style="background:${hue(r.nick)}" aria-hidden="true">${initial(r.nick)}</span>` +
-    `<span class="lb-n" aria-hidden="true">${esc(r.nick)}${r.me ? ' ★' : ''}</span><span class="lb-c" aria-hidden="true">${C.svg(22)}${fmt(r.coins)}</span></li>`;
-  // the empty podium: three ghost steps, 2-1-3, waiting for someone
-  const podiumSvg = C => { const step = (x, h, n, c) => `<g class="gh" style="animation-delay:${n * .3}s"><circle cx="${x + 34}" cy="${102 - h - 26}" r="13" fill="currentColor" opacity=".18"/><path d="M${x + 16} ${102 - h - 4}q18-22 36 0z" fill="currentColor" opacity=".18"/><text x="${x + 34}" y="${102 - h - 21}" text-anchor="middle" font-size="14" font-weight="900" fill="currentColor" opacity=".45">?</text></g>` +
-      `<rect x="${x}" y="${102 - h}" width="68" height="${h}" rx="6" fill="${c}" stroke="#1c1640" stroke-width="3"/><text x="${x + 34}" y="${102 - h + 26}" text-anchor="middle" font-size="24" font-weight="900" font-style="italic" fill="#fff" style="fill:#fff" stroke="#1c1640" stroke-width="1.2">${n}</text>`;
-    return `<svg class="lb-pod" viewBox="0 0 220 106" aria-hidden="true">${step(4, 44, 2, '#b8c3d1')}${step(76, 64, 1, '#f2b81c')}${step(148, 30, 3, '#d27a3c')}<g transform="translate(110 12)">${C.svg(22).replace('<svg', '<svg x="-11" y="-11"')}</g></svg>`; };
-  function board(P) {
-    const body = $('#lbBody', root), s = A.state(), p = (P || []).find(x => x.skin === skin) || { top: [], me: null, mine: 0, hidden: 0 }, k = specOf(skin), C = coinOf(k);
-    let h = `<div class="lb-bh"><span class="mini" aria-hidden="true">${iconOf(k)}</span><span class="nm">${esc(k.name)}</span>` +
-      (p.hidden ? `<span class="lb-shield" title="${p.hidden} hidden: solutions did not replay" aria-label="${p.hidden} hidden entries">🛡️ ${p.hidden}</span>` : '') +
-      `<span class="cn" title="${esc(C.plural)}" aria-label="ranked by ${esc(C.plural)} earned">${C.svg(28)}</span></div>`;
-    const rows = p.top.slice(0, ROWS);
-    let li = rows.map((r, i) => row(r, i, C)).join('');
-    if (p.me && !rows.some(r => r.me)) li += `<li class="lb-r gap" aria-hidden="true">•••</li>` + row({ rank: p.me.rank, nick: s.nick || 'You', coins: p.me.coins, me: true }, rows.length + 1, C);
-    if (!rows.length) {
-      h += podiumSvg(C);
-      li += [0, 1, 2].map(i => `<li class="lb-r ghost" style="animation-delay:${i * 70}ms" aria-hidden="true"><span class="lb-pos ${'p' + (i + 1)}" style="opacity:.35"><b>${i + 1}</b><i>${ord(i + 1)}</i></span><span class="lb-av"></span><span class="bar"></span></li>`).join('');
-    }
-    if (!s.signedIn && p.mine > 0) li += `<li class="lb-r you" data-join style="animation-delay:${(rows.length + 3) * 70}ms" aria-label="You: ${fmt(p.mine)} ${esc(C.plural)}, join to get on the board"><span class="lb-pos pn"><b>?</b></span><span class="lb-av" style="background:${hue('you')}">★</span><span class="lb-n">You</span><span class="tag" aria-hidden="true">JOIN ↑</span><span class="lb-c">${C.svg(22)}${fmt(p.mine)}</span></li>`;
-    body.innerHTML = h + `<ol class="lb-rows" aria-label="${esc(k.name)} standings">${li}</ol>`;
+    `<span class="lb-n" aria-hidden="true">${esc(r.nick)}${r.me ? ' ★' : ''}</span><span aria-hidden="true" style="display:contents">${lvCell(r)}<span class="lb-sum">${r.sum}</span>${favCell(r)}</span></li>`;
+  const cols = `<div class="lb-cols" aria-hidden="true"><span class="lb-pos"></span><span class="av"></span><span class="sp"></span><span class="lb-lv" title="The level they are on">Level</span><span class="lb-sum" title="Levels beaten, summed over every skin">Skins</span><span class="lb-fav" title="Favourite skin">Fav</span></div>`;
+  function board(T) {
+    const body = $('#lbBody', root), s = A.state(), rows = T.rows.slice(0, ROWS);
+    let h = `<div class="lb-bh"><span class="nm">Overall</span>` +
+      (T.hidden ? `<span class="lb-shield" title="${T.hidden} hidden: solutions did not replay" aria-label="${T.hidden} hidden entries">🛡️ ${T.hidden}</span>` : '') + `</div>`;
+    let li = rows.map(row).join('');
+    if (T.me && !rows.some(r => r.me)) li += `<li class="lb-r gap" aria-hidden="true">•••</li>` + row(Object.assign({}, T.me, { nick: s.nick || T.me.nick }), rows.length + 1);
+    if (!rows.length) li += [0, 1, 2].map(i => `<li class="lb-r ghost" style="animation-delay:${i * 70}ms" aria-hidden="true"><span class="lb-pos ${'p' + (i + 1)}" style="opacity:.35"><b>${i + 1}</b><i>${ord(i + 1)}</i></span><span class="lb-av"></span><span class="bar"></span></li>`).join('');
+    const m = T.mine;
+    if (!s.signedIn && m && m.lv.size) li += `<li class="lb-r you" data-join style="animation-delay:${(rows.length + 3) * 70}ms" aria-label="You: ${say(Object.assign({}, m, { rank: 0, nick: 'You' }))}. Join to get on the board"><span class="lb-pos pn"><b>?</b></span><span class="lb-av" style="background:${hue('you')}">★</span><span class="lb-n">You <span class="tag" aria-hidden="true">JOIN ↑</span></span>${lvCell(m)}<span class="lb-sum">${m.sum}</span>${favCell(m)}</li>`;
+    body.innerHTML = h + cols + `<ol class="lb-rows" aria-label="Overall standings">${li}</ol>`;
     const yj = $('[data-join]', body); if (yj) yj.onclick = () => { const j = $('#lbJoin', root); j.scrollIntoView && j.scrollIntoView({ block: 'start', behavior: 'smooth' }); const n = $('#lbNick', j); if (n) n.focus(); };
   }
   async function render() {
     const my = ++seq; tabs(); join(); you();
     const body = $('#lbBody', root), s = A.state();
-    strip(null); body.innerHTML = '<div class="lb-state" aria-label="Loading">⏳</div>';
+    body.innerHTML = '<div class="lb-state" aria-label="Loading">⏳</div>';
     try {
       if (scope === 'everyone' && !s.online) throw Object.assign(new Error('offline'), { offline: true });
-      const P = await A.podium(scope, ROWS); if (my !== seq) return;
-      strip(P); board(P);
+      const T = await A.standings(scope); if (my !== seq) return;
+      board(T);
     } catch (e) {
       if (my !== seq) return;
       body.innerHTML = e && e.offline ? '<div class="lb-state" aria-label="Offline: your scores are saved and sent later">📡✕</div>'
@@ -253,7 +243,7 @@
         ${notice(s.submit)}
         ${window.FTH_LOG ? `<label class="lb-chk"><input type="checkbox" id="lbResearch" ${research() ? 'checked' : ''}><span>🔬 Log my moves for the lab's puzzle research (no name or email).</span></label>` : ''}
         ${s.hasGoogle ? '<p class="lb-note">Linking keeps your scores. Your Google name and email are never shown or stored by the game.</p>' : `<p class="lb-note">${esc(s.note)}</p>`}
-        <p class="lb-note">Ranked by coins earned in each skin, all time: spending them does not lower it. Every entry's solutions are replayed on your device first, and its coins count only up to what its replayed levels could pay.</p>
+        <p class="lb-note">Ranked by the furthest level beaten in any skin, then by levels beaten summed over every skin. Your favourite is the skin where you have beaten the most levels. Every entry's solutions are replayed on your device first; only replayed levels count.</p>
         <div class="lb-row"><button class="lb-btn" id="lbOut">⏏ Sign out</button><button class="lb-btn" id="lbDel">🗑 Delete my leaderboard data</button></div>
         <p class="lb-note">Integrity notes on this device${ik.length ? ': ' + ik.map(k => esc(k) + ' ×' + integ[k]).join(', ') : ': none'}. They stay here unless you submit scores.</p>
         ${ik.length ? '<div class="lb-row"><button class="lb-btn" id="lbClearLog">Clear notes</button></div>' : ''}

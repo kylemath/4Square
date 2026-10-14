@@ -303,7 +303,7 @@
     }
     const t = totals(good), same = ['stars', 'levels', 'pars', 'points'].every(k => t[k] === e[k]);
     if (!same && !why.length) why.push('numbers do not match proofs');
-    return Object.assign({ ok: !why.length && t.levels > 0, why: why.join('; ') }, t);
+    return Object.assign({ ok: !why.length && t.levels > 0, why: why.join('; '), ids: Object.keys(good) }, t);
   }
   // board(skin, scope): { rows: [ranked, verified], hidden: n, me: row|null }
   async function board(skin, scope, metric) {
@@ -365,8 +365,47 @@
     return out;
   }
 
+  // ---------------------------------------------------------------- standings: one table over every skin
+  // Each player's verified entries in every skin, merged by uid. Ranked by the furthest level beaten in any skin (levels.js
+  // order), then levels beaten summed over the skins (a level beaten in three skins counts three times), then distinct levels.
+  // fav = the skin with the most levels beaten (ties: coins earned there, capped as on the podium). Reads each skin's top
+  // TOP_N * 2 entries, so a player far down one skin's board can be missing that skin's share of the sum.
+  // standings(scope): { rows: [{ rank, uid, nick, me, far, on, sum, distinct, fav, per: {skin: levels}, coins: {skin: n} }], hidden, me, mine }
+  //   far: index of the furthest level beaten (-1 none); on: the id of the level after it (null: all done); mine: this device's own row
+  function progress(row) {
+    const L = (window.GAME && GAME.levels) || [], at = new Map(L.map((l, i) => [l.id, i]));
+    let far = -1; row.lv.forEach(id => { const i = at.has(id) ? at.get(id) : -1; if (i > far) far = i; });
+    const fav = Object.keys(row.per).sort((a, b) => (row.per[b] - row.per[a]) || ((row.coins[b] || 0) - (row.coins[a] || 0)))[0] || null;
+    return Object.assign(row, { far, on: far + 1 < L.length ? L[far + 1].id : null, sum: Object.values(row.per).reduce((a, b) => a + b, 0), distinct: row.lv.size, fav });
+  }
+  const byProgress = (a, b) => (b.far - a.far) || (b.sum - a.sum) || (b.distinct - a.distinct) || ((a.updatedAt || 0) - (b.updatedAt || 0));
+  function deviceRow() {                                       // this device's own progress, every skin, from the proof store
+    const st = R.store(), row = { uid: user ? user.uid : 'device', nick: nick() || 'You', me: true, lv: new Set(), per: {}, coins: {} };
+    (window.FTH_SKINS && FTH_SKINS.list || []).forEach(k => { const ids = Object.keys(st[k.id] || {}); if (ids.length) { row.per[k.id] = ids.length; ids.forEach(id => row.lv.add(id)); } if (earned(k.id) > 0) row.coins[k.id] = earned(k.id); });
+    return progress(row);
+  }
+  async function standings(scope) {
+    await init(); await ensureCore();
+    const by = new Map(); let hidden = 0;
+    if (scope === 'device' && AD.kind !== 'local') { const d = deviceRow(); if (d.lv.size) by.set(d.uid, d); }
+    else for (const k of (window.FTH_SKINS && FTH_SKINS.list || [])) {
+      const entries = await AD.store.board(k.id, scope === 'device' ? 200 : TOP_N * 2);
+      const owner = new Map(); entries.slice().sort((a, b) => (a.updatedAt || 0) - (b.updatedAt || 0)).forEach(e => Object.values(e.pr || {}).forEach(p => { if (p && p.fp && !owner.has(p.fp)) owner.set(p.fp, e.uid); }));
+      for (const e of entries) {
+        if (!Object.keys(e.pr || {}).length) continue;          // Blank Doodle makes no proofs: no levels to count
+        const v = await verifyEntry(e, owner); if (!v.ok) { hidden++; continue; }
+        let r = by.get(e.uid);
+        if (!r) by.set(e.uid, r = { uid: e.uid, nick: e.nick, me: !!user && e.uid === user.uid, lv: new Set(), per: {}, coins: {}, updatedAt: e.updatedAt || 0 });
+        if ((e.updatedAt || 0) > r.updatedAt) { r.nick = e.nick; r.updatedAt = e.updatedAt; }
+        v.ids.forEach(id => r.lv.add(id)); r.per[k.id] = v.levels; r.coins[k.id] = Math.min(e.coins || 0, coinCap(k.id, v.levels));
+      }
+    }
+    const rows = [...by.values()].map(r => r.far === undefined ? progress(r) : r).sort(byProgress); rows.forEach((r, i) => { r.rank = i + 1; });
+    return { rows, hidden, me: rows.find(r => r.me) || null, mine: deviceRow() };
+  }
+
   const api = {
-    podium, coinCap,
+    podium, coinCap, standings,
     cloudGet: async () => { await init(); return user ? AD.store.getSave(user.uid) : null; },
     cloudPut: async (doc, expect) => { await init(); if (!user) return { ok: false }; return AD.store.putSave(user.uid, doc, expect); },
     init, ensureIdentity, setNick, validateNick, randomNick, linkGoogle, useCredential, signOut, deleteMine, flush, board, verifyEntry, totals, logPut,

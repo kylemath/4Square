@@ -9,7 +9,7 @@
 //     shop opens and the ticket unlocks Dots there, ▶ plays it, a reload keeps it with a clean seal;
 //   - the shop's live preview plays itself (&demo=1) and never reports to the shell;
 //   - a hand-edited list of owned skins is flagged by the integrity seal;
-//   - the leaderboard is one list of every skin with its top 3 by coins earned there; after joining you are 1st in Islands.
+//   - the leaderboard is one overall table (level reached, levels summed over skins, favourite skin); after joining you are 1st.
 const fs = require('fs'), path = require('path'), { serve, launch, sleep } = require('./cdp');
 const ROOT = path.join(__dirname, '..'), args = process.argv.slice(2), si = args.indexOf('--shots'), SH = si >= 0 ? args[si + 1] : null;
 let bad = 0; const ok = (m, c, x) => { console.log((c ? '  ok   ' : '  FAIL ') + m + (x !== undefined ? '  ' + (typeof x === 'string' ? x : JSON.stringify(x)) : '')); if (!c) bad++; };
@@ -118,13 +118,11 @@ const key = (sel, k) => `document.querySelector('${sel} .rl').dispatchEvent(new 
     await P.eval(`document.getElementById('btnLbTitle').click()`);
     ok('leaderboard opens with the join banner on top', await until(P, `document.querySelector('#lb.on #lbJoin .lb-join')`, 10000));
     await P.eval(`document.getElementById('lbNick').value = 'Test Otter'; document.getElementById('lbJoinBtn').click()`);
-    ok('joined: banner gone, a skin icon per skin, your row on the Islands standings', await until(P, `(document.querySelector('#lb .lb-sk[data-s="islands"]') || { click() {} }).click(), !document.querySelector('#lbJoin .lb-join') && document.querySelectorAll('#lb .lb-sk').length === FTH_SKINS.list.length && document.querySelector('#lb .lb-bh .nm').textContent === 'Islands' && /Test Otter/.test((document.querySelector('#lb .lb-r.me') || {}).textContent || '')`, 15000));
-    const pod = await P.eval(`(() => { const first = document.querySelector('#lb .lb-rows .lb-r'); return { first: first.textContent, me: first.classList.contains('me'), gold: !!first.querySelector('.lb-pos.p1'), n: FTH_SKINS.list.length, locked: document.querySelectorAll('#lb .lb-sk.lock').length }; })()`);
-    ok('you are 1st in Islands with your coins earned there', pod.me && pod.gold && /Test Otter/.test(pod.first), pod.first);
-    await P.eval(`document.querySelector('#lb .lb-sk[data-s="dots"]').click()`);
-    pod.dots = await P.eval(`({ ghosts: document.querySelectorAll('#lb .lb-r.ghost').length, rows: document.querySelectorAll('#lb .lb-r:not(.ghost)').length, podium: !!document.querySelector('#lb .lb-pod') })`);
-    ok('locked skins are tagged, unplayed skins show the empty podium', pod.locked === pod.n - 2 && pod.dots.ghosts === 3 && !pod.dots.rows && pod.dots.podium, pod);
-    await shot('podium');
+    ok('joined: banner gone, one overall table with your row on it', await until(P, `!document.querySelector('#lbJoin .lb-join') && !document.querySelector('#lb .lb-sk') && document.querySelector('#lb .lb-bh .nm').textContent === 'Overall' && /Test Otter/.test((document.querySelector('#lb .lb-r.me') || {}).textContent || '')`, 15000));
+    const pod = await P.eval(`(() => { const first = document.querySelector('#lb .lb-rows .lb-r'), L = GAME.levels; return { first: first.textContent, me: first.classList.contains('me'), gold: !!first.querySelector('.lb-pos.p1'),
+      lv: first.querySelector('.lb-lv').textContent, want: String(L[1].num), sum: first.querySelector('.lb-sum').textContent, fav: (first.querySelector('.lb-fav').title || ''), cols: [...document.querySelectorAll('#lb .lb-cols span')].map(x => x.textContent).filter(Boolean) }; })()`);
+    ok('you are 1st overall: on level 2, 1 level over all skins, Islands your favourite', pod.me && pod.gold && /Test Otter/.test(pod.first) && pod.lv === pod.want && pod.sum === '1' && /^Islands: 1 level$/.test(pod.fav) && pod.cols.join() === 'Level,Skins,Fav', pod);
+    await shot('standings');
     await P.eval(`document.querySelector('#lb .lb-x').click()`);
 
     // tamper: hand-unlock a skin in localStorage

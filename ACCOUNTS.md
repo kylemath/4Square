@@ -120,11 +120,22 @@ The seal key sits on the same device, so someone who reads it can forge a consis
 determined ones. Because boards are built from verified proofs and never from the save, an edited save cannot raise a
 board score anyway; the flag is there so the attempt is on record.
 
-## The podium: coins earned in each skin
+## The standings: one table over every skin
 
-The leaderboard screen is one standings table (top 10, your own row added below with its rank when you are further
-down) for the skin picked in a strip of skin icons, ranked by **lifetime coins earned in that skin**
-(`FTH_ACCT.podium(scope, n)`, n = rows per skin, default 3). Until you join, a join banner sits on top of it with the
+The leaderboard screen is ONE standings table (top 10, your own row added below with its rank when you are further down),
+`FTH_ACCT.standings(scope)`. Each player's verified entries in every skin are merged by uid, and ranked by:
+1. **Level**: the furthest level beaten in any skin (levels.js order); the column shows the level after it, the one they
+   are on (🏆 when every level is beaten);
+2. **Skins**: levels beaten summed over the skins (a level beaten in three skins counts three times);
+3. distinct levels beaten, then who got there first.
+
+**Fav** is the skin with the most levels beaten (ties: coins earned there, capped as below). Only levels whose proofs replay
+count. It reads each skin's top 100 entries, so a player far down one skin's board can miss that skin's share of the sum.
+Blank Doodle makes no proofs, so it adds no levels.
+
+## The podium: coins earned in each skin (`FTH_ACCT.podium`, kept for the API; no longer on screen)
+
+Ranked by **lifetime coins earned in that skin** (`FTH_ACCT.podium(scope, n)`, n = rows per skin, default 3). Until you join, a join banner sits on top of it with the
 nickname, Join and the Google button (disabled in LOCAL mode). Spending coins on skin tickets does not lower it (`earned` only ever grows). Each skin's coin
 balance lives in `save.wallet`, sealed with the progress save, and owned skins and tickets (`save.skins`) are sealed too
 (`FTH_INT.seal/check`): a hand-edited balance or a hand-unlocked skin logs `save-edited` and adds to the tamper count.
