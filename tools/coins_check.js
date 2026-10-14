@@ -83,7 +83,8 @@ const SAVE = 'fill-the-hole-v2', LV = 'one-of-each';
     if (SH) await Pe.shot(path.join(SH, 'exchange-open.png'));
     await Pe.eval(`document.querySelector('#eco .ec-n[data-id="islands"]').click()`);   // the current skin is preselected: clear it
     await Pe.eval(`document.querySelector('#eco .ec-n[data-id="dots"]').click()`); await sleep(200);
-    ok(await Pe.eval(`document.querySelectorAll('#eco .ec-row').length === 2`), 'selecting a node lists its direct partners (Dots trades with 2)');
+    const dp = await Pe.eval(`({ rows: document.querySelectorAll('#eco .ec-row').length, want: FTH_ECON.EDGES.filter(e => e[0] === 'dots' || e[1] === 'dots').length })`);
+    ok(dp.rows === dp.want && dp.want >= 2, 'selecting a node lists its direct partners (Dots trades with ' + dp.want + ')' + (dp.rows === dp.want ? '' : ', but ' + dp.rows + ' rows'));
     if (SH) await Pe.shot(path.join(SH, 'exchange-node.png'));
     await Pe.eval(`document.querySelector('#eco .ec-n[data-id="islands-3d"]').click()`); await sleep(200);
     const route = await Pe.eval(`([...document.querySelectorAll('#eco .ec-route')].map(r => r.textContent.replace(/\\s+/g, ' ').trim())[0] || '')`);
