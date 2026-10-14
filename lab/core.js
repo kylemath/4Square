@@ -28,6 +28,8 @@
  *   g.good()                              // chains whose swap brings dist() down by one
  *   g.moves                               // swaps made so far
  *   g.on(fn)                              // fn(g, info) after every change: info = { type: 'swap'|'undo'|'reset', changed }
+ *   g.replay = true                       // while set, posted messages carry replay: 1 (moves already made, replayed: no pay)
+ *   g.demoPick = () => K                  // ?demo=1: the page picks the demo's next chain (default: g.good()[0])
  *
  * Embedding (the skin system): when a skin page is opened with ?embed=1 inside the Fill the Hole app, every change is
  * posted to the parent window as { fth: 1, type: 'ready'|'swap'|'undo'|'reset'|'done', id, moves, won, free, col }.
@@ -136,6 +138,7 @@
     if (DEMO) demo(g);
     if (EMBED) {
       const post = type => { if (DEMO) return; const m = { fth: 1, type, id: L.id, num: String(L.num), moves: g.moves, won: g.won(), free: g.free(), col: g.col.slice() };
+        if (g.replay) m.replay = 1;        // a page replaying moves already made (Respawn's teleport): the shell pays nothing for them
         if (type === 'swap') { if (AT) { m.at = AT; AT = null; SWT = 0; } else SWT = performance.now(); } parent.postMessage(m, '*'); };
       g.post = post; LAST = g;
       g.on((_, info) => { g.doneSent = false; post(info.type); });
@@ -156,7 +159,7 @@
     const tick = () => {
       if (g.won() || n >= 14) { n = 0; setTimeout(() => { g.reset(); setTimeout(tick, 1200); }, 2000); return; }
       const all = g.chains.filter(K => !K.web), good = g.good();
-      const K = good.length ? good[0] : all[Math.floor(Math.random() * all.length)];
+      const K = g.demoPick ? g.demoPick() : good.length ? good[0] : all[Math.floor(Math.random() * all.length)];   // a page may pick its own legal move (Shoreline: shore chains only)
       if (K) { g.swap(K); n++; }
       setTimeout(tick, 1600);
     };

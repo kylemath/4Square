@@ -36,6 +36,17 @@
     return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
   }
   const fingerprint = p => h53([p.lvl, p.skin, p.t0, (p.ops || []).map(o => o[0] + (o[2] || '')).join('|'), p.fin].join('#'));
+  // per-skin par (index.html parNow, skin spec field `par`): a skin whose rules forbid some swaps has a longer par on some
+  // levels. Shoreline (only chains that touch the shore) is a move longer on three levels; its stars use that par only when
+  // every swap of the proof touched the shore (otherwise the census par, and a soft 'off-shore' finding).
+  // tools/shoreline_check.js checks this table against the skin spec and the shore solver on every level.
+  const SKIN_PAR = { shoreline: { archipelago: 2, 'open-doors': 2, 'quiet-way-out': 3 } };
+  function shoreOf(g) {                       // lab/shoreline-core.js SHORE.shore(spec, 'beach'): the border, else the outer two BFS shells
+    if (g.border && g.border.length) return new Set(g.border);
+    const d = new Array(g.n).fill(-1); d[g.hole] = 0; let fr = [g.hole];
+    while (fr.length) { const nx = []; for (const u of fr) for (const w of g.adj[u]) if (d[w] < 0) { d[w] = d[u] + 1; nx.push(w); } fr = nx; }
+    const mx = Math.max(...d), S = new Set(); for (let u = 0; u < g.n; u++) if (u !== g.hole && d[u] >= mx - 1) S.add(u); return S;
+  }
   const starsFor = (moves, par, hints) => { const st = moves <= par ? 3 : moves <= par + 2 ? 2 : 1; return hints ? Math.min(st, 2) : st; };
 
   function adjOf(Gr) {
@@ -79,7 +90,8 @@
       if (!p.claim || !Number.isFinite(p.claim.stars) || !Number.isFinite(p.claim.moves)) H('format');
       if (hard.length) return out();
       const g = env.LAB.game(L.id); if (g.level.id !== L.id) { H('unknown-level'); return out(); }
-      let nSwap = 0, nAll = 0, last = 0, t = 0;
+      const SP = SKIN_PAR[p.skin], shore = SP ? shoreOf(g) : null;
+      let nSwap = 0, nAll = 0, last = 0, t = 0, offShore = false;
       for (let i = 0; i < p.ops.length; i++) {
         const op = p.ops[i]; if (!Array.isArray(op) || op.length !== 3 || !Number.isFinite(op[1])) { H('format'); break; }
         const [ty, dt, cs] = op, next = decCol(cs);
@@ -95,6 +107,7 @@
           if (!K || K.vs.length !== d.size) { H('illegal-swap:core-mismatch'); break; }     // core.js has the last word
           if (ty === 'w' && (!K.web || p.cnt !== 'all')) { H('bad-web-op'); break; }
           if (ty === 's' && K.web && p.cnt === 'all') { H('bad-web-op'); break; }
+          if (shore && !K.vs.some(u => shore.has(u))) offShore = true;
           g.swap(K); nAll++; if (!K.web) nSwap++;
           if (encCol(g.col) !== cs) { H('state-mismatch'); break; }
         } else if (ty === 'u') {
@@ -108,7 +121,8 @@
       if (hard.length) return out();
       if (!g.won()) { H('not-a-win'); return out(); }
       if (p.fin !== encCol(g.col)) H('final-mismatch');
-      const moves = p.cnt === 'all' ? nSwap : g.moves, stars = starsFor(moves, L.par, +p.hints > 0);
+      const moves = p.cnt === 'all' ? nSwap : g.moves, par = SP && SP[L.id] > L.par && !offShore ? SP[L.id] : L.par, stars = starsFor(moves, par, +p.hints > 0);
+      if (offShore) S('off-shore');
       res.moves = moves; res.stars = stars;
       if (p.claim.moves !== moves) H('moves-mismatch');
       if (p.claim.stars > stars) H('stars-mismatch');
@@ -127,8 +141,9 @@
     const win = { location: { search: '' }, addEventListener() {}, console, URLSearchParams }; win.window = win; win.parent = win;
     const ctx = vm.createContext(win);
     vm.runInContext(fs.readFileSync(path.join(dir, 'levels.js'), 'utf8'), ctx, { filename: 'levels.js' });
+    vm.runInContext(fs.readFileSync(path.join(dir, 'layout.js'), 'utf8'), ctx, { filename: 'layout.js' });   // region layout: g.border (Shoreline's shore)
     vm.runInContext(fs.readFileSync(path.join(dir, 'lab', 'core.js'), 'utf8'), ctx, { filename: 'core.js' });
     return { GAME: ctx.GAME, LAB: ctx.LAB };
   }
-  return { verifyProof, diffSwap, fingerprint, encCol, decCol, starsFor, h53, LIM, nodeEnv };
+  return { verifyProof, diffSwap, fingerprint, encCol, decCol, starsFor, h53, LIM, nodeEnv, SKIN_PAR, shoreOf };
 });

@@ -1,8 +1,8 @@
 # Respawn: design note (lab prototype, working name)
 
-Prototype page: `lab/respawn.html` (open `lab/respawn.html?lvl=<id or number>`, for example `?lvl=12`). It is not on
-the skin reel or in the tickets. The model is in `lab/respawn-core.js` (pure, runs in node). The rules are `lab/core.js`,
-unchanged.
+Prototype page: `lab/respawn.html` (open `lab/respawn.html?lvl=<id or number>`, for example `?lvl=12`). It is a skin on
+the reel since 14 Oct (see Registration). The model is in `lab/respawn-core.js` (pure, runs in node). The rules are
+`lab/core.js` (which gained only the `g.replay` flag).
 
 ## The idea
 
@@ -85,6 +85,14 @@ an embedding app sees ordinary undo and swap messages.
   - Give a small time bonus for a door that is a known room's way back.
   - Make deaths cost clock time (+3 s) instead of only counting them.
 
+## Run mode (the default since 14 Oct)
+
+- One fuse per run: `2.6 + 0.25·par` s × speed at the start, burning only while you decide in a room; every room
+  reached adds `1.1` s × speed (capped at start + one bonus). On burn-out you die and, 1.5 s later, a new run starts by
+  itself from the start room (🏁 run counter in the HUD). Door order in a room is fixed, so the sequence can be learned.
+- Tree teleports and 'back' are off in run mode; `?mode=respawn` keeps the per-room fuse and tree respawns above.
+- `tools/respawn_play_check.js` plays both modes on all 40 levels.
+
 ## Scoring (on the win card)
 
 - ⏱ level time.
@@ -121,26 +129,22 @@ an embedding app sees ordinary undo and swap messages.
 - `node tools/embed_win_check.js respawn` passes: 4 of 4 levels, with no restart, no dev text and `done` posted once.
 - `?demo=1` and blind mode load with no errors.
 
-## What registration would need (not done on purpose)
+## Registration (done, 14 Oct)
 
-- `skins/respawn.js` with:
-  - theme and `--sk-*` tokens, `hud: 'compact'` (the page has its own clock and counters);
-  - intro pages (door = swap, tree = respawn, fuse), a bonus tile, a coin (a gem or a ghost token, with a unique
-    value), an icon and a card.
-- An `index.html` script tag (the shell owner adds it), `sw.js` entries for `lab/respawn.html` and
-  `lab/respawn-core.js`, a ticket gate and price in `tickets.js`, and market lines in `economy.js`.
-- **Scoring decision:** a teleport is a burst of undo and swap messages, so the shell would pay coins for each replayed
-  swap. Options:
-  - (a) post a `{type: 'teleport'}` message and have the shell skip pay until the next real door;
-  - (b) pay only for swaps that create a *new* tree node;
-  - (c) accept it, since the shell already takes `flips = d.moves` (the walk length) for stars.
+Respawn is a skin on the reel: `skins/respawn.js` (dungeon and neon tokens, `hud: 'compact'`, doorway tiles with one arch
+shape per element, the wisp coin at 50 G, a dungeon level map, icon, card, logo, two eggs), one more ticket on the ladder in `tickets.js`
+(ticket 18 at 40 levels and 6,000 points), wisp markets with comets and sea glass in `economy.js`, `sw.js` CORE, `index.html`,
+`embed_win_check` (`respawn: 'compact'`). Embedded, the page runs in the default run mode (the shell never passes `mode`).
 
-  Option (a) is cleanest, but it is a shell change.
-- **The fuse under the shell:** the app's undo and restart buttons and its hint should probably be hidden for this
-  skin. Respawn *is* its undo.
-- Checks: `skin_check`, `tickets_check`, `economy_check`, `contrast_check`, `embed_win_check respawn` (already
-  passing), and add `respawn: 'compact'` to its `PAGES` table.
-
+- **Coins on replay** (option a, generalised). `lab/core.js` adds `replay: 1` to every message posted while `g.replay`
+  is set; the page sets it around a teleport. The shell (`index.html`) keeps its colouring, move count and run proof in
+  step with replayed messages but pays and charts nothing for them (it already paid nothing for a chain or colouring
+  caught before, but a replay through renamed colourings could catch a chain key again).
+- **Run-mode restart is one reset.** A restart used to be a teleport to the start room, i.e. a burst of undos within a
+  few milliseconds; the run proof (`verify.js`, `swapMs`) rejects that as `impossible-timing`, which would have hidden
+  every run-mode win from the boards. The page now restarts a run with a single `g.reset()` (the reset handler keeps the
+  tree while a restart is under way). Respawn mode (`?mode=respawn`, lab only) still teleports with bursts.
+- The app's undo / restart / hint buttons are not shown by the compact HUD.
 ## Telemetry: the player's tree as research data
 
 The page already keeps an event log, `window.RESPAWN.log()`, and a full export, `RESPAWN.export()` (JSON).

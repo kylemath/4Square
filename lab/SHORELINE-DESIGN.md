@@ -1,7 +1,7 @@
 # Shoreline: design note (lab prototype)
 
 Prototype page: `lab/shoreline.html` (open `lab/shoreline.html?lvl=<id or number>`, add `&shore=shells` for the
-harder-to-see, roomier shore). It is not on the skin reel or in the tickets. The rules and the solver are in
+harder-to-see, roomier shore). It is a skin on the reel since 14 Oct (see Registration). The rules and the solver are in
 `lab/shoreline-core.js`; `node tools/shoreline_check.js` checks every level.
 
 ## The idea
@@ -112,19 +112,21 @@ modes. The README there ("equal on 35") undercounts. Nothing is unsolvable; thes
 On 0.3 and 2 the one-move win uses a chain that never reaches the coast, which makes them good teaching levels for
 this skin.
 
-## What registration would need (not done)
+## Registration (done, 14 Oct)
 
-1. `skins/shoreline.js` with a full spec: theme and chrome tokens (sea and sand), title art, how-to pages (one
-   sentence each: "Only the shore can move."), a bonus round, map look, a coin (sea glass?), icon, card and logo.
-   Then `node tools/skin_check.js` and `node tools/contrast_check.js`.
-2. **Scoring and par.** The shell scores against normal par. Shoreline's par is longer on 0.3, 2 and 7.3 (beach), so
-   either the shell learns a per-skin par (the page could post `par` in `ready`) or a player loses a star on those
-   levels through no fault of their own. Stars also feed ticket gates, so `tools/tickets_check.js` must be re-run with
-   the higher pars. This is the main reason the page is not registered.
-3. **Demo mode** (`&demo=1`): `lab/core.js` plays `g.good()`, which may include deep-water chains that this skin
-   forbids. The page draws them honestly (a wave from the chain's first shore tile, or its first tile), but the shop
-   preview would show illegal moves. A registered version needs a shore-aware demo, either a hook in core or a page
-   override.
-4. **Swaps from outside.** `embed_win_check` wins through `g.good()`; the page animates those too.
-5. Add the page, `shoreline-core.js` and the skin file to `sw.js`, add the `<script>` in `index.html` (the shell
-   owner does this), and add `shoreline: 'compact'` to `PAGES` in `tools/embed_win_check.js`.
+Shoreline is a skin on the reel: `skins/shoreline.js` (sea and sand tokens, `hud: 'compact'`, pebble tiles with one
+silhouette per element, the sea glass coin at 12 G, a beach level map, icon, card, logo, two eggs), one more ticket on the ladder in `tickets.js` (with Respawn's:
+ticket 17 at 38 levels and 5,700 points, ticket 18 at 40 levels and 6,000; any ticket unlocks any skin), sea glass markets with trigons and comets in `economy.js`, `sw.js` CORE, `index.html`,
+`embed_win_check` (`shoreline: 'compact'`).
+
+- **Per-skin par.** The spec carries `par: { archipelago: 2, 'open-doors': 2, 'quiet-way-out': 3 }`. The shell's
+  `parNow()` (`index.html`) uses it for stars, the brief, the win card and the hint nudge whenever the level runs in this
+  skin (an island fallback uses the census par). `verify.js` holds the same table (`SKIN_PAR`) so a run proof's stars are
+  checked against shore par, but only when every swap of the proof touched the shore (otherwise the census par and a soft
+  `off-shore` finding). `tools/shoreline_check.js` checks that the spec and `verify.js` both equal the solver's beach par
+  wherever it exceeds the census par, and verifies a shore-line proof (3 stars) and a census-line proof (`off-shore`) on
+  each of the three levels; `tools/skin_check.js` checks the spec against `verify.js`.
+- **Demo.** `lab/core.js` gained a `g.demoPick` hook; the page sets it under `?demo=1` to play an optimal shore line (a
+  random shore chain when the solver has none), so the shop's live preview (`tickets.js` `LIVE`) never shows a
+  deep-water swap.
+- Ticket gates are measured on Islands play at the census par; Shoreline's three longer levels cost nothing there.

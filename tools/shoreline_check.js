@@ -49,5 +49,32 @@ for (const L of GAME.levels) {
   }
 }
 console.log(rows.join('\n'));
-console.log(bad ? bad + ' level/mode rows FAILED' : 'all ' + rows.length + ' level/mode rows ok');
+// the per-skin par: skins/shoreline.js `par` (stars in the app) and verify.js SKIN_PAR (run proofs) must be exactly the
+// levels where beach shore par exceeds the census par, with that shore par
+{
+  const want = {}; rows.forEach(r => { const m = r.match(/^ok\s+\S+\s+(\S+)\s+beach\s.*par (\d+)\s+shore (\d+)/); if (m && +m[3] > +m[2]) want[m[1]] = +m[3]; });
+  global.FTH_SKINS = { register(s) { this.spec = s; }, coinArt: () => () => '', extend: () => ({}) };
+  (0, eval)(fs.readFileSync(path.join(ROOT, 'skins/shoreline.js'), 'utf8'));
+  const V = require(path.join(ROOT, 'verify.js')), sp = FTH_SKINS.spec.par, vp = V.SKIN_PAR.shoreline, J = o => JSON.stringify(Object.keys(o).sort().map(k => [k, o[k]]));
+  const okSpec = J(sp || {}) === J(want), okVer = J(vp || {}) === J(want);
+  console.log((okSpec ? 'ok    ' : 'FAIL  ') + 'skins/shoreline.js par = beach shore par where it is longer: ' + J(want));
+  console.log((okVer ? 'ok    ' : 'FAIL  ') + 'verify.js SKIN_PAR.shoreline matches');
+  if (!okSpec) bad++; if (!okVer) bad++;
+  // a run proof's stars: shore-only line at shore par = 3 stars; a line that leaves the shore falls back to the census par
+  const env = V.nodeEnv(ROOT);
+  for (const id of Object.keys(want)) {
+    const L = GAME.levels.find(l => l.id === id), g = env.LAB.game(id), spec = { n: g.n, adj: g.adj, hole: g.hole, border: g.border, rim: g.rim, NC: g.NC, goal: g.goal };
+    const sh = SHORE.shore(spec, 'beach'), r = SHORE.solve(spec, g.col, sh.set), t0 = 1.75e12;
+    const proof = (lines) => { const h = env.LAB.game(id), ops = []; let t = 0; for (const vs of lines) { const K = h.chains.find(k => k.vs.join('.') === vs.join('.')); h.swap(K); t += 900; ops.push(['s', t, V.encCol(h.col)]); }
+      const p = { v: 1, lvl: id, skin: 'shoreline', app: 'check', cnt: 'net', ops, t0, ms: t + 500, hints: 0, fin: V.encCol(h.col), claim: { moves: lines.length, stars: 3 } }; p.fp = V.fingerprint(p); return V.verifyProof(p, Object.assign({ now: t0 + 1e6 }, env)); };
+    const a = proof(r.line);
+    const ok1 = a.ok && a.stars === 3 && !a.soft.includes('off-shore');
+    // the census line (g.good()) uses a deep chain on these levels: stars against the census par only
+    const gg = env.LAB.game(id), deep = []; while (!gg.won()) { const K = gg.good()[0]; deep.push(K.vs.slice()); gg.swap(K); }
+    const b = proof(deep), ok2 = b.soft.includes('off-shore') || deep.every(vs => vs.some(u => sh.set.has(u)));
+    console.log((ok1 && ok2 ? 'ok    ' : 'FAIL  ') + id + ': proof of the shore line (' + r.line.length + ' swaps) verifies ' + a.stars + ' stars' + (a.hard.length ? ' hard ' + a.hard : '') + '; census line (' + deep.length + ') ' + (b.soft.includes('off-shore') ? 'flagged off-shore' : 'stays on the shore'));
+    if (!(ok1 && ok2)) bad++;
+  }
+}
+console.log(bad ? bad + ' check(s) FAILED' : 'all ' + rows.length + ' level/mode rows and the per-skin par ok');
 process.exit(bad ? 1 : 0);

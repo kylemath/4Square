@@ -703,6 +703,8 @@
 <script src="skins/gears.js"></script>
 <script src="skins/signs.js"></script>
 <script src="skins/star.js"></script>
+<script src="skins/shoreline.js"></script>
+<script src="skins/respawn.js"></script>
 <script src="eggs.js"></script>
 <script src="cloud.js"></script>
 <script src="rim.js"></script><script src="rimstar.js"></script>
@@ -891,7 +893,10 @@
     '<path d="M-14 -21Q0 -15 14 -21" stroke="#7a4a1c" stroke-width="6" fill="none" stroke-linecap="round"/><path d="M-14 -21Q0 -15 14 -21" stroke="#c0392b" stroke-width="3" fill="none" stroke-linecap="round"/>' +
     '<g transform="translate(0 7) scale(1.05)"><use href="#coinG"/></g></svg>';
   let hudStars = 3, goalKey = '', goalPrev = null;
-  function starsNow() { const st = flips <= L.par ? 3 : flips <= L.par + 2 ? 2 : 1; return hintsUsed ? Math.min(st, 2) : st; }
+  // par in the skin the level runs in: a skin whose rules forbid some swaps declares its longer par per level id in
+  // spec.par (SKIN-SPEC 1; Shoreline). verify.js mirrors it (SKIN_PAR) so a run proof's stars are checked against the same par.
+  const parNow = () => (ACT && ACT.par && L && ACT.par[L.id] > L.par ? ACT.par[L.id] : L.par);
+  function starsNow() { const st = flips <= parNow() ? 3 : flips <= parNow() + 2 ? 2 : 1; return hintsUsed ? Math.min(st, 2) : st; }
   function renderStars(cap) {
     const m = $('starMeter'); if (m.children.length !== 3) m.innerHTML = [0, 1, 2].map(() => '<span class="st">' + starSvg + '</span>').join('');
     [...m.children].forEach((s, i) => s.classList.toggle('off', i >= cap));
@@ -943,7 +948,7 @@
     go.setAttribute('aria-label', { trace: 'Trace a chain: show me where', swap: 'Swap the chosen chain', catch: 'Catch a new chain: show me where', next: 'Next level' }[mode2]);
     go.dataset.mode = mode2;
     renderTray(); rimStarSync();
-    const stuck = flips >= L.par + 2 || wrongSteps >= 4 || (performance.now() - lastProgress) > 45000;
+    const stuck = flips >= parNow() + 2 || wrongSteps >= 4 || (performance.now() - lastProgress) > 45000;
     $('btnHint').classList.toggle('muted', !stuck);
     $('btnUndo').disabled = !history.length || won || busy;
     $('btnHint').disabled = won || dist(col) === null;
@@ -990,7 +995,7 @@
     tray.scrollLeft = sx;
     if (grow.length) { void tray.offsetWidth; grow.forEach(([e, f]) => { e.style.width = (100 * f) + '%'; }); }
   }
-  setInterval(() => { if ($('game').classList.contains('on') && L) { const stuck = flips >= L.par + 2 || wrongSteps >= 4 || (performance.now() - lastProgress) > 45000; $('btnHint').classList.toggle('muted', !stuck); } }, 2000);
+  setInterval(() => { if ($('game').classList.contains('on') && L) { const stuck = flips >= parNow() + 2 || wrongSteps >= 4 || (performance.now() - lastProgress) > 45000; $('btnHint').classList.toggle('muted', !stuck); } }, 2000);
   function floatAt(sx, sy, text, sub, cls) {
     const d = document.createElement('div'); d.className = 'float' + (cls ? ' ' + cls : ''); d.innerHTML = text + (sub ? '<small>' + sub + '</small>' : '');
     d.style.left = sx + 'px'; d.style.top = sy + 'px'; $('board').appendChild(d); setTimeout(() => d.remove(), 1250);
@@ -2002,15 +2007,17 @@
       let K = null;
       if (d.type === 'swap' && Array.isArray(d.col) && d.col.length === n) { const v = d.col.findIndex((c, u) => u !== hole && c !== col[u]); if (v >= 0 && chainAt[v]) K = chainAt[v][d.col[v]]; if (K && !K.vs.every(u => d.col[u] !== col[u])) K = null; }
       frameAt = Array.isArray(d.at) && d.at.length >= 2 && d.at.every(isFinite) ? d.at.slice(0, 2) : null;
-      const pts = framedCatch(K);
+      // replay: a page that moves the player along swaps already made (Respawn's teleports) marks those messages; they
+      // keep the colouring, move count and run proof in step but pay nothing and chart nothing new
+      const pts = d.replay ? 0 : framedCatch(K);
       col = d.col.slice(); col[hole] = -1; flips = d.moves; computeChains();
-      if (d.type === 'swap') framedLand(pts);
+      if (d.type === 'swap' && !d.replay) framedLand(pts);
       updateHud();
       if (window.FTH_RUN) FTH_RUN.frame(d);
       worldEnter(d.type === 'swap' ? { skin: ACT.id } : null);   // every skin charts colouring space
-      if (window.FTH_LOG) FTH_LOG.ev(d.type, { skin: ACT.id, state: canon(col), moves: d.moves });
+      if (window.FTH_LOG) FTH_LOG.ev(d.type, Object.assign({ skin: ACT.id, state: canon(col), moves: d.moves }, d.replay ? { replay: 1 } : {}));
     }
-    if (ACT.own && d.type === 'done' && d.own) { flips = Math.min(d.moves, L.par); hintsUsed = 0; }   // a full colouring: every star
+    if (ACT.own && d.type === 'done' && d.own) { flips = Math.min(d.moves, parNow()); hintsUsed = 0; }   // a full colouring: every star
     if (d.won && (d.type === 'done' || (d.type === 'swap' && !ACT.waits))) {
       clearTimeout(skinWinT);                              // done: now; a skin that never calls LAB.done(): after 6 s
       skinWinT = setTimeout(() => { if (!won) { win(); eggsWon(); } }, d.type === 'done' ? 0 : 6000);
@@ -2087,7 +2094,7 @@
     $('briefTitle').textContent = L.title; $('briefText').textContent = L.intro;
     { const nm = L.num || String(levelIdx + 1); $('briefBadge').innerHTML = uiTile(0, 0, 31, [6, 5, 7, 6, 5, 6, 7, 5][levelIdx % 8], levelIdx % 4, { label: nm, fs: nm.length > 2 ? 16 : nm.length > 1 ? 21 : 26 }); }
     const b = save.best[levelIdx];
-    $('briefMeta').innerHTML = '<span class="pill" aria-label="Par ' + L.par + ' swap' + (L.par > 1 ? 's' : '') + '">⇄ <b>' + L.par + '</b></span><span class="pill" aria-label="' + (n - 1) + ' tiles">⬢ ' + (n - 1) + '</span>' +
+    $('briefMeta').innerHTML = '<span class="pill" aria-label="Par ' + parNow() + ' swap' + (parNow() > 1 ? 's' : '') + '">⇄ <b>' + parNow() + '</b></span><span class="pill" aria-label="' + (n - 1) + ' tiles">⬢ ' + (n - 1) + '</span>' +
       '<span class="pill" aria-label="Map ' + Gr.name + '">🗺️ ' + Gr.name + '</span>' + (b ? '<span class="pill" aria-label="Best ' + b.score + ' points, ' + b.stars + ' stars">🏅 ' + b.score + ' ' + '★'.repeat(b.stars) + '</span><span class="pill" aria-label="A replay pays a quarter">↻ ¼</span>' : '');
     $('brief').classList.add('on');
   }
@@ -2112,8 +2119,8 @@
       document.querySelector('#win .rtitle').textContent = short(WD.win, ACT.own ? 'Coloured!' : 'Hole filled!');
       // one line of chips, no sentences: a perfect route gets the crown; otherwise your swaps beside par
       $('winText').innerHTML = ACT.own ? '<span class="wchip gold">✓ ' + short(WD.perfect, 'Perfect!') + '</span>'
-        : (flips <= L.par ? '<span class="wchip gold">👑 ' + short(WD.perfect, 'Perfect!') + '</span><span class="wchip">⇄ ' + flips + '</span>' : '<span class="wchip">⇄ ' + flips + '</span><span class="wchip">par ' + L.par + '</span>');
-      $('winText').setAttribute('aria-label', flips + ' swaps, par ' + L.par);
+        : (flips <= parNow() ? '<span class="wchip gold">👑 ' + short(WD.perfect, 'Perfect!') + '</span><span class="wchip">⇄ ' + flips + '</span>' : '<span class="wchip">⇄ ' + flips + '</span><span class="wchip">par ' + parNow() + '</span>');
+      $('winText').setAttribute('aria-label', flips + ' swaps, par ' + parNow());
       $('winNext').textContent = levelIdx + 1 < G.levels.length ? 'NEXT ▶' : 'LEVELS ▶';
       const t1 = 100 + 3 * 90 + 60;
       $('win').style.setProperty('--wd', (reduced ? 0 : (t1 + 1700) / 1000) + 's');

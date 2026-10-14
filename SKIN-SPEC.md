@@ -53,6 +53,8 @@ FTH_SKINS.register({
   own: false,                      // true: the skin has its own goal and reports with LAB.finish(swaps) (Blank Doodle)
   needs: [],                       // ['cells']: needs region shapes (every map has them now); ['tri']: the map must be a
                                    // triangulation (3n - 6 borders: not the Level -1 ponds), as Signs' cut needs
+  par: { 'quiet-way-out': 3 },     // optional: this skin's par per level id where its rules make the best line longer
+                                   // (Shoreline). Stars, the brief and the win card use it; verify.js SKIN_PAR must match
 
   hud: 'full',                     // 'full' | 'compact' | 'minimal'  (section 2)
   theme: { ... },                  // CSS custom properties (section 3)
@@ -296,6 +298,11 @@ levelMap: {
 - Load `../levels.js`, `../layout.js`, `core.js`; create the game with `LAB.game()` (it reads `?lvl=`).
 - Inside the app (`?embed=1`), core.js posts every swap, undo and reset to the app; call `LAB.done()` when your win
   celebration ends (`own` skins call `LAB.finish(swaps)` instead; `done` is posted once per win). Script errors fall back to the Islands board.
+- A page that moves the player along swaps already made (Respawn's teleports) sets `g.replay = true` around them: the
+  messages carry `replay: 1`, and the shell keeps its colouring, count and run proof in step but pays and charts nothing
+  for them. Prefer one `g.reset()` to a burst of undos: the run proof rejects undos faster than a hand can make them.
+- `?demo=1` (the shop's live preview) plays `g.good()`; a skin whose rules forbid some chains sets `g.demoPick = () => K`
+  to pick its own legal move (Shoreline: shore chains only). Pages that redraw outside swaps are listed in `tickets.js` `LIVE`.
 - **After a win, an embedded page never restarts itself; the shell owns what happens next** (its win screen, bonus
   round, next level). When `LAB.embedded`: a tap, click or key on the frame after the win does nothing (no `g.reset()`,
   no fresh sheet, no replay countdown, no level step), the page's own undo/restart are inert once won, and no dev text
@@ -394,6 +401,7 @@ coin: { name: 'pearl', plural: 'pearls',        // singular and plural, lower ca
 | sugar cube | Gran's Table | 5 | a household luxury |
 | sweet | Candy | 8 | a wrapped candy, just under a doubloon |
 | doubloon | Islands | 10 | the original game's gold: the reference coin |
+| sea glass | Shoreline | 12 | a beach find, a little better than gold |
 | casino chip | Bonus Swipe | 14 | a stake, worth a bit more than gold |
 | glass marble | Spheres | 16 | a lab specimen from the ball-and-stick model |
 | compass rose | Island Map | 20 | an explorer's prize |
@@ -402,6 +410,7 @@ coin: { name: 'pearl', plural: 'pearls',        // singular and plural, lower ca
 | trigon | Signs | 42 | a triangular token, half sun half sea |
 | ion orb | Ion Channels | 35 | charged, short-lived, scarce |
 | comet | Star | 45 | a rare sighting that traces the star |
+| wisp | Respawn | 50 | what is left of a run that burned out |
 | pearl | Islands Free | 60 | rare and valuable |
 | crystal shard | Islands 3D | 100 | the rarest |
 

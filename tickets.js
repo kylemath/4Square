@@ -21,8 +21,8 @@
   // levels beaten before ticket n, and its price in points. Calibrated on clean 3-star play of the 40 levels, bonus rounds
   // not counted (tools/tickets_check.js prints the table against measured earnings): the first ticket is about one
   // level's pay, and each later one comes a little further on and costs 300 points more. One ticket per skin other than Islands.
-  const GATE = [1, 3, 5, 7, 9, 12, 14, 16, 18, 20, 23, 26, 28, 30, 32, 35];
-  const PRICE = [900, 1200, 1500, 1800, 2100, 2400, 2700, 3000, 3300, 3600, 3900, 4200, 4500, 4800, 5100, 5400];
+  const GATE = [1, 3, 5, 7, 9, 12, 14, 16, 18, 20, 23, 26, 28, 30, 32, 35, 38, 40];
+  const PRICE = [900, 1200, 1500, 1800, 2100, 2400, 2700, 3000, 3300, 3600, 3900, 4200, 4500, 4800, 5100, 5400, 5700, 6000];
   const R = (window.FTH_SKINS || {});
 
   // ---------------------------------------------------------------- rules
@@ -70,7 +70,7 @@
   //   ctx (from index.html) also has: order [spec], lvl() -> level id, current() -> skin id, onSelect(id), onPlay(id),
   //   theme(spec) -> tokens, blip(f, d, type, vol), sfx (sfx.js)
   // pages whose drawing follows g.on swaps (a swap from outside redraws); the others preview as their card
-  const LIVE = { dots: 1, map: 1, spheres: 1, ions: 1, 'islands-3d': 1, star: 1 };
+  const LIVE = { dots: 1, map: 1, spheres: 1, ions: 1, 'islands-3d': 1, star: 1, shoreline: 1, respawn: 1 };
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const fmt = n => Math.floor(n).toLocaleString('en');
   const RL = () => window.FTH_REEL;

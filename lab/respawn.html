@@ -103,6 +103,15 @@
   let speed = SPEEDS[store.get('speed', 'run')] ? store.get('speed', 'run') : 'run';
   let blind = store.get('blind', '0') === '1';
   const PAR = g.dist();
+  // RUN MODE (default; Kyle, 14 Oct): one fuse for the whole run. It burns only while you decide in a room, and every
+  // room you reach adds a little time. When it burns out you die and a new run starts from the start room: learn the
+  // door sequence by repetition (door order in a room is fixed, so muscle memory works). Tree teleports and 'back' are
+  // off in run mode. ?mode=respawn keeps the original per-room fuse and tree respawns.
+  const MODE = new URLSearchParams(location.search).get('mode') === 'respawn' ? 'respawn' : 'run';
+  const RUN_START = () => 1000 * SPEEDS[speed].f * (2.6 + 0.25 * (PAR || 1));   // fuse at the start of a run
+  const ROOM_BONUS = () => 1000 * SPEEDS[speed].f * 1.1;                      // added for each room reached
+  const RUN_CAP = () => RUN_START() + ROOM_BONUS();
+  let fuseMs = 0, runNo = 1, bestWalk = 0, restartAt = 0;
   $('lvl').textContent = String(g.level.num);
 
   // ---------------------------------------------------------------- the model
@@ -111,7 +120,8 @@
   let phase = 'intro', ph0 = now();               // intro | room | run | arrive | tele | dead | won
   let roomT0 = 0, roomDur = 4000, runDoor = null, runSwapped = false, teleTo = -1;
   let clockMs = 0, clockOn = false;
-  const stats = { rooms: 0, deaths: 0, respawns: 0, start: Date.now() };
+  const stats = { rooms: 0, deaths: 0, respawns: 0, runs: 1, start: Date.now() };
+  fuseMs = RUN_START();
   const log = [];                                  // the player's exploration, for research (window.RESPAWN.log())
   const ev = (type, extra) => log.push(Object.assign({ t: Math.round(clockMs), type, node: T.cur, key: T.nodes[T.cur] && T.nodes[T.cur].key, moves: g.moves, dist: g.dist() }, extra || {}));
   const walkSet = () => new Set(T.walk());
@@ -119,7 +129,7 @@
   function startRoom(t) { phase = 'room'; ph0 = t; roomT0 = t; roomDur = DEMO ? 1e9 : 1000 * RC.roomTime(doors.length, PAR, SPEEDS[speed].f); }
 
   g.on((_, info) => {
-    if (info.type === 'reset') { newRun(); return; }
+    if (info.type === 'reset') { if (teleporting) { T.cur = 0; return; } newRun(); return; }   // a run-mode restart (below) keeps the tree
     if (info.type === 'undo') {
       if (teleporting) return;
       const id = T.at(); T.cur = id != null ? id : T.arrive(null).id;            // an undo from the app: back one room
@@ -129,6 +139,7 @@
       const from = T.cur, r = T.arrive(from, info.chain ? info.chain.vs : null);
       if (teleporting) return;
       stats.rooms++; T.nodes[r.id].visits++;
+      if (MODE === 'run') { fuseMs = Math.min(RUN_CAP(), fuseMs + ROOM_BONUS()); bestWalk = Math.max(bestWalk, g.moves); }
       ev('enter', { from, fresh: r.fresh, door: info.chain ? [info.chain.pair[0], info.chain.pair[1], info.chain.size, info.chain.rimHits] : null });
       refreshDoors(); bump('stat');
       if (g.won()) { winStart(); return; }
@@ -138,6 +149,7 @@
   function arrive() { if (phase === 'won') return; phase = 'arrive'; ph0 = now(); }
   function newRun() {
     T.reset(); refreshDoors(); stats.rooms = 0; stats.deaths = 0; stats.respawns = 0; log.length = 0; clockMs = 0; clockOn = false;
+    fuseMs = RUN_START(); runNo = 1; stats.runs = 1; bestWalk = 0; restartAt = 0;
     parts = []; win = null; $('card').classList.remove('on', 'btns-on');
     phase = DEMO ? 'arrive' : 'intro'; ph0 = now(); updateHud();
   }
@@ -218,20 +230,28 @@
     if (!canAct() || i < 0 || i >= doors.length) return;
     sel = i; runDoor = { d: doors[i], r: doorRects[i], i }; runSwapped = false; phase = 'run'; ph0 = now(); sfx.run();
   }
-  function respawn(id) {
+  function respawn(id, forced) {
+    if (MODE === 'run' && !forced) { sfx.nope(); return; }          // run mode: no teleports, only fresh runs
     if (g.won() || id == null || id < 0 || id >= T.nodes.length) return;
     if (!(phase === 'room' || phase === 'dead' || phase === 'arrive')) return;
     const from = T.cur, wasDead = phase === 'dead';
-    teleporting = true;
-    try { T.teleport(id); } catch (e) { teleporting = false; console.error(e); sfx.nope(); return; }
-    teleporting = false;
+    // embedded, these moves reach the app marked as a replay (g.replay: no coins for swaps already made). A run-mode
+    // restart is ONE reset, not a burst of undos: the app's run proof rejects undos faster than a hand can make them.
+    teleporting = true; g.replay = true;
+    try { if (forced && id === 0) g.reset(); else T.teleport(id); } catch (e) { teleporting = false; g.replay = false; console.error(e); sfx.nope(); return; }
+    teleporting = false; g.replay = false;
     stats.respawns++; ev('respawn', { from, dead: wasDead });
     refreshDoors(); teleTo = id; phase = 'tele'; ph0 = now(); sfx.tele(); bump('stat');
     for (let k = 0; k < 18; k++) spark(RUNNER.x + (Math.random() - .5) * RUNNER.s, RUNNER.y - Math.random() * RUNNER.s * 1.4, '#9ff3ff', 0.5);
   }
+  function restartRun() {                          // run mode: back to the start room, fresh fuse
+    runNo++; stats.runs = runNo; ev('run', { run: runNo });
+    respawn(0, true); fuseMs = RUN_START();
+  }
   function back() { const w = T.walk(); if (w.length > 1) respawn(w[w.length - 2]); else sfx.nope(); }
   function die() {
     stats.deaths++; T.nodes[T.cur].deaths++; ev('die'); phase = 'dead'; ph0 = now(); sel = -1; sfx.die(); bump('stat');
+    if (MODE === 'run') restartAt = now() + 1500;
     for (let k = 0; k < 26; k++) rubble.push({ x: SC.x + Math.random() * SC.w, y: SC.y - Math.random() * 60, vy: 0, w: 8 + Math.random() * 26, h: 6 + Math.random() * 14, rot: Math.random() * 6, vr: (Math.random() - .5) * 0.2, delay: Math.random() * 300 });
   }
   let win = null;
@@ -287,7 +307,7 @@
   function fmt(ms) { const s = ms / 1000, m = Math.floor(s / 60), r = s - 60 * m; return m + ':' + (r < 10 ? '0' : '') + r.toFixed(1); }
   function updateHud() {
     $('clock').textContent = '⏱ ' + fmt(clockMs);
-    $('stat').textContent = '🚪' + stats.rooms + ' 💀' + stats.deaths + ' 👻' + stats.respawns;
+    $('stat').textContent = MODE === 'run' ? '🏁' + runNo + ' 🚪' + stats.rooms + ' 💀' + stats.deaths : '🚪' + stats.rooms + ' 💀' + stats.deaths + ' 👻' + stats.respawns;
     $('speed').textContent = SPEEDS[speed].ic; $('blind').textContent = blind ? '🙈' : '👁';
   }
 
@@ -527,8 +547,10 @@
       if (k > (red ? 600 : 1800)) { startRoom(t); clockOn = true; sfx.go(); ev('go'); }
       else { const s = Math.floor(k / 600); if (s !== lastTick) { lastTick = s; if (k < 1800) sfx.beep(); } }
     }
+    if (phase === 'room' && MODE === 'run' && !DEMO) fuseMs -= dt;
+    if (phase === 'dead' && MODE === 'run' && restartAt && t > restartAt) { restartAt = 0; restartRun(); }
     if (phase === 'room') {
-      const left = roomT0 + roomDur - t;
+      const left = MODE === 'run' ? fuseMs : roomT0 + roomDur - t;
       if (left <= 0 && !DEMO) die();
       else if (left < 1500 && !DEMO) { const s = Math.floor(left / 250); if (s !== lastTick) { lastTick = s; sfx.tick(s % 2); } if (!red) shake = [(Math.random() - .5) * 2.5 * (1 - left / 1500), (Math.random() - .5) * 2]; }
     }
@@ -545,7 +567,7 @@
     cx.save(); rr(SC.x, SC.y, SC.w, SC.h, 14); cx.clip();
     const chainSet = (() => { const i = sel >= 0 ? sel : hov; return i >= 0 && doors[i] && (phase === 'room' || phase === 'run') ? doors[i].K.set : null; })();
     const opts = { sel: phase === 'run' ? runDoor.i : sel, hov, chain: chainSet, spill: phase === 'room' ? (sel >= 0 ? sel : null) : null, fuse: 1, lit: 1 };
-    if (phase === 'room') opts.fuse = clamp((roomT0 + roomDur - t) / roomDur, 0, 1), opts.lit = 0.55 + 0.45 * Math.min(1, opts.fuse * 2.2);
+    if (phase === 'room') opts.fuse = clamp(MODE === 'run' ? fuseMs / RUN_CAP() : (roomT0 + roomDur - t) / roomDur, 0, 1), opts.lit = 0.55 + 0.45 * Math.min(1, opts.fuse * 2.2);
     if (phase === 'intro') opts.lit = 0.6;
     if (phase === 'run') {
       // the first half: zoom into the chosen door (the runner sprints to it)
@@ -595,7 +617,7 @@
     } else drawRunner(t, RUNNER.x, RUNNER.y, RUNNER.s, {});
     cx.restore();
     cx.lineWidth = 3; rr(SC.x, SC.y, SC.w, SC.h, 14); cx.strokeStyle = '#0a0712'; cx.stroke();
-    if (phase === 'room') drawFuse(t, (roomT0 + roomDur - t) / roomDur);
+    if (phase === 'room') drawFuse(t, MODE === 'run' ? fuseMs / RUN_CAP() : (roomT0 + roomDur - t) / roomDur);
     // labels
     const mx = SC.x + SC.w / 2, my = BW.y + BW.h * 0.45;
     if (phase === 'intro') { const s = Math.floor(k / 600); bigText(s < 3 ? String(3 - s) : 'GO', mx, SC.y + SC.h * 0.5, 64 + 10 * (1 - (k % 600) / 600), '#ffcf4a'); }
@@ -603,11 +625,13 @@
     if (phase === 'dead') {
       const p = clamp((k - 400) / 400, 0, 1);
       bigText('💀', mx, my - 30, 54, '#fff', p);
-      bigText('RESPAWN', mx, my + 26, 30, '#9ff3ff', p);
+      bigText(MODE === 'run' ? 'RUN ' + (runNo + 1) + ' — FROM THE START' : 'RESPAWN', mx, my + 26, MODE === 'run' ? 24 : 30, '#9ff3ff', p);
+      if (MODE === 'run') { /* no tree arrow: the next run starts by itself */ } else {
       // an arrow towards your tree
       const bx = LAND ? SC.x + SC.w - 30 : mx, by = LAND ? my + 26 : SC.y + SC.h - 26, w = Math.sin(t / 150) * 6;
       cx.save(); cx.globalAlpha = p; cx.translate(bx + (LAND ? w : 0), by + (LAND ? 0 : w)); cx.rotate(LAND ? -Math.PI / 2 : 0);
       cx.beginPath(); cx.moveTo(-14, -8); cx.lineTo(14, -8); cx.lineTo(0, 10); cx.closePath(); cx.fillStyle = '#9ff3ff'; cx.fill(); cx.lineWidth = 2.5; cx.strokeStyle = '#0d0816'; cx.stroke(); cx.restore();
+      }
     }
     drawTree(t);
     // particles
@@ -628,7 +652,7 @@
     const walkLen = g.moves, par = PAR == null ? walkLen : PAR;
     const stars = walkLen <= par ? 3 : walkLen <= par + 2 ? 2 : 1;
     $('stars').innerHTML = [0, 1, 2].map(i => '<i class="' + (i < stars ? '' : 'off') + '">★</i>').join('');
-    $('tab').innerHTML = [['⏱', fmt(clockMs)], ['🚪', stats.rooms + ' · ' + (T.nodes.length - 1) + ' new'], ['💀', stats.deaths], ['👻', stats.respawns], ['👣', walkLen + ' / ' + par]]
+    $('tab').innerHTML = [['⏱', fmt(clockMs)], ['🚪', stats.rooms + ' · ' + (T.nodes.length - 1) + ' new'], ['💀', stats.deaths], MODE === 'run' ? ['🏁', runNo + (runNo === 1 ? ' run' : ' runs')] : ['👻', stats.respawns], ['👣', walkLen + ' / ' + par]]
       .map(([a, b]) => '<tr><td>' + a + '</td><td>' + b + '</td></tr>').join('');
     $('card').classList.add('on');
   }

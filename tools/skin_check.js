@@ -39,6 +39,12 @@ for (const s of ctx.window.FTH_SKINS.list) {
   }
   if (s.family && !ctx.window.FTH_SKINS.list.some(k => k !== s && k.family === s.family)) console.log('  note: family ' + s.family + ' has one member, so it is not grouped');
   if (s.hud && !['full', 'compact', 'minimal'].includes(s.hud)) fail(id, 'hud must be full | compact | minimal');
+  if (s.par !== undefined) {                         // section 1: a skin's own par per level id (Shoreline); verify.js SKIN_PAR must match
+    if (!s.par || typeof s.par !== 'object' || Array.isArray(s.par)) fail(id, 'par must be an object { levelId: swaps }');
+    else for (const [k, v] of Object.entries(s.par)) { if (!/^[a-z0-9-]{2,24}$/.test(k)) fail(id, 'par: bad level id ' + k); if (!(Number.isInteger(v) && v >= 1 && v <= 20)) fail(id, 'par.' + k + ' must be an integer 1-20'); }
+    const VP = require(path.join(__dirname, '..', 'verify.js')).SKIN_PAR[id];
+    if (JSON.stringify(VP || {}) !== JSON.stringify(s.par)) fail(id, 'par differs from verify.js SKIN_PAR.' + id + ' (run proofs would score other stars)');
+  }
   if (s.src && !fs.existsSync(path.join(__dirname, '..', s.src))) fail(id, 'src ' + s.src + ' not found');
   for (const k of Object.keys(s.theme || {})) if (!/^--sk-[a-z0-9-]+$/.test(k)) fail(id, 'theme key ' + k + ' is not --sk-*');
   // chrome tokens that must be solid colours (SKIN-SPEC 3b): the play page's controls (skins with a page) and the stars (contrast: tools/contrast_check.js)

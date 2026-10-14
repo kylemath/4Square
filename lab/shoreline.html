@@ -61,6 +61,13 @@
   const solveNow = () => SHORE.solve(SPEC, g.col, SHSET);
   const START = (() => { const c = g.level.start.slice(); c[HOLE] = -1; return SHORE.solve(SPEC, c, SHSET); })();
   let cur = solveNow();
+  // ?demo=1 (the shop's live preview): play shore moves only, an optimal shore line when there is one
+  const chainOf = vs => { const k = vs.join('.'); return g.chains.find(K => !K.web && K.vs.join('.') === k) || null; };
+  if (LAB.demo) g.demoPick = () => {
+    const r = solveNow(); let K = r.line && r.line.length ? chainOf(r.line[0]) : null;
+    if (!K) { const M = SHORE.moves(SPEC, g.col, SHSET); K = M.length ? chainOf(M[Math.floor(Math.random() * M.length)].vs) : null; }
+    return K;
+  };
 
   // ---------------------------------------------------------------- geometry
   const C0 = g.centre || g.pos, CELLS = g.cells;
