@@ -170,7 +170,16 @@
     return [(a * A[0] + b * B[0] + cc * C[0]) / s, (a * A[1] + b * B[1] + cc * C[1]) / s];
   };
   const TAP = 22;                // a frame gear must show a 2 x TAP disc inside the box
+  // the hub minimum is soft per level: 34 px (phone) / 44 px (desktop), lowered in steps (down to 15 px) only when holding
+  // it would leave the smallest gear under 4 px (archipelago: a stack of degree-3 regions)
   function view(P, box, opt) {
+    opt = opt || {};
+    const hw = (box.x1 - box.x0) / 2, hh = (box.y1 - box.y0) / 2, H0 = opt.hub || (Math.min(hw, hh) * 2 < 520 ? 34 : 44);
+    let V = null;
+    for (const h of [H0, 30, 26, 22, 18, 15].filter(h => h <= H0)) { V = view1(P, box, Object.assign({}, opt, { hub: h })); V.hubMin = h; if (V.minPx >= 4) break; }
+    return V;
+  }
+  function view1(P, box, opt) {
     opt = opt || {};
     const { n, N, hole, tris } = P, hw = (box.x1 - box.x0) / 2, hh = (box.y1 - box.y0) / 2, X0 = (box.x0 + box.x1) / 2, Y0 = (box.y0 + box.y1) / 2;
     // two starting drawings: as packed (the outer triangle's interstice is the unbounded one) and inverted once, so that
@@ -194,7 +203,7 @@
       }
       return k / (gx * gy);
     };
-    const HUB = opt.hub || (Math.min(hw, hh) * 2 < 520 ? 34 : 44), CAP = opt.cap || 0.15;
+    const HUB = opt.hub, CAP = opt.cap || 0.15;
     const evalAt = (B, T, p, th, keep) => {
       const C = new Array(N);
       for (let u = 0; u < N; u++) { const q = invert([B[u][0], B[u][1]], B[u][2], p); if (!q || (q[2] < 0 && (u < n || T.length > 1 || T[0] !== u))) return keep ? null : -1; C[u] = q; }

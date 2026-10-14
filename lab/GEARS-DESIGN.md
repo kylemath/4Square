@@ -38,8 +38,10 @@ gears in mesh, and gears that are not neighbours never touch.
   exists. A pond may also be framed by a face's middle filler turned inside out (everything inside one circle).
 - **Numbers (all 40 levels, `tools/gearpack_check.js`):** max tangency error ~1e-10 (relative); no overlaps; non-neighbours
   never touch; frame gears cover at most 17% of the board (check: 20%); hub at least 34 px (phone) / 44 px (desktop).
-  Smallest interior gear, phone: 13-20 px on most levels (desktop 31-43 px), except `archipelago`: 1.2 px (2.4 desktop), a
-  stack of degree-3 regions that is tiny in any packing once the hub is held at 34 px (with a 15 px hub it would be 4 px).
+  Smallest interior gear, phone: 13-20 px on most levels (desktop 31-43 px). The hub minimum is soft per level: it is
+  lowered in steps (down to ~15 px) only where holding it would leave a gear under 4 px. The one exception (listed by the
+  check): `archipelago`, a stack of degree-3 regions: hub 14.9 px / smallest gear 4.5 px on the phone, 27.9 / 5.4 px on
+  desktop (with the full 34 px hub its smallest gear would be 1.2 px).
   Every gear keeps a tap radius of at least 12 px (24 px across), taking priority over its neighbours' rims.
 
 ## Teeth

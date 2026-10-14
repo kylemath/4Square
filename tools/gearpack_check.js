@@ -17,6 +17,7 @@ const G = ctx.window.GAME, LAY = ctx.window.LAYOUT, GP = ctx.window.GEARPACK, VE
 let bad = 0; const fail = m => { console.log('  FAIL ' + m); bad++; };
 const box = (w, h) => ({ x0: 10, y0: 54, x1: w - 10, y1: h - 10 });   // lab/gears.html resize()
 const SIZES = [[390, 844], [1280, 800]], COVER = 0.2;   // frame gears: at most 20% of the board; hub radius >= 34 px phone, 44 px desktop
+const EXCEPT = ['archipelago'], exc = [];   // levels allowed a smaller hub (a stack of degree-3 regions: else a gear under 4 px)
 const per = SIZES.map(() => ({ gear: [], hub: Infinity, cov: 0 }));
 const tot = { cov: 0, covAt: '', hub: Infinity, hubAt: '', lv: 0, tan: 0, minPx: Infinity, minPxAt: '', ratio: 0, ratioAt: '', clash: 0, mean: 0, nm: 0, ms: 0 };
 console.log('  level              n   N  conv     tan.err   phone: minPx ratio  hub cov% teeth clash   desk: minPx ratio  hub cov% teeth clash');
@@ -38,7 +39,10 @@ for (const L of G.levels) {
       else if (d - s <= 1e-4 * Math.min(R[u], R[v])) fail(L.id + ' ' + w + ': ' + u + '-' + v + (d < s ? ' overlap' : ' touch') + ' (gap ' + (d - s).toFixed(4) + ' px)');
     }
     const H = S[Gr.hole], HUB = w < 500 ? 34 : 44;
-    if (R[Gr.hole] < HUB - 0.05) fail(L.id + ' ' + w + ': hub ' + R[Gr.hole].toFixed(1) + ' px < ' + HUB);
+    if (V.hubMin < HUB) { exc.push(L.id + '@' + w + ': hub minimum lowered to ' + V.hubMin + ' px (hub ' + R[Gr.hole].toFixed(1) + ' px) so the smallest gear reaches ' + V.minPx.toFixed(1) + ' px');
+      if (!EXCEPT.includes(L.id)) fail(L.id + ' ' + w + ': hub minimum lowered, not an allowed exception'); }
+    const hubMin = V.hubMin < HUB ? 14.5 : HUB;   // an exception's hub may fall to ~15 px
+    if (R[Gr.hole] < hubMin - 0.05) fail(L.id + ' ' + w + ': hub ' + R[Gr.hole].toFixed(1) + ' px < ' + hubMin);
     if (V.cover > COVER) fail(L.id + ' ' + w + ': frame gears cover ' + (100 * V.cover).toFixed(0) + '% of the board (> ' + 100 * COVER + '%)');
     for (const x of Gr.link) { const d = Math.hypot(S[x][0] - H[0], S[x][1] - H[1]); if (Math.abs(d - R[x] - R[Gr.hole]) > 1e-6 * (R[x] + R[Gr.hole])) fail(L.id + ': hub not tangent to rim gear ' + x); }
     // on screen: every gear shows a disc of radius min(r, 22 px) inside the box (outer gears may run off the edges), the hub whole
@@ -64,6 +68,7 @@ for (const L of G.levels) {
 }
 SIZES.forEach(([w, h], i) => { const G = per[i].gear.slice().sort((a, b) => a - b);
   console.log('\n  ' + w + ' x ' + h + ': smallest interior gear ' + G[0].toFixed(1) + ' px (next ' + G[1].toFixed(1) + ' px, median level ' + G[G.length >> 1].toFixed(1) + ' px), smallest hub ' + per[i].hub.toFixed(1) + ' px, largest frame cover ' + (100 * per[i].cov).toFixed(1) + '%'); });
+exc.forEach(e => console.log('  exception: ' + e));
 console.log('\n  levels ' + tot.lv + ', max tangency error ' + tot.tan.toExponential(2) + ' (relative), smallest gear ' + tot.minPx.toFixed(1) + ' px (' + tot.minPxAt + '), worst radius ratio ' +
   tot.ratio.toFixed(2) + ' (' + tot.ratioAt + '), teeth clash max ' + tot.clash.toFixed(2) + ' / mean ' + (tot.mean / tot.nm).toFixed(3) + ' tooth, slowest level ' + tot.ms + ' ms (pack + 2 views + teeth)');
 console.log(bad ? '\n' + bad + ' FAILED' : '\nall ok');
