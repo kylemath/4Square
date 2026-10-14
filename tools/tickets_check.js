@@ -15,8 +15,12 @@ run('tickets.js');
 const T = ctx.window.FTH_TICKETS, S = ctx.window.FTH_SKINS, SK = S.list;
 let bad = 0; const ok = (m, c, x) => { console.log((c ? '  ok   ' : '  FAIL ') + m + (x !== undefined ? '  ' + x : '')); if (!c) bad++; };
 
-// measured with a headless run of index.html (?all=1, Islands, every level in order, solved at par): see the commit log
-const PAY = [1110, 865, 985, 910, 1120, 1015, 885, 1540, 965, 1075, 1123, 1190, 1945, 1310, 1320, 1850, 1578, 1850, 2228, 2138, 1810, 1340, 2523, 1470, 1750, 2488, 2705, 3785, 3383];
+// measured with a headless run of index.html (?all=1, Islands, fresh save, every level in order, solved at par with
+// __game.good(), bonus rounds skipped): points = 4 x the Islands wallet's gain (bal + f) per level, achievements included.
+// The first 29 are the original measurement; the run that added Gears (ticket 14) remeasured all 40 levels, reproduced
+// those 29 exactly and added the Census33/34 levels 17.1-18.4.
+const PAY = [1110, 865, 985, 910, 1120, 1015, 885, 1540, 965, 1075, 1123, 1190, 1945, 1310, 1320, 1850, 1578, 1850, 2228, 2138, 1810, 1340, 2523, 1470, 1750, 2488, 2705, 3785, 3383,
+  2755, 2859, 3378, 3063, 2428, 2930, 2240, 2228, 3336, 2923, 3443];
 ok('one ticket per skin other than Islands', T.GATE.length === SK.length - 1 && T.PRICE.length === T.GATE.length, T.GATE.length + ' tickets, ' + SK.length + ' skins');
 ok('gates rise', T.GATE.every((g, i) => !i || g > T.GATE[i - 1]), T.GATE.join(' '));
 ok('prices rise', T.PRICE.every((p, i) => !i || p > T.PRICE[i - 1]), T.PRICE.join(' '));

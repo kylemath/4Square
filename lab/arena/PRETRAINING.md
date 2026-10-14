@@ -218,3 +218,15 @@ create skill the net has not learned.
   enough. The trap17 sanity run suggests the architecture can learn this, but sample needs scale with the number of
   distinct maps. The bitter-lesson path is the PyTorch/JAX port above, with this pool generator as the data source and
   10^8-10^9 samples.
+
+## Optional input: the die counter (`degree.js`, not wired in)
+
+`FTH_DEGREE` (`degree.js` at the game root, pure, loads in the Worker with `importScripts('../../degree.js')` or in node
+through vm like `tools/degree_check.js`) gives each state its die counter: `counts(G, col)` → `{ N, m, eps }` for any graph
+with a rotation system (`makeGraph` keeps `rot`; generated maps have no `pos`, so the rotation system's own orientation is
+used, which is all a label-free feature needs). A cheap agent input would be two more globals: `N * eps / 10` (label-free:
+renaming the colours or mirroring the map leaves it unchanged, matching the relative-colour encoding) and, per candidate
+chain, the change of `N * eps` its swap would make (one recount of the corners touching the chain). `locks(G, col)` and
+`pi(G, col)` give the double lock and π directly. Measured on the 31 level maps (`node tools/degree_check.js`): π changes
+N by an odd amount, not a constant, and quiet swaps by even amounts, so the counter carries parity information about rim
+swaps but no monotone "progress" signal. Training with it is not done.

@@ -397,6 +397,7 @@ coin: { name: 'pearl', plural: 'pearls',        // singular and plural, lower ca
 | glass marble | Spheres | 16 | a lab specimen from the ball-and-stick model |
 | compass rose | Island Map | 20 | an explorer's prize |
 | cheese wedge | Rat Maze | 25 | the prize at the end of the corridor |
+| cog | Gears | 30 | machined brass, a working part |
 | ion orb | Ion Channels | 35 | charged, short-lived, scarce |
 | pearl | Islands Free | 60 | rare and valuable |
 | crystal shard | Islands 3D | 100 | the rarest |
