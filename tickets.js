@@ -18,11 +18,11 @@
 (function () {
   'use strict';
   const START = 'islands';
-  // levels beaten before ticket n, and its price in points. Calibrated on clean 3-star play of the 29 levels, bonus rounds
+  // levels beaten before ticket n, and its price in points. Calibrated on clean 3-star play of the 40 levels, bonus rounds
   // not counted (tools/tickets_check.js prints the table against measured earnings): the first ticket is about one
   // level's pay, and each later one comes a little further on and costs 300 points more. One ticket per skin other than Islands.
-  const GATE = [1, 3, 5, 7, 9, 12, 14, 16, 18, 20, 23, 26, 28];
-  const PRICE = [900, 1200, 1500, 1800, 2100, 2400, 2700, 3000, 3300, 3600, 3900, 4200, 4500];
+  const GATE = [1, 3, 5, 7, 9, 12, 14, 16, 18, 20, 23, 26, 28, 30];
+  const PRICE = [900, 1200, 1500, 1800, 2100, 2400, 2700, 3000, 3300, 3600, 3900, 4200, 4500, 4800];
   const R = (window.FTH_SKINS || {});
 
   // ---------------------------------------------------------------- rules
