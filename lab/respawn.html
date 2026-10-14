@@ -1,0 +1,651 @@
+<!doctype html>
+<!--
+  RESPAWN (lab prototype; not on the skin reel, not in the tickets). Design note: lab/RESPAWN-DESIGN.md.
+
+  A fast third-person maze runner over the game's own state space. The model is lab/respawn-core.js; the rules are
+  lab/core.js, unchanged.
+
+  Mapping (every move is one g.swap(K) or g.undo(); nothing else touches the colouring):
+    room            = a colouring (key g.canon(); revisits of the same colouring are the same room)
+    door            = a non-web chain K of the room, labelled by its two elements and its size (gold pips over the arch:
+                      how many rim regions it touches). Going through = g.swap(K) -> the next room
+    goal room       = a won colouring (the rim uses <= 3 elements): stepping in wins the level
+    the mural       = the map in the room's colouring on the back wall, the hole dark, the rim outlined; the selected
+                      door's chain glows on it. Blind mode hides it (door labels only)
+    your tree       = HUD panel: rooms you have been in (each a small ring of its 5 rim elements), doors you have taken
+                      (tree edges solid, doors into a known room dashed), you = the pulsing node
+    respawn         = tap any node: undo back to where your walk and that node's tree path agree, then swap down the
+                      tree path (respawn-core T.teleport). So g.moves is always the length of the walk you are on
+    room timer      = a fuse per room (RESPAWN_CORE.roomTime: 3-6.5 s from door count and par, x speed). It burns out:
+                      the room collapses (a death) and you must respawn from your tree. The level clock runs throughout
+    win             = the hole fills, the winning walk lights gold in the tree, a stats card (time, rooms, deaths,
+                      respawns, walk vs par), then LAB.done(). Embedded: nothing restarts afterwards.
+  Controls: tap a door to open it (its chain lights on the mural), tap it again to run through (a mouse click runs at
+  once; hover previews). Keys: left/right pick, Enter/Up/Space go, 1-9 go, Backspace/B back one room, tap a tree node.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>Respawn</title>
+<style>
+  :root { --ink: #f4efff; --bg: #120e1c; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); touch-action: none; color: var(--ink);
+    font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
+  canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; }
+  #hud { position: fixed; left: 0; right: 0; top: 0; height: 50px; display: flex; align-items: center; gap: 6px; padding: 0 8px; box-sizing: border-box; pointer-events: none; }
+  #hud .chip { pointer-events: auto; height: 34px; min-width: 34px; padding: 0 10px; box-sizing: border-box; border-radius: 17px; display: flex; align-items: center; justify-content: center; gap: 5px;
+    background: var(--sk-ctl, #2c2440); color: var(--sk-ctl-ink, #f4efff); border: 2px solid var(--sk-ctl-edge, #0a0712); box-shadow: 0 3px 0 rgba(0,0,0,.45);
+    font: 800 14px system-ui, sans-serif; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  #hud button.chip { cursor: pointer; }
+  #hud button.chip:active { transform: translateY(2px); box-shadow: 0 1px 0 rgba(0,0,0,.45); }
+  #hud .grow { flex: 1; }
+  #clock { min-width: 74px; }
+  #lvl { background: var(--sk-accent, #ffcf4a); color: #2a1a00; }
+  .embed #prev, .embed #next { display: none; }
+  .embed.hudfull #lvl { display: none; }
+  @media (max-width: 380px) { #hud .chip { padding: 0 7px; font-size: 13px; } #clock { min-width: 64px; } }
+  #card { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%) scale(.6); opacity: 0; pointer-events: none; transition: transform .45s cubic-bezier(.2,1.6,.4,1), opacity .25s;
+    background: linear-gradient(#3a2d5c, #241b3a); border: 3px solid #0a0712; border-radius: 22px; box-shadow: 0 8px 0 rgba(0,0,0,.5), 0 0 60px rgba(255,207,74,.35);
+    padding: 16px 22px 18px; min-width: 230px; text-align: center; }
+  #card.on { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  #card h2 { margin: 0 0 4px; font: 900 30px system-ui, sans-serif; color: #ffcf4a; text-shadow: 0 3px 0 #6b3d00; letter-spacing: 1px; }
+  #card .stars { font-size: 30px; letter-spacing: 4px; margin-bottom: 8px; }
+  #card .stars i { font-style: normal; color: #ffcf4a; text-shadow: 0 2px 0 #6b3d00; }
+  #card .stars i.off { color: #4a3f63; text-shadow: none; }
+  #card table { margin: 0 auto; border-collapse: collapse; font: 700 16px system-ui, sans-serif; font-variant-numeric: tabular-nums; }
+  #card td { padding: 2px 8px; } #card td:first-child { text-align: right; opacity: .8; } #card td:last-child { text-align: left; }
+  #card .btns { margin-top: 12px; display: flex; gap: 10px; justify-content: center; }
+  #card button { pointer-events: auto; font: 900 18px system-ui, sans-serif; height: 44px; min-width: 64px; border-radius: 22px; border: 2px solid #0a0712; cursor: pointer;
+    background: var(--sk-ctl, #ffcf4a); color: var(--sk-ctl-ink, #2a1a00); box-shadow: 0 4px 0 rgba(0,0,0,.5); }
+  #card .btns { display: none; } #card.btns-on .btns { display: flex; }
+  .embed #card .btns { display: none !important; }
+</style>
+</head>
+<body>
+<canvas id="cv" aria-label="Respawn: rooms and doors"></canvas>
+<div id="hud">
+  <div class="chip" id="lvl">1</div>
+  <div class="chip" id="clock">0:00.0</div>
+  <div class="grow"></div>
+  <div class="chip" id="stat" title="rooms · deaths · respawns">🚪0 💀0 👻0</div>
+  <button class="chip" id="speed" title="speed">🏃</button>
+  <button class="chip" id="blind" title="blind">👁</button>
+  <button class="chip" id="prev" aria-label="previous level">◀</button>
+  <button class="chip" id="next" aria-label="next level">▶</button>
+</div>
+<div id="card"><h2>FILLED!</h2><div class="stars" id="stars"></div><table id="tab"></table>
+  <div class="btns"><button id="again" aria-label="again">↺</button><button id="nextLvl" aria-label="next level">▶</button></div></div>
+<script src="../levels.js"></script>
+<script src="../layout.js"></script>
+<script src="core.js"></script>
+<script src="respawn-core.js"></script>
+<script>
+(function () {
+  'use strict';
+  const g = LAB.game(), RC = window.RESPAWN_CORE;
+  const n = g.n, HOLE = g.hole, RIM = g.rim;
+  const QS = new URLSearchParams(location.search), HUD = QS.get('hud') || '', DEMO = LAB.demo;
+  if (LAB.embedded && HUD === 'full') document.documentElement.classList.add('hudfull');
+  const ELEM = LAB.ELEM, COL = ELEM.map(e => e.hex), DARK = ELEM.map(e => e.dark), NEON = ELEM.map(e => e.neon), PAST = ELEM.map(e => e.pastel);
+  const ICON = LAB.ICON.map(d => new Path2D(d)), ICON_FILL = [true, true, false, false];
+  const RM = matchMedia('(prefers-reduced-motion: reduce)'), reduce = () => RM.matches;
+  const now = () => performance.now();
+  const clamp = (x, a, b) => x < a ? a : x > b ? b : x;
+  const ease = t => t <= 0 ? 0 : t >= 1 ? 1 : 1 - Math.pow(1 - t, 3);
+  const easeIn = t => t <= 0 ? 0 : t >= 1 ? 1 : t * t * t;
+  const cv = document.getElementById('cv'), cx = cv.getContext('2d');
+  const $ = id => document.getElementById(id);
+  const store = { get(k, d) { try { const v = localStorage.getItem('respawn.' + k); return v == null ? d : v; } catch (e) { return d; } }, set(k, v) { try { localStorage.setItem('respawn.' + k, v); } catch (e) { /* private mode */ } } };
+
+  // ---------------------------------------------------------------- settings
+  const SPEEDS = { chill: { f: 1.6, ic: '🐢' }, run: { f: 1, ic: '🏃' }, sprint: { f: 0.7, ic: '⚡' } };
+  let speed = SPEEDS[store.get('speed', 'run')] ? store.get('speed', 'run') : 'run';
+  let blind = store.get('blind', '0') === '1';
+  const PAR = g.dist();
+  $('lvl').textContent = String(g.level.num);
+
+  // ---------------------------------------------------------------- the model
+  const T = RC.tree(g);
+  let doors = [], sel = -1, hov = -1, teleporting = false;
+  let phase = 'intro', ph0 = now();               // intro | room | run | arrive | tele | dead | won
+  let roomT0 = 0, roomDur = 4000, runDoor = null, runSwapped = false, teleTo = -1;
+  let clockMs = 0, clockOn = false;
+  const stats = { rooms: 0, deaths: 0, respawns: 0, start: Date.now() };
+  const log = [];                                  // the player's exploration, for research (window.RESPAWN.log())
+  const ev = (type, extra) => log.push(Object.assign({ t: Math.round(clockMs), type, node: T.cur, key: T.nodes[T.cur] && T.nodes[T.cur].key, moves: g.moves, dist: g.dist() }, extra || {}));
+  const walkSet = () => new Set(T.walk());
+  function refreshDoors() { doors = RC.doors(g); sel = -1; hov = -1; layoutDoors(); }
+  function startRoom(t) { phase = 'room'; ph0 = t; roomT0 = t; roomDur = DEMO ? 1e9 : 1000 * RC.roomTime(doors.length, PAR, SPEEDS[speed].f); }
+
+  g.on((_, info) => {
+    if (info.type === 'reset') { newRun(); return; }
+    if (info.type === 'undo') {
+      if (teleporting) return;
+      const id = T.at(); T.cur = id != null ? id : T.arrive(null).id;            // an undo from the app: back one room
+      refreshDoors(); ev('back'); arrive(); return;
+    }
+    if (info.type === 'swap') {
+      const from = T.cur, r = T.arrive(from, info.chain ? info.chain.vs : null);
+      if (teleporting) return;
+      stats.rooms++; T.nodes[r.id].visits++;
+      ev('enter', { from, fresh: r.fresh, door: info.chain ? [info.chain.pair[0], info.chain.pair[1], info.chain.size, info.chain.rimHits] : null });
+      refreshDoors(); bump('stat');
+      if (g.won()) { winStart(); return; }
+      if (phase !== 'run') arrive();              // a swap from outside (the app, the demo, a check): no run animation
+    }
+  });
+  function arrive() { if (phase === 'won') return; phase = 'arrive'; ph0 = now(); }
+  function newRun() {
+    T.reset(); refreshDoors(); stats.rooms = 0; stats.deaths = 0; stats.respawns = 0; log.length = 0; clockMs = 0; clockOn = false;
+    parts = []; win = null; $('card').classList.remove('on', 'btns-on');
+    phase = DEMO ? 'arrive' : 'intro'; ph0 = now(); updateHud();
+  }
+
+  // ---------------------------------------------------------------- geometry
+  let W = 0, H = 0, LAND = false, SC = null, TP = null, BW = null, MU = null, DR = null, RUNNER = null;
+  let mapPts = [], mapCells = [], mapScale = 1, backBtn = null;
+  const C0 = g.centre || g.pos, CELLS = g.cells;
+  let doorRects = [];
+  function resize() {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+    W = innerWidth; H = innerHeight; cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); cx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const top = 54, m = 8;
+    LAND = W > H * 1.05 && W >= 640;
+    if (LAND) {
+      const tw = clamp(W * 0.3, 220, 400);
+      SC = { x: m, y: top, w: W - tw - 3 * m, h: H - top - m };
+      TP = { x: W - tw - m, y: top, w: tw, h: H - top - m };
+    } else {
+      const th = clamp(H * 0.25, 130, 230);
+      SC = { x: m, y: top, w: W - 2 * m, h: H - top - th - 2 * m };
+      TP = { x: m, y: H - th - m, w: W - 2 * m, h: th };
+    }
+    BW = { x: SC.x + SC.w * 0.07, y: SC.y + SC.h * 0.06, w: SC.w * 0.86, h: SC.h * 0.68 };
+    RUNNER = { x: SC.x + SC.w / 2, y: SC.y + SC.h * 0.965, s: clamp(SC.h * 0.11, 26, 70) };
+    backBtn = { x: TP.x + TP.w - 24, y: TP.y + 22, r: 17 };
+    layoutDoors();
+  }
+  function layoutDoors() {
+    if (!BW) return;
+    const nd = doors.length, muH = blind ? BW.h * 0.2 : BW.h * 0.56;
+    MU = { x: BW.x + 10, y: BW.y + 8, w: BW.w - 20, h: muH - 26 };
+    DR = { x: BW.x + 6, y: BW.y + muH, w: BW.w - 12, h: BW.h - muH - 4 };
+    const rows = nd > 7 ? 2 : 1, per = Math.ceil(nd / rows) || 1;
+    const slotW = DR.w / per, dw = Math.min(slotW * 0.84, 92), dh = Math.min(DR.h / rows - 8, dw * 1.75);
+    doorRects = doors.map((d, i) => {
+      const r = Math.floor(i / per), c = i % per, inRow = r === rows - 1 ? nd - per * (rows - 1) : per;
+      const x0 = DR.x + (DR.w - inRow * slotW) / 2 + c * slotW + (slotW - dw) / 2;
+      const y0 = DR.y + (DR.h / rows) * (r + 1) - dh - 4;
+      return { x: x0, y: y0, w: dw, h: dh, cx: x0 + dw / 2, cy: y0 + dh / 2 };
+    });
+    // the mural: map coordinates (about [-1, 1]) fitted into MU
+    let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+    const pts = CELLS ? CELLS.flat() : C0; pts.forEach(([x, y]) => { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); });
+    const s = Math.min(MU.w / (x1 - x0 || 1), (MU.h - 18) / (y1 - y0 || 1)); mapScale = s;
+    const ox = MU.x + (MU.w - s * (x1 - x0)) / 2 - s * x0, oy = MU.y + (MU.h - 18 - s * (y1 - y0)) / 2 - s * y0;
+    const mp = ([x, y]) => [ox + s * x, oy + s * y];
+    mapPts = C0.map(mp);
+    mapCells = CELLS ? CELLS.map(poly => { const p = new Path2D(); poly.map(mp).forEach(([x, y], i) => i ? p.lineTo(x, y) : p.moveTo(x, y)); p.closePath(); return p; }) : null;
+  }
+
+  // ---------------------------------------------------------------- sound (synthesised; silent until the first touch)
+  let AC = null, MG = null;
+  function audio() { if (AC) { if (AC.state === 'suspended') AC.resume(); return; } try { AC = new (window.AudioContext || window.webkitAudioContext)(); MG = AC.createGain(); MG.gain.value = 0.2; MG.connect(AC.destination); } catch (e) { AC = null; } }
+  function tone(f, dur, vol, type, when, f2) {
+    if (!AC) return; const t = AC.currentTime + (when || 0), o = AC.createOscillator(), gn = AC.createGain();
+    o.type = type || 'triangle'; o.frequency.setValueAtTime(f, t); if (f2) o.frequency.exponentialRampToValueAtTime(f2, t + dur);
+    gn.gain.setValueAtTime(0.0001, t); gn.gain.exponentialRampToValueAtTime(vol, t + 0.008); gn.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(gn); gn.connect(MG); o.start(t); o.stop(t + dur + 0.03);
+  }
+  const PENTA = [0, 2, 4, 7, 9, 12, 14, 16, 19, 21, 24];
+  const sfx = {
+    open: i => { tone(300 + 40 * (i % 8), 0.12, 0.12, 'triangle', 0, 520); },
+    run: () => { tone(180, 0.22, 0.12, 'sawtooth', 0, 620); tone(900, 0.12, 0.05, 'triangle', 0.08, 1500); },
+    tick: k => tone(k ? 1100 : 820, 0.05, 0.12, 'square'),
+    die: () => { tone(110, 0.7, 0.3, 'sawtooth', 0, 40); tone(70, 0.9, 0.25, 'square', 0.05, 30); for (let i = 0; i < 6; i++) tone(200 + Math.random() * 300, 0.06, 0.08, 'square', 0.05 + i * 0.07); },
+    tele: () => { tone(1500, 0.25, 0.1, 'sine', 0, 300); tone(300, 0.3, 0.1, 'sine', 0.12, 1400); },
+    nope: () => tone(160, 0.12, 0.12, 'triangle', 0, 90),
+    win: () => { tone(523, 0.5, 0.18, 'sine'); tone(784, 0.6, 0.14, 'sine', 0.12); for (let d = 0; d < 9; d++) tone(392 * Math.pow(2, PENTA[d] / 12), 0.25, 0.09, 'triangle', 0.45 + d * 0.12); },
+    go: () => { tone(660, 0.12, 0.15, 'square'); tone(990, 0.2, 0.15, 'square', 0.1); },
+    beep: () => tone(440, 0.09, 0.12, 'square'),
+  };
+
+  // ---------------------------------------------------------------- actions
+  const canAct = () => phase === 'room' && !g.won();
+  function pickDoor(i) { if (!canAct() || i < 0 || i >= doors.length) return; if (sel !== i) { sel = i; sfx.open(i); } }
+  function goDoor(i) {
+    if (!canAct() || i < 0 || i >= doors.length) return;
+    sel = i; runDoor = { d: doors[i], r: doorRects[i], i }; runSwapped = false; phase = 'run'; ph0 = now(); sfx.run();
+  }
+  function respawn(id) {
+    if (g.won() || id == null || id < 0 || id >= T.nodes.length) return;
+    if (!(phase === 'room' || phase === 'dead' || phase === 'arrive')) return;
+    const from = T.cur, wasDead = phase === 'dead';
+    teleporting = true;
+    try { T.teleport(id); } catch (e) { teleporting = false; console.error(e); sfx.nope(); return; }
+    teleporting = false;
+    stats.respawns++; ev('respawn', { from, dead: wasDead });
+    refreshDoors(); teleTo = id; phase = 'tele'; ph0 = now(); sfx.tele(); bump('stat');
+    for (let k = 0; k < 18; k++) spark(RUNNER.x + (Math.random() - .5) * RUNNER.s, RUNNER.y - Math.random() * RUNNER.s * 1.4, '#9ff3ff', 0.5);
+  }
+  function back() { const w = T.walk(); if (w.length > 1) respawn(w[w.length - 2]); else sfx.nope(); }
+  function die() {
+    stats.deaths++; T.nodes[T.cur].deaths++; ev('die'); phase = 'dead'; ph0 = now(); sel = -1; sfx.die(); bump('stat');
+    for (let k = 0; k < 26; k++) rubble.push({ x: SC.x + Math.random() * SC.w, y: SC.y - Math.random() * 60, vy: 0, w: 8 + Math.random() * 26, h: 6 + Math.random() * 14, rot: Math.random() * 6, vr: (Math.random() - .5) * 0.2, delay: Math.random() * 300 });
+  }
+  let win = null;
+  function winStart() {
+    phase = 'won'; ph0 = now(); clockOn = false; ev('win');
+    win = { t0: now(), done: false, card: false, free: g.free() };
+    const w = T.walk(); win.walk = w; win.walkSet = new Set(w);
+    const dr = runDoor ? runDoor.r : { cx: BW.x + BW.w / 2, cy: BW.y + BW.h / 2 };
+    LAB.at(dr.cx, dr.cy);
+    sfx.win();
+  }
+
+  // ---------------------------------------------------------------- particles, shakes
+  let parts = [], rubble = [], bumps = {};
+  function spark(x, y, col, life) { const a = Math.random() * Math.PI * 2, v = 60 + Math.random() * 220; parts.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 80, t0: now(), life: (life || 0.9) * 1000, col, s: 2 + Math.random() * 3 }); }
+  function bump(id) { const el = $(id); if (!el || reduce()) return; el.animate([{ transform: 'scale(1.18)' }, { transform: 'scale(1)' }], { duration: 260, easing: 'cubic-bezier(.2,1.6,.4,1)' }); }
+
+  // ---------------------------------------------------------------- input
+  const inR = (p, r) => p[0] >= r.x && p[0] <= r.x + r.w && p[1] >= r.y && p[1] <= r.y + r.h;
+  const doorAt = p => doorRects.findIndex(r => p[0] >= r.x - 4 && p[0] <= r.x + r.w + 4 && p[1] >= r.y - 10 && p[1] <= r.y + r.h + 6);
+  let nodeXY = [], nodeHit = 14;
+  function nodeAt(p) { let best = -1, bd = nodeHit; nodeXY.forEach((q, i) => { if (!q) return; const d = Math.hypot(q[0] - p[0], q[1] - p[1]); if (d < bd) { bd = d; best = i; } }); return best; }
+  cv.addEventListener('pointerdown', e => {
+    audio(); const p = [e.clientX, e.clientY];
+    if (g.won()) return;                          // after a win nothing on the board reacts (embedded: the app owns what follows)
+    if (inR(p, TP)) {
+      if (Math.hypot(p[0] - backBtn.x, p[1] - backBtn.y) < backBtn.r + 4) { back(); return; }
+      const id = nodeAt(p); if (id >= 0) respawn(id);
+      return;
+    }
+    const i = doorAt(p);
+    if (i < 0) { sel = -1; return; }
+    if (e.pointerType === 'mouse' || sel === i) { LAB.at(p[0], p[1]); goDoor(i); } else pickDoor(i);
+  });
+  cv.addEventListener('pointermove', e => { if (e.pointerType !== 'mouse') return; const i = doorAt([e.clientX, e.clientY]); if (i !== hov) { hov = i; if (i >= 0 && canAct()) sfx.open(i); } cv.style.cursor = i >= 0 || (inR([e.clientX, e.clientY], TP) && nodeAt([e.clientX, e.clientY]) >= 0) ? 'pointer' : 'default'; });
+  cv.addEventListener('pointerleave', () => { hov = -1; });
+  addEventListener('keydown', e => {
+    audio(); if (g.won()) return;
+    const k = e.key;
+    if (k === 'ArrowRight') { pickDoor(sel < 0 ? 0 : (sel + 1) % doors.length); e.preventDefault(); }
+    else if (k === 'ArrowLeft') { pickDoor(sel < 0 ? doors.length - 1 : (sel + doors.length - 1) % doors.length); e.preventDefault(); }
+    else if (k === 'Enter' || k === 'ArrowUp' || k === ' ') { if (sel >= 0) goDoor(sel); e.preventDefault(); }
+    else if (/^[1-9]$/.test(k)) goDoor(+k - 1);
+    else if (k === 'Backspace' || k === 'b' || k === 'B' || k === 'ArrowDown') { back(); e.preventDefault(); }
+  });
+  $('speed').onclick = () => { audio(); const ks = Object.keys(SPEEDS); speed = ks[(ks.indexOf(speed) + 1) % ks.length]; store.set('speed', speed); updateHud(); bump('speed'); };
+  $('blind').onclick = () => { audio(); blind = !blind; store.set('blind', blind ? '1' : '0'); layoutDoors(); updateHud(); bump('blind'); };
+  const stepLevel = dir => { const L = GAME.levels, i = L.findIndex(l => l.id === g.level.id), j = (i + dir + L.length) % L.length; QS.set('lvl', L[j].id); location.search = QS.toString(); };
+  $('prev').onclick = () => { if (!LAB.embedded) stepLevel(-1); };
+  $('next').onclick = () => { if (!LAB.embedded) stepLevel(1); };
+  $('nextLvl').onclick = () => { if (!LAB.embedded) stepLevel(1); };
+  $('again').onclick = () => { if (!LAB.embedded) g.reset(); };
+  function fmt(ms) { const s = ms / 1000, m = Math.floor(s / 60), r = s - 60 * m; return m + ':' + (r < 10 ? '0' : '') + r.toFixed(1); }
+  function updateHud() {
+    $('clock').textContent = '⏱ ' + fmt(clockMs);
+    $('stat').textContent = '🚪' + stats.rooms + ' 💀' + stats.deaths + ' 👻' + stats.respawns;
+    $('speed').textContent = SPEEDS[speed].ic; $('blind').textContent = blind ? '🙈' : '👁';
+  }
+
+  // ---------------------------------------------------------------- drawing helpers
+  const hash = s => { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; };
+  const roomHue = key => hash(key) % 360;
+  function rr(x, y, w, h, r) { cx.beginPath(); cx.roundRect(x, y, w, h, r); }
+  function icon(e, x, y, s, ink) {
+    cx.save(); cx.translate(x - s / 2, y - s / 2); cx.scale(s / 24, s / 24);
+    if (ICON_FILL[e]) { cx.fillStyle = ink || '#fff'; cx.fill(ICON[e]); } else { cx.strokeStyle = ink || '#fff'; cx.lineWidth = 2.6; cx.lineCap = 'round'; cx.lineJoin = 'round'; cx.stroke(ICON[e]); }
+    cx.restore();
+  }
+  function gem(e, x, y, r) {      // a filled element token: outline, colour, highlight, icon
+    cx.beginPath(); cx.arc(x, y + r * 0.18, r, 0, 7); cx.fillStyle = 'rgba(0,0,0,.45)'; cx.fill();
+    cx.beginPath(); cx.arc(x, y, r, 0, 7); cx.fillStyle = COL[e]; cx.fill(); cx.lineWidth = Math.max(1.5, r * 0.16); cx.strokeStyle = '#120c1c'; cx.stroke();
+    cx.beginPath(); cx.arc(x - r * 0.3, y - r * 0.32, r * 0.32, 0, 7); cx.fillStyle = 'rgba(255,255,255,.35)'; cx.fill();
+    if (r >= 6) icon(e, x, y, r * 1.25, '#fff');
+  }
+
+  // the room: ceiling, side walls, floor, back wall (mural + doors), runner
+  function drawRoom(t, key, opts) {
+    const hue = roomHue(key), dead = opts.dead || 0, wonGlow = opts.won || 0;
+    const lit = opts.lit == null ? 1 : opts.lit;
+    const L = (l) => `hsl(${hue} ${opts.grey ? 8 : 34}% ${l * lit}%)`;
+    // ceiling, side walls, floor (2.5D: the back wall BW sits in the middle, everything converges on it)
+    cx.fillStyle = L(14); cx.fillRect(SC.x, SC.y, SC.w, SC.h);
+    cx.beginPath(); cx.moveTo(SC.x, SC.y); cx.lineTo(SC.x + SC.w, SC.y); cx.lineTo(BW.x + BW.w, BW.y); cx.lineTo(BW.x, BW.y); cx.closePath(); cx.fillStyle = L(10); cx.fill();
+    cx.beginPath(); cx.moveTo(SC.x, SC.y); cx.lineTo(BW.x, BW.y); cx.lineTo(BW.x, BW.y + BW.h); cx.lineTo(SC.x, SC.y + SC.h); cx.closePath(); cx.fillStyle = L(19); cx.fill();
+    cx.beginPath(); cx.moveTo(SC.x + SC.w, SC.y); cx.lineTo(BW.x + BW.w, BW.y); cx.lineTo(BW.x + BW.w, BW.y + BW.h); cx.lineTo(SC.x + SC.w, SC.y + SC.h); cx.closePath(); cx.fillStyle = L(16); cx.fill();
+    // floor with perspective tiles
+    const fy0 = BW.y + BW.h, fy1 = SC.y + SC.h;
+    cx.beginPath(); cx.moveTo(BW.x, fy0); cx.lineTo(BW.x + BW.w, fy0); cx.lineTo(SC.x + SC.w, fy1); cx.lineTo(SC.x, fy1); cx.closePath();
+    const fg = cx.createLinearGradient(0, fy0, 0, fy1); fg.addColorStop(0, L(22)); fg.addColorStop(1, L(30)); cx.fillStyle = fg; cx.fill();
+    cx.save(); cx.clip(); cx.strokeStyle = 'rgba(0,0,0,.22)'; cx.lineWidth = 1;
+    for (let k = 0; k <= 8; k++) { const f = k / 8; cx.beginPath(); cx.moveTo(BW.x + BW.w * f, fy0); cx.lineTo(SC.x + SC.w * f, fy1); cx.stroke(); }
+    for (let k = 1; k < 6; k++) { const f = Math.pow(k / 6, 1.7), y = fy0 + (fy1 - fy0) * f; cx.beginPath(); cx.moveTo(SC.x, y); cx.lineTo(SC.x + SC.w, y); cx.stroke(); }
+    // light spill from the selected door
+    const si = opts.spill;
+    if (si != null && doorRects[si]) { const r = doorRects[si], d = doors[si]; const gr = cx.createRadialGradient(r.cx, fy0, 4, r.cx, fy0 + (fy1 - fy0) * .4, (fy1 - fy0) * 0.9);
+      gr.addColorStop(0, hexA(NEON[d.pair[0]], .45)); gr.addColorStop(.5, hexA(NEON[d.pair[1]], .18)); gr.addColorStop(1, 'rgba(0,0,0,0)'); cx.fillStyle = gr; cx.fillRect(SC.x, fy0, SC.w, fy1 - fy0); }
+    cx.restore();
+    // edges
+    cx.strokeStyle = 'rgba(0,0,0,.45)'; cx.lineWidth = 2;
+    [[SC.x, SC.y, BW.x, BW.y], [SC.x + SC.w, SC.y, BW.x + BW.w, BW.y], [SC.x, SC.y + SC.h, BW.x, BW.y + BW.h], [SC.x + SC.w, SC.y + SC.h, BW.x + BW.w, BW.y + BW.h]].forEach(([a, b, c, d]) => { cx.beginPath(); cx.moveTo(a, b); cx.lineTo(c, d); cx.stroke(); });
+    // back wall
+    const bg = cx.createLinearGradient(0, BW.y, 0, BW.y + BW.h); bg.addColorStop(0, L(30)); bg.addColorStop(1, L(24));
+    cx.fillStyle = bg; cx.fillRect(BW.x, BW.y, BW.w, BW.h); cx.strokeStyle = 'rgba(0,0,0,.5)'; cx.lineWidth = 2; cx.strokeRect(BW.x, BW.y, BW.w, BW.h);
+    // ceiling lamp (dims as the fuse burns)
+    const fuse = opts.fuse == null ? 1 : opts.fuse;
+    const lx = SC.x + SC.w / 2, ly = (SC.y + BW.y) / 2;
+    const lg = cx.createRadialGradient(lx, ly, 2, lx, ly + BW.h * 0.4, BW.h * 0.9); lg.addColorStop(0, `rgba(255,240,200,${0.28 * fuse * lit})`); lg.addColorStop(1, 'rgba(255,240,200,0)');
+    cx.fillStyle = lg; cx.fillRect(SC.x, SC.y, SC.w, SC.h);
+    // mural or blind plaque
+    drawMural(t, opts);
+    // doors
+    doors.forEach((d, i) => drawDoor(t, d, doorRects[i], i, opts));
+    // dark overlay for low light / death
+    if (lit < 1 || dead) { cx.fillStyle = `rgba(6,2,12,${clamp(1 - lit + dead * 0.6, 0, 0.82)})`; cx.fillRect(SC.x, SC.y, SC.w, SC.h); }
+    if (wonGlow) { const gl = cx.createRadialGradient(MU.x + MU.w / 2, MU.y + MU.h / 2, 10, MU.x + MU.w / 2, MU.y + MU.h / 2, SC.w); gl.addColorStop(0, `rgba(255,220,120,${0.35 * wonGlow})`); gl.addColorStop(1, 'rgba(255,220,120,0)'); cx.fillStyle = gl; cx.fillRect(SC.x, SC.y, SC.w, SC.h); }
+  }
+  function hexA(hex, a) { const v = parseInt(hex.slice(1), 16); return `rgba(${v >> 16 & 255},${v >> 8 & 255},${v & 255},${a})`; }
+
+  function drawMural(t, opts) {
+    const key = T.nodes[T.cur] ? T.nodes[T.cur].key : '';
+    // frame
+    rr(MU.x - 4, MU.y - 4, MU.w + 8, MU.h + 8, 10); cx.fillStyle = '#1a1424'; cx.fill(); cx.lineWidth = 3; cx.strokeStyle = '#0a0712'; cx.stroke();
+    if (blind) {
+      cx.fillStyle = '#2a2140'; rr(MU.x, MU.y, MU.w, MU.h, 7); cx.fill();
+      cx.font = `900 ${clamp(MU.h * 0.5, 14, 34)}px system-ui, sans-serif`; cx.textAlign = 'center'; cx.textBaseline = 'middle'; cx.fillStyle = '#6d5f8f'; cx.fillText('🙈', MU.x + 26, MU.y + MU.h / 2);
+    } else {
+      cx.save(); rr(MU.x, MU.y, MU.w, MU.h, 7); cx.clip(); cx.fillStyle = '#0f0b18'; cx.fillRect(MU.x, MU.y, MU.w, MU.h);
+      const ch = opts.chain, pulse = 0.5 + 0.5 * Math.sin(t / 140), col = opts.col || g.col;
+      for (let u = 0; u < n; u++) {
+        const p = mapCells ? mapCells[u] : null;
+        let fill;
+        if (u === HOLE) fill = opts.fill != null ? COL[opts.fill] : '#05030a';
+        else fill = ch && ch.has(u) ? NEON[col[u]] : COL[col[u]];
+        cx.fillStyle = fill;
+        if (p) { cx.fill(p); cx.lineWidth = 1.4; cx.strokeStyle = '#120c1c'; cx.stroke(p); }
+        else { cx.beginPath(); cx.arc(mapPts[u][0], mapPts[u][1], 6, 0, 7); cx.fill(); }
+      }
+      // the selected chain: a breathing white edge on each of its regions
+      if (ch && mapCells) { cx.lineWidth = 2 + 2 * pulse; cx.strokeStyle = `rgba(255,255,255,${0.55 + 0.4 * pulse})`; ch.forEach(u => cx.stroke(mapCells[u])); }
+      // the rim: a thick gold outline, the hole dark with a question mark (or filled at the win)
+      if (mapCells) { cx.lineWidth = 3; cx.strokeStyle = '#ffd84a'; RIM.forEach(u => cx.stroke(mapCells[u])); cx.lineWidth = 3; cx.strokeStyle = opts.fill != null ? '#fff' : '#ffd84a'; cx.stroke(mapCells[HOLE]); }
+      const hp = mapPts[HOLE], hs = clamp(mapScale * 0.12, 10, 22);
+      if (opts.fill == null) { cx.font = `900 ${hs}px system-ui, sans-serif`; cx.textAlign = 'center'; cx.textBaseline = 'middle'; cx.fillStyle = '#ffd84a'; cx.fillText('?', hp[0], hp[1] + 1); }
+      else gem(opts.fill, hp[0], hp[1], hs * 0.7 * (1 + 0.15 * Math.sin(t / 120)));
+      cx.restore();
+    }
+    // rim strip: the 5 rim elements under the mural (always shown: blind keeps the rim, hides the map)
+    const col = opts.col || g.col, rs = clamp(MU.w / 26, 6, 10), y = MU.y + MU.h - rs - 4;
+    const distinct = new Set(RIM.map(u => col[u])).size;
+    rr(MU.x + MU.w / 2 - 3.2 * rs * 2.4 / 2 - 6, y - rs - 4, 3.2 * rs * 2.4 + 12, 2 * rs + 8, rs + 4); cx.fillStyle = 'rgba(0,0,0,.55)'; cx.fill();
+    RIM.forEach((u, k) => gem(col[u], MU.x + MU.w / 2 + (k - 2) * rs * 2.2, y, rs));
+    cx.font = `900 ${rs * 1.3}px system-ui, sans-serif`; cx.textAlign = 'left'; cx.textBaseline = 'middle'; cx.fillStyle = distinct <= g.goal ? '#7dff9a' : '#ffd84a';
+    cx.fillText(String(distinct), MU.x + MU.w / 2 + 3 * rs * 2.2 - rs * 0.3, y + 1);
+    // the room's plaque: room number in your tree
+    if (key) { const nd = T.nodes[T.cur], txt = '#' + nd.id + (nd.visits > 1 ? ' ×' + nd.visits : ''); cx.font = '800 11px system-ui, sans-serif'; const tw = cx.measureText(txt).width + 12;
+      rr(BW.x + 6, BW.y - 2 - 0, tw, 17, 6); cx.fillStyle = '#e8dcc0'; cx.fill(); cx.strokeStyle = '#3a2a10'; cx.lineWidth = 1.5; cx.stroke(); cx.fillStyle = '#3a2a10'; cx.textAlign = 'left'; cx.fillText(txt, BW.x + 12, BW.y + 7); }
+  }
+
+  function drawDoor(t, d, r, i, opts) {
+    if (!r) return;
+    const a = d.pair[0], b = d.pair[1], selNow = (opts.sel === i), hovNow = opts.hov === i;
+    const open = selNow ? 1 : hovNow ? 0.35 : 0;
+    const x = r.x, y = r.y, w = r.w, h = r.h, ar = w / 2;
+    const arch = (inset) => { cx.beginPath(); cx.moveTo(x + inset, y + h); cx.lineTo(x + inset, y + ar); cx.arc(x + w / 2, y + ar, ar - inset, Math.PI, 0); cx.lineTo(x + w - inset, y + h); cx.closePath(); };
+    // shadow + two-tone frame (left jamb element a, right jamb element b)
+    cx.save(); cx.translate(0, 3); arch(0); cx.fillStyle = 'rgba(0,0,0,.45)'; cx.fill(); cx.restore();
+    arch(0); const fg = cx.createLinearGradient(x, 0, x + w, 0); fg.addColorStop(0, COL[a]); fg.addColorStop(0.5, COL[a]); fg.addColorStop(0.5, COL[b]); fg.addColorStop(1, COL[b]);
+    cx.fillStyle = fg; cx.fill(); cx.lineWidth = 2.5; cx.strokeStyle = '#0d0816'; cx.stroke();
+    const fw = Math.max(4, w * 0.12);
+    // the opening: light behind the door
+    arch(fw); const lg = cx.createLinearGradient(0, y, 0, y + h); lg.addColorStop(0, '#fff6d8'); lg.addColorStop(1, hexA(NEON[b], 0.9)); cx.fillStyle = lg; cx.fill();
+    // the door leaf swings open (narrows towards the left jamb)
+    cx.save(); arch(fw); cx.clip();
+    const lw = (w - 2 * fw) * (1 - 0.82 * ease(open)), lx = x + fw;
+    cx.fillStyle = d.won && opts.won ? '#ffcf4a' : '#4a3326'; cx.fillRect(lx, y, lw, h);
+    cx.fillStyle = 'rgba(255,255,255,.08)'; cx.fillRect(lx + lw * 0.12, y + ar * 0.6, lw * 0.76, h * 0.28); cx.fillRect(lx + lw * 0.12, y + h * 0.58, lw * 0.76, h * 0.3);
+    cx.fillStyle = 'rgba(0,0,0,.35)'; cx.fillRect(lx + lw - 2, y, 2, h);
+    cx.restore();
+    arch(fw); cx.lineWidth = 2; cx.strokeStyle = '#0d0816'; cx.stroke();
+    // label: the two elements and the chain size (on the leaf while closed, floating once open)
+    const gs = clamp(w * 0.2, 6, 13), ly = y + ar + gs * 0.4;
+    gem(a, x + w / 2 - gs * 0.95, ly, gs); gem(b, x + w / 2 + gs * 0.95, ly, gs);
+    cx.font = `900 ${clamp(w * 0.32, 10, 24)}px system-ui, sans-serif`; cx.textAlign = 'center'; cx.textBaseline = 'middle';
+    cx.lineWidth = 4; cx.strokeStyle = '#0d0816'; cx.strokeText(String(d.size), x + w / 2, y + h * 0.7); cx.fillStyle = '#fff'; cx.fillText(String(d.size), x + w / 2, y + h * 0.7);
+    // rim pips over the arch
+    for (let k = 0; k < d.rim; k++) { const px = x + w / 2 + (k - (d.rim - 1) / 2) * 7, py = y - 5; cx.beginPath(); cx.arc(px, py, 2.6, 0, 7); cx.fillStyle = '#ffd84a'; cx.fill(); cx.lineWidth = 1; cx.strokeStyle = '#3a2a10'; cx.stroke(); }
+    // your memory: where this door leads, if you have been there (a footprint; a skull if it collapsed on you)
+    const dest = T.byKey.get(d.dest);
+    if (dest != null) {
+      const fx = x + w / 2, fy = y + h + 6, nd = T.nodes[dest];
+      if (nd.deaths) { cx.font = '11px system-ui, sans-serif'; cx.textAlign = 'center'; cx.fillText('💀', fx, fy + 2); }
+      else { cx.fillStyle = 'rgba(255,255,255,.75)'; cx.beginPath(); cx.ellipse(fx - 3, fy, 2.2, 3.4, -0.3, 0, 7); cx.ellipse(fx + 3, fy + 2, 2.2, 3.4, 0.3, 0, 7); cx.fill(); }
+    }
+    if (selNow) { arch(-3); cx.lineWidth = 3 + Math.sin(t / 120) * 1.2; cx.strokeStyle = '#fff'; cx.stroke(); }
+    if (W > 700 && i < 9 && !LAB.embedded) { cx.font = '700 10px system-ui, sans-serif'; cx.fillStyle = 'rgba(255,255,255,.5)'; cx.textAlign = 'center'; cx.fillText(String(i + 1), x + w / 2, y + h + 17); }
+  }
+
+  function drawRunner(t, x, y, s, opts) {
+    const bob = opts.still ? 0 : Math.abs(Math.sin(t / (opts.running ? 70 : 260))) * s * (opts.running ? 0.12 : 0.04);
+    const alpha = opts.alpha == null ? 1 : opts.alpha;
+    cx.save(); cx.globalAlpha = alpha; cx.translate(x, y);
+    cx.beginPath(); cx.ellipse(0, 0, s * 0.42, s * 0.12, 0, 0, 7); cx.fillStyle = 'rgba(0,0,0,.4)'; cx.fill();
+    cx.translate(0, -bob);
+    const step = opts.running ? Math.sin(t / 70) : 0;
+    cx.fillStyle = '#1b1530'; cx.fillRect(-s * 0.18, -s * 0.42 + step * 3, s * 0.13, s * 0.42); cx.fillRect(s * 0.05, -s * 0.42 - step * 3, s * 0.13, s * 0.42);
+    rr(-s * 0.3, -s * 1.05, s * 0.6, s * 0.7, s * 0.2); cx.fillStyle = opts.ghost ? '#9ff3ff' : '#ff5a7a'; cx.fill(); cx.lineWidth = 2.5; cx.strokeStyle = '#0d0816'; cx.stroke();
+    cx.fillStyle = 'rgba(255,255,255,.25)'; rr(-s * 0.22, -s * 1.0, s * 0.16, s * 0.5, s * 0.08); cx.fill();
+    cx.beginPath(); cx.arc(0, -s * 1.24, s * 0.24, 0, 7); cx.fillStyle = opts.ghost ? '#c9fbff' : '#ffd2a8'; cx.fill(); cx.stroke();
+    cx.beginPath(); cx.arc(0, -s * 1.3, s * 0.24, Math.PI * 1.05, Math.PI * 1.95); cx.lineTo(s * 0.2, -s * 1.22); cx.fillStyle = '#2a1a40'; cx.fill();
+    cx.restore();
+  }
+
+  // ---------------------------------------------------------------- the tree panel
+  function drawTree(t) {
+    const P = TP, deadNow = phase === 'dead';
+    rr(P.x, P.y + 3, P.w, P.h, 16); cx.fillStyle = 'rgba(0,0,0,.5)'; cx.fill();
+    rr(P.x, P.y, P.w, P.h, 16); const pg = cx.createLinearGradient(0, P.y, 0, P.y + P.h); pg.addColorStop(0, '#231b38'); pg.addColorStop(1, '#17112a'); cx.fillStyle = pg; cx.fill();
+    cx.lineWidth = deadNow ? 3 + 2 * Math.abs(Math.sin(t / 200)) : 2.5; cx.strokeStyle = deadNow ? '#9ff3ff' : '#0a0712'; cx.stroke();
+    // header: tree glyph + back
+    cx.font = '800 12px system-ui, sans-serif'; cx.textAlign = 'left'; cx.textBaseline = 'middle'; cx.fillStyle = '#b9a8e8';
+    cx.fillText('🌳 ' + T.nodes.length, P.x + 12, P.y + 18);
+    const bb = backBtn, canBack = T.walk().length > 1 && !g.won();
+    cx.beginPath(); cx.arc(bb.x, bb.y + 2, bb.r, 0, 7); cx.fillStyle = 'rgba(0,0,0,.5)'; cx.fill();
+    cx.beginPath(); cx.arc(bb.x, bb.y, bb.r, 0, 7); cx.fillStyle = canBack ? LAB.tok('--sk-ctl', '#3d3160') : '#29223c'; cx.fill(); cx.lineWidth = 2; cx.strokeStyle = '#0a0712'; cx.stroke();
+    cx.strokeStyle = canBack ? '#fff' : '#5d5378'; cx.lineWidth = 2.6; cx.lineCap = 'round';
+    cx.beginPath(); cx.arc(bb.x + 1, bb.y + 1, 6, Math.PI * 1.1, Math.PI * 0.4, false); cx.stroke();
+    cx.beginPath(); cx.moveTo(bb.x - 8, bb.y - 4); cx.lineTo(bb.x - 5, bb.y + 2); cx.lineTo(bb.x - 1, bb.y - 3); cx.stroke();
+    // layout
+    const lay = T.layout(), N = T.nodes.length;
+    const inner = { x: P.x + 14, y: P.y + 38, w: P.w - 28, h: P.h - 50 };
+    let dDepth, dB, along, across;
+    if (LAND) { along = inner.h; across = inner.w; } else { along = inner.w; across = inner.h; }
+    dDepth = Math.min(58, along / Math.max(1, lay.depth + 0.5)); dB = Math.min(36, across / lay.leaves);
+    const nr = clamp(Math.min(dDepth, dB) * 0.36, 3.5, 12); nodeHit = Math.max(16, Math.min(dDepth, dB) * 0.6);
+    const usedA = dDepth * lay.depth, usedB = dB * (lay.leaves - 1);
+    const pos = id => { const nd = T.nodes[id], a = nd.depth * dDepth + (along - usedA) * (LAND ? 0.1 : 0.06), b = nd.b * dB + (across - usedB) / 2;
+      return LAND ? [inner.x + b, inner.y + a + nr] : [inner.x + a + nr, inner.y + b]; };
+    nodeXY = T.nodes.map((_, i) => pos(i));
+    const ws = win ? win.walkSet : walkSet(), walk = win ? win.walk : T.walk();
+    // edges: tree edges solid, doors into a known room dashed; your current walk brighter (gold after a win)
+    for (const e of T.edges) {
+      const A = nodeXY[e.a], B = nodeXY[e.b];
+      cx.beginPath(); cx.moveTo(A[0], A[1]);
+      if (e.tree) cx.lineTo(B[0], B[1]); else { const mx = (A[0] + B[0]) / 2 + (B[1] - A[1]) * 0.25, my = (A[1] + B[1]) / 2 - (B[0] - A[0]) * 0.25; cx.quadraticCurveTo(mx, my, B[0], B[1]); }
+      cx.setLineDash(e.tree ? [] : [4, 4]); cx.lineWidth = e.tree ? 2 : 1.5; cx.strokeStyle = e.tree ? 'rgba(200,185,255,.45)' : 'rgba(200,185,255,.3)'; cx.stroke();
+    }
+    cx.setLineDash([]);
+    for (let k = 1; k < walk.length; k++) { const A = nodeXY[walk[k - 1]], B = nodeXY[walk[k]]; cx.beginPath(); cx.moveTo(A[0], A[1]); cx.lineTo(B[0], B[1]); cx.lineWidth = win ? 4.5 : 3; cx.strokeStyle = win ? '#ffcf4a' : 'rgba(159,243,255,.75)'; cx.stroke(); }
+    // nodes: a ring of the room's 5 rim elements; home = the start; skull mark if it collapsed; star = a filled room
+    for (let id = 0; id < N; id++) {
+      const nd = T.nodes[id], [x, y] = nodeXY[id], cur = id === T.cur;
+      const r = nr * (cur ? 1.25 : 1);
+      cx.beginPath(); cx.arc(x, y + 1.5, r + 1.5, 0, 7); cx.fillStyle = 'rgba(0,0,0,.5)'; cx.fill();
+      if (nd.won) { star(x, y, r * 1.6, '#ffcf4a'); continue; }
+      const rc = RIM.map(u => nd.col[u]);
+      for (let k = 0; k < 5; k++) { cx.beginPath(); cx.moveTo(x, y); cx.arc(x, y, r, -Math.PI / 2 + k * 2 * Math.PI / 5, -Math.PI / 2 + (k + 1) * 2 * Math.PI / 5); cx.closePath(); cx.fillStyle = COL[rc[k]]; cx.fill(); }
+      cx.beginPath(); cx.arc(x, y, r * 0.42, 0, 7); cx.fillStyle = id === 0 ? '#fff' : '#120c1c'; cx.fill();
+      cx.beginPath(); cx.arc(x, y, r, 0, 7); cx.lineWidth = 1.6; cx.strokeStyle = '#0a0712'; cx.stroke();
+      if (nd.deaths) { cx.strokeStyle = '#ff4d6d'; cx.lineWidth = 2; cx.beginPath(); cx.moveTo(x - r * 0.8, y - r * 0.8); cx.lineTo(x + r * 0.8, y + r * 0.8); cx.moveTo(x + r * 0.8, y - r * 0.8); cx.lineTo(x - r * 0.8, y + r * 0.8); cx.stroke(); }
+      if (cur) { const pr = r + 3 + 2.5 * Math.abs(Math.sin(t / 220)); cx.beginPath(); cx.arc(x, y, pr, 0, 7); cx.lineWidth = 2.5; cx.strokeStyle = phase === 'dead' ? '#ff4d6d' : '#9ff3ff'; cx.stroke(); }
+      else if (deadNow) { cx.beginPath(); cx.arc(x, y, r + 2.5, 0, 7); cx.lineWidth = 1.5; cx.strokeStyle = `rgba(159,243,255,${0.35 + 0.35 * Math.sin(t / 180 + id)})`; cx.stroke(); }
+    }
+    if (win) { const [x, y] = nodeXY[T.cur]; const k = (t - win.t0) / 1000; if (k < 2) { cx.beginPath(); cx.arc(x, y, 6 + 40 * ease(k / 2), 0, 7); cx.lineWidth = 3; cx.strokeStyle = `rgba(255,207,74,${1 - k / 2})`; cx.stroke(); } }
+  }
+  function star(x, y, r, fill) {
+    cx.beginPath(); for (let k = 0; k < 10; k++) { const a = -Math.PI / 2 + k * Math.PI / 5, q = k % 2 ? r * 0.45 : r; cx.lineTo(x + q * Math.cos(a), y + q * Math.sin(a)); } cx.closePath();
+    cx.fillStyle = fill; cx.fill(); cx.lineWidth = 1.8; cx.strokeStyle = '#3a2400'; cx.stroke();
+  }
+
+  // ---------------------------------------------------------------- fuse (room timer), the big centre labels
+  function drawFuse(t, frac) {
+    const x = SC.x + 14, y = SC.y + 6, w = SC.w - 28, h = 9;
+    rr(x, y, w, h, 5); cx.fillStyle = 'rgba(0,0,0,.6)'; cx.fill();
+    const f = clamp(frac, 0, 1), col = f > 0.5 ? '#7dff9a' : f > 0.25 ? '#ffd84a' : '#ff4d6d';
+    rr(x, y, Math.max(h, w * f), h, 5); cx.fillStyle = col; cx.fill();
+    if (f < 1 && f > 0) { const sx = x + w * f; for (let k = 0; k < 2; k++) { cx.beginPath(); cx.arc(sx + (Math.random() - .5) * 6, y + h / 2 + (Math.random() - .5) * 6, 1.5 + Math.random() * 2.5, 0, 7); cx.fillStyle = k ? '#fff' : '#ffb04a'; cx.fill(); } }
+  }
+  function bigText(txt, x, y, size, fill, alpha) {
+    cx.save(); cx.globalAlpha = alpha == null ? 1 : alpha; cx.font = `900 ${size}px system-ui, sans-serif`; cx.textAlign = 'center'; cx.textBaseline = 'middle';
+    cx.lineWidth = size * 0.16; cx.strokeStyle = '#0d0816'; cx.lineJoin = 'round'; cx.strokeText(txt, x, y + size * 0.06); cx.strokeText(txt, x, y); cx.fillStyle = fill; cx.fillText(txt, x, y); cx.restore();
+  }
+
+  // ---------------------------------------------------------------- frame loop
+  let lastTick = -1, lastT = now();
+  function frame() {
+    const t = now(), dt = Math.min(100, t - lastT); lastT = t;
+    if (clockOn) clockMs += dt;
+    cx.clearRect(0, 0, W, H); cx.fillStyle = '#120e1c'; cx.fillRect(0, 0, W, H);
+    const key = T.nodes[T.cur].key, k = t - ph0, red = reduce();
+    let shake = [0, 0];
+    // phase logic
+    if (phase === 'intro') {
+      if (k > (red ? 600 : 1800)) { startRoom(t); clockOn = true; sfx.go(); ev('go'); }
+      else { const s = Math.floor(k / 600); if (s !== lastTick) { lastTick = s; if (k < 1800) sfx.beep(); } }
+    }
+    if (phase === 'room') {
+      const left = roomT0 + roomDur - t;
+      if (left <= 0 && !DEMO) die();
+      else if (left < 1500 && !DEMO) { const s = Math.floor(left / 250); if (s !== lastTick) { lastTick = s; sfx.tick(s % 2); } if (!red) shake = [(Math.random() - .5) * 2.5 * (1 - left / 1500), (Math.random() - .5) * 2]; }
+    }
+    const RUN = red ? 160 : 460;
+    if (phase === 'run' && !runSwapped && k > RUN * 0.5) {
+      runSwapped = true; const d = runDoor.d; LAB.at(runDoor.r.cx, runDoor.r.cy);
+      g.swap(d.K);                                  // the handler adds the room to the tree (and starts the win if it is filled)
+      if (phase === 'run') { phase = 'arrive'; ph0 = t - 0; }
+    }
+    if (phase === 'arrive' && k > (red ? 120 : 260)) startRoom(t);
+    if (phase === 'tele' && k > (red ? 150 : 420)) startRoom(t);
+    // draw the scene
+    cx.save(); cx.translate(shake[0], shake[1]);
+    cx.save(); rr(SC.x, SC.y, SC.w, SC.h, 14); cx.clip();
+    const chainSet = (() => { const i = sel >= 0 ? sel : hov; return i >= 0 && doors[i] && (phase === 'room' || phase === 'run') ? doors[i].K.set : null; })();
+    const opts = { sel: phase === 'run' ? runDoor.i : sel, hov, chain: chainSet, spill: phase === 'room' ? (sel >= 0 ? sel : null) : null, fuse: 1, lit: 1 };
+    if (phase === 'room') opts.fuse = clamp((roomT0 + roomDur - t) / roomDur, 0, 1), opts.lit = 0.55 + 0.45 * Math.min(1, opts.fuse * 2.2);
+    if (phase === 'intro') opts.lit = 0.6;
+    if (phase === 'run') {
+      // the first half: zoom into the chosen door (the runner sprints to it)
+      const p = easeIn(k / (RUN * 0.5)), r = runDoor.r, z = 1 + 1.6 * p;
+      cx.translate(r.cx, r.cy); cx.scale(z, z); cx.translate(-r.cx, -r.cy);
+      drawRoom(t, key, opts);
+      cx.fillStyle = `rgba(255,246,216,${0.85 * p})`; cx.fillRect(SC.x - 200, SC.y - 200, SC.w + 400, SC.h + 400);
+    } else if (phase === 'arrive') {
+      const p = ease(k / (red ? 120 : 260)), z = 0.82 + 0.18 * p;
+      const ccx = SC.x + SC.w / 2, ccy = BW.y + BW.h * 0.6; cx.translate(ccx, ccy); cx.scale(z, z); cx.translate(-ccx, -ccy);
+      drawRoom(t, key, opts);
+      cx.setTransform(1, 0, 0, 1, 0, 0); cx.scale(cv.width / W, cv.height / H);
+      cx.fillStyle = `rgba(255,246,216,${0.85 * (1 - p)})`; cx.fillRect(SC.x, SC.y, SC.w, SC.h);
+    } else if (phase === 'tele') {
+      const p = k / (red ? 150 : 420);
+      drawRoom(t, key, opts);
+      if (!red) for (let y = SC.y; y < SC.y + SC.h; y += 6) { cx.fillStyle = `rgba(159,243,255,${0.5 * (1 - p) * Math.random()})`; cx.fillRect(SC.x, y, SC.w, 3); }
+      cx.fillStyle = `rgba(159,243,255,${0.6 * (1 - p)})`; cx.fillRect(SC.x, SC.y, SC.w, SC.h);
+    } else if (phase === 'dead') {
+      const p = clamp(k / 900, 0, 1);
+      if (!red && k < 700) cx.translate((Math.random() - .5) * 10 * (1 - p), (Math.random() - .5) * 8 * (1 - p));
+      drawRoom(t, key, Object.assign(opts, { dead: p, grey: true, lit: 1 - 0.5 * p, chain: null, spill: null }));
+      // rubble falls from the ceiling
+      for (const b of rubble) { const kk = Math.max(0, k - b.delay) / 1000; const y = b.y + 0.5 * 1400 * kk * kk; const yy = Math.min(y, SC.y + SC.h - b.h); cx.save(); cx.translate(b.x, yy); cx.rotate(b.rot + b.vr * kk * 30 * (y < yy + 1 ? 1 : 0));
+        cx.fillStyle = '#4a4058'; cx.fillRect(-b.w / 2, -b.h / 2, b.w, b.h); cx.strokeStyle = '#0a0712'; cx.lineWidth = 1.5; cx.strokeRect(-b.w / 2, -b.h / 2, b.w, b.h); cx.restore(); }
+      // cracks
+      cx.strokeStyle = 'rgba(0,0,0,.7)'; cx.lineWidth = 2; const seed = hash(key); for (let c = 0; c < 4; c++) { let x = BW.x + ((seed >> (c * 5)) % 100) / 100 * BW.w, y = BW.y; cx.beginPath(); cx.moveTo(x, y); for (let s = 0; s < 6 * p; s++) { x += ((seed >> (s + c)) % 7 - 3) * 6; y += BW.h / 7; cx.lineTo(x, y); } cx.stroke(); }
+    } else if (phase === 'won') {
+      const p = clamp((t - win.t0) / 800, 0, 1);
+      drawRoom(t, key, Object.assign(opts, { fill: win.free, won: p, chain: null, spill: null, lit: 1 }));
+      if (!win.burst) { win.burst = true; const hp = mapPts[HOLE]; for (let b = 0; b < 60; b++) spark(hp[0], hp[1], [COL[win.free], '#ffcf4a', '#fff'][b % 3], 1.4); }
+      if (!red && Math.random() < 0.5) spark(SC.x + Math.random() * SC.w, SC.y + 10, COL[Math.floor(Math.random() * 4)], 1.6);
+    } else {
+      drawRoom(t, key, opts);
+    }
+    // the runner
+    if (phase === 'run') {
+      const p = ease(k / (RUN * 0.5)), r = runDoor.r;
+      drawRunner(t, RUNNER.x + (r.cx - RUNNER.x) * p, RUNNER.y + (r.y + r.h - RUNNER.y) * p, RUNNER.s * (1 - 0.6 * p), { running: true, alpha: 1 - p * 0.8 });
+    } else if (phase === 'dead') {
+      const p = clamp(k / 600, 0, 1); drawRunner(t, RUNNER.x, RUNNER.y - 40 * p, RUNNER.s, { ghost: true, still: true, alpha: 0.9 - 0.5 * p });
+    } else if (phase === 'tele') {
+      const p = clamp(k / 420, 0, 1); drawRunner(t, RUNNER.x, RUNNER.y, RUNNER.s, { ghost: p < 0.6, alpha: 0.3 + 0.7 * p });
+      cx.fillStyle = `rgba(159,243,255,${0.5 * (1 - p)})`; cx.fillRect(RUNNER.x - RUNNER.s * 0.4, SC.y, RUNNER.s * 0.8, RUNNER.y - SC.y);
+    } else if (phase === 'won') {
+      const j = Math.abs(Math.sin((t - win.t0) / 180)) * RUNNER.s * 0.5; drawRunner(t, RUNNER.x, RUNNER.y - j, RUNNER.s, { still: true });
+    } else drawRunner(t, RUNNER.x, RUNNER.y, RUNNER.s, {});
+    cx.restore();
+    cx.lineWidth = 3; rr(SC.x, SC.y, SC.w, SC.h, 14); cx.strokeStyle = '#0a0712'; cx.stroke();
+    if (phase === 'room') drawFuse(t, (roomT0 + roomDur - t) / roomDur);
+    // labels
+    const mx = SC.x + SC.w / 2, my = BW.y + BW.h * 0.45;
+    if (phase === 'intro') { const s = Math.floor(k / 600); bigText(s < 3 ? String(3 - s) : 'GO', mx, SC.y + SC.h * 0.5, 64 + 10 * (1 - (k % 600) / 600), '#ffcf4a'); }
+    if (phase === 'room' && k < 500 && clockMs < 2500 && stats.rooms === 0 && stats.respawns === 0) bigText('GO', mx, SC.y + SC.h * 0.5, 60, '#7dff9a', 1 - k / 500);
+    if (phase === 'dead') {
+      const p = clamp((k - 400) / 400, 0, 1);
+      bigText('💀', mx, my - 30, 54, '#fff', p);
+      bigText('RESPAWN', mx, my + 26, 30, '#9ff3ff', p);
+      // an arrow towards your tree
+      const bx = LAND ? SC.x + SC.w - 30 : mx, by = LAND ? my + 26 : SC.y + SC.h - 26, w = Math.sin(t / 150) * 6;
+      cx.save(); cx.globalAlpha = p; cx.translate(bx + (LAND ? w : 0), by + (LAND ? 0 : w)); cx.rotate(LAND ? -Math.PI / 2 : 0);
+      cx.beginPath(); cx.moveTo(-14, -8); cx.lineTo(14, -8); cx.lineTo(0, 10); cx.closePath(); cx.fillStyle = '#9ff3ff'; cx.fill(); cx.lineWidth = 2.5; cx.strokeStyle = '#0d0816'; cx.stroke(); cx.restore();
+    }
+    drawTree(t);
+    // particles
+    parts = parts.filter(q => t - q.t0 < q.life);
+    for (const q of parts) { const s = (t - q.t0) / 1000; const x = q.x + q.vx * s, y = q.y + q.vy * s + 300 * s * s, a = 1 - (t - q.t0) / q.life;
+      cx.globalAlpha = a; cx.fillStyle = q.col; cx.fillRect(x - q.s / 2, y - q.s / 2, q.s, q.s); }
+    cx.globalAlpha = 1;
+    if (phase !== 'dead') rubble = [];
+    // win flow: card at 1.2 s, LAB.done at 3.6 s (embedded: then idle; standalone: the card gets its buttons)
+    if (win) {
+      if (!win.card && t - win.t0 > 1200) { win.card = true; showCard(); }
+      if (!win.done && t - win.t0 > 3600) { win.done = true; LAB.done(); if (!LAB.embedded) $('card').classList.add('btns-on'); }
+    }
+    updateHud();
+    requestAnimationFrame(frame);
+  }
+  function showCard() {
+    const walkLen = g.moves, par = PAR == null ? walkLen : PAR;
+    const stars = walkLen <= par ? 3 : walkLen <= par + 2 ? 2 : 1;
+    $('stars').innerHTML = [0, 1, 2].map(i => '<i class="' + (i < stars ? '' : 'off') + '">★</i>').join('');
+    $('tab').innerHTML = [['⏱', fmt(clockMs)], ['🚪', stats.rooms + ' · ' + (T.nodes.length - 1) + ' new'], ['💀', stats.deaths], ['👻', stats.respawns], ['👣', walkLen + ' / ' + par]]
+      .map(([a, b]) => '<tr><td>' + a + '</td><td>' + b + '</td></tr>').join('');
+    $('card').classList.add('on');
+  }
+
+  addEventListener('resize', resize);
+  refreshDoors(); resize();
+  if (DEMO) { phase = 'arrive'; ph0 = now(); }
+  updateHud();
+  requestAnimationFrame(frame);
+  // for headless checks and research export
+  window.RESPAWN = {
+    g, T, log: () => log.slice(), stats: () => Object.assign({ time: Math.round(clockMs), nodes: T.nodes.length, walk: g.moves, par: PAR }, stats),
+    phase: () => phase, doors: () => doors.map((d, i) => ({ i, pair: d.pair, size: d.size, rim: d.rim, good: g.good().some(K => K.key === d.K.key), r: doorRects[i] && { x: doorRects[i].cx, y: doorRects[i].cy } })),
+    go: i => goDoor(i), respawn: id => respawn(id), nodeXY: () => nodeXY.map(p => p && p.slice()),
+    export: () => JSON.stringify({ level: g.level.id, par: PAR, speed, blind, nodes: T.nodes.map(nd => ({ id: nd.id, key: nd.key, parent: nd.parent, depth: nd.depth, visits: nd.visits, deaths: nd.deaths, won: nd.won })), edges: T.edges.map(e => [e.a, e.b, e.tree ? 1 : 0]), log }),
+  };
+})();
+</script>
+</body>
+</html>
