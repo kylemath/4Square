@@ -110,6 +110,8 @@ async function agree(P, where) {
     ok('the app plays the Star page in its frame', /lab\/star\.html/.test(sh.src) && sh.kids > 0 && sh.skin === 'star', sh);
     ok('the shell\'s star rim chip is hidden on this skin', sh.rim === 'none');
     await shot(P, 'star-in-app');
+    const sink = await P.eval(`document.getElementById('skinFrame').contentWindow.STAR.test(document.getElementById('skinFrame').contentWindow.FTH_STAR.BUILTIN[1], 'start').then(() => document.getElementById('skinFrame').contentWindow.__starLog.slice(-1)[0].sink)`);
+    ok('in the app a rule test goes to the shell research log (FTH_LOG)', sink === 'shell', sink);
     ok('no script errors (app)', !P.logs.length, P.logs[0]);
   } finally { B.close(); srv.close(); }
   console.log(bad ? bad + ' problem(s)' : 'star OK');
