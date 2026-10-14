@@ -9,7 +9,7 @@
 const path = require('path'), { serve, launch, sleep } = require('./cdp');
 const ROOT = process.env.GAME_ROOT || path.join(__dirname, '..');
 const DENY = /\btap (for|to)\b|\bclick (for|to)\b|\bclick\b|play again|plan another|fresh (blank )?sheet|new sheet|blank sheet|replay|try again|restart|\bTODO\b|debug|\blab\b|console|\bundefined\b|\bNaN\b/i;
-const PAGES = { doodle: 'full', blank: 'full', dots: 'minimal', map: 'full', swipe: 'compact', ions: 'full', tables: 'full', spheres: 'compact', gears: 'full' };
+const PAGES = { doodle: 'full', blank: 'full', dots: 'minimal', map: 'full', swipe: 'compact', ions: 'full', tables: 'full', spheres: 'compact', gears: 'full', signs: 'full' };
 const LEVELS = ['splash', 'kempes-double', 'far-away', 'deepest-pit'];
 const args = process.argv.slice(2), li = args.indexOf('--lvl');
 const levels = li >= 0 ? args.splice(li, 2)[1].split(',') : LEVELS;

@@ -701,6 +701,7 @@
 <script src="skins/rimword.js"></script>
 <script src="skins/spheres.js"></script>
 <script src="skins/gears.js"></script>
+<script src="skins/signs.js"></script>
 <script src="eggs.js"></script>
 <script src="cloud.js"></script>
 <script src="rim.js"></script><script src="rimstar.js"></script>
@@ -1889,7 +1890,7 @@
   const ISL = SKINS.find(k => k.id === 'islands') || SKINS[0];
   const boardOf = k => k.src ? null : k.board;      // the island board's layout and physics for a skin (SKIN-SPEC.md section 11)
   // SKIN is the player's choice; ACT is the style this level actually runs in (Islands when the choice cannot draw
-  // the map: needs: ['cells'] means region shapes, which the hand-drawn Level -1 ponds do not have)
+  // the map: needs: ['cells'] means region shapes, which the hand-drawn Level -1 ponds do not have; ['tri'] a triangulation, which they are not)
   // preview mode for skin designers: ?skin=<id> (not saved), &view=menu|title|howto, &scroll=0..1 (level map position)
   const PVQ = new URLSearchParams(location.search), PV = { skin: PVQ.get('skin'), view: PVQ.get('view'), scroll: PVQ.get('scroll') };
   const owns = id => unlockAll || !!PV.skin || FTH_TICKETS.owns(save, id);   // skin tickets (tickets.js); designers' previews see every skin
@@ -1910,7 +1911,7 @@
   }
   // the skin's --sk-* tokens reach the play page too (lab/core.js applies them; see SKIN-SPEC 3b): on load ('ready') and on a skin change
   function skinTokens(k) { const f = $('skinFrame'); if (!f || !f.contentWindow || !(k || ACT).src) return; try { f.contentWindow.postMessage({ fth: 1, cmd: 'tokens', vars: Object.assign({}, ISL.theme || {}, (k || ACT).theme || {}) }, '*'); } catch (e) { /* frame gone */ } }
-  const skinFits = k => !k.needs || k.needs.every(nd => nd === 'cells' ? !!(window.LAYOUT && LAYOUT[L.g] && LAYOUT[L.g].cells) : true);
+  const skinFits = k => !k.needs || k.needs.every(nd => nd === 'cells' ? !!(window.LAYOUT && LAYOUT[L.g] && LAYOUT[L.g].cells) : nd === 'tri' ? (Gr => Gr.edges.length === 3 * Gr.n - 6)(G.graphs[L.g]) : true);
   // the skin reel (reel.js): swipe the ribbon of skin cards; coming to rest on an owned card selects that skin, a locked
   // card wears a ticket and a tap on it opens the shop there. Skins of one family sit together (SKIN-SPEC.md section 11).
   const famOf = k => k.family && SKINS.filter(j => j.family === k.family).length > 1;

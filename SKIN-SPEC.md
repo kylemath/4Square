@@ -51,7 +51,8 @@ FTH_SKINS.register({
   board: { free: false },          // island-board skins only: layout and physics of the board (section 11)
   waits: false,                    // true: after the winning swap the player still has a step (Line Doodle colours the hole)
   own: false,                      // true: the skin has its own goal and reports with LAB.finish(swaps) (Blank Doodle)
-  needs: [],                       // ['cells']: needs region shapes (every map has them now)
+  needs: [],                       // ['cells']: needs region shapes (every map has them now); ['tri']: the map must be a
+                                   // triangulation (3n - 6 borders: not the Level -1 ponds), as Signs' cut needs
 
   hud: 'full',                     // 'full' | 'compact' | 'minimal'  (section 2)
   theme: { ... },                  // CSS custom properties (section 3)
@@ -398,6 +399,7 @@ coin: { name: 'pearl', plural: 'pearls',        // singular and plural, lower ca
 | compass rose | Island Map | 20 | an explorer's prize |
 | cheese wedge | Rat Maze | 25 | the prize at the end of the corridor |
 | cog | Gears | 30 | machined brass, a working part |
+| trigon | Signs | 42 | a triangular token, half sun half sea |
 | ion orb | Ion Channels | 35 | charged, short-lived, scarce |
 | pearl | Islands Free | 60 | rare and valuable |
 | crystal shard | Islands 3D | 100 | the rarest |
