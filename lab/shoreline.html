@@ -1,0 +1,501 @@
+<!doctype html>
+<!--
+  SHORELINE (lab prototype; not on the skin reel, not in the tickets). Design note: lab/SHORELINE-DESIGN.md.
+
+  The ordinary puzzle with one rule added: you may only swap a chain that touches the SHORE. The shore is the 3 outer
+  tiles (g.border, "beach", the default) or, as the harder-to-read but roomier option, the outermost two BFS shells
+  from the hole ("shells", ?shore=shells). Maps without a border (the onboarding ponds) always use shells.
+  Every other tile is deep water: visible, coloured, but not touchable. The hole is a lagoon in the middle.
+
+  Mapping (every action is exactly one g.swap(K) or nothing):
+    tile u                 = region u (g.cells polygon), colour g.col[u]; shore tiles are raised sand-rimmed tiles
+    tap shore tile u       = up to 3 partner chips (one per other element b); press lights g.chainAt(u, b), release swaps
+    drag shore u -> v      = K = g.chainAt(u, g.col[v]) for a neighbour v of another element; release on v swaps
+    tap deep tile          = nothing happens to the game; the shore tiles flash (where you can act)
+    the swap               = a wave from the touched tile through the chain in BFS order, tile by tile; a chain that
+                             never reaches the rim dies out before the lagoon
+    lagoon reaction        = when the wave reaches the rim: splash (rim pattern unchanged up to renaming), shimmer
+                             (pattern changed), fill + rings over the whole sea (win)
+    hint (lighthouse)      = in-page BFS over shore-only swaps (lab/shoreline-core.js, depth 7 / 50k states): first
+                             move of an optimal line; the HUD shows "shore par" = that distance from the level start
+    K.web                  = no swap: the chain's tiles bob and settle
+    win                    = lagoon fills, rings roll out to the shore, then LAB.done() (embedded: idle afterwards)
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>Shoreline</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #06192b; touch-action: none;
+    -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
+  canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; }
+</style>
+</head>
+<body>
+<canvas id="cv" aria-label="Shoreline board"></canvas>
+<script src="../levels.js"></script>
+<script src="../layout.js"></script>
+<script src="core.js"></script>
+<script src="shoreline-core.js"></script>
+<script>
+(function () {
+  'use strict';
+  const g = LAB.game();
+  const n = g.n, HOLE = g.hole, RIM = g.rim, RIMSET = new Set(RIM);
+  const QS = new URLSearchParams(location.search), HUD = QS.get('hud') || '';
+  const SPEC = { n, adj: g.adj, hole: HOLE, border: g.border, rim: RIM, NC: g.NC, goal: g.goal };
+  const SH = SHORE.shore(SPEC, QS.get('shore') === 'shells' ? 'shells' : 'beach'), SHSET = SH.set;
+  const ELEM = LAB.ELEM, COL = ELEM.map(e => e.hex), DARK = ELEM.map(e => e.dark), NEON = ELEM.map(e => e.neon), PAST = ELEM.map(e => e.pastel);
+  const ICON = LAB.ICON.map(d => new Path2D(d)), ICON_FILL = [true, true, false, false];
+  const SAND = '#f3d7a0', SAND_D = '#b98d4c', FOAM = '#eef9ff', INK = '#08213a';
+  const RM = matchMedia('(prefers-reduced-motion: reduce)'), reduce = () => RM.matches;
+  const now = () => performance.now();
+  const clamp = (x, a, b) => x < a ? a : x > b ? b : x;
+  const ease = t => t <= 0 ? 0 : t >= 1 ? 1 : 1 - Math.pow(1 - t, 3);
+  const back = t => { if (t <= 0) return 0; if (t >= 1) return 1; const c = 1.7; return 1 + (c + 1) * Math.pow(t - 1, 3) + c * Math.pow(t - 1, 2); };
+  const cv = document.getElementById('cv'), cx = cv.getContext('2d');
+  const rimPattern = col => { const mp = {}; let k = 0; return RIM.map(x => { const c = col[x]; if (!(c in mp)) mp[c] = k++; return mp[c]; }).join(''); };
+
+  // ---------------------------------------------------------------- shore BFS (shore par, hint)
+  const solveNow = () => SHORE.solve(SPEC, g.col, SHSET);
+  const START = (() => { const c = g.level.start.slice(); c[HOLE] = -1; return SHORE.solve(SPEC, c, SHSET); })();
+  let cur = solveNow();
+
+  // ---------------------------------------------------------------- geometry
+  const C0 = g.centre || g.pos, CELLS = g.cells;
+  let W = 0, H = 0, TOP = 54, BOT = 64;
+  const S = Array.from({ length: n }, () => [0, 0]), IR = new Array(n).fill(12), EXT = new Array(n).fill(20), BB = new Array(n).fill(null);
+  let cellPath = [], CS = [], chipR = 17;
+  const distSeg = (p, a, b) => { const dx = b[0] - a[0], dy = b[1] - a[1], L = dx * dx + dy * dy || 1e-9; let t = ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / L; t = clamp(t, 0, 1); return Math.hypot(p[0] - a[0] - t * dx, p[1] - a[1] - t * dy); };
+  function resize() {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+    W = innerWidth; H = innerHeight;
+    cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); cx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    TOP = HUD === 'full' && LAB.embedded ? 46 : 56; BOT = 64;
+    // the outer frame of the layout is the coastline: the border tiles' outer edges lie on it, so pushing the vertices
+    // that sit on the frame outward by M px widens the beach strips into something a thumb can hit (no contact changes)
+    const M = SPEC.border.length ? clamp(Math.min(W, H) * 0.055, 18, 34) : 0;
+    const side = 8, aw = (W - 2 * side - 2 * M) / 2, ah = (H - TOP - BOT - 2 * M) / 2;
+    let ux = Math.min(aw, ah), uy = ux;
+    if (ah > aw) uy = Math.min(ah, aw * 1.8); else ux = Math.min(aw, ah * 1.45);
+    const out = v => v >= 0.999 ? M : v <= -0.999 ? -M : 0;
+    const ox = W / 2, oy = TOP + (H - TOP - BOT) / 2, map = p => [ox + p[0] * ux + out(p[0]), oy + p[1] * uy + out(p[1])];
+    for (let u = 0; u < n; u++) S[u] = map(C0[u]);
+    cellPath = []; CS = [];
+    for (let u = 0; u < n; u++) {
+      const poly = CELLS ? CELLS[u].map(map) : null; CS.push(poly);
+      const p = new Path2D(); if (poly) { poly.forEach(([x, y], i) => i ? p.lineTo(x, y) : p.moveTo(x, y)); p.closePath(); } else p.arc(S[u][0], S[u][1], 18, 0, 7);
+      cellPath.push(p);
+      IR[u] = 16; if (poly) { const [a, r] = pole(poly, S[u]); S[u] = a; IR[u] = r; }
+      const P = poly || [[S[u][0] - 16, S[u][1] - 16], [S[u][0] + 16, S[u][1] + 16]];
+      EXT[u] = Math.max(...P.map(q => Math.hypot(q[0] - S[u][0], q[1] - S[u][1])));
+      BB[u] = [Math.min(...P.map(q => q[0])), Math.min(...P.map(q => q[1])), Math.max(...P.map(q => q[0])), Math.max(...P.map(q => q[1]))];   // anchor: the deepest point inside the tile
+    }
+    chipR = clamp(Math.min(W, H) * 0.045, 16, 21);
+    dirty();
+  }
+  // the point inside polygon P farthest from its edges (grid search, then a finer one), and that distance
+  function pole(P, guess) {
+    const edge = q => { let m = Infinity; for (let i = 0; i < P.length; i++) m = Math.min(m, distSeg(q, P[i], P[(i + 1) % P.length])); return m; };
+    let best = inPoly(guess[0], guess[1], P) ? guess : P[0], bd = inPoly(guess[0], guess[1], P) ? edge(guess) : 0;
+    let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity; for (const [x, y] of P) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
+    let sx = (x1 - x0) / 24, sy = (y1 - y0) / 24, cxp = (x0 + x1) / 2, cyp = (y0 + y1) / 2, span = 12;
+    for (let pass = 0; pass < 3; pass++) {
+      for (let i = -span; i <= span; i++) for (let j = -span; j <= span; j++) { const q = [cxp + i * sx, cyp + j * sy]; if (!inPoly(q[0], q[1], P)) continue; const d = edge(q); if (d > bd) { bd = d; best = q; } }
+      cxp = best[0]; cyp = best[1]; sx /= 6; sy /= 6;
+    }
+    return [best, bd];
+  }
+  const inPoly = (x, y, P) => { let c = false; for (let i = 0, j = P.length - 1; i < P.length; j = i++) { const [xi, yi] = P[i], [xj, yj] = P[j]; if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) c = !c; } return c; };
+  const tileAt = (x, y) => {
+    for (let u = 0; u < n; u++) if (CS[u] && inPoly(x, y, CS[u])) return u;
+    let best = -1, bd = 26; for (let u = 0; u < n; u++) { const d = Math.hypot(x - S[u][0], y - S[u][1]); if (d < bd) { bd = d; best = u; } }
+    return best;
+  };
+
+  // ---------------------------------------------------------------- state shown on screen
+  const shown = g.col.slice(); let prev = g.col.slice();
+  let anims = [];        // per tile: { u, t0, dur, from, to, amp }
+  let bobs = [];         // { u, t0 } (web / nope)
+  let flashShore = -1e9; // tapped deep water: the shore glows
+  let lagoon = { t0: 0, kind: '' };   // 'splash' | 'shimmer' | 'ebb'
+  let drops = [];        // splash droplets { x, y, vx, vy, t0, c }
+  let sel = null, chipDown = null, lit = null, drag = null, origin = -1, busyUntil = 0, win = null, lastTouch = now();
+  let hint = null, tapAt = null;   // tapAt: where the finger was (the wave's first ring starts there)       // { u, b, t0 }
+  const rimBounce = new Array(RIM.length).fill(-1e9);
+
+  // ---------------------------------------------------------------- sound (synthesised; silent until the first touch)
+  let AC = null, MG = null, NOISE = null;
+  function audio() {
+    if (AC) { if (AC.state === 'suspended') AC.resume(); return; }
+    try {
+      AC = new (window.AudioContext || window.webkitAudioContext)(); MG = AC.createGain(); MG.gain.value = 0.22; MG.connect(AC.destination);
+      NOISE = AC.createBuffer(1, AC.sampleRate * 0.6, AC.sampleRate); const d = NOISE.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    } catch (e) { AC = null; }
+  }
+  function tone(f, dur, vol, type, when, f2) {
+    if (!AC) return; const t = AC.currentTime + Math.max(0, when || 0), o = AC.createOscillator(), gn = AC.createGain();
+    o.type = type || 'sine'; o.frequency.setValueAtTime(f, t); if (f2) o.frequency.exponentialRampToValueAtTime(f2, t + dur);
+    gn.gain.setValueAtTime(0.0001, t); gn.gain.exponentialRampToValueAtTime(vol, t + 0.008); gn.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(gn); gn.connect(MG); o.start(t); o.stop(t + dur + 0.03);
+  }
+  function wash(dur, vol, when, f) {   // filtered noise: surf
+    if (!AC || !NOISE) return; const t = AC.currentTime + Math.max(0, when || 0), s = AC.createBufferSource(), fl = AC.createBiquadFilter(), gn = AC.createGain();
+    s.buffer = NOISE; fl.type = 'bandpass'; fl.frequency.setValueAtTime(f || 900, t); fl.Q.value = 0.8;
+    gn.gain.setValueAtTime(0.0001, t); gn.gain.exponentialRampToValueAtTime(vol, t + dur * 0.3); gn.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    s.connect(fl); fl.connect(gn); gn.connect(MG); s.start(t); s.stop(t + dur + 0.05);
+  }
+  const PENTA = [0, 2, 4, 7, 9, 12, 14, 16, 19, 21, 24];
+  const plip = (i, when, vol) => { const f = 420 * Math.pow(2, PENTA[Math.min(i, 10)] / 12); tone(f * 1.5, 0.09, 0.12 * vol, 'sine', when, f); };
+  const thud = () => tone(160, 0.16, 0.16, 'triangle', 0, 80);
+
+  // ---------------------------------------------------------------- the wave
+  function bfs(set, from) {
+    const d = new Map([[from, 0]]); let fr = [from];
+    while (fr.length) { const nx = []; for (const u of fr) for (const w of g.adj[u]) if (set.has(w) && !d.has(w)) { d.set(w, d.get(u) + 1); nx.push(w); } fr = nx; }
+    return d;
+  }
+  function settle(u) { const a = anims.find(x => x.u === u); if (a) { shown[u] = a.to; anims = anims.filter(x => x !== a); } }
+  function wave(K, old, at) {
+    const t0 = now() + 30, red = reduce();
+    const o = K.set.has(at) ? at : (K.vs.find(u => SHSET.has(u)) ?? K.vs[0]), depth = bfs(K.set, o);
+    let maxD = 0; depth.forEach(d => { maxD = Math.max(maxD, d); });
+    const STEP = red ? 20 : clamp(700 / Math.max(1, maxD), 60, 120), DUR = red ? 180 : 420;
+    const reach = K.rimHits > 0;
+    const startOf = u => t0 + depth.get(u) * STEP;
+    for (const u of K.vs) {
+      settle(u);
+      const d = depth.get(u), to = old[u] === K.pair[0] ? K.pair[1] : K.pair[0];
+      // a wave that never meets the rim loses height as it runs inward (it dies out before the lagoon)
+      const amp = reach ? 1 : Math.max(0.25, 1 - d / (maxD + 1.5));
+      anims.push({ u, t0: startOf(u), dur: DUR, from: old[u], to, amp, p: u === o && u === at && tapAt ? tapAt : null });
+    }
+    for (let d = 0; d <= maxD; d++) plip(d, (d * STEP + 30) / 1000, reach ? 1 : Math.max(0.3, 1 - d / (maxD + 1.5)));
+    wash(0.45, 0.07, 0, 1200);
+    let end = t0 + maxD * STEP + DUR;
+    tapAt = null;
+    const rimK = K.vs.filter(u => RIMSET.has(u)).sort((a, b) => startOf(a) - startOf(b));
+    if (rimK.length) {
+      const tr = startOf(rimK[0]) + DUR * 0.5, changed = rimPattern(old) !== rimPattern(g.col);
+      lagoon = { t0: tr, kind: g.won() ? 'fill' : changed ? 'shimmer' : 'splash' };
+      for (const u of rimK) { const i = RIM.indexOf(u); rimBounce[i] = startOf(u) + DUR / 2; }
+      for (const u of rimK) spray(u, startOf(u) + DUR * 0.5, changed ? 5 : 7);
+      if (lagoon.kind === 'splash') wash(0.35, 0.12, (tr - now()) / 1000, 700);
+      else if (lagoon.kind === 'shimmer') for (let i = 0; i < 5; i++) tone(1200 + i * 180, 0.18, 0.05, 'sine', (tr - now()) / 1000 + i * 0.05);
+      end = Math.max(end, tr + 700);
+    } else {
+      lagoon = { t0: end, kind: 'ebb' };
+    }
+    busyUntil = end;
+    if (g.won()) win = { t0: end + 150, free: g.free(), done: false };
+    dirty(end - now() + 300);
+  }
+  function spray(u, t0, k) {   // droplets from rim tile u into the lagoon edge
+    const [hx, hy] = S[HOLE], [x, y] = S[u], mx = hx + (x - hx) * 0.45, my = hy + (y - hy) * 0.45;
+    for (let i = 0; i < k; i++) { const a = Math.random() * Math.PI * 2, v = 0.06 + Math.random() * 0.08; drops.push({ x: mx, y: my, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 0.08, t0, c: FOAM }); }
+  }
+  function snapTo(col) {        // undo / reset: changed tiles ripple back, no wave
+    const t0 = now(); anims.forEach(a => settle(a.u));
+    for (let u = 0; u < n; u++) if (u !== HOLE && col[u] !== shown[u]) anims.push({ u, t0, dur: 240, from: shown[u], to: col[u], amp: 0.4 });
+    lagoon = { t0: 0, kind: '' }; busyUntil = t0 + 260; dirty(400);
+  }
+  g.on((_, info) => {
+    const old = prev; prev = g.col.slice();
+    if (info.type === 'swap' && info.chain) wave(info.chain, old, origin);
+    else { win = null; snapTo(g.col); }
+    origin = -1; sel = null; lit = null; hint = null; lastTouch = now();
+    cur = solveNow();
+  });
+
+  function doSwap(K, u, at) {
+    if (!K || g.won()) return;
+    if (!K.vs.some(v => SHSET.has(v))) { nope(u); return; }   // cannot happen from the UI (every chain offered meets the shore)
+    if (K.web) { const t = now(); K.vs.forEach(v => bobs.push({ u: v, t0: t })); thud(); setTimeout(thud, 110); dirty(700); return; }
+    origin = u;
+    at = at || S[u]; tapAt = at;
+    try { LAB.at && LAB.at(at[0], at[1]); } catch (e) { /* older shell */ }
+    g.swap(K);
+  }
+  function nope(u) { const t = now(); if (u >= 0) bobs.push({ u, t0: t }); flashShore = t; tone(220, 0.12, 0.08, 'sine', 0, 160); dirty(900); }
+
+  // ---------------------------------------------------------------- input
+  const BTN = () => {
+    const y = 27, r = 17, b = [{ id: 'undo', x: 26, y, r }, { id: 'reset', x: 66, y, r }];
+    if (!LAB.embedded) b.push({ id: 'prev', x: W - 66, y, r }, { id: 'next', x: W - 26, y, r });
+    b.push({ id: 'hint', x: W - 32, y: H - 32, r: 21 });
+    if (!LAB.embedded && SPEC.border.length) b.push({ id: 'mode', x: 58, y: H - 32, r: 21, w: 96 });
+    return b;
+  };
+  const hitBtn = (q, x, y) => q.w ? Math.abs(x - q.x) < q.w / 2 + 4 && Math.abs(y - q.y) < q.r + 6 : Math.hypot(x - q.x, y - q.y) < q.r + 6;
+  function openChips(u, hb, at) {
+    const P0 = at || S[u], r = at ? chipR * 2.2 : Math.max(IR[u] * 0.7, 14) + chipR + 4, list = [0, 1, 2, 3].filter(b => b < g.NC && b !== g.col[u]);
+    const toC = Math.atan2(S[HOLE][1] - P0[1], S[HOLE][0] - P0[0]);   // fan the chips toward the open sea (the lagoon)
+    let best = null;
+    for (let k = 0; k < 12; k++) {
+      const rot = toC + (k % 2 ? 1 : -1) * Math.ceil(k / 2) * Math.PI / 8, spread = Math.PI / 3.2;
+      const chips = list.map((b, i) => { const a = rot + (i - (list.length - 1) / 2) * spread; return { b, K: g.chainAt(u, b), x: P0[0] + r * Math.cos(a), y: P0[1] + r * Math.sin(a) }; });
+      if (chips.every(c => c.x > chipR + 2 && c.x < W - chipR - 2 && c.y > TOP && c.y < H - BOT + 6)) { best = chips; break; }
+      if (!best) best = chips;
+    }
+    sel = { u, chips: best, t0: now(), hb: hb == null ? -1 : hb, x: P0[0], y: P0[1] };
+    tone(700, 0.05, 0.08, 'sine');
+  }
+  const chipAt = (x, y) => sel ? sel.chips.find(c => Math.hypot(x - c.x, y - c.y) < chipR + 7) : null;
+  function down(e) {
+    audio(); const x = e.clientX, y = e.clientY; lastTouch = now();
+    if (win) { if (!LAB.embedded && now() > win.t0 + 4200) { win = null; g.reset(); } return; }
+    const b = BTN().find(q => hitBtn(q, x, y));
+    if (b) {
+      const inert = LAB.embedded && g.won();
+      if (inert) return;
+      if (b.id === 'undo') { if (g.history.length && now() > busyUntil) { g.undo(); tone(520, 0.1, 0.06, 'sine'); } else thud(); }
+      else if (b.id === 'reset') { if (g.moves && now() > busyUntil) g.reset(); else thud(); }
+      else if (b.id === 'hint') showHint();
+      else if (b.id === 'mode') { if (SH.mode === 'shells') QS.delete('shore'); else QS.set('shore', 'shells'); location.search = QS.toString(); }
+      else { const L = GAME.levels, i = L.findIndex(l => l.id === g.level.id), j = (i + (b.id === 'next' ? 1 : L.length - 1)) % L.length; QS.set('lvl', L[j].id); location.search = QS.toString(); }
+      return;
+    }
+    if (g.won() || now() < busyUntil) return;
+    const c = chipAt(x, y);
+    if (c) { chipDown = c; lit = c.K && !c.K.web ? c.K : null; tone(880, 0.04, 0.06, 'sine'); dirty(); return; }
+    const u = tileAt(x, y);
+    sel = null; lit = null;
+    if (u >= 0 && u !== HOLE) {
+      if (!SHSET.has(u)) nope(u);
+      else { drag = { u, x, y, moved: false, v: -1, t0: now() }; tone(640, 0.04, 0.07, 'sine'); }
+    }
+    dirty();
+  }
+  function move(e) {
+    const x = e.clientX, y = e.clientY;
+    if (chipDown) { const c = chipAt(x, y); lit = c === chipDown && c.K && !c.K.web ? c.K : null; dirty(); return; }
+    if (!drag) return;
+    if (!drag.moved && Math.hypot(x - drag.x, y - drag.y) > 10) drag.moved = true;
+    if (!drag.moved) return;
+    const v = tileAt(x, y), u = drag.u;
+    if (v >= 0 && v !== u && v !== HOLE && g.adj[u].includes(v) && g.col[v] !== g.col[u]) { if (v !== drag.v) { drag.v = v; lit = g.chainAt(u, g.col[v]); plip(2, 0, 0.6); } }
+    else { drag.v = -1; lit = null; }
+    drag.px = x; drag.py = y; dirty();
+  }
+  function up(e) {
+    const x = e.clientX, y = e.clientY;
+    if (chipDown) { const c = chipAt(x, y), u = sel && sel.u, at = sel && [sel.x, sel.y]; const was = chipDown; chipDown = null; lit = null; sel = null; if (c === was) doSwap(c.K, u, at); dirty(); return; }
+    if (!drag) return;
+    const d = drag; drag = null;
+    if (!d.moved) openChips(d.u, null, [d.x, d.y]);
+    else if (d.v >= 0 && tileAt(x, y) === d.v) doSwap(g.chainAt(d.u, g.col[d.v]), d.u, [d.x, d.y]);
+    lit = null; dirty();
+  }
+  cv.addEventListener('pointerdown', down); addEventListener('pointermove', move); addEventListener('pointerup', up);
+  addEventListener('pointercancel', () => { drag = null; chipDown = null; lit = null; dirty(); });
+  function hintMove() {
+    if (!cur || !cur.line.length) return null;
+    const key = cur.line[0].join('.'), K = g.chains.find(k => k.vs.join('.') === key);
+    if (!K) return null;
+    const u = K.vs.find(v => SHSET.has(v)); if (u == null) return null;
+    return { K, u, b: g.col[u] === K.pair[0] ? K.pair[1] : K.pair[0] };
+  }
+  function showHint() {
+    if (g.won() || now() < busyUntil) return;
+    const h = hintMove();
+    if (!h) { nope(-1); return; }
+    hint = { u: h.u, b: h.b, t0: now() }; openChips(h.u, h.b); tone(990, 0.12, 0.07, 'sine'); tone(1320, 0.16, 0.05, 'sine', 0.08); dirty(2000);
+  }
+
+  // ---------------------------------------------------------------- drawing
+  let raf = 0, until = 0, lastFrame = 0;
+  function dirty(ms) { until = Math.max(until, now() + (ms || 0)); if (!raf) raf = requestAnimationFrame(frame); }
+  function icon(c, x, y, s, alpha) {
+    cx.save(); cx.globalAlpha *= alpha; cx.translate(x, y); cx.scale(s / 24, s / 24); cx.translate(-12, -12);
+    if (ICON_FILL[c]) { cx.fillStyle = '#fff'; cx.fill(ICON[c]); } else { cx.strokeStyle = '#fff'; cx.lineWidth = 2.8; cx.lineCap = 'round'; cx.stroke(ICON[c]); }
+    cx.restore();
+  }
+  function colourAt(u, t) { const a = anims.find(q => q.u === u); if (!a) return { c: shown[u], a: null, k: -1 }; const k = (t - a.t0) / a.dur; return { c: k >= 0.5 ? a.to : a.from, a, k }; }
+  function scaled(u, s, fn) { cx.save(); cx.translate(S[u][0], S[u][1]); cx.scale(s, s); cx.translate(-S[u][0], -S[u][1]); fn(); cx.restore(); }
+  function frame() {
+    raf = 0; const t = now(); lastFrame = t;
+    let live = t < until || anims.length || bobs.length || drops.length || win || drag || chipDown || sel || hint;
+    for (const a of anims.slice()) if (t >= a.t0 + a.dur) settle(a.u);
+    bobs = bobs.filter(w => t < w.t0 + 650);
+    // sea
+    const bg = cx.createRadialGradient(W * 0.5, H * 0.5, 10, W / 2, H / 2, Math.max(W, H) * 0.75);
+    bg.addColorStop(0, '#0f4a6e'); bg.addColorStop(1, '#04121f');
+    cx.fillStyle = bg; cx.fillRect(0, 0, W, H);
+    const litSet = lit ? lit.set : null, wv = win && t > win.t0 + 300 ? win : null;
+    const tileScale = u => {
+      let s = 0; const ca = colourAt(u, t);
+      if (ca.a && ca.k >= 0 && ca.k <= 1) s += 0.07 * ca.a.amp * Math.sin(Math.PI * ca.k);
+      const b = bobs.find(q => q.u === u); if (b) { const k = (t - b.t0) / 650; s += Math.sin(k * Math.PI * 3) * 0.05 * (1 - k); }
+      if (wv) { const k = (t - wv.t0 - 300 - wdist[u] * 170) / 600; if (k > 0 && k < 1) s += 0.08 * Math.sin(Math.PI * k); }
+      return 1 + s * Math.min(1, 70 / EXT[u]);   // a long beach strip barely moves; a small tile pops
+    };
+    // deep water tiles (under the surface)
+    for (let u = 0; u < n; u++) {
+      if (u === HOLE || SHSET.has(u)) continue;
+      const { c } = colourAt(u, t), s = tileScale(u);
+      scaled(u, s, () => {
+        cx.fillStyle = COL[c]; cx.fill(cellPath[u]);
+        cx.fillStyle = 'rgba(6,40,72,.5)'; cx.fill(cellPath[u]);
+        cx.strokeStyle = 'rgba(160,220,255,.16)'; cx.lineWidth = 1.2; cx.stroke(cellPath[u]);
+      });
+      icon(c, S[u][0], S[u][1], clamp(IR[u] * 0.9, 9, 20), 0.42);
+    }
+    // the lagoon (the hole)
+    {
+      const P = cellPath[HOLE], [x, y] = S[HOLE], r = IR[HOLE];
+      const lg = cx.createRadialGradient(x, y, 2, x, y, r * 1.6); lg.addColorStop(0, '#1c8fa8'); lg.addColorStop(1, '#063047');
+      cx.fillStyle = lg; cx.fill(P);
+      if (win && t >= win.t0) { const k = clamp((t - win.t0) / 500, 0, 1); cx.save(); cx.globalAlpha = k; cx.fillStyle = COL[win.free]; cx.fill(P); cx.restore(); if (k >= 1) icon(win.free, x, y, clamp(r * 1.1, 12, 26), 1); live = true; }
+      // a slow foam ring: the lagoon breathes (it is the target)
+      const br = 0.5 + 0.5 * Math.sin(t / 700);
+      cx.save(); cx.setLineDash([5, 6]); cx.lineDashOffset = -t / 60; cx.strokeStyle = 'rgba(238,249,255,' + (0.35 + 0.25 * br) + ')'; cx.lineWidth = 2; cx.stroke(P); cx.restore();
+      if (lagoon.kind && t >= lagoon.t0) {
+        const k = (t - lagoon.t0) / 900;
+        if (k < 1) {
+          live = true;
+          if (lagoon.kind === 'splash') { cx.beginPath(); cx.arc(x, y, r * (0.4 + 0.9 * ease(k)), 0, 7); cx.strokeStyle = 'rgba(238,249,255,' + (0.8 * (1 - k)) + ')'; cx.lineWidth = 3 * (1 - k) + 1; cx.stroke(); }
+          else if (lagoon.kind === 'shimmer' || lagoon.kind === 'fill') {
+            for (let i = 0; i < 4; i++) { const kk = clamp(k * 1.3 - i * 0.1, 0, 1); cx.beginPath(); cx.arc(x, y, r * (0.3 + 1.2 * ease(kk)), 0, 7); cx.strokeStyle = NEON[i] + Math.round(200 * (1 - kk)).toString(16).padStart(2, '0'); cx.lineWidth = 2.5; cx.stroke(); }
+            for (let i = 0; i < 8; i++) { const a = i * Math.PI / 4 + k * 2, rr = r * (0.5 + 0.7 * k); cx.save(); cx.globalAlpha = 1 - k; cx.fillStyle = '#fff'; cx.beginPath(); cx.arc(x + rr * Math.cos(a), y + rr * Math.sin(a), 2.2, 0, 7); cx.fill(); cx.restore(); }
+          } else if (lagoon.kind === 'ebb') { cx.save(); cx.globalAlpha = 0.25 * (1 - k); cx.fillStyle = '#9fd8ff'; cx.fill(P); cx.restore(); }
+        }
+      }
+    }
+    // shore tiles (raised sand-rimmed, the only touchable ones)
+    const glow = 0.5 + 0.5 * Math.sin(t / 520), fk = clamp((t - flashShore) / 900, 0, 1);
+    for (const u of SHSET) {
+      const { c } = colourAt(u, t), s = tileScale(u) * (drag && drag.u === u ? 1 + Math.min(0.04, 3 / EXT[u]) : 1) * (sel && sel.u === u ? 1 + Math.min(0.04, 3 / EXT[u]) : 1);
+      scaled(u, s, () => {
+        cx.save(); cx.translate(0, 3); cx.fillStyle = 'rgba(0,0,0,.35)'; cx.fill(cellPath[u]); cx.restore();
+        const [bx0, by0, bx1, by1] = BB[u], gr = cx.createLinearGradient(bx0, by0, bx1, by1);
+        gr.addColorStop(0, PAST[c]); gr.addColorStop(0.5, COL[c]); gr.addColorStop(1, DARK[c]);
+        cx.fillStyle = gr; cx.fill(cellPath[u]);
+        cx.save(); cx.clip(cellPath[u]);
+        cx.strokeStyle = SAND; cx.lineWidth = 7; cx.stroke(cellPath[u]);
+        cx.strokeStyle = 'rgba(255,255,255,' + (0.18 + 0.22 * glow + 0.6 * (1 - fk)) + ')'; cx.lineWidth = 3 + 6 * (1 - fk); cx.stroke(cellPath[u]);
+        cx.restore();
+        cx.strokeStyle = INK; cx.lineWidth = 1.6; cx.stroke(cellPath[u]);
+      });
+      icon(c, S[u][0], S[u][1] - 1, clamp(IR[u] * 0.95, 12, 24), 1);
+    }
+    if (fk < 1) live = true;
+    // the wave: foam crests on every tile as it passes
+    for (const a of anims) {
+      const k = (t - a.t0) / a.dur; if (k < 0 || k > 1) continue;
+      const u = a.u;
+      cx.save(); cx.globalAlpha = a.amp * Math.sin(Math.PI * k); cx.strokeStyle = FOAM; cx.lineWidth = 2 + 3 * a.amp; cx.stroke(cellPath[u]); cx.restore();
+      const [ax, ay] = a.p || S[u];
+      cx.beginPath(); cx.arc(ax, ay, (6 + IR[u] * 1.2 * ease(k)) * (0.6 + 0.4 * a.amp), 0, 7);
+      cx.strokeStyle = 'rgba(238,249,255,' + (0.85 * a.amp * (1 - k)) + ')'; cx.lineWidth = 2.5; cx.stroke();
+    }
+    // the chain under the finger: its tiles outlined, its links drawn
+    if (litSet) {
+      const p = 0.55 + 0.35 * Math.sin(t / 110);
+      cx.lineCap = 'round';
+      for (const u of lit.vs) for (const w of g.adj[u]) if (w > u && litSet.has(w)) { cx.beginPath(); cx.moveTo(S[u][0], S[u][1]); cx.lineTo(S[w][0], S[w][1]); cx.strokeStyle = 'rgba(255,236,150,' + p + ')'; cx.lineWidth = 4; cx.stroke(); }
+      for (const u of lit.vs) { cx.strokeStyle = 'rgba(255,236,150,' + p + ')'; cx.lineWidth = 3; cx.stroke(cellPath[u]); }
+      live = true;
+    }
+    // win: rings roll out from the lagoon to the shore
+    if (wv) { const k = (t - wv.t0 - 300) / 2400; if (k < 1) for (let i = 0; i < 3; i++) { const kk = k * 1.6 - i * 0.25; if (kk > 0 && kk < 1) { cx.beginPath(); cx.arc(S[HOLE][0], S[HOLE][1], 10 + Math.max(W, H) * 0.7 * ease(kk), 0, 7); cx.strokeStyle = NEON[wv.free] + Math.round(180 * (1 - kk)).toString(16).padStart(2, '0'); cx.lineWidth = 6 * (1 - kk) + 1; cx.stroke(); } } }
+    // droplets
+    drops = drops.filter(d => t < d.t0 + 700);
+    for (const d of drops) { if (t < d.t0) continue; const k = (t - d.t0), x = d.x + d.vx * k, y = d.y + d.vy * k + 0.00025 * k * k; cx.save(); cx.globalAlpha = 1 - k / 700; cx.fillStyle = d.c; cx.beginPath(); cx.arc(x, y, 2.6, 0, 7); cx.fill(); cx.restore(); }
+    // drag line
+    if (drag && drag.moved && drag.px != null) {
+      cx.beginPath(); cx.moveTo(drag.x, drag.y); cx.lineTo(drag.px, drag.py);
+      cx.strokeStyle = 'rgba(255,255,255,.55)'; cx.lineWidth = 3; cx.setLineDash([5, 6]); cx.stroke(); cx.setLineDash([]);
+    }
+    // partner chips (shells on the sand)
+    if (sel) {
+      const k = clamp((t - sel.t0) / 220, 0, 1), sx0 = sel.x, sy0 = sel.y;
+      for (const c of sel.chips) {
+        const x = sx0 + (c.x - sx0) * back(k), y = sy0 + (c.y - sy0) * back(k), web = !c.K || c.K.web;
+        const pressed = chipDown === c, hinted = hint && sel.hb === c.b, rr = chipR * (pressed ? 1.15 : 1);
+        if (hinted) { const p = 0.5 + 0.5 * Math.sin((t - hint.t0) / 130); cx.beginPath(); cx.arc(x, y, rr + 6 + 4 * p, 0, 7); cx.strokeStyle = LAB.tok('--sk-accent', '#ffd84a'); cx.lineWidth = 3; cx.stroke(); }
+        cx.save(); cx.globalAlpha = web ? 0.4 : 1;
+        cx.beginPath(); cx.arc(x, y + 3, rr, 0, 7); cx.fillStyle = 'rgba(0,0,0,.4)'; cx.fill();
+        const gr = cx.createLinearGradient(x - rr, y - rr, x + rr, y + rr); gr.addColorStop(0, PAST[c.b]); gr.addColorStop(0.5, COL[c.b]); gr.addColorStop(1, DARK[c.b]);
+        cx.beginPath(); cx.arc(x, y, rr, 0, 7); cx.fillStyle = web ? '#7b8794' : gr; cx.fill(); cx.lineWidth = 2.5; cx.strokeStyle = SAND; cx.stroke(); cx.lineWidth = 1.2; cx.strokeStyle = INK; cx.stroke();
+        icon(c.b, x, y, rr * 1.15, 1);
+        cx.restore();
+      }
+    }
+    // rim strip (the shell's full HUD already shows the rim)
+    if (HUD !== 'full') {
+      const rs = RIM.map(x => colourAt(x, t).c), m = RIM.length, x0 = W / 2 - (m - 1) * 15, y = 27;
+      cx.save(); cx.beginPath(); cx.roundRect ? cx.roundRect(x0 - 22, y - 17, (m - 1) * 30 + 44, 34, 17) : cx.rect(x0 - 22, y - 17, (m - 1) * 30 + 44, 34);
+      cx.fillStyle = 'rgba(0,0,0,.35)'; cx.fill(); cx.restore();
+      for (let i = 0; i < m; i++) {
+        const k = (t - rimBounce[i]) / 380, b = k > 0 && k < 1 ? 1 + 0.35 * Math.sin(Math.PI * k) : 1; if (k > 0 && k < 1) live = true;
+        cx.beginPath(); cx.arc(x0 + i * 30, y, 11 * b, 0, 7); cx.fillStyle = COL[rs[i]]; cx.fill(); cx.lineWidth = 1.5; cx.strokeStyle = INK; cx.stroke();
+        icon(rs[i], x0 + i * 30, y, 13 * b, 1);
+      }
+    }
+    // controls (the skin's --sk-ctl tokens when embedded)
+    const ctl = LAB.tok('--sk-ctl', '#123a5a'), ink = LAB.tok('--sk-ctl-ink', '#eef9ff'), edge = LAB.tok('--sk-ctl-edge', '#041320');
+    const inert = LAB.embedded && g.won();
+    for (const b of BTN()) {
+      cx.save(); cx.globalAlpha = inert || (b.id === 'undo' && !g.history.length) || (b.id === 'reset' && !g.moves) || (b.id === 'hint' && (g.won() || !cur.line.length)) ? 0.4 : 1;
+      cx.beginPath(); if (b.w) cx.roundRect(b.x - b.w / 2, b.y - b.r + 2.5, b.w, 2 * b.r, b.r); else cx.arc(b.x, b.y + 2.5, b.r, 0, 7); cx.fillStyle = 'rgba(0,0,0,.4)'; cx.fill();
+      cx.beginPath(); if (b.w) cx.roundRect(b.x - b.w / 2, b.y - b.r, b.w, 2 * b.r, b.r); else cx.arc(b.x, b.y, b.r, 0, 7); cx.fillStyle = ctl; cx.fill(); cx.lineWidth = 2; cx.strokeStyle = edge; cx.stroke();
+      cx.strokeStyle = ink; cx.fillStyle = ink; cx.lineWidth = 2.6; cx.lineCap = 'round'; cx.lineJoin = 'round';
+      cx.translate(b.x, b.y);
+      if (b.id === 'undo') {
+        cx.beginPath(); cx.moveTo(-6, -3); cx.lineTo(3, -3); cx.arc(3, 2, 5, -Math.PI / 2, Math.PI / 2); cx.lineTo(-2, 7); cx.stroke();
+        cx.beginPath(); cx.moveTo(-2, -7.5); cx.lineTo(-6.5, -3); cx.lineTo(-2, 1.5); cx.stroke();
+      } else if (b.id === 'reset') {
+        const a1 = Math.PI * 1.85; cx.beginPath(); cx.arc(0, 0, 7, Math.PI * 0.2, a1); cx.stroke();
+        const ex = 7 * Math.cos(a1), ey = 7 * Math.sin(a1), tx = -Math.sin(a1), ty = Math.cos(a1), nx = Math.cos(a1), ny = Math.sin(a1);
+        cx.beginPath(); cx.moveTo(ex + tx * 3.5, ey + ty * 3.5); cx.lineTo(ex + nx * 3.5 - tx, ey + ny * 3.5 - ty); cx.lineTo(ex - nx * 3.5 - tx, ey - ny * 3.5 - ty); cx.closePath(); cx.fill();
+      } else if (b.id === 'hint') {                // a lighthouse
+        cx.beginPath(); cx.moveTo(-5, 10); cx.lineTo(-3, -4); cx.lineTo(3, -4); cx.lineTo(5, 10); cx.closePath(); cx.fill();
+        cx.fillStyle = LAB.tok('--sk-accent', '#ffd84a'); cx.beginPath(); cx.arc(0, -7.5, 3.6, 0, 7); cx.fill();
+        cx.strokeStyle = LAB.tok('--sk-accent', '#ffd84a'); cx.lineWidth = 1.8; cx.beginPath(); cx.moveTo(5, -9); cx.lineTo(11, -12); cx.moveTo(5, -6); cx.lineTo(11, -3); cx.moveTo(-5, -9); cx.lineTo(-11, -12); cx.moveTo(-5, -6); cx.lineTo(-11, -3); cx.stroke();
+      } else if (b.id === 'mode') {
+        cx.font = '800 13px system-ui, sans-serif'; cx.textAlign = 'center'; cx.textBaseline = 'middle'; cx.fillText(SH.mode === 'shells' ? '2 shells' : 'beach', 0, 1);
+      } else {
+        const s = b.id === 'next' ? 1 : -1; cx.beginPath(); cx.moveTo(-3 * s, -6); cx.lineTo(4 * s, 0); cx.lineTo(-3 * s, 6); cx.stroke();
+      }
+      cx.restore();
+    }
+    // par chip: moves / shore par (bottom centre)
+    {
+      const par = START.dist == null ? '7+' : String(START.dist), txt = g.moves + ' / ' + par;
+      cx.save(); cx.font = '800 15px system-ui, sans-serif'; const tw = cx.measureText(txt).width + 40, x = W / 2, y = H - 32;
+      cx.beginPath(); cx.roundRect(x - tw / 2, y - 16 + 2.5, tw, 32, 16); cx.fillStyle = 'rgba(0,0,0,.4)'; cx.fill();
+      cx.beginPath(); cx.roundRect(x - tw / 2, y - 16, tw, 32, 16); cx.fillStyle = ctl; cx.fill(); cx.lineWidth = 2; cx.strokeStyle = edge; cx.stroke();
+      // a small wave glyph = "shore swaps"
+      cx.strokeStyle = SAND; cx.lineWidth = 2.2; cx.lineCap = 'round'; cx.beginPath(); for (let i = 0; i <= 12; i++) { const px = x - tw / 2 + 10 + i, py = y + Math.sin(i / 12 * Math.PI * 2) * 3; i ? cx.lineTo(px, py) : cx.moveTo(px, py); } cx.stroke();
+      cx.fillStyle = g.moves > (START.dist || 99) ? '#ffb38a' : ink; cx.textAlign = 'center'; cx.textBaseline = 'middle'; cx.fillText(txt, x + 8, y + 1);
+      cx.restore();
+    }
+    if (!LAB.embedded && W > 430) { cx.fillStyle = 'rgba(238,249,255,.7)'; cx.font = '700 12px system-ui, sans-serif'; cx.textAlign = 'right'; cx.textBaseline = 'alphabetic'; cx.fillText(String(g.level.num), W - 92, 31); }
+    // win flow
+    if (win) {
+      live = true;
+      if (!win.chimed && t >= win.t0) { win.chimed = true; wash(1.2, 0.18, 0, 600); tone(523, 0.5, 0.18, 'sine'); tone(784, 0.6, 0.14, 'sine', 0.12); for (let d = 0; d <= wmax; d++) tone(392 * Math.pow(2, PENTA[d % PENTA.length] / 12), 0.25, 0.09, 'triangle', 0.45 + d * 0.17); }
+      if (!win.done && t >= win.t0 + 3600) { win.done = true; LAB.done(); }
+    }
+    // idle hint: after 9 s with no touch, the shore tile of an optimal first move bobs
+    if (!win && !g.won() && t - lastTouch > 9000 && t > busyUntil && (!idleT || t - idleT > 9000)) {
+      const h = hintMove(); if (h) { bobs.push({ u: h.u, t0: t }); idleT = t; }
+    }
+    if (hint && t - hint.t0 > 6000) hint = null;
+    // the shore glow keeps breathing: a light ~20 fps loop while idle
+    if (live) raf = requestAnimationFrame(frame);
+    else setTimeout(() => { if (!raf) raf = requestAnimationFrame(frame); }, 50);
+  }
+  let idleT = 0;
+  const wdist = SHORE.shells(n, g.adj, HOLE), wmax = Math.max(...wdist);
+
+  addEventListener('resize', resize);
+  resize();
+  // for headless checks: the page's own shore rules and BFS
+  window.SHORELINE = { g, shore: () => [...SHSET], mode: SH.mode, par: () => START.dist, solve: () => solveNow(), hintMove: () => { const h = hintMove(); return h && { u: h.u, b: h.b, vs: h.K.vs }; },
+    busy: () => now() < busyUntil, S: () => S.map(p => p.slice()), tap: (u, b) => { const K = g.chainAt(u, b); if (SHSET.has(u)) doSwap(K, u); else nope(u); } };
+})();
+</script>
+</body>
+</html>
