@@ -2,8 +2,10 @@
 // For EVERY level in levels.js, at 390 x 844 (phone) and 1280 x 800 (desktop), in the page's board box:
 //   - the packing converged (angle sums 2pi), every adjacent pair is tangent: |d - (r_u + r_v)| <= 1e-6 (r_u + r_v),
 //   - no two circles overlap (fillers included), non-adjacent circles do not touch (gap > 1e-4 x the smaller radius),
-//   - the hub (the hole's circle) is tangent to every rim gear and sits at the centre of the box,
-//   - every gear shows a tap disc (a frame gear running off the box keeps a 22 px disc inside it);
+//   - the hub (the hole's circle) is tangent to every rim gear and at least 34 px (phone) / 44 px (desktop) in radius,
+//   - the frame gears (the three round the point sent to infinity, running off the box) cover at most 20% of the box,
+//   - every gear shows a tap disc on screen: a disc of radius min(r, 22 px) inside both it and the box (outer gears may run
+//     off the edges, like a machine going on beyond the frame), and the hub is whole;
 // and reports the radius ratio (visible gears), the smallest gear (px) and the teeth: counts, pitch, the clash left at
 // non-tree contacts (in teeth; 0 = perfect mesh, 0.5 = tooth on tooth).
 const fs = require('fs'), path = require('path'), vm = require('vm');
@@ -14,9 +16,10 @@ run('levels.js'); run('layout.js'); run('lab/gearpack.js');
 const G = ctx.window.GAME, LAY = ctx.window.LAYOUT, GP = ctx.window.GEARPACK, VERB = process.argv.includes('--v');
 let bad = 0; const fail = m => { console.log('  FAIL ' + m); bad++; };
 const box = (w, h) => ({ x0: 10, y0: 54, x1: w - 10, y1: h - 10 });   // lab/gears.html resize()
-const SIZES = [[390, 844], [1280, 800]];
-const tot = { lv: 0, tan: 0, minPx: Infinity, minPxAt: '', ratio: 0, ratioAt: '', clash: 0, mean: 0, nm: 0, ms: 0 };
-console.log('  level              n   N  conv     tan.err   phone: minPx ratio teeth  clash   desk: minPx ratio teeth  clash');
+const SIZES = [[390, 844], [1280, 800]], COVER = 0.2;   // frame gears: at most 20% of the board; hub radius >= 34 px phone, 44 px desktop
+const per = SIZES.map(() => ({ gear: [], hub: Infinity, cov: 0 }));
+const tot = { cov: 0, covAt: '', hub: Infinity, hubAt: '', lv: 0, tan: 0, minPx: Infinity, minPxAt: '', ratio: 0, ratioAt: '', clash: 0, mean: 0, nm: 0, ms: 0 };
+console.log('  level              n   N  conv     tan.err   phone: minPx ratio  hub cov% teeth clash   desk: minPx ratio  hub cov% teeth clash');
 const seen = new Set();
 for (const L of G.levels) {
   if (seen.has(L.id)) continue; seen.add(L.id);
@@ -34,26 +37,33 @@ for (const L of G.levels) {
       if (adj.has(u * 1000 + v)) { tanMax = Math.max(tanMax, e); if (e > 1e-6) fail(L.id + ' ' + w + ': ' + u + '-' + v + ' not tangent (' + e.toExponential(2) + ')'); }
       else if (d - s <= 1e-4 * Math.min(R[u], R[v])) fail(L.id + ' ' + w + ': ' + u + '-' + v + (d < s ? ' overlap' : ' touch') + ' (gap ' + (d - s).toFixed(4) + ' px)');
     }
-    const H = S[Gr.hole]; if (Math.abs(H[0] - (B.x0 + B.x1) / 2) > 1e-6 || Math.abs(H[1] - (B.y0 + B.y1) / 2) > 1e-6) fail(L.id + ' ' + w + ': hub off centre');
+    const H = S[Gr.hole], HUB = w < 500 ? 34 : 44;
+    if (R[Gr.hole] < HUB - 0.05) fail(L.id + ' ' + w + ': hub ' + R[Gr.hole].toFixed(1) + ' px < ' + HUB);
+    if (V.cover > COVER) fail(L.id + ' ' + w + ': frame gears cover ' + (100 * V.cover).toFixed(0) + '% of the board (> ' + 100 * COVER + '%)');
     for (const x of Gr.link) { const d = Math.hypot(S[x][0] - H[0], S[x][1] - H[1]); if (Math.abs(d - R[x] - R[Gr.hole]) > 1e-6 * (R[x] + R[Gr.hole])) fail(L.id + ': hub not tangent to rim gear ' + x); }
-    // a tap disc: the gear (or, for a frame gear, its part inside the box) holds a disc of radius >= 10 px (20 px target)
+    // on screen: every gear shows a disc of radius min(r, 22 px) inside the box (outer gears may run off the edges), the hub whole
     const fr = new Set(V.frame); let vr = [];
     for (let u = 0; u < n; u++) {
-      if (fr.has(u)) { const qx = Math.max(B.x0 + 22, Math.min(B.x1 - 22, S[u][0])), qy = Math.max(B.y0 + 22, Math.min(B.y1 - 22, S[u][1])); if (Math.hypot(qx - S[u][0], qy - S[u][1]) > R[u] - 22) fail(L.id + ' ' + w + ': frame gear ' + u + ' shows no 22 px disc'); continue; }
-      if (S[u][0] + R[u] > B.x1 + 1e-6 || S[u][0] - R[u] < B.x0 - 1e-6 || S[u][1] + R[u] > B.y1 + 1e-6 || S[u][1] - R[u] < B.y0 - 1e-6) fail(L.id + ' ' + w + ': gear ' + u + ' leaves the box');
-      vr.push(R[u]);
+      const q = u === Gr.hole ? R[u] : Math.min(R[u], 22), dx = Math.max(0, B.x0 + q - S[u][0], S[u][0] - (B.x1 - q)), dy = Math.max(0, B.y0 + q - S[u][1], S[u][1] - (B.y1 - q));
+      if (Math.hypot(dx, dy) > R[u] - q + 1e-6) fail(L.id + ' ' + w + ': gear ' + u + (u === Gr.hole ? ' (hub) is not whole on screen' : ' shows no ' + q.toFixed(0) + ' px tap disc on screen'));
+      if (!fr.has(u)) vr.push(R[u]);
     }
     const mn = Math.min(...vr), ratio = Math.max(...vr) / mn, ten = T.N.slice(0, n).filter((_, u) => !fr.has(u));
     if (mn < tot.minPx) { tot.minPx = mn; tot.minPxAt = L.id + '@' + w; }
     if (ratio > tot.ratio) { tot.ratio = ratio; tot.ratioAt = L.id + '@' + w; }
     tot.clash = Math.max(tot.clash, T.clash.max); tot.mean += T.clash.mean; tot.nm++;
-    cells.push(mn.toFixed(1).padStart(13) + ratio.toFixed(2).padStart(6) + (Math.min(...ten) + '-' + Math.max(...ten)).padStart(6) + T.clash.max.toFixed(2).padStart(7));
+    const pz = per[SIZES.findIndex(z => z[0] === w)]; pz.gear.push(mn); pz.hub = Math.min(pz.hub, R[Gr.hole]); pz.cov = Math.max(pz.cov, V.cover);
+    if (V.cover > tot.cov) { tot.cov = V.cover; tot.covAt = L.id + '@' + w; }
+    if (R[Gr.hole] < tot.hub) { tot.hub = R[Gr.hole]; tot.hubAt = L.id + '@' + w; }
+    cells.push(mn.toFixed(1).padStart(13) + ratio.toFixed(1).padStart(6) + R[Gr.hole].toFixed(0).padStart(5) + (100 * V.cover).toFixed(0).padStart(5) + (Math.min(...ten) + '-' + Math.max(...ten)).padStart(7) + T.clash.max.toFixed(2).padStart(6));
     if (VERB) console.log('     ' + w + ': frame ' + V.frame.join(',') + ' (r ' + V.frame.map(u => R[u].toFixed(0)).join(', ') + ' px), pitch ' + T.pitch.toFixed(2) + ' px, mean clash ' + T.clash.mean.toFixed(3));
   }
   tot.ms = Math.max(tot.ms, Date.now() - t0);
   tot.tan = Math.max(tot.tan, tanMax); tot.lv++;
   console.log(row + tanMax.toExponential(1).padStart(10) + '  ' + cells.join('   '));
 }
+SIZES.forEach(([w, h], i) => { const G = per[i].gear.slice().sort((a, b) => a - b);
+  console.log('\n  ' + w + ' x ' + h + ': smallest interior gear ' + G[0].toFixed(1) + ' px (next ' + G[1].toFixed(1) + ' px, median level ' + G[G.length >> 1].toFixed(1) + ' px), smallest hub ' + per[i].hub.toFixed(1) + ' px, largest frame cover ' + (100 * per[i].cov).toFixed(1) + '%'); });
 console.log('\n  levels ' + tot.lv + ', max tangency error ' + tot.tan.toExponential(2) + ' (relative), smallest gear ' + tot.minPx.toFixed(1) + ' px (' + tot.minPxAt + '), worst radius ratio ' +
   tot.ratio.toFixed(2) + ' (' + tot.ratioAt + '), teeth clash max ' + tot.clash.toFixed(2) + ' / mean ' + (tot.mean / tot.nm).toFixed(3) + ' tooth, slowest level ' + tot.ms + ' ms (pack + 2 views + teeth)');
 console.log(bad ? '\n' + bad + ' FAILED' : '\nall ok');

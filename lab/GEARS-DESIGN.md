@@ -28,17 +28,19 @@ gears in mesh, and gears that are not neighbours never touch.
 - **Normalisation:** z ↦ 1/(z − p) with p in one interstice (the gap of three mutually tangent circles) sends p to
   infinity: those three become the **frame gears**, huge, running off the screen like a machine beyond the frame.
   Searched over every interstice not touching the hole (incentre seeds, 24 rotations, Nelder-Mead on p and the
-  rotation), then translated so the hub sits at the centre of the board box and scaled to fit it. Score: the smallest
-  gear in px (a gentle bonus for a hub of at least 26 px, a penalty past 64), times how little of the box the frame
-  gears cover and how little stays bare plate. A frame gear must still show a 22 px tap disc in the box; its icon
-  rides on a medallion there. Recomputed for each screen size (phone and desktop give different layouts).
+  rotation). Fit: the interior gears' bounding box is centred in the board box, then zoomed in as far as every gear still
+  shows a tap disc (radius min(r, 22 px)) on screen and the hub stays whole, so outer gears run off the edges too. Score:
+  the smallest gear in px, subject to a hub radius of at least 34 px (phone) / 44 px (desktop), the hub near the middle,
+  and the frame gears covering at most 15% of the box (all as steep penalties). A gear whose middle is off screen wears its
+  icon on a medallion where it shows. Recomputed for each screen size.
 - **Non-triangulations** (the onboarding ponds): every non-triangular face gets hidden filler circles (a centre, or for a
   face walk through a leaf, a ring with extra fillers at thin corners, 4 more ladder rings and a centre), so the packing
   exists. A pond may also be framed by a face's middle filler turned inside out (everything inside one circle).
-- **Numbers (all 40 levels, 390 × 844 and 1280 × 800):** max tangency error 7e-9 (relative); no overlaps; non-neighbours
-  never touch; smallest gear 3 px on `archipelago` (a stack of degree-3 regions is tiny in any packing) and about 9-12 px
-  on the 34-region maps (radius ratio 7-14). Every gear keeps a tap radius of at least 12 px (24 px across), taking
-  priority over its neighbours' rims.
+- **Numbers (all 40 levels, `tools/gearpack_check.js`):** max tangency error ~1e-10 (relative); no overlaps; non-neighbours
+  never touch; frame gears cover at most 17% of the board (check: 20%); hub at least 34 px (phone) / 44 px (desktop).
+  Smallest interior gear, phone: 13-20 px on most levels (desktop 31-43 px), except `archipelago`: 1.2 px (2.4 desktop), a
+  stack of degree-3 regions that is tiny in any packing once the hub is held at 34 px (with a 15 px hub it would be 4 px).
+  Every gear keeps a tap radius of at least 12 px (24 px across), taking priority over its neighbours' rims.
 
 ## Teeth
 

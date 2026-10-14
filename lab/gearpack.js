@@ -185,34 +185,46 @@
       cands.push({ B, T, p: incentre(B.map(q => q), T) });
     }
     for (const u of P.mids) cands.push({ B: base1, T: [u], p: P.c[u].slice() });   // a face's middle filler turned inside out: the frame
+    // the fraction of the box under the (real) frame gears, on a grid of gx x gy points
+    const cover = (C, T, ox, oy, s, gx, gy) => {
+      let k = 0;
+      for (let i = 0; i < gx; i++) for (let j = 0; j < gy; j++) {
+        const x = ox + (-1 + (2 * i + 1) / gx) * hw / s, y = oy + (-1 + (2 * j + 1) / gy) * hh / s;
+        for (const u of T) { if (u >= n) continue; const q = C[u]; if (Math.hypot(x - q[0], y - q[1]) < q[2]) { k++; break; } }
+      }
+      return k / (gx * gy);
+    };
+    const HUB = opt.hub || (Math.min(hw, hh) * 2 < 520 ? 34 : 44), CAP = opt.cap || 0.15;
     const evalAt = (B, T, p, th, keep) => {
       const C = new Array(N);
       for (let u = 0; u < N; u++) { const q = invert([B[u][0], B[u][1]], B[u][2], p); if (!q || (q[2] < 0 && (u < n || T.length > 1 || T[0] !== u))) return keep ? null : -1; C[u] = q; }
       const hx = C[hole][0], hy = C[hole][1], cs = Math.cos(th), sn = Math.sin(th), fr = new Set(T);
       for (let u = 0; u < N; u++) { const x = C[u][0] - hx, y = C[u][1] - hy; C[u] = [x * cs - y * sn, x * sn + y * cs, C[u][2]]; }
-      let s = Infinity;
-      for (let u = 0; u < n; u++) if (!fr.has(u)) s = Math.min(s, hw / (Math.abs(C[u][0]) + C[u][2]), hh / (Math.abs(C[u][1]) + C[u][2]));
-      let mn = Infinity; for (let u = 0; u < n; u++) mn = Math.min(mn, C[u][2]);
-      // the hub holds the die: it should not shrink below ~26 px whatever the smallest gear gains
-      let score = s * Math.min(mn, C[hole][2] * 0.55) * Math.pow(Math.min(1, s * C[hole][2] / 26), 0.25), pen = 1;
-      for (const u of T) {        // a frame gear must still show a tappable disc in the box
-        if (u >= n) continue;
-        const x = C[u][0] * s, y = C[u][1] * s, R = C[u][2] * s, qx = Math.max(-hw + TAP, Math.min(hw - TAP, x)), qy = Math.max(-hh + TAP, Math.min(hh - TAP, y));
-        if (Math.hypot(qx - x, qy - y) > R - TAP) pen *= 0.2;
+      // fit: centred on the interior gears' bounding box (frame gears excluded), then zoomed in as far as every gear still
+      // shows a tap disc (radius min(r, TAP)) inside the box, the hub whole: outer gears may run off the edges too
+      let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity, mn = Infinity;
+      for (let u = 0; u < n; u++) {
+        const [x, y, r] = C[u]; mn = Math.min(mn, r);
+        if (fr.has(u)) continue; x0 = Math.min(x0, x - r); x1 = Math.max(x1, x + r); y0 = Math.min(y0, y - r); y1 = Math.max(y1, y + r);
       }
-      // and the frame gears should not cover much of the box (else the machine huddles in one corner)
-      // nor leave much of it bare plate (a pond, with its hidden fillers, is mostly plate anyway); nor the hub swallow the middle
-      let cov = 0, bare = 0;
-      for (let i = 0; i < 16; i++) for (let j = 0; j < 10; j++) {
-        const x = (-1 + (i + 0.5) / 8) * hw / s, y = (-1 + (j + 0.5) / 5) * hh / s; let hit = false;
-        for (const u of T) { if (u >= n) continue; const q = C[u], d = Math.hypot(x - q[0], y - q[1]); if (d < q[2]) { cov++; hit = true; break; } }
-        if (!hit && N === n) { hit = false; for (let u = 0; u < n && !hit; u++) { const q = C[u]; if (q[2] > 0 && Math.hypot(x - q[0], y - q[1]) < q[2] + 2 / s) hit = true; } if (!hit) bare++; }
-      }
-      cov /= 160; bare /= 160;
-      const hp = s * C[hole][2];
-      score *= pen * (1 - cov) * (1 - cov) * (1 - bare) * (hp > 64 ? Math.sqrt(64 / hp) : 1);
+      const ox = (x0 + x1) / 2, oy = (y0 + y1) / 2;
+      const shows = s => { for (let u = 0; u < n; u++) { const R = C[u][2] * s, q = u === hole ? R : Math.min(R, TAP), x = (C[u][0] - ox) * s, y = (C[u][1] - oy) * s;
+        const dx = Math.max(0, Math.abs(x) - (hw - q)), dy = Math.max(0, Math.abs(y) - (hh - q)); if (q > Math.min(hw, hh) || Math.hypot(dx, dy) > R - q + 1e-9) return false; } return true; };
+      // (a pond, sparse with its hidden fillers, is zoomed past its bounding box by 1.6 at most)
+      let lo = Math.min(2 * hw / (x1 - x0), 2 * hh / (y1 - y0)), hi = lo;
+      if (!shows(lo)) { lo /= 64; if (!shows(lo)) return keep ? null : -1; }
+      else if (N === n) { hi = lo * 2; for (let k = 0; k < 8 && shows(hi); k++) { lo = hi; hi *= 2; } }
+      else { hi = lo * 1.6; if (shows(hi)) lo = hi; }
+      for (let i = 0; i < 22; i++) { const m = (lo + hi) / 2; if (shows(m)) lo = m; else hi = m; }
+      const s = lo, hp = s * C[hole][2];
+      // maximise the smallest gear (px) subject to: the hub (with the die) at least HUB px and not far off centre, the
+      // frame gears covering at most CAP of the box
+      const hd = Math.hypot((C[hole][0] - ox) * s / hw, (C[hole][1] - oy) * s / hh) / Math.SQRT2;   // the hub's distance off centre (0..1)
+      let score = s * mn * Math.pow(Math.min(1, hp / HUB), 3) * (hp > 3 * HUB ? 3 * HUB / hp : 1) * (1 - 0.4 * hd * hd);
+      const cov = cover(C, T, ox, oy, s, 16, 10);
+      if (cov > CAP) score *= Math.pow((1 - cov) / (1 - CAP), 10);
       if (!keep) return score;
-      return { C, s, score, frame: T.slice() };
+      return { C, s, ox, oy, score, frame: T.slice(), cov, hp };
     };
     let best = null;
     const ths = []; for (let i = 0; i < 24; i++) ths.push(i * Math.PI / 24);
@@ -239,9 +251,9 @@
     }
     const E = evalAt(best.k.B, best.k.T, [best.x[0], best.x[1]], best.x[2], true);
     const S = [], Rr = [];
-    for (let u = 0; u < N; u++) { const q = E.C[u]; S.push([X0 + q[0] * E.s, Y0 + q[1] * E.s]); Rr.push(q[2] * E.s); }
-    let minPx = Infinity; for (let u = 0; u < n; u++) minPx = Math.min(minPx, Rr[u]);
-    return { S, R: Rr, frame: E.frame, minPx, score: best.v, p: [best.x[0], best.x[1]], th: best.x[2] };
+    for (let u = 0; u < N; u++) { const q = E.C[u]; S.push([X0 + (q[0] - E.ox) * E.s, Y0 + (q[1] - E.oy) * E.s]); Rr.push(q[2] * E.s); }
+    let minPx = Infinity; for (let u = 0; u < n; u++) if (!E.frame.includes(u)) minPx = Math.min(minPx, Rr[u]);
+    return { S, R: Rr, frame: E.frame, minPx, hubPx: E.hp, cover: cover(E.C, E.frame, E.ox, E.oy, E.s, 80, 80), score: best.v, p: [best.x[0], best.x[1]], th: best.x[2] };
   }
 
   // ---- teeth: one pitch for all gears (tooth count ~ radius), rest phases that mesh at the contacts
