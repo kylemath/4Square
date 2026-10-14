@@ -43,6 +43,19 @@ recently played first (`save.maps[<map>] = {t, id}`, written in `startLevel`; ou
 Played maps show a % charted ring and open a big view with their levels; maps never played are greyed with a ▶ chip that
 starts their first level (🔒 while it is locked).
 
+**Star rim.** From the π island (Level 7.1) on, a small pentagram sits in the HUD of every skin (`rimstar.js`, drawn by
+the shell from its own state; SKIN-SPEC.md section 16). Its points are the 5 rim tiles; the *trouble spot*, the element
+on two rim tiles one apart, is one star edge. Padlocks count Kempe's two rim chains that loop back onto the rim (a double
+lock: both); then a dashed arrow shows π, Kittell's forced swap, which never wins and swings the spot two rim places,
+one step along the star (t -> t+3). Keep swapping π and the spot traces the star; each hop is a `star_hop` research
+event (from, to, π or not, the run of π swaps in a row). A tap folds it (remembered per device); `?rimstar=1` shows it
+on every 4-element 5-rim level. The analysis is `rim.js` (pure, `window.FTH_RIM`), a port of `kempe_engine.py`'s
+frame, locks and π: `node tools/rim_check.js` compares the two on all 140,776 states of the level maps (they agree
+on every one, with the elements renamed too), and reports the treadmill: π always moves the spot exactly two places and
+never fills; it lands on another double lock 26% of the time; the closed π loops (levels 7.1-7.6) are 20 swaps long
+(4 laps of the star) and the very same board, element for element, returns after 60. `node tools/rim_hud_check.js`
+plays the HUD end to end.
+
 **Feature bench.** Parked features stay in the code, switched off, until they are wanted again:
 - *Currency exchange* (`economy.js`: a graph of direct markets where coins convert along the cheapest route, with no
   arbitrage, `node tools/economy_check.js`). Off: no wallet button. `?feat=exchange` brings the button back.
@@ -142,6 +155,7 @@ quiet chains help). Use it to order levels within an island and to pick warm-ups
 | file | role |
 |---|---|
 | `kempe_engine.py` | the rules: states, Kempe moves, distances, locks, π, loops, difficulty (pure Python) |
+| `rim.js`, `rimstar.js` | the rim frame, locks and π in the browser (port of the engine's, `tools/rim_check.js`); the star rim HUD |
 | `mapio.py` | reading and checking map JSON |
 | `build_game.py` | the build, plus `--check`, `--suggest`, `--ladder` |
 | `build_layout.py` | region shapes (numpy, scipy, torch), called by the build |

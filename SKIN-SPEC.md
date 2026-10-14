@@ -467,3 +467,25 @@ eggs: [
   `run(fx)`, where `fx` offers `burst(glyph, x, y)` (x, y as fractions of the screen), `sound(name)` (`'pop' 'chime' 'whoosh'
   'cheer'`), `shake()` and `pay(pts)`.
 - An egg is never needed to progress, never explained in text, and never interrupts play.
+
+## 16. The star rim (shell HUD, `rimstar.js` on `rim.js`)
+
+The shell draws a small pentagram chip in the HUD's stats row for every skin, from its own state (a framed page's
+swaps arrive as `col` anyway), so **a play page does nothing for it** and must not draw its own copy. The 5 rim tiles
+are the star's points in rim order (turned like the map's drawing), each drawn with the skin's `bonus.tile` gem (else
+the shell's); the trouble spot (the element on two rim tiles one apart) is a star edge in `--sk-accent`, its two tiles
+ringed; the edges it sat on this level stay brighter; one or two padlocks say how many of Kempe's two rim chains are
+blocked; at a double lock a dashed arrow shows where π, the forced swap (it never wins), would swing the spot. A move
+that shifts the spot swings the edge (π: two rim places, one star step) and logs a `star_hop` research event.
+
+| hud | where |
+|---|---|
+| `full` | between the rim (goal bar) and the star meter |
+| `compact` | after the star meter, left-aligned under the slim bar (clear of the floating MAP) |
+| `minimal` | left of the floating star meter, at its scale |
+
+It wears `--sk-chip` / `--sk-chip-ink` / `--sk-edge` like the goal bar (restyle `.rimstar` in `css` if needed; its
+parts are `.rs-star .rs-trail .rs-hot .rs-ring .rs-pi .rs-lock`). Shown on levels whose `tools` include `pi` (the π
+island, 7.1 on; `?rimstar=1` every 4-element 5-rim level, `?rimstar=0` never); a tap folds it to a small star
+button, remembered per device (`localStorage` `fth-rimstar`). Reduced motion: no swing, no bounce.
+`node tools/rim_check.js` checks `rim.js` against `kempe_engine.py`; `node tools/rim_hud_check.js` plays it end to end.

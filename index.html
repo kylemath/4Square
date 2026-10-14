@@ -611,6 +611,7 @@
     </div>
     <div class="stats">
       <div class="goalbar" id="goal" role="img" aria-label="The rim round the hole"></div>
+      <button class="rimstar" id="rimStar" aria-label="Rim star"></button>
       <div class="starbar" id="starMeter" role="img" aria-label="3 stars"></div>
     </div>
   </div>
@@ -701,6 +702,7 @@
 <script src="skins/spheres.js"></script>
 <script src="eggs.js"></script>
 <script src="cloud.js"></script>
+<script src="rim.js"></script><script src="rimstar.js"></script>
 <script>
 (function () {
   'use strict';
@@ -937,12 +939,19 @@
     $('goText').textContent = { trace: 'TRACE', swap: 'SWAP!', catch: 'CATCH!', next: 'NEXT' }[mode2];
     go.setAttribute('aria-label', { trace: 'Trace a chain: show me where', swap: 'Swap the chosen chain', catch: 'Catch a new chain: show me where', next: 'Next level' }[mode2]);
     go.dataset.mode = mode2;
-    renderTray();
+    renderTray(); rimStarSync();
     const stuck = flips >= L.par + 2 || wrongSteps >= 4 || (performance.now() - lastProgress) > 45000;
     $('btnHint').classList.toggle('muted', !stuck);
     $('btnUndo').disabled = !history.length || won || busy;
     $('btnHint').disabled = won || dist(col) === null;
   }
+  // ---------- the rim star (rimstar.js on rim.js): the trouble spot on a pentagram of the rim tiles, its locks, π's hop.
+  // Drawn here from the shell's own state, so every skin (island board or play page) gets it; its points wear the running skin's gems.
+  const RSTAR = window.FTH_RIMSTAR && FTH_RIMSTAR.create($('rimStar'), { reduced, log: (t, d) => LOG(t, d),
+    gem: (x, y, r, e, k) => (ACT.bonus && typeof ACT.bonus.tile === 'function' ? ACT.bonus.tile : bonusTile)(x, y, r, e, k) });
+  let rstarRaf = 0;   // coalesced to the next frame (startLevel picks the running skin, ACT, after its first updateHud); never mid-flip
+  function rimStarSync() { if (!RSTAR) return; cancelAnimationFrame(rstarRaf); rstarRaf = requestAnimationFrame(() => { if (L && !busy) RSTAR.update({ level: L, graph: Gr, col, won, moves: flips, skin: ACT.id }); }); }
+  window.__rimstar = RSTAR;   // test hook (tools/rim_hud_check.js)
   // ---------- the chain tray: a card per chain at the rim (two element tiles, a fill jar, a stamp when caught) ----------
   let wrongSteps = 0, lastProgress = performance.now();
   const trayFrac = new Map(), stamped = new Set();
