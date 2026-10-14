@@ -21,10 +21,11 @@
     ['tables', 'blank', .05], ['islands', 'map', .02], ['islands', 'swipe', .03], ['swipe', 'ions', .05],
     ['rimword', 'doodle', .02], ['rimword', 'blank', .03], ['crush', 'tables', .02], ['crush', 'dots', .03], ['maze', 'map', .03], ['maze', 'swipe', .04],
     ['spheres', 'islands-free', .03], ['spheres', 'islands-3d', .02], ['gears', 'maze', .02], ['gears', 'ions', .03],
+    ['star', 'islands-3d', .02], ['star', 'gears', .03],
   ];
   // node centres in a 360 x 630 stage (no node box overlaps, no edge passes through another node)
   const POS = { dots: [180, 70], doodle: [268, 128], blank: [304, 255], map: [290, 400], ions: [228, 500], 'islands-3d': [132, 500],
-    'islands-free': [50, 408], islands: [56, 255], tables: [92, 128], swipe: [150, 366], rimword: [220, 254], crush: [140, 214], maze: [310, 494], spheres: [50, 494], gears: [270, 586] };
+    'islands-free': [50, 408], islands: [56, 255], tables: [92, 128], swipe: [150, 366], rimword: [220, 254], crush: [140, 214], maze: [310, 494], spheres: [50, 494], gears: [270, 586], star: [140, 586] };
   const STAGE = [360, 630];
 
   const skinsAll = () => (window.FTH_SKINS && FTH_SKINS.list) || [];
