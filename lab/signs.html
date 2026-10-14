@@ -1,0 +1,533 @@
+<!doctype html>
+<!--
+  SIGNS (a skin; spec skins/signs.js, design note lab/SIGNS-DESIGN.md, maths lab/signs-model.js).
+
+  What the player sees: Flip's picture of the level. Every region is a corner on one ring (a Hamiltonian cycle through
+  every region, the hole at the top); the map's borders are the ring's sides, straight chords inside it and arcs outside
+  it, so the sphere is cut into two triangulated polygons glued along the ring. Every triangle (a map corner where three
+  regions meet) is sun (+) or sea (-): the orientation of its three elements (Eliahou's sign). Triangles at the hole are
+  open (no sign). Rim corners wear their element; the other corners are plain pearls (the eye button colours them all).
+
+  Mapping (lab/core.js game g; every swap is exactly one g.swap(K)):
+    corner u               = region u; ring place C.at[u]; drawn at ring point C.at[u]
+    sun / sea triangle     = FTH_SIGNS.signs(C, g.col) (+1 / -1), open = a face at the hole
+    tap a corner           = choose it; three chips = its three chains g.chainsThrough(u) (partner element, flip count)
+    tap a chip             = preview: the chain's corners light in its two elements, the triangles it will flip glow
+    tap it again / SWAP    = g.swap(K): exactly the glowing triangles flip sign, in a wave from the corner (the theorem)
+    drag corner -> corner  = the chain {col u, col v} through u; release swaps
+    web chain              = refused with a wobble (it only renames two elements everywhere)
+    win                    = g.won(): the hole takes the free element, its open triangles close with signs, a sweep of
+                             light runs round the ring, then LAB.done()
+  Views: ring (the sphere: inside chords, outside arcs) or pair (Flip's two polygons; the outside one seen from behind).
+  Keys: arrows choose a corner, 1-3 a chain, Enter swaps, U undo, R reset, C colours, V view. ?lvl=<id or number>.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Signs</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root { --bg0: #241d5c; --bg1: #120f33; --ink: #15112e; --sun: #ffc23d; --sun-hi: #ffe08a; --sun-ink: #6e3d00; --sea: #3f95ff; --sea-hi: #8cc4ff; --sea-ink: #0b2a66;
+    --open: #2c2660; --open2: #3a3378; --pearl: #fff6e6; --accent: #ff5fa2; --glow: #ffffff; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: radial-gradient(ellipse at 30% 18%, var(--bg0) 0%, #1a1545 45%, var(--bg1) 100%); color: #fff;
+    font: 600 15px/1.2 Fredoka, system-ui, sans-serif; -webkit-tap-highlight-color: transparent; touch-action: none; -webkit-user-select: none; user-select: none; }
+  #bd { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  /* faces */
+  .tf { stroke: var(--ink); stroke-linejoin: round; transition: fill .18s; }
+  .tf.p { fill: var(--sun); } .tf.m { fill: var(--sea); } .tf.o { fill: url(#sg-open); }
+  .tf.pre { stroke: var(--glow); animation: pre .9s ease-in-out infinite; }
+  .tf.p.pre { fill: var(--sun-hi); } .tf.m.pre { fill: var(--sea-hi); }
+  @keyframes pre { 50% { stroke-opacity: .35; } }
+  .tf.fl { animation: fl .34s ease-in-out; transform-box: fill-box; transform-origin: center; }
+  @keyframes fl { 0% { transform: scale(1); } 45% { transform: scale(.78) rotate(8deg); fill: #fff; } 100% { transform: scale(1); } }
+  .tf.flash { animation: flash .5s ease-out; transform-box: fill-box; transform-origin: center; }
+  @keyframes flash { 0% { fill: #fff; } 100% { } }
+  .tf.wv { animation: wv .5s ease-out; } @keyframes wv { 0% { fill: #fff; } }
+  .gl { font-weight: 700; text-anchor: middle; dominant-baseline: central; pointer-events: none; }
+  .gl.p { fill: var(--sun-ink); } .gl.m { fill: var(--sea-ink); } .gl.o { display: none; }
+  .gl.fl { animation: glp .34s ease-in-out; transform-box: fill-box; transform-origin: center; } @keyframes glp { 50% { transform: scale(0); } }
+  .ring { fill: none; stroke: #fff3d6; stroke-linejoin: round; pointer-events: none; }
+  .ringU { fill: none; stroke: var(--ink); stroke-linejoin: round; pointer-events: none; }
+  /* corners */
+  .cv { transition: transform .12s; }
+  .cv .bd { stroke: var(--ink); }
+  .cv.sel { animation: lift .9s ease-in-out infinite; } @keyframes lift { 50% { transform: translate(var(--x), var(--y)) scale(1.18); } }
+  .cv.ch .halo { opacity: .9; animation: hal .8s ease-in-out infinite; } @keyframes hal { 50% { opacity: .25; } }
+  .cv.pop { animation: cpop .36s ease-out; } @keyframes cpop { 40% { transform: translate(var(--x), var(--y)) scale(1.45); } }
+  .cv.hint .halo { opacity: 1; animation: hal .6s ease-in-out 3; }
+  .halo { opacity: 0; fill: none; stroke-width: 3; }
+  .hole .well { fill: #090720; stroke: var(--ink); }
+  .hole .dash { fill: none; stroke: #c9c3ff; stroke-opacity: .7; stroke-dasharray: 3 4; animation: spin 8s linear infinite; transform-box: fill-box; transform-origin: center; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .hole.wob { animation: wob .4s; } @keyframes wob { 25% { transform: translate(calc(var(--x) + 3px), var(--y)); } 75% { transform: translate(calc(var(--x) - 3px), var(--y)); } }
+  .rub { stroke: #fff; stroke-width: 4; stroke-linecap: round; stroke-dasharray: 2 7; pointer-events: none; }
+  .burst { pointer-events: none; }
+  /* bars */
+  #top { position: absolute; left: 0; right: 0; top: 0; display: flex; align-items: center; gap: 8px; padding: 8px 10px; pointer-events: none; }
+  #top > * { pointer-events: auto; }
+  #ttl { font-weight: 700; font-size: 1.05rem; text-shadow: 0 2px 0 var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .grow { flex: 1; min-width: 0; }
+  .chip { display: inline-flex; align-items: center; gap: 5px; height: 32px; padding: 0 10px; border-radius: 999px; background: var(--sk-chip, #2b2466); color: var(--sk-chip-ink, #fff);
+    border: 2px solid var(--sk-edge, var(--ink)); font-weight: 700; white-space: nowrap; }
+  #tally .d { width: 15px; height: 15px; border-radius: 50%; border: 2px solid var(--ink); display: inline-block; }
+  #tally .d.p { background: var(--sun); } #tally .d.m { background: var(--sea); }
+  #tally b { min-width: 1.2em; text-align: left; } #tally.bump { animation: bump .35s; } @keyframes bump { 40% { transform: scale(1.15); } }
+  #rimG .g { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--ink); display: inline-block; margin-right: -3px; }
+  #rimG.bump { animation: bump .4s; }
+  #bot { position: absolute; left: 0; right: 0; bottom: 0; padding: 6px 10px calc(10px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 8px; align-items: center; pointer-events: none; }
+  #bot > * { pointer-events: auto; }
+  .row { display: flex; gap: 8px; align-items: center; justify-content: center; }
+  .btn { width: 46px; height: 46px; border-radius: 16px; border: 2.5px solid var(--sk-ctl-edge, var(--ink)); background: var(--sk-ctl, #2f2770); color: var(--sk-ctl-ink, #fff);
+    box-shadow: 0 4px 0 var(--sk-ctl-edge, var(--ink)); display: grid; place-items: center; padding: 0; cursor: pointer; font: inherit; transition: transform .08s, box-shadow .08s, opacity .15s; }
+  .btn svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
+  .btn:active:not(:disabled) { transform: translateY(3px); box-shadow: 0 1px 0 var(--sk-ctl-edge, var(--ink)); }
+  .btn:disabled { opacity: .38; cursor: default; }
+  .btn[aria-pressed="true"] { background: var(--sk-accent, #ffd84a); color: var(--ink); }
+  .sp { width: 14px; }
+  #chips { min-height: 54px; }
+  .kc { height: 50px; min-width: 76px; border-radius: 18px; border: 2.5px solid var(--sk-ctl-edge, var(--ink)); background: var(--sk-ctl, #2f2770); color: var(--sk-ctl-ink, #fff);
+    box-shadow: 0 4px 0 var(--sk-ctl-edge, var(--ink)); display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 0 10px; font: 700 1.05rem Fredoka, system-ui, sans-serif; cursor: pointer;
+    animation: kin .22s ease-out both; }
+  @keyframes kin { 0% { transform: translateY(14px) scale(.7); opacity: 0; } }
+  .kc .gm { width: 22px; height: 22px; border-radius: 50%; border: 2.5px solid var(--ink); margin-right: -10px; box-shadow: inset -3px -3px 0 rgba(0,0,0,.22), inset 3px 3px 0 rgba(255,255,255,.35); }
+  .kc .gm + .gm { margin-right: 2px; }
+  .kc.on { background: #fff; color: var(--ink); transform: translateY(-4px); box-shadow: 0 8px 0 var(--ink), 0 0 0 4px var(--sk-accent, #ffd84a); }
+  .kc.web { opacity: .5; }
+  .kc.no { animation: no .4s; } @keyframes no { 25% { transform: translateX(5px); } 75% { transform: translateX(-5px); } }
+  #go { height: 50px; padding: 0 18px; border-radius: 18px; border: 2.5px solid var(--ink); background: linear-gradient(180deg, #ff8cc0, #ff4f97); color: #fff; font: 700 1.1rem Fredoka, system-ui, sans-serif;
+    box-shadow: 0 5px 0 #8a1d4f; letter-spacing: .04em; text-shadow: 0 2px 0 rgba(0,0,0,.25); cursor: pointer; animation: kin .22s ease-out both, gob 1s ease-in-out .3s infinite; }
+  @keyframes gob { 50% { transform: scale(1.06); } }
+  #go:active { transform: translateY(3px); box-shadow: 0 2px 0 #8a1d4f; }
+  .embed #top .nav { display: none; }
+  @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+</style>
+</head>
+<body>
+<svg id="bd" role="application" aria-label="Signs board"></svg>
+<div id="top">
+  <button class="btn nav" id="bPrev" aria-label="Previous level"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
+  <div id="ttl" class="grow"></div>
+  <span class="chip" id="rimG" aria-label="rim elements"></span>
+  <span class="chip" id="tally" aria-live="polite"></span>
+  <button class="btn nav" id="bNext" aria-label="Next level"><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></button>
+</div>
+<div id="bot">
+  <div class="row" id="chips"></div>
+  <div class="row">
+    <button class="btn" id="bUndo" aria-label="Undo"><svg viewBox="0 0 24 24"><path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg></button>
+    <button class="btn" id="bReset" aria-label="Start over"><svg viewBox="0 0 24 24"><path d="M3.5 12a8.5 8.5 0 1 0 2.6-6.1"/><path d="M3.5 4v5h5"/></svg></button>
+    <span class="sp"></span>
+    <button class="btn" id="bCol" aria-label="Show every element" aria-pressed="false"><svg viewBox="0 0 24 24"><circle cx="8" cy="9" r="3.4"/><circle cx="16" cy="9" r="3.4"/><circle cx="8" cy="16.5" r="3.4"/><circle cx="16" cy="16.5" r="3.4"/></svg></button>
+    <button class="btn" id="bView" aria-label="Two polygons" aria-pressed="false"><svg viewBox="0 0 24 24" id="vIc"></svg></button>
+  </div>
+</div>
+<div class="sr" id="live" aria-live="polite"></div>
+<script src="../levels.js"></script>
+<script src="../layout.js"></script>
+<script src="core.js"></script>
+<script src="signs-model.js"></script>
+<script>
+(function () {
+  'use strict';
+  const g = LAB.game(), SG = window.FTH_SIGNS, NS = 'http://www.w3.org/2000/svg';
+  const QS = new URLSearchParams(location.search), HUD = QS.get('hud') || '';
+  const ELEM = LAB.ELEM, COL = ELEM.map(e => e.hex), DARK = ELEM.map(e => e.dark), NEON = ELEM.map(e => e.neon);
+  const n = g.n, HOLE = g.hole, RIMSET = new Set(g.rim);
+  const C = SG.cut(g);
+  if (!C.ok) throw new Error('signs: this map cannot be cut');   // the app plays it on the island board instead
+  const $ = id => document.getElementById(id), svg = $('bd');
+  const now = () => performance.now(), reduce = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const store = (() => { try { return JSON.parse(localStorage.getItem('fth-signs') || '{}'); } catch (e) { return {}; } })();
+  const persist = () => { try { localStorage.setItem('fth-signs', JSON.stringify(store)); } catch (e) { /* private mode */ } };
+  let view = C.tri && (store.view || (innerWidth > innerHeight * 1.15 ? 'pair' : 'ring')) === 'pair' ? 'pair' : 'ring', showCol = !!store.col;
+  if (!C.tri) document.getElementById('bView').style.display = document.getElementById('tally').style.display = 'none';
+  const F = C.faces, NF = F.length;
+  let shown = Array.from(SG.signs(C, g.col));          // the sign each face shows now (animations lag the game a little)
+  let sel = -1, pick = null, busyUntil = 0, win = null, lastTouch = now(), drag = null, hintT = 0;
+
+  // ---------------------------------------------------------------- sound (synthesised; silent until the first touch)
+  let AC = null, MG = null;
+  function audio() { if (AC) { if (AC.state === 'suspended') AC.resume(); return; } try { AC = new (window.AudioContext || window.webkitAudioContext)(); MG = AC.createGain(); MG.gain.value = 0.2; MG.connect(AC.destination); } catch (e) { AC = null; } }
+  function tone(f, dur, vol, type, when, f2) {
+    if (!AC) return; const t = AC.currentTime + (when || 0), o = AC.createOscillator(), gn = AC.createGain();
+    o.type = type || 'triangle'; o.frequency.setValueAtTime(f, t); if (f2) o.frequency.exponentialRampToValueAtTime(f2, t + dur);
+    gn.gain.setValueAtTime(0.0001, t); gn.gain.exponentialRampToValueAtTime(vol, t + 0.006); gn.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(gn); gn.connect(MG); o.start(t); o.stop(t + dur + 0.03);
+  }
+  const PENTA = [0, 2, 4, 7, 9, 12, 14, 16, 19, 21, 24, 26, 28];
+  const pop = (i, s, when) => { const f = (s > 0 ? 660 : 440) * Math.pow(2, PENTA[Math.min(i, 12)] / 12); tone(f, 0.07, 0.12, 'triangle', when); tone(f * 1.5, 0.04, 0.04, 'sine', when); };
+  const thud = () => { tone(150, 0.16, 0.18, 'triangle', 0, 70); };
+
+  // ---------------------------------------------------------------- geometry
+  let W = 0, H = 0, TOP = 0, BOT = 0, geo = null;
+  const ang = p => -Math.PI / 2 + 2 * Math.PI * p / n;
+  const f1 = x => Math.round(x * 10) / 10;
+  const hOut = new Map(); C.chords.out.forEach(([i, j, h]) => hOut.set(i * n + j, h));
+  const easeOut = x => x * (2 - x);
+  function layout() {
+    W = innerWidth; H = innerHeight;
+    TOP = LAB.embedded && (HUD === 'full' || HUD === 'compact') ? 8 : 54; BOT = 128;
+    const aw = W - 20, ah = H - TOP - BOT, G = { view };
+    if (view === 'ring') {
+      const Hm = Math.max(1, C.H), k = Math.min(0.16, 0.5 / Hm) * Hm;      // the outside band, as a fraction of R
+      // a tall screen stretches the ring into an upright oval (an affine map: same drawing, same orientation)
+      const sy = Math.max(1, Math.min(1.32, (ah - 20) / aw));
+      const R = Math.max(40, Math.min(aw / 2 / (1 + k) - 6, (ah / 2 - 14) / (1 + k) / sy));
+      Object.assign(G, { R, step: R * k / Hm, discs: [{ cx: W / 2, cy: TOP + ah / 2 + 6, R, sy }] });
+    } else {
+      const wide = aw > ah * 1.15, R = wide ? Math.min(aw / 4 - 10, ah / 2 - 24) : Math.min(aw / 2 - 8, ah / 4 - 22);
+      const cy = TOP + ah / 2 + 8, cx = W / 2;
+      G.discs = wide ? [{ cx: cx - aw / 4, cy, R }, { cx: cx + aw / 4, cy, R }] : [{ cx, cy: cy - ah / 4 + 2, R }, { cx, cy: cy + ah / 4 + 6, R }];
+      G.R = R;
+    }
+    G.sp = 2 * Math.PI * G.R * (1 + (G.discs[0].sy || 1)) / 2 / n;                                   // ring spacing
+    G.cr = Math.max(5.5, Math.min(15, G.sp * 0.34));               // corner radius
+    G.lw = Math.max(1.2, Math.min(3, G.sp * 0.09));                // border width
+    geo = G;
+  }
+  const at = (d, p, r) => [d.cx + (r == null ? d.R : r) * Math.cos(ang(p)), d.cy + (r == null ? d.R : r) * Math.sin(ang(p)) * (d.sy || 1)];
+  // an outside arc between ring places i < j: rises (scaled by its nesting height) and runs above every arc it holds
+  const TAU = 0.9;
+  function arcR(i, j, p) { if (j === i + 1) return null; const h = hOut.get(i * n + j) || 1, d = Math.min(p - i, j - p); return geo.R + geo.step * h * easeOut(Math.min(1, d / TAU)); }
+  function arcPts(i, j, rev) {
+    const d = geo.discs[0], pts = [];
+    if (j === i + 1) { pts.push(at(d, i), at(d, j)); }
+    else { const N = Math.max(8, Math.ceil((j - i) * 5)); for (let k = 0; k <= N; k++) { const p = i + (j - i) * k / N; pts.push(at(d, p, arcR(i, j, p))); } }
+    return rev ? pts.reverse() : pts;
+  }
+  const dPts = pts => 'M' + pts.map(q => f1(q[0]) + ' ' + f1(q[1])).join('L') + 'Z';
+  // a face's outline and its glyph spot ([x, y, size] or null) in a disc
+  function facePath(f, di) {
+    const d = geo.discs[di], [a, b, c] = f.r;
+    if (geo.view === 'pair' || f.side === 'in') {
+      const P = [at(d, a), at(d, b), at(d, c)];
+      return { d: dPts(P), g: inGlyph(P) };
+    }
+    if (a === 0 && c === n - 1) return null;                     // the face round the gap (at the hole): the open sky above the ring
+    const pts = arcPts(a, c).concat(arcPts(b, c, true).slice(1), arcPts(a, b, true).slice(1));
+    // glyph: where the band between the outer arc and the inner ones is thickest
+    let best = null;
+    for (let k = 1; k < 24; k++) {
+      const p = a + (c - a) * k / 24, ro = arcR(a, c, p), ri = p < b ? (arcR(a, b, p) || geo.R) : (arcR(b, c, p) || geo.R), t = ro - ri;
+      if (!best || t > best.t) best = { p, t, r: (ro + ri) / 2 };
+    }
+    const sz = Math.min(best.t * 0.8, geo.sp * 0.9, 20);
+    return { d: dPts(pts), g: sz >= 7.5 ? at(d, best.p, best.r).concat([sz]) : null };
+  }
+  function inGlyph(P) {
+    const L = [0, 1, 2].map(i => Math.hypot(P[(i + 1) % 3][0] - P[(i + 2) % 3][0], P[(i + 1) % 3][1] - P[(i + 2) % 3][1])), S = L[0] + L[1] + L[2];
+    const A = Math.abs((P[1][0] - P[0][0]) * (P[2][1] - P[0][1]) - (P[2][0] - P[0][0]) * (P[1][1] - P[0][1])) / 2, r = 2 * A / S;
+    const x = (L[0] * P[0][0] + L[1] * P[1][0] + L[2] * P[2][0]) / S, y = (L[0] * P[0][1] + L[1] * P[1][1] + L[2] * P[2][1]) / S;
+    const sz = Math.min(r * 1.25, 22);
+    if (sz < 7.5 || P.some(q => Math.hypot(q[0] - x, q[1] - y) < geo.cr + sz * 0.45)) return null;
+    return [x, y, sz];
+  }
+
+  // ---------------------------------------------------------------- build the board (on load, resize, view change)
+  const el = (tag, a, par) => { const e = document.createElementNS(NS, tag); for (const k in a) e.setAttribute(k, a[k]); if (par) par.appendChild(e); return e; };
+  let faceEls = [], glyEls = [], cvEls = [], holeEls = [], gRub = null, gFx = null;
+  const sgCls = s => s > 0 ? 'p' : s < 0 ? 'm' : 'o';
+  function icon(e, s, par, ink) {
+    const p = el('path', { d: LAB.ICON[e], transform: 'scale(' + f1(s * 100) / 100 + ') translate(-12 -12)' }, par);
+    if (e < 2) p.setAttribute('fill', ink || '#fff'); else { p.setAttribute('fill', 'none'); p.setAttribute('stroke', ink || '#fff'); p.setAttribute('stroke-width', '3'); p.setAttribute('stroke-linecap', 'round'); p.setAttribute('stroke-linejoin', 'round'); }
+    return p;
+  }
+  function build() {
+    layout(); svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H); svg.innerHTML = '';
+    const defs = el('defs', {}, svg);
+    defs.innerHTML = '<pattern id="sg-open" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="8" height="8" fill="#2c2660"/><rect width="3" height="8" fill="#3a3378"/></pattern>' +
+      '<radialGradient id="sg-light" cx=".3" cy=".22" r=".85"><stop offset="0" stop-color="#fff" stop-opacity=".28"/><stop offset=".55" stop-color="#fff" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".22"/></radialGradient>' +
+      '<radialGradient id="sg-pearl" cx=".35" cy=".3" r=".75"><stop offset="0" stop-color="#ffffff"/><stop offset=".6" stop-color="#fff2dc"/><stop offset="1" stop-color="#d9c7ae"/></radialGradient>';
+    const gShadow = el('g', {}, svg), gF = el('g', {}, svg), gL = el('g', {}, svg), gR = el('g', {}, svg), gV = el('g', {}, svg);
+    gRub = el('g', {}, svg); gFx = el('g', { class: 'burst' }, svg);
+    faceEls = new Array(NF).fill(null); glyEls = new Array(NF).fill(null); cvEls = []; holeEls = [];
+    geo.discs.forEach((d, di) => {
+      // drop shadow and light over each disc (one light from the top left)
+      const ext = geo.view === 'ring' ? d.R + geo.step * Math.max(1, C.H) : d.R;
+      el('ellipse', { cx: f1(d.cx + 4), cy: f1(d.cy + 7), rx: f1(ext + 3), ry: f1((ext + 3) * (d.sy || 1)), fill: '#000', opacity: '.28' }, gShadow);
+      F.forEach((f, i) => {
+        if (geo.view === 'pair' && (f.side === 'in') !== (di === 0)) return;
+        const P = facePath(f, di); if (!P) return;
+        const e = el('path', { class: 'tf ' + sgCls(shown[i]), d: P.d, 'stroke-width': f1(geo.lw), 'data-f': i }, gF);
+        (faceEls[i] = faceEls[i] || []).push(e);
+        if (P.g) { const t = el('text', { class: 'gl ' + sgCls(shown[i]), x: f1(P.g[0]), y: f1(P.g[1]), 'font-size': f1(P.g[2]) }, gL); t.textContent = shown[i] > 0 ? '+' : shown[i] < 0 ? '−' : ''; (glyEls[i] = glyEls[i] || []).push(t); }
+      });
+      const ring = []; for (let p = 0; p < n; p++) ring.push(at(d, p));
+      if (C.tri) {
+        el('path', { class: 'ringU', d: dPts(ring), 'stroke-width': f1(geo.lw * 2.6) }, gR);
+        el('path', { class: 'ring', d: dPts(ring), 'stroke-width': f1(geo.lw * 1.1) }, gR);
+      } else {      // a pond (not a triangulation): borders as plain chords, ring gaps that are not borders dashed
+        const br = new Set(C.bridges.map(([i]) => i)), seg = (p, q) => 'M' + f1(p[0]) + ' ' + f1(p[1]) + 'L' + f1(q[0]) + ' ' + f1(q[1]);
+        C.chords.in.forEach(([i, j]) => { el('path', { class: 'ringU', d: seg(ring[i], ring[j]), 'stroke-width': f1(geo.lw * 2.6) }, gR); el('path', { class: 'ring', d: seg(ring[i], ring[j]), 'stroke-width': f1(geo.lw) }, gR); });
+        for (let p = 0; p < n; p++) { const s = seg(ring[p], ring[(p + 1) % n]); if (br.has(p)) el('path', { class: 'ring', d: s, 'stroke-width': f1(geo.lw), 'stroke-dasharray': '3 6', opacity: '.35' }, gR);
+          else { el('path', { class: 'ringU', d: s, 'stroke-width': f1(geo.lw * 2.6) }, gR); el('path', { class: 'ring', d: s, 'stroke-width': f1(geo.lw * 1.1) }, gR); } }
+      }
+      el('ellipse', { cx: f1(d.cx), cy: f1(d.cy), rx: f1(ext), ry: f1(ext * (d.sy || 1)), fill: 'url(#sg-light)', 'pointer-events': 'none' }, gR);
+      for (let p = 0; p < n; p++) {
+        const u = C.ring[p], [x, y] = at(d, p);
+        if (u === HOLE) {
+          const r = Math.max(geo.cr * 1.7, 13), hx = x, hy = y - r * 0.35;
+          const hg = el('g', { class: 'hole', style: '--x:' + f1(hx) + 'px;--y:' + f1(hy) + 'px', transform: 'translate(' + f1(hx) + ' ' + f1(hy) + ')' }, gV);
+          el('circle', { r: f1(r + 2), cx: 2, cy: 3, fill: '#000', opacity: '.4' }, hg);
+          el('circle', { class: 'well', r: f1(r), 'stroke-width': 3 }, hg);
+          el('circle', { class: 'dash', r: f1(r - 4), 'stroke-width': 2 }, hg);
+          const fill = el('circle', { r: f1(r - 2), fill: 'transparent', class: 'fillc' }, hg);
+          const ig = el('g', { opacity: 0, class: 'hic' }, hg);
+          const q = el('text', { class: 'gl', y: 1, 'font-size': f1(r * 1.1), fill: '#c9c3ff' }, hg); q.textContent = '?';
+          holeEls.push({ g: hg, fill, ig, q, r, x: hx, y: hy });
+          continue;
+        }
+        const r = RIMSET.has(u) ? geo.cr * 1.25 : geo.cr;
+        const cg = el('g', { class: 'cv', 'data-u': u, style: '--x:' + f1(x) + 'px;--y:' + f1(y) + 'px', transform: 'translate(' + f1(x) + ' ' + f1(y) + ')' }, gV);
+        el('circle', { class: 'halo', r: f1(r + 5) }, cg);
+        el('circle', { cx: f1(r * 0.12), cy: f1(r * 0.2), r: f1(r), fill: '#000', opacity: '.35' }, cg);
+        const body = el('circle', { class: 'bd', r: f1(r), 'stroke-width': f1(Math.max(1.6, r * 0.2)) }, cg);
+        const ig = el('g', {}, cg);
+        el('ellipse', { cx: f1(-r * 0.32), cy: f1(-r * 0.38), rx: f1(r * 0.32), ry: f1(r * 0.17), fill: '#fff', opacity: '.6', transform: 'rotate(-30 ' + f1(-r * 0.32) + ' ' + f1(-r * 0.38) + ')' }, cg);
+        cvEls.push({ u, g: cg, body, ig, r, x, y, e: -2 });
+      }
+    });
+    paint();
+  }
+
+  // ---------------------------------------------------------------- paint (classes and colours from state)
+  let chainSet = null, preSet = null;
+  function cornerLook(c) {
+    const u = c.u, e = g.col[u], lit = showCol || RIMSET.has(u) || (chainSet && chainSet.has(u)) || u === sel || (win && win.t > 0);
+    const want = lit ? e : -1;
+    if (c.e !== want) {
+      c.e = want; c.ig.innerHTML = '';
+      if (want < 0) { c.body.setAttribute('fill', 'url(#sg-pearl)'); }
+      else { c.body.setAttribute('fill', COL[want]); if (c.r >= 7) icon(want, c.r * 1.05 / 12, c.ig); }
+    }
+    c.g.classList.toggle('sel', u === sel);
+    c.g.classList.toggle('ch', !!(chainSet && chainSet.has(u)));
+    c.g.querySelector('.halo').setAttribute('stroke', chainSet && chainSet.has(u) ? NEON[e] : '#fff');
+  }
+  function paint() {
+    for (let i = 0; i < NF; i++) {
+      const cls = sgCls(shown[i]), pre = !!(preSet && preSet.has(i));
+      (faceEls[i] || []).forEach(e => { e.classList.remove('p', 'm', 'o'); e.classList.add(cls); e.classList.toggle('pre', pre); e.setAttribute('stroke-width', f1(pre ? geo.lw * 1.8 : geo.lw)); });
+      (glyEls[i] || []).forEach(t => { t.classList.remove('p', 'm', 'o'); t.classList.add(cls); t.textContent = shown[i] > 0 ? '+' : shown[i] < 0 ? '−' : ''; });
+    }
+    // preview glow on top: re-append the glowing faces so their outlines are not hidden under their neighbours
+    if (preSet) preSet.forEach(i => (faceEls[i] || []).forEach(e => e.parentNode.appendChild(e)));
+    cvEls.forEach(cornerLook);
+    holeEls.forEach(h => {
+      const e = win && win.filled ? win.free : -1;
+      h.fill.setAttribute('fill', e >= 0 ? COL[e] : 'transparent'); h.q.style.display = e >= 0 ? 'none' : '';
+      if (e >= 0 && !h.ig.childNodes.length) { icon(e, h.r * 1.2 / 12, h.ig); h.ig.setAttribute('opacity', 1); }
+      if (e < 0) { h.ig.innerHTML = ''; h.ig.setAttribute('opacity', 0); }
+    });
+    hud();
+  }
+  // ---------------------------------------------------------------- the page's own small hud: rim gauge and sign tally
+  let lastTally = '';
+  function hud() {
+    const rim = g.rimColours(), k = new Set(rim).size;
+    const showRim = !(LAB.embedded && HUD === 'full');
+    $('rimG').style.display = showRim ? '' : 'none';
+    $('rimG').innerHTML = rim.map(e => '<i class="g" style="background:' + COL[e] + '"></i>').join('') + '<b style="margin-left:8px">' + k + '</b>';
+    $('rimG').setAttribute('aria-label', 'rim uses ' + k + ' elements, goal ' + g.goal);
+    let p = 0, m = 0; shown.forEach((s, i) => { if (s > 0) p++; else if (s < 0) m++; });
+    const t = p + ':' + m;
+    $('tally').innerHTML = '<i class="d p"></i><b>' + p + '</b><i class="d m"></i><b>' + m + '</b>';
+    $('tally').setAttribute('aria-label', p + ' sun, ' + m + ' sea');
+    if (lastTally && t !== lastTally) { const e = $('tally'); e.classList.remove('bump'); void e.offsetWidth; e.classList.add('bump'); }
+    lastTally = t;
+    $('ttl').textContent = LAB.embedded ? '' : W < 560 ? String(g.level.num) : (g.level.num + ' · ' + (g.level.title || g.name));
+    $('bUndo').disabled = !g.history.length || (LAB.embedded && g.won());
+    $('bReset').disabled = !g.moves || (LAB.embedded && g.won());
+    $('bCol').setAttribute('aria-pressed', String(showCol)); $('bView').setAttribute('aria-pressed', String(view === 'pair'));
+    $('vIc').innerHTML = view === 'ring' ? '<circle cx="7" cy="12" r="5"/><circle cx="17" cy="12" r="5"/>' : '<circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="9.5"/>';
+    $('bView').setAttribute('aria-label', view === 'ring' ? 'Two polygons' : 'One ring');
+  }
+
+  // ---------------------------------------------------------------- choosing a chain
+  const chipsEl = $('chips');
+  function chainsOf(u) { return [0, 1, 2, 3].filter(b => b < g.NC && b !== g.col[u]).map(b => ({ b, K: g.chainAt(u, b) })).filter(c => c.K); }
+  function choose(u) {
+    sel = u; pick = null; chainSet = null; preSet = null; hintT = 0;
+    chipsEl.innerHTML = '';
+    if (u >= 0) {
+      chainsOf(u).forEach((c, i) => {
+        const k = SG.touching(C, c.K.set).length;
+        const b = document.createElement('button'); b.className = 'kc' + (c.K.web ? ' web' : ''); b.style.animationDelay = (i * 50) + 'ms';
+        b.innerHTML = '<i class="gm" style="background:' + COL[g.col[u]] + '"></i><i class="gm" style="background:' + COL[c.b] + '"></i>±' + k;
+        b.setAttribute('aria-label', ELEM[g.col[u]].name + ' and ' + ELEM[c.b].name + ' chain, flips ' + k);
+        b.onclick = () => { audio(); lastTouch = now(); if (pick && pick.K === c.K) commit(u, c.K); else preview(u, c, b); };
+        chipsEl.appendChild(b);
+      });
+      tone(720, 0.05, 0.08, 'sine');
+    }
+    paint();
+  }
+  function preview(u, c, btn) {
+    if (c.K.web) { if (btn) { btn.classList.remove('no'); void btn.offsetWidth; btn.classList.add('no'); } thud(); return; }
+    pick = { u, K: c.K }; chainSet = c.K.set; preSet = new Set(SG.touching(C, c.K.set));
+    [...chipsEl.querySelectorAll('.kc')].forEach(x => x.classList.toggle('on', x === btn));
+    let go = $('go'); if (!go) { go = document.createElement('button'); go.id = 'go'; go.textContent = 'FLIP'; go.onclick = () => { if (pick) commit(pick.u, pick.K); }; chipsEl.appendChild(go); }
+    // a rising tone per corner of the chain
+    c.K.vs.slice(0, 10).forEach((v, i) => tone(520 * Math.pow(2, PENTA[i] / 12), 0.06, 0.06, 'sine', i * 0.035));
+    paint();
+  }
+  function commit(u, K) {
+    if (!K || g.won() || now() < busyUntil) return;
+    if (K.web) { thud(); return; }
+    const p = posOf(u); try { if (p) LAB.at(p[0], p[1]); } catch (e) { /* older shell */ }
+    origin = u; g.swap(K);
+  }
+  function posOf(u) { const c = cvEls.find(x => x.u === u); return c ? [c.x, c.y] : null; }
+
+  // ---------------------------------------------------------------- the swap: exactly the touching triangles flip, in a wave
+  let origin = -1, timers = [];
+  const later = (fn, ms) => { timers.push(setTimeout(fn, ms)); };
+  function flipWave(K, u, next) {
+    // distance along the chain from where it was touched; a face goes when its nearest chain corner goes
+    const dist = new Map(); let fr = [u >= 0 && K.set.has(u) ? u : K.vs[0]]; dist.set(fr[0], 0);
+    while (fr.length) { const nx = []; for (const v of fr) for (const w of g.adj[v]) if (K.set.has(w) && !dist.has(w)) { dist.set(w, dist.get(v) + 1); nx.push(w); } fr = nx; }
+    const fs = SG.touching(C, K.set), STEP = reduce() ? 0 : Math.max(30, Math.min(60, 900 / Math.max(1, Math.max(...dist.values()) + 1)));
+    let end = 0;
+    fs.forEach(i => {
+      const d = Math.min(...F[i].v.filter(v => K.set.has(v)).map(v => dist.get(v))), t = d * STEP;
+      end = Math.max(end, t + 340);
+      later(() => { (faceEls[i] || []).concat(glyEls[i] || []).forEach(e => { e.classList.remove('fl'); void e.getBBox; e.classList.add('fl'); }); }, t);
+      later(() => { shown[i] = next[i]; paint(); }, t + 170);
+    });
+    K.vs.forEach(v => later(() => { const c = cvEls.filter(x => x.u === v); c.forEach(x => { x.g.classList.remove('pop'); void x.g.getBBox; x.g.classList.add('pop'); }); }, dist.get(v) * STEP));
+    const maxD = Math.max(...dist.values());
+    if (AC) for (let d = 0; d <= Math.min(maxD, 12); d++) pop(d, next[fs[0]] || 1, d * STEP / 1000);
+    return end;
+  }
+  g.on((_, info) => {
+    timers.forEach(clearTimeout); timers = [];
+    const next = Array.from(SG.signs(C, g.col));
+    chipsEl.innerHTML = ''; sel = -1; pick = null; chainSet = null; preSet = null;
+    if (info.type === 'swap' && info.chain) {
+      const K = info.chain, end = flipWave(K, origin, next);
+      chainSet = K.set; paint();
+      busyUntil = now() + end;
+      later(() => { chainSet = null; shown = next; paint(); rimBounce(); }, end + 60);
+      // egg: one swap that flips at least 80% of the signed triangles
+      const signed = next.filter(s => s).length;
+      if (SG.touching(C, K.set).length >= signed * 0.8 && !eggDone) { eggDone = true; later(() => { try { LAB.egg('half-turn', 150); } catch (e) { /* older shell */ } tone(1320, 0.4, 0.1, 'sine'); tone(1760, 0.5, 0.08, 'sine', 0.12); }, end); }
+      if (g.won()) startWin(end + 160);
+    } else {
+      win = null; shown = next; busyUntil = 0; paint();
+      (info.type === 'reset' ? [...svg.querySelectorAll('.tf')] : []).forEach(e => { e.classList.remove('wv'); void e.getBBox; e.classList.add('wv'); });
+    }
+    origin = -1; lastTouch = now();
+    $('live').textContent = g.won() ? 'The hole is free.' : 'Rim uses ' + g.rimCount() + ' elements.';
+  });
+  let eggDone = false, lastRim = g.rimCount();
+  function rimBounce() { const k = g.rimCount(); if (k !== lastRim) { const e = $('rimG'); e.classList.remove('bump'); void e.offsetWidth; e.classList.add('bump'); if (k < lastRim) { tone(880, 0.12, 0.12, 'sine'); tone(1175, 0.18, 0.1, 'sine', 0.09); } } lastRim = k; }
+
+  // ---------------------------------------------------------------- win: the hole takes the free element, its triangles close, light runs round
+  function startWin(delay) {
+    win = { t: 0, free: g.free(), filled: false, done: false };
+    later(() => {
+      win.t = now(); win.filled = true;
+      const col = g.col.slice(); col[HOLE] = win.free;
+      const closed = F.map(f => SG.triSign(col, f.v[0], f.v[1], f.v[2]));   // with the hole coloured every triangle has a sign
+      shown = closed; paint();
+      F.forEach((f, i) => { if (f.open) (faceEls[i] || []).forEach(e => { e.classList.remove('fl'); void e.getBBox; e.classList.add('fl'); }); });
+      tone(523, 0.5, 0.2, 'sine'); tone(784, 0.6, 0.15, 'sine', 0.12); tone(1046, 0.7, 0.1, 'sine', 0.24);
+      holeEls.forEach(h => burst(h.x, h.y, NEON[win.free]));
+      // the sweep: a wave of light round the ring, twice, each face lit as the beam passes its middle place
+      const T0 = 600, LAP = 1100;
+      F.forEach((f, i) => {
+        const mid = (f.r[0] + f.r[1] + f.r[2]) / 3 / n;
+        for (const lap of [0, 1]) later(() => (faceEls[i] || []).forEach(e => { e.classList.remove('wv'); void e.getBBox; e.classList.add('wv'); }), T0 + lap * LAP + mid * LAP);
+      });
+      for (let k = 0; k < 10; k++) tone(392 * Math.pow(2, PENTA[k] / 12), 0.22, 0.08, 'triangle', (T0 + k * 220) / 1000);
+      cvEls.forEach(c => later(() => { c.g.classList.remove('pop'); void c.g.getBBox; c.g.classList.add('pop'); }, T0 + (C.at[c.u] / n) * LAP * 2));
+      later(() => { win.done = true; LAB.done(); }, 3600);
+    }, delay);
+  }
+  function burst(x, y, c) {
+    if (reduce()) return;
+    const gg = el('g', {}, gFx);
+    for (let k = 0; k < 14; k++) {
+      const a = k * Math.PI * 2 / 14, L = 26 + (k % 3) * 12, s = el('path', { d: 'M0 -5L4 0L0 5L-4 0Z', fill: k % 2 ? c : '#fff', stroke: '#15112e', 'stroke-width': 1.2, transform: 'translate(' + f1(x) + ' ' + f1(y) + ')' }, gg);
+      s.animate([{ transform: 'translate(' + f1(x) + 'px,' + f1(y) + 'px) scale(.4)', opacity: 1 }, { transform: 'translate(' + f1(x + Math.cos(a) * L * 2) + 'px,' + f1(y + Math.sin(a) * L * 2) + 'px) scale(1.4) rotate(90deg)', opacity: 0 }], { duration: 900, easing: 'cubic-bezier(.2,.7,.3,1)', fill: 'forwards' });
+    }
+    const ring = el('circle', { cx: f1(x), cy: f1(y), r: 10, fill: 'none', stroke: c, 'stroke-width': 6 }, gg);
+    ring.animate([{ r: '10px', opacity: 1 }, { r: '90px', opacity: 0, strokeWidth: '1px' }], { duration: 1000, easing: 'ease-out', fill: 'forwards' });
+    setTimeout(() => gg.remove(), 1200);
+  }
+
+  // ---------------------------------------------------------------- input
+  const inert = () => (LAB.embedded && g.won()) || win;
+  function cornerAt(x, y) {
+    let best = null, bd = Infinity; const lim = Math.max(20, geo.sp * 0.62);
+    for (const c of cvEls) { const d = Math.hypot(x - c.x, y - c.y); if (d < lim && d < bd) { bd = d; best = c; } }
+    for (const h of holeEls) { const d = Math.hypot(x - h.x, y - h.y); if (d < h.r + 4 && d < bd) { bd = d; best = { u: HOLE, x: h.x, y: h.y }; } }
+    return best;
+  }
+  const pt = e => { const r = svg.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
+  svg.addEventListener('pointerdown', e => {
+    audio(); lastTouch = now();
+    if (inert()) return;
+    if (!LAB.embedded && g.won()) { g.reset(); return; }
+    const [x, y] = pt(e), c = cornerAt(x, y);
+    if (!c) { if (sel >= 0) choose(-1); return; }
+    if (c.u === HOLE) { holeEls.forEach(h => { h.g.classList.remove('wob'); void h.g.getBBox; h.g.classList.add('wob'); }); thud(); return; }
+    drag = { u: c.u, x0: c.x, y0: c.y, sx: x, sy: y, moved: false, K: null };
+    try { svg.setPointerCapture(e.pointerId); } catch (er) { /* synthetic */ }
+  });
+  svg.addEventListener('pointermove', e => {
+    if (!drag) return; const [x, y] = pt(e);
+    if (!drag.moved && Math.hypot(x - drag.sx, y - drag.sy) < 12) return;
+    if (!drag.moved) { drag.moved = true; if (sel !== drag.u) choose(drag.u); }
+    gRub.innerHTML = ''; el('line', { class: 'rub', x1: f1(drag.x0), y1: f1(drag.y0), x2: f1(x), y2: f1(y) }, gRub);
+    const c = cornerAt(x, y), u = drag.u;
+    const K = c && c.u !== u && c.u !== HOLE && g.adj[u].includes(c.u) && g.col[c.u] !== g.col[u] ? g.chainAt(u, g.col[c.u]) : null;
+    if (K !== drag.K) { drag.K = K; if (K) { const btn = [...chipsEl.querySelectorAll('.kc')][chainsOf(u).findIndex(q => q.K === K)]; preview(u, { b: g.col[c.u], K }, btn); } }
+  });
+  const up = () => {
+    if (!drag) return; const d = drag; drag = null; gRub.innerHTML = '';
+    if (!d.moved) { choose(sel === d.u ? -1 : d.u); return; }
+    if (d.K && !d.K.web) commit(d.u, d.K);
+  };
+  svg.addEventListener('pointerup', up); svg.addEventListener('pointercancel', () => { drag = null; gRub.innerHTML = ''; });
+  $('bUndo').onclick = () => { audio(); if (inert() || !g.history.length || now() < busyUntil) return thud(); g.undo(); tone(520, 0.1, 0.06, 'sine'); };
+  $('bReset').onclick = () => { audio(); if (inert() || !g.moves) return thud(); g.reset(); };
+  $('bCol').onclick = () => { audio(); showCol = !showCol; store.col = showCol; persist(); tone(showCol ? 880 : 660, 0.06, 0.07, 'sine'); paint(); };
+  $('bView').onclick = () => { audio(); view = view === 'ring' ? 'pair' : 'ring'; store.view = view; persist(); tone(600, 0.08, 0.07, 'triangle', 0, 900); const s = sel; build(); if (s >= 0) choose(s); };
+  const lvlStep = k => { const L = GAME.levels, i = L.findIndex(l => l.id === g.level.id), j = Math.max(0, Math.min(L.length - 1, i + k)); location.search = '?lvl=' + L[j].id; };
+  $('bPrev').onclick = () => lvlStep(-1); $('bNext').onclick = () => lvlStep(1);
+  addEventListener('keydown', e => {
+    if (inert()) return; audio(); lastTouch = now();
+    const order = C.ring.filter(u => u !== HOLE);
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') choose(order[(order.indexOf(sel) + 1) % order.length]);
+    else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') choose(order[(order.indexOf(sel) - 1 + order.length) % order.length]);
+    else if (/^[1-3]$/.test(e.key) && sel >= 0) { const b = chipsEl.querySelectorAll('.kc')[+e.key - 1]; if (b) b.click(); }
+    else if (e.key === 'Enter' && pick) commit(pick.u, pick.K);
+    else if (e.key === 'Escape') choose(-1);
+    else if (e.key === 'u' || (e.key === 'z' && (e.ctrlKey || e.metaKey))) $('bUndo').click();
+    else if (e.key === 'r') $('bReset').click();
+    else if (e.key === 'c') $('bCol').click();
+    else if (e.key === 'v') $('bView').click();
+    else return;
+    e.preventDefault();
+  });
+  // idle hint: after 9 s with no touch, a corner of a useful chain rings
+  setInterval(() => {
+    if (LAB.demo || win || g.won() || sel >= 0 || now() < busyUntil || now() - lastTouch < 9000 || (hintT && now() - hintT < 9000)) return;
+    const K = g.good()[0]; if (!K) return;
+    hintT = now(); const u = K.vs.find(v => RIMSET.has(v)) ?? K.vs[0];
+    cvEls.filter(c => c.u === u).forEach(c => { c.g.classList.remove('hint'); void c.g.getBBox; c.g.classList.add('hint'); setTimeout(() => c.g.classList.remove('hint'), 2000); });
+    tone(990, 0.08, 0.05, 'sine'); tone(1320, 0.1, 0.04, 'sine', 0.1);
+  }, 1000);
+  addEventListener('resize', () => { const s = sel; build(); if (s >= 0) choose(s); });
+  document.addEventListener('sk-tokens', hud);
+  build();
+  window.SIGNS = { g, C, shown: () => shown.slice(), busy: () => now() < busyUntil, pos: posOf, faces: () => faceEls.map(a => a ? a.length : 0), choose, chainsOf, view: () => view };
+})();
+</script>
+</body>
+</html>
