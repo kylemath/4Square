@@ -2,19 +2,19 @@
 <!--
   GEARS: the play page of the Gears skin (skins/gears.js). Design note: lab/GEARS-DESIGN.md.
 
-  What the player sees: a dark workshop plate cut into the map's regions (faint tinted plates), one chunky gear on each
-  region in its element's colour (icon on the hub), and in the middle an empty steel socket: the hole, a drive hub
-  toothed against the 5 rim gears.
+  What the player sees: a dark machined steel backplate and one gear per region in its element's colour (icon on the
+  boss), every pair of neighbours meshing tooth into gap: the map's circle packing (gearpack.js). In the middle, the
+  hole: a steel drive hub toothed against the 5 rim gears. Big frame gears run off the screen (icon on a medallion).
 
   Mapping (every action is exactly one g.swap(K) or nothing):
-    gear u                 = region u, its colour = g.col[u]; cell plates = g.cells (exact adjacency)
+    gear u                 = region u, its colour = g.col[u]; it meshes with exactly its neighbours (g.adj)
     drive hub              = g.hole; it meshes with the 5 rim gears g.rim
     drag gear u -> v       = K = g.chainAt(u, g.col[v]) for a neighbour v of another element; release on v swaps
     tap gear u             = up to 3 partner chips (one per other element b); pressing a chip lights g.chainAt(u, b),
                              releasing on it swaps (this is how one-region chains are reached)
-    the swap               = the {a, b} chain is bipartite, so it is a gear train: a-gears turn half a turn clockwise,
-                             b-gears anticlockwise, breadth-first from the touched gear; each face changes element at
-                             the half turn
+    the swap               = the {a, b} chain is bipartite, so it is a gear train: all its gears turn together by the
+                             same whole number of teeth (about half a turn of its median gear), a-gears clockwise,
+                             b-gears anticlockwise; each face changes element as a wave from the touched gear reaches it
     hub response           = from the rules only (GearPolarity F1/F2): chain meets no rim cell -> hub still; rim cells
                              of one element -> hub turns (fills iff an element left the rim); rim cells of BOTH
                              elements -> odd ring through the hole, the two rim gears spin opposite ways, the hub JAMS
@@ -34,7 +34,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Russo+One&display=swap" rel="stylesheet">
 <style>
-  html, body { margin: 0; height: 100%; overflow: hidden; background: #17121f; touch-action: none;
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #16191f; touch-action: none;
     -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
   canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; }
   /* the die counter: an SVG over the hub, drawn by the script (a 3D tetrahedron, faces in the element colours) */
@@ -60,6 +60,7 @@
 <script src="../layout.js"></script>
 <script src="core.js"></script>
 <script src="../degree.js"></script>
+<script src="gearpack.js"></script>
 <script>
 (function () {
   'use strict';
@@ -77,70 +78,114 @@
   const back = t => { if (t <= 0) return 0; if (t >= 1) return 1; const c = 1.7; return 1 + (c + 1) * Math.pow(t - 1, 3) + c * Math.pow(t - 1, 2); };
   const cv = document.getElementById('cv'), cx = cv.getContext('2d');
 
-  // ---------------------------------------------------------------- geometry
-  const C0 = g.centre || g.pos, CELLS = g.cells;
-  let W = 0, H = 0, TOP = 52;
-  const S = Array.from({ length: n }, () => [0, 0]), R = new Array(n).fill(10);
-  let cellPath = [], gearPath = [], chipPath = null, chipR = 14;
-  function makeGear(r, teeth) {
-    const p = new Path2D(), depth = Math.max(2, r * 0.2), rr = r - depth, per = 2 * Math.PI / teeth;
-    for (let i = 0; i < teeth; i++) {
-      const a = i * per;
-      const pts = [[rr, a - per * 0.27], [r, a - per * 0.15], [r, a + per * 0.15], [rr, a + per * 0.27]];
-      pts.forEach(([q, t], k) => { const x = q * Math.cos(t), y = q * Math.sin(t); if (i === 0 && k === 0) p.moveTo(x, y); else p.lineTo(x, y); });
-      p.arc(0, 0, rr, a + per * 0.27, a + per * 0.73);
+  // ---------------------------------------------------------------- geometry (../lab/gearpack.js; GEARS-DESIGN "Layout")
+  // A circle packing: every pair of neighbours tangent, nothing else touching, the hub in the middle of the box. Big frame
+  // gears may run off the box (drawn tooth by tooth in screen space, their icon on a medallion where they show). One tooth
+  // pitch for every gear; rest phases from GEARPACK.teeth, so neighbours mesh tooth into gap.
+  const C0 = g.centre || g.pos, PK = GEARPACK.pack(g, C0);
+  let W = 0, H = 0, TOP = 52, BOX = { x0: 0, y0: 0, x1: 1, y1: 1 };
+  const S = Array.from({ length: n }, () => [0, 0]), R = new Array(n).fill(10), NT = new Array(n).fill(12), PH = new Array(n).fill(0);
+  let gearPath = [], chipPath = null, chipR = 14, PITCH = 10, MOD = 3, HUGE = [], BADGE = [], BOLTS = [], plate = null, FRAME = [];
+  // the tooth: half widths (fractions of the tooth angle) at the root, on the pitch circle and at the tip; addendum 0.9 m,
+  // dedendum 1.12 m (a little stubbier than the standard 1 m / 1.25 m, so small pinions stay chunky)
+  const TW = [0.285, 0.21, 0.13], ADD = 0.9, DED = 1.12;
+  const capR = r => Math.min(r * 0.4, 13 + r * 0.12);   // the boss: 0.4 r, growing slower on big gears
+  function toothPts(r, N, m, i0, i1, ang, ox, oy, out) {   // teeth i0..i1 (centre ox, oy, turned by ang) as one polyline
+    const tau = 2 * Math.PI / N, rr = r - DED * m, ra = r + ADD * m, pt = (q, a) => out.push([ox + q * Math.cos(a), oy + q * Math.sin(a)]);
+    for (let i = i0; i <= i1; i++) {
+      const a = ang + i * tau;
+      pt(rr, a - 0.5 * tau); pt(rr, a - TW[0] * tau); pt(r, a - TW[1] * tau); pt(ra, a - TW[2] * tau);
+      pt(ra, a + TW[2] * tau); pt(r, a + TW[1] * tau); pt(rr, a + TW[0] * tau);
     }
-    p.closePath();
+    return out;
+  }
+  function makeGear(r, N, m, holes) {                      // a whole gear in its own frame; lightening holes cut out (evenodd)
+    const p = new Path2D();
+    toothPts(r, N, m, 0, N - 1, 0, 0, 0, []).forEach(([x, y], i) => i ? p.lineTo(x, y) : p.moveTo(x, y)); p.closePath();
+    const rr = r - DED * m, hub = capR(r), room = rr - 1.1 * m - hub;
+    if (holes && room > 12) {
+      const k = r > 90 ? 6 : 5, rc = hub + room / 2, rad = Math.min(room * 0.3, rc * Math.sin(Math.PI / k) * 0.5, 16);
+      for (let i = 0; i < k; i++) { const a = (i + 0.5) * 2 * Math.PI / k, x = rc * Math.cos(a), y = rc * Math.sin(a); p.moveTo(x + rad, y); p.arc(x, y, rad, 0, 2 * Math.PI, true); }
+    }
     return p;
   }
-  const distSeg = (p, a, b) => { const dx = b[0] - a[0], dy = b[1] - a[1], L = dx * dx + dy * dy || 1e-9; let t = ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / L; t = clamp(t, 0, 1); return Math.hypot(p[0] - a[0] - t * dx, p[1] - a[1] - t * dy); };
+  // a frame gear (radius up to ~1e9 px: nearly a rack): only the teeth over the screen, in screen space, closed deep inside it
+  function hugeArc(u) {
+    const [ox, oy] = S[u], mg = 60, mid = Math.atan2(H / 2 - oy, W / 2 - ox);
+    const rel = [[-mg, -mg], [W + mg, -mg], [W + mg, H + mg], [-mg, H + mg]].map(([x, y]) => { let d = Math.atan2(y - oy, x - ox) - mid; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; return d; });
+    return [mid + Math.min(...rel), mid + Math.max(...rel)];
+  }
+  function hugePath(u, ang) {
+    const [ox, oy] = S[u], r = R[u], tau = 2 * Math.PI / NT[u], [a0, a1] = hugeArc(u);
+    const i0 = Math.floor((a0 - ang) / tau) - 1, i1 = Math.min(Math.ceil((a1 - ang) / tau) + 1, i0 + 3000), deep = Math.min(r, Math.hypot(W, H) * 1.6);
+    const p = new Path2D();
+    toothPts(r, NT[u], MOD, i0, i1, ang, ox, oy, []).forEach(([x, y], i) => i ? p.lineTo(x, y) : p.moveTo(x, y));
+    const e1 = ang + (i1 + 0.5) * tau, e0 = ang + (i0 - 0.5) * tau;
+    p.lineTo(ox + (r - deep) * Math.cos(e1), oy + (r - deep) * Math.sin(e1)); p.lineTo(ox + (r - deep) * Math.cos(e0), oy + (r - deep) * Math.sin(e0)); p.closePath();
+    return p;
+  }
+  function hugeRing(u, q) {                                // a circle of radius q about a frame gear's centre, as a polyline over the screen
+    const [ox, oy] = S[u], [a0, a1] = hugeArc(u), k = Math.min(400, Math.max(8, Math.ceil((a1 - a0) * q / 10))), p = new Path2D();
+    for (let i = 0; i <= k; i++) { const a = a0 + (a1 - a0) * i / k, x = ox + q * Math.cos(a), y = oy + q * Math.sin(a); if (i) p.lineTo(x, y); else p.moveTo(x, y); }
+    return p;
+  }
+  const inBox = (x, y, m) => x > BOX.x0 + m && x < BOX.x1 - m && y > BOX.y0 + m && y < BOX.y1 - m;
   function resize() {
     const dpr = Math.min(window.devicePixelRatio || 1, 2.5);
     W = innerWidth; H = innerHeight;
     cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); cx.setTransform(dpr, 0, 0, dpr, 0, 0);
     TOP = HUD === 'full' && LAB.embedded ? 46 : 54;
-    const side = 10, bottom = 10, aw = (W - 2 * side) / 2, ah = (H - TOP - bottom) / 2;
-    let ux = Math.min(aw, ah), uy = ux;
-    if (ah > aw) uy = Math.min(ah, aw * 1.9); else ux = Math.min(aw, ah * 1.45);
-    const ox = W / 2, oy = TOP + (H - TOP - bottom) / 2, map = p => [ox + p[0] * ux, oy + p[1] * uy];
-    for (let u = 0; u < n; u++) S[u] = map(C0[u]);
-    cellPath = []; const CS = [];
-    for (let u = 0; u < n; u++) {
-      const poly = CELLS ? CELLS[u].map(map) : null; CS.push(poly);
-      const p = new Path2D(); if (poly) { poly.forEach(([x, y], i) => i ? p.lineTo(x, y) : p.moveTo(x, y)); p.closePath(); } cellPath.push(p);
+    BOX = { x0: 10, y0: TOP, x1: W - 10, y1: H - 10 };
+    const V = GEARPACK.view(PK, BOX), T = GEARPACK.teeth(PK, V, BOX);
+    for (let u = 0; u < n; u++) { S[u] = V.S[u]; R[u] = V.R[u]; NT[u] = T.N[u]; PH[u] = T.ph[u]; }
+    base.fill(0); hub.ang = hub.from = hub.to = 0; anims.forEach(a => { shown[a.u] = a.to; }); anims = [];
+    PITCH = T.pitch; MOD = PITCH / Math.PI; FRAME = V.frame;
+    HUGE = R.map(r => r > 1200);
+    // a gear whose middle is off the box wears its icon on a medallion: inside both it and the box, up to 34 px in from its rim
+    BADGE = R.map((r, u) => {
+      if (u === HOLE || inBox(S[u][0], S[u][1], 14)) return null;
+      const qx = clamp(S[u][0], BOX.x0 + 26, BOX.x1 - 26), qy = clamp(S[u][1], BOX.y0 + 26, BOX.y1 - 26), d = Math.hypot(qx - S[u][0], qy - S[u][1]) || 1;
+      const k = d > r - Math.min(34, r * 0.6) ? (r - Math.min(34, r * 0.6)) / d : 1;
+      return [S[u][0] + (qx - S[u][0]) * k, S[u][1] + (qy - S[u][1]) * k];
+    });
+    gearPath = R.map((r, u) => HUGE[u] ? null : makeGear(r, NT[u], MOD, u !== HOLE && !BADGE[u]));
+    // bolts in the wider gaps between three gears (the circle inscribed in a gap: Descartes' theorem, complex form)
+    BOLTS = [];
+    const mul = (p, q) => [p[0] * q[0] - p[1] * q[1], p[0] * q[1] + p[1] * q[0]];
+    for (const T3 of PK.tris) {
+      if (T3.some(v => v >= n)) continue;
+      const k = T3.map(v => 1 / R[v]), z = T3.map(v => S[v]), k4 = k[0] + k[1] + k[2] + 2 * Math.sqrt(k[0] * k[1] + k[1] * k[2] + k[0] * k[2]), r4 = 1 / k4;
+      const rb = Math.min(7, r4 - MOD * 1.35); if (rb < 3) continue;
+      const sum = [0, 1, 2].reduce((s, i) => [s[0] + k[i] * z[i][0], s[1] + k[i] * z[i][1]], [0, 0]);
+      const pr = [[0, 1], [1, 2], [0, 2]].reduce((s, [i, j]) => { const q = mul(z[i], z[j]); return [s[0] + k[i] * k[j] * q[0], s[1] + k[i] * k[j] * q[1]]; }, [0, 0]);
+      const m = Math.sqrt(Math.hypot(pr[0], pr[1])), h = Math.atan2(pr[1], pr[0]) / 2, rt = [m * Math.cos(h), m * Math.sin(h)];
+      for (const sg of [1, -1]) {
+        const p = [(sum[0] + sg * 2 * rt[0]) / k4, (sum[1] + sg * 2 * rt[1]) / k4];
+        if (T3.every(v => Math.abs(Math.hypot(p[0] - S[v][0], p[1] - S[v][1]) - R[v] - r4) < 0.02 * r4 + 0.05)) { if (inBox(p[0], p[1], 8)) BOLTS.push([p[0], p[1], rb]); break; }
+      }
     }
-    // radius: never overlapping (r_u + r_v <= 0.92 x distance for every pair), inside the own plate, sizes evened out:
-    // start at 0.46 x the nearest other centre, cap everyone at the median, then let small gears grow into free room
-    const D = (u, v) => Math.hypot(S[u][0] - S[v][0], S[u][1] - S[v][1]), INS = new Array(n).fill(Infinity);
-    for (let u = 0; u < n; u++) {
-      let d = Infinity; for (let v = 0; v < n; v++) if (v !== u) d = Math.min(d, D(u, v));
-      if (CS[u]) { const P = CS[u]; for (let i = 0; i < P.length; i++) INS[u] = Math.min(INS[u], 3 * distSeg(S[u], P[i], P[(i + 1) % P.length])); }
-      R[u] = Math.min(0.46 * d, INS[u]);
-    }
-    const med = R.slice().sort((a, b) => a - b)[n >> 1];
-    for (let u = 0; u < n; u++) R[u] = Math.min(R[u], med);
-    for (let it = 0; it < 12; it++) for (let u = 0; u < n; u++) {
-      let room = Math.min(med * 1.05, INS[u]); for (let v = 0; v < n; v++) if (v !== u) room = Math.min(room, 0.92 * D(u, v) - R[v]);
-      R[u] = Math.max(R[u], room);
-    }
-    for (let u = 0; u < n; u++) R[u] = Math.max(R[u], 4);
-    gearPath = R.map((r, u) => makeGear(r, u === HOLE ? 15 : 10));
-    chipR = clamp(med * 0.8, 15, 20); chipPath = makeGear(chipR, 8);
+    const med = R.filter((r, u) => !HUGE[u]).sort((a, b) => a - b)[n >> 2] || 20;
+    chipR = clamp(med * 0.8, 15, 20); chipPath = makeGear(chipR, 9, chipR * 0.2, false);
+    plate = null;
     if (typeof DIE !== 'undefined') DIE.place();
     dirty();
   }
 
   // ---------------------------------------------------------------- state shown on screen
   const shown = g.col.slice(); let prev = g.col.slice();
-  const base = new Array(n).fill(0);              // resting angle of each gear
-  let anims = [];                                 // { u, t0, dur, dir, from, to, turns }
-  let wobbles = [];                               // { u, t0, amp }
+  const base = new Array(n).fill(0);              // each gear's turn away from its rest phase PH (whole teeth, so it still meshes)
+  let anims = [];                                 // { u, t0, t1, ang, from, to, flip }: turn by ang over t0..t1, face changes at flip
+  let wobbles = [];                               // { u, t0, amp } (amp in teeth)
   let glints = [];                                // { x, y, t0, red }
   let hub = { ang: 0, from: 0, to: 0, t0: 0, t1: 0, jamT: 0, jam: false, col: -1, drop: 0 };
   let sel = null, chipDown = null, lit = null, drag = null, origin = -1, busyUntil = 0, win = null, lastTouch = now();
   let hintT = 0;
   const rimShown = () => RIM.map(x => shown[x]);
   const rimBounce = new Array(RIM.length).fill(-1e9);
+  const tooth = u => 2 * Math.PI / NT[u];
+  // how far a train turns: a whole number of teeth (every gear lands on a tooth, so rest phases still mesh), about half a
+  // turn of its median gear; each gear turns k / N_u of a turn, so pitch-line speeds match as in real meshing gears
+  const teethFor = vs => { const L = vs.filter(u => !HUGE[u]).map(u => NT[u]).sort((a, b) => a - b); return L.length ? Math.max(2, Math.round(L[L.length >> 1] / 2)) : 6; };
 
   // ---------------------------------------------------------------- sound (synthesised; silent until the first touch)
   let AC = null, MG = null;
@@ -163,39 +208,37 @@
     while (fr.length) { const nx = []; for (const u of fr) for (const w of g.adj[u]) if (set.has(w) && !d.has(w)) { d.set(w, d.get(u) + 1); nx.push(w); } fr = nx; }
     return d;
   }
-  function settle(u) { const a = anims.find(x => x.u === u); if (a) { base[u] += a.dir * Math.PI * a.turns; shown[u] = a.to; anims = anims.filter(x => x !== a); } }
+  function settle(u) { const a = anims.find(x => x.u === u); if (a) { base[u] += a.ang; if (HUGE[u]) base[u] %= tooth(u); shown[u] = a.to; anims = anims.filter(x => x !== a); } }
+  const contact = (u, w) => { const k = R[u] / (R[u] + R[w]); return [S[u][0] + (S[w][0] - S[u][0]) * k, S[u][1] + (S[w][1] - S[u][1]) * k]; };
   function cascade(K, old, at) {
     const t0 = now() + 30, red = reduce();
     const o = K.set.has(at) ? at : K.vs[0], depth = bfs(K.set, o);
     let maxD = 0; depth.forEach(d => { maxD = Math.max(maxD, d); });
     const STEP = red ? 18 : clamp(620 / Math.max(1, maxD), 34, 78), TURN = red ? 160 : 340;
+    // the train is meshed, so all its gears turn together (t0..t1); the faces change breadth-first from the touched gear
+    const t1 = t0 + maxD * STEP + TURN, k = teethFor(K.vs);
     const cw = old[o];                            // the touched gear's element turns clockwise; its partners anticlockwise
     const startOf = u => t0 + depth.get(u) * STEP;
     for (const u of K.vs) {
       settle(u);
       const to = old[u] === K.pair[0] ? K.pair[1] : K.pair[0];
-      anims.push({ u, t0: startOf(u), dur: TURN, dir: old[u] === cw ? 1 : -1, from: old[u], to, turns: 1 });
+      anims.push({ u, t0, t1, ang: (old[u] === cw ? 1 : -1) * k * tooth(u), from: old[u], to, flip: startOf(u) + TURN / 2 });
     }
-    for (const u of K.vs) for (const w of g.adj[u]) if (K.set.has(w) && depth.get(w) === depth.get(u) + 1)
-      glints.push({ x: (S[u][0] + S[w][0]) / 2, y: (S[u][1] + S[w][1]) / 2, t0: startOf(w), red: false });
+    for (const u of K.vs) for (const w of g.adj[u]) if (K.set.has(w) && depth.get(w) === depth.get(u) + 1) { const [x, y] = contact(u, w); glints.push({ x, y, t0: startOf(w), red: false }); }
     for (let d = 0; d <= maxD; d++) tick(d, (d * STEP + 30) / 1000);
-    let end = t0 + maxD * STEP + TURN;
+    let end = t1;
     // the hub: driven by the rim gears of the chain (GearPolarity F1/F2)
     const rimK = K.vs.filter(u => RIMSET.has(u)).sort((a, b) => startOf(a) - startOf(b));
     if (rimK.length) {
       const first = rimK[0], spin = old[first] === cw ? 1 : -1;
       const opp = rimK.find(u => old[u] !== old[first]);
-      const tf = startOf(first) + TURN * 0.15;
-      if (!opp) {                                 // one polarity: the hub turns, opposite to the rim gears
-        const tl = startOf(rimK[rimK.length - 1]) + TURN;
-        hub = Object.assign(hub, { from: hub.ang, to: hub.ang - spin * Math.PI * 2 / 5, t0: tf, t1: tl, jam: false, jamT: 0 });
-        ratchet(4, (tf - now()) / 1000);
-        end = Math.max(end, tl);
+      if (!opp) {                                 // one polarity: the hub turns with the train, opposite to the rim gears, k teeth
+        hub = Object.assign(hub, { from: hub.ang, to: hub.ang - spin * k * tooth(HOLE), t0, t1, jam: false, jamT: 0 });
+        ratchet(4, (t0 - now()) / 1000);
       } else {                                    // both polarities: an odd ring through the hole, the hub jams
-        const tj = startOf(opp) + TURN * 0.15;
-        hub = Object.assign(hub, { from: hub.ang, to: hub.ang - spin * 0.35, t0: tf, t1: Math.max(tj, tf + 60), jam: true, jamT: Math.max(tj, tf + 60) });
-        const pts = [first, opp].map(u => [S[HOLE][0] + (S[u][0] - S[HOLE][0]) * R[HOLE] / (R[HOLE] + R[u]), S[HOLE][1] + (S[u][1] - S[HOLE][1]) * R[HOLE] / (R[HOLE] + R[u])]);
-        pts.forEach(([x, y]) => { for (let i = 0; i < 3; i++) glints.push({ x, y, t0: hub.jamT + i * 70, red: true }); });
+        const tj = Math.max(startOf(opp) + TURN * 0.15, t0 + 90);
+        hub = Object.assign(hub, { from: hub.ang, to: hub.ang - spin * 0.6 * tooth(HOLE), t0, t1: tj, jam: true, jamT: tj });
+        [first, opp].forEach(u => { const [x, y] = contact(HOLE, u); for (let i = 0; i < 3; i++) glints.push({ x, y, t0: hub.jamT + i * 70, red: true }); });
         clunk((hub.jamT - now()) / 1000);
         end = Math.max(end, hub.jamT + 700);
       }
@@ -205,9 +248,11 @@
     if (g.won()) win = { t0: end + 120, free: g.free(), done: false };
     dirty(end - now() + 200);
   }
-  function snapTo(col, slow) {                    // undo / reset / a change from outside: changed gears turn back, no cascade
-    const t0 = now(); anims.forEach(a => settle(a.u));
-    for (let u = 0; u < n; u++) if (u !== HOLE && col[u] !== shown[u]) anims.push({ u, t0, dur: slow ? 300 : 220, dir: -1, from: shown[u], to: col[u], turns: 1 });
+  function snapTo(col, slow) {                    // undo / reset / a change from outside: the changed gears turn back, no wave
+    const t0 = now(), dur = slow ? 300 : 220; anims.forEach(a => settle(a.u));
+    const ch = []; for (let u = 0; u < n; u++) if (u !== HOLE && col[u] !== shown[u]) ch.push(u);
+    const k = teethFor(ch);                       // one undone chain {a, b}: its a->b and b->a gears turn opposite ways, as a train
+    for (const u of ch) anims.push({ u, t0, t1: t0 + dur, ang: (col[u] > shown[u] ? 1 : -1) * k * tooth(u), from: shown[u], to: col[u], flip: t0 + dur / 2 });
     hub = Object.assign(hub, { from: hub.ang, to: hub.ang, t0, t1: t0, jam: false, jamT: 0 });
     busyUntil = t0 + 300; dirty(400);
   }
@@ -312,7 +357,7 @@
     }
     return {
       ok,
-      place() { if (!ok) return; const side = Math.max(46, R[HOLE] * 2.15); el.style.width = el.style.height = side + 'px'; el.style.left = (S[HOLE][0] - side / 2) + 'px'; el.style.top = (S[HOLE][1] - side / 2) + 'px'; },
+      place() { if (!ok) return; const side = Math.max(46, Math.min(R[HOLE] * 1.9, 160)); el.style.width = el.style.height = side + 'px'; el.style.left = (S[HOLE][0] - side / 2) + 'px'; el.style.top = (S[HOLE][1] - side / 2) + 'px'; },
       later(ms) { clearTimeout(timer); timer = setTimeout(() => update(false), ms); },
       show(on) { if (!ok) return; el.classList.add('on'); el.classList.toggle('out', !on); },
       init() { if (!ok) return; update(true); el.classList.add('on'); },
@@ -320,11 +365,12 @@
     };
   })();
 
+  const anchor = u => BADGE[u] || S[u], anchorR = u => BADGE[u] ? 17 : R[u];   // where a gear shows (its medallion when its middle is off the box)
   function doSwap(K, u) {
     if (!K || g.won()) return;
-    if (K.web) { const t = now(); K.vs.forEach(v => wobbles.push({ u: v, t0: t, amp: 0.35 })); thud(); setTimeout(thud, 110); dirty(700); return; }
+    if (K.web) { const t = now(); K.vs.forEach(v => wobbles.push({ u: v, t0: t, amp: 0.45 })); thud(); setTimeout(thud, 110); dirty(700); return; }
     origin = u;
-    try { LAB.at && LAB.at(S[u][0], S[u][1]); } catch (e) { /* older shell */ }
+    try { const [x, y] = anchor(u); LAB.at && LAB.at(x, y); } catch (e) { /* older shell */ }
     g.swap(K);
   }
 
@@ -334,18 +380,21 @@
     if (!LAB.embedded) b.push({ id: 'prev', x: W - 66, y, r }, { id: 'next', x: W - 26, y, r });
     return b;
   };
+  // the gear under a point: a tiny gear claims at least a 12 px radius (over its neighbours' rims), a big one its own disc
   const gearAt = (x, y) => {
     let best = -1, bd = Infinity;
-    for (let u = 0; u < n; u++) { if (u === HOLE) continue; const d = Math.hypot(x - S[u][0], y - S[u][1]); const lim = Math.max(R[u] + 4, 20); if (d < lim && d / lim < bd) { bd = d / lim; best = u; } }
+    for (let u = 0; u < n; u++) { if (u === HOLE) continue; const d = Math.hypot(x - S[u][0], y - S[u][1]), lim = Math.max(R[u] + 3, 12); if (d < lim && d / lim < bd) { bd = d / lim; best = u; } }
     return best;
   };
   function openChips(u) {
-    const r = R[u] + chipR + 6, list = [0, 1, 2, 3].filter(b => b < g.NC && b !== g.col[u]);
-    let rot = -Math.PI / 2, chips;
-    for (let k = 0; k < 6; k++) {
-      chips = list.map((b, i) => { const a = rot + i * 2 * Math.PI / Math.max(list.length, 2); return { b, K: g.chainAt(u, b), x: S[u][0] + r * Math.cos(a), y: S[u][1] + r * Math.sin(a) }; });
-      if (chips.every(c => c.x > chipR + 2 && c.x < W - chipR - 2 && c.y > TOP - 6 && c.y < H - chipR - 2)) break;
-      rot += Math.PI / 3;
+    // round the gear (a big one: over its own rim), turned so that every chip stays furthest inside the screen
+    const [ax, ay] = anchor(u), r = Math.min(anchorR(u), 34) + chipR + 6, list = [0, 1, 2, 3].filter(b => b < g.NC && b !== g.col[u]);
+    let chips = null, best = -Infinity;
+    for (let k = 0; k < 24; k++) {
+      const rot = -Math.PI / 2 + k * Math.PI / 12;
+      const cs = list.map((b, i) => { const a = rot + i * 2 * Math.PI / Math.max(list.length, 2); return { b, K: g.chainAt(u, b), x: ax + r * Math.cos(a), y: ay + r * Math.sin(a) }; });
+      const m = Math.min(...cs.map(c => Math.min(c.x - chipR, W - chipR - c.x, c.y - chipR - TOP + 6, H - chipR - c.y)));
+      if (m > best + (best >= 4 ? 1e9 : 0)) { best = m; chips = cs; }
     }
     sel = { u, chips, t0: now() };
     tone(700, 0.05, 0.08, 'sine');
@@ -395,74 +444,173 @@
   // ---------------------------------------------------------------- drawing
   let raf = 0, until = 0;
   function dirty(ms) { until = Math.max(until, now() + (ms || 0)); if (!raf) raf = requestAnimationFrame(frame); }
-  function gearBody(path, r, c, steel) {
-    cx.save(); cx.translate(2, 3); cx.fillStyle = 'rgba(0,0,0,.38)'; cx.fill(path); cx.restore();
-    const gr = cx.createLinearGradient(-r, -r, r, r);
-    gr.addColorStop(0, steel ? '#c9d0dc' : ELEM[c].pastel); gr.addColorStop(0.45, steel ? STEEL : COL[c]); gr.addColorStop(1, steel ? STEEL_D : DARK[c]);
-    cx.fillStyle = gr; cx.fill(path);
-    cx.lineWidth = r > 14 ? 2.2 : 1.6; cx.strokeStyle = INK; cx.lineJoin = 'round'; cx.stroke(path);
-    cx.beginPath(); cx.arc(0, 0, r * 0.56, 0, 7); cx.strokeStyle = 'rgba(0,0,0,.28)'; cx.lineWidth = Math.max(1, r * 0.08); cx.stroke();
+  const rng = s => () => { s = s + 0x6D2B79F5 | 0; let t = Math.imul(s ^ s >>> 15, 1 | s); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+  function bolt(q, x, y, r) {                     // a hex bolt head: shadow, steel faces lit from the top left, a dark outline
+    q.save(); q.translate(x, y);
+    const hex = dx => { q.beginPath(); for (let i = 0; i < 6; i++) { const a = i * Math.PI / 3 + 0.3; q.lineTo(dx + r * Math.cos(a), dx + r * Math.sin(a)); } q.closePath(); };
+    hex(1.2); q.fillStyle = 'rgba(0,0,0,.5)'; q.fill();
+    hex(0); const gr = q.createLinearGradient(-r, -r, r, r); gr.addColorStop(0, '#c3cad6'); gr.addColorStop(0.55, '#6f7787'); gr.addColorStop(1, '#3b414d');
+    q.fillStyle = gr; q.fill(); q.lineWidth = 1.1; q.strokeStyle = '#0d0f13'; q.stroke();
+    q.beginPath(); q.arc(0, 0, r * 0.5, 0, 7); q.strokeStyle = 'rgba(0,0,0,.35)'; q.lineWidth = 1; q.stroke();
+    q.restore();
   }
-  function hubCap(r, c, steel) {
-    cx.beginPath(); cx.arc(0, 0, r * 0.4, 0, 7); cx.fillStyle = steel ? '#5d6577' : DARK[c]; cx.fill();
+  // the backplate, drawn once per size: dark machined steel (brushed, faced round the hub on a lathe), a seat under each
+  // gear that shows between its teeth, a seam round the panel, screws in the corners and bolts in the wider gaps
+  function buildPlate() {
+    const dpr = cv.width / W, c = document.createElement('canvas'); c.width = cv.width; c.height = cv.height;
+    const q = c.getContext('2d'); q.setTransform(dpr, 0, 0, dpr, 0, 0);
+    let gr = q.createLinearGradient(0, 0, W * 0.35, H); gr.addColorStop(0, '#2d323c'); gr.addColorStop(1, '#16191f');
+    q.fillStyle = gr; q.fillRect(0, 0, W, H);
+    const rnd = rng(7 + n * 31);
+    q.lineCap = 'round';
+    for (let i = 0, k = Math.round(H * 1.3); i < k; i++) {
+      const y = rnd() * H, x = rnd() * W * 1.2 - W * 0.2, L = 30 + rnd() * W * 0.6, lt = rnd() < 0.5;
+      q.strokeStyle = lt ? 'rgba(255,255,255,' + (0.01 + rnd() * 0.025).toFixed(3) + ')' : 'rgba(0,0,0,' + (0.03 + rnd() * 0.05).toFixed(3) + ')';
+      q.lineWidth = 0.5 + rnd() * 0.9; q.beginPath(); q.moveTo(x, y); q.lineTo(x + L, y + (rnd() - 0.5) * 0.8); q.stroke();
+    }
+    const [hx, hy] = S[HOLE], far = Math.hypot(Math.max(hx, W - hx), Math.max(hy, H - hy));
+    for (let rr = R[HOLE] + MOD + 4, i = 0; rr < far; rr += 2.4 + rnd() * 1.4, i++) {
+      const f = 1 - rr / far; q.strokeStyle = (i % 2 ? 'rgba(255,255,255,' : 'rgba(0,0,0,') + (0.04 * f * f).toFixed(4) + ')'; q.lineWidth = 1; q.beginPath(); q.arc(hx, hy, rr, 0, 7); q.stroke();
+    }
+    gr = q.createRadialGradient(W * 0.3, H * 0.2, 0, W * 0.3, H * 0.2, Math.max(W, H) * 0.9); gr.addColorStop(0, 'rgba(255,255,255,.07)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+    q.fillStyle = gr; q.fillRect(0, 0, W, H);
+    gr = q.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.3, W / 2, H / 2, Math.hypot(W, H) * 0.62); gr.addColorStop(0, 'rgba(0,0,0,0)'); gr.addColorStop(1, 'rgba(0,0,0,.5)');
+    q.fillStyle = gr; q.fillRect(0, 0, W, H);
+    // the panel seam and corner screws
+    const sm = (x0, y0, x1, y1, col) => { q.beginPath(); q.roundRect ? q.roundRect(x0, y0, x1 - x0, y1 - y0, 14) : q.rect(x0, y0, x1 - x0, y1 - y0); q.strokeStyle = col; q.lineWidth = 1.2; q.stroke(); };
+    sm(5, 5, W - 5, H - 5, 'rgba(0,0,0,.6)'); sm(6.2, 6.2, W - 3.8, H - 3.8, 'rgba(255,255,255,.06)');
+    [[16, 16], [W - 16, 16], [16, H - 16], [W - 16, H - 16]].forEach(([x, y]) => bolt(q, x, y, 5.5));
+    // a seat under each gear: darker in the ring its teeth sweep, with a fine machined edge
+    for (let u = 0; u < n; u++) {
+      if (HUGE[u]) continue; const [x, y] = S[u], r = R[u];
+      q.beginPath(); q.arc(x, y, r + MOD * 0.8, 0, 7); q.fillStyle = 'rgba(0,0,0,.26)'; q.fill();
+      q.beginPath(); q.arc(x, y, r + MOD * 1.25 + 1, 0, 7); q.strokeStyle = 'rgba(255,255,255,.045)'; q.lineWidth = 1; q.stroke();
+    }
+    for (const u of FRAME) if (HUGE[u]) { q.lineWidth = MOD * 1.6; q.strokeStyle = 'rgba(0,0,0,.26)'; q.stroke(hugeRing(u, R[u])); }
+    BOLTS.forEach(([x, y, r]) => bolt(q, x, y, r));
+    plate = c;
+  }
+  // a gear's light: a gradient from the top left of the screen, set in the gear's turned frame
+  function lightGrad(r, ang, c, steel) {
+    const ca = Math.cos(-ang), sa = Math.sin(-ang), p = (x, y) => [x * ca - y * sa, x * sa + y * ca];
+    const [x0, y0] = p(-r, -r), [x1, y1] = p(r, r), gr = cx.createLinearGradient(x0, y0, x1, y1);
+    gr.addColorStop(0, steel ? '#d5dbe5' : ELEM[c].pastel); gr.addColorStop(0.48, steel ? STEEL : COL[c]); gr.addColorStop(1, steel ? STEEL_D : DARK[c]);
+    return gr;
+  }
+  // (at the gear's centre) part 1: the shadow, 2: lit body, outline, the rim band. The board draws every resting gear's
+  // shadow before any body (gears in one plane shade only the plate), the turning (lifted) ones' over the resting bodies
+  function gearBody(path, r, ang, c, steel, lift, m, part) {
+    part = part || 3;
+    if (part & 1) { cx.save(); cx.translate(2 + lift * 3, 3 + lift * 5); cx.rotate(ang); cx.fillStyle = 'rgba(0,0,0,' + (0.45 - lift * 0.12).toFixed(3) + ')'; cx.fill(path, 'evenodd'); cx.restore(); }
+    if (!(part & 2)) return;
+    cx.save(); cx.rotate(ang); cx.fillStyle = lightGrad(r, ang, c, steel); cx.fill(path, 'evenodd');
+    cx.lineWidth = r > 24 ? 1.6 : 1.1; cx.strokeStyle = INK; cx.lineJoin = 'round'; cx.stroke(path); cx.restore();
+    const rr = r - DED * m;
+    cx.beginPath(); cx.arc(0, 0, Math.max(1, rr - m * 0.45), 0, 7); cx.strokeStyle = 'rgba(0,0,0,.24)'; cx.lineWidth = Math.max(1, m * 0.5); cx.stroke();
+    cx.beginPath(); cx.arc(0, 0, Math.max(1, rr - m * 0.95), Math.PI * 1.08, Math.PI * 1.55); cx.strokeStyle = 'rgba(255,255,255,.3)'; cx.lineWidth = Math.max(1, m * 0.28); cx.lineCap = 'round'; cx.stroke();
+  }
+  function hubCap(r, c, steel) {                  // the boss with the element icon (upright; capped in size on big gears)
+    const rc = capR(r);
+    cx.beginPath(); cx.arc(0, 0, rc, 0, 7); cx.fillStyle = steel ? '#5d6577' : DARK[c]; cx.fill();
     cx.lineWidth = 1.4; cx.strokeStyle = INK; cx.stroke();
     if (!steel) {
-      const s = r * 0.6 / 12; cx.save(); cx.scale(s, s); cx.translate(-12, -12);
+      const s = rc * 1.5 / 12; cx.save(); cx.scale(s, s); cx.translate(-12, -12);
       if (ICON_FILL[c]) { cx.fillStyle = '#fff'; cx.fill(ICON[c]); } else { cx.strokeStyle = '#fff'; cx.lineWidth = 2.6; cx.lineCap = 'round'; cx.stroke(ICON[c]); }
       cx.restore();
     }
-    cx.beginPath(); cx.arc(-r * 0.3, -r * 0.34, r * 0.16, 0, 7); cx.fillStyle = 'rgba(255,255,255,.35)'; cx.fill();
+    cx.beginPath(); cx.arc(-rc * 0.75, -rc * 0.85, rc * 0.4, 0, 7); cx.fillStyle = 'rgba(255,255,255,.35)'; cx.fill();
   }
-  function drawGear(u, x, y, ang, c, scale, alpha, glow) {
-    const r = R[u];
-    cx.save(); cx.globalAlpha = alpha; cx.translate(x, y); cx.scale(scale, scale);
-    if (glow) { cx.beginPath(); cx.arc(0, 0, r * 1.18, 0, 7); cx.fillStyle = glow; cx.fill(); }
-    cx.save(); cx.rotate(ang); gearBody(gearPath[u], r, c, false); cx.restore();
-    hubCap(r, c, false);
+  function badge(u, ang, c, sc) {                 // a medallion with the element icon, where a gear's middle is off the box; its rivets turn
+    const [x, y] = BADGE[u];
+    cx.save(); cx.translate(x, y); cx.scale(sc, sc);
+    cx.beginPath(); cx.arc(1.5, 2.5, 15, 0, 7); cx.fillStyle = 'rgba(0,0,0,.4)'; cx.fill();
+    cx.beginPath(); cx.arc(0, 0, 15, 0, 7); cx.fillStyle = DARK[c]; cx.fill(); cx.lineWidth = 2; cx.strokeStyle = INK; cx.stroke();
+    for (let i = 0; i < 4; i++) { const a = ang + i * Math.PI / 2 + Math.PI / 4; cx.beginPath(); cx.arc(11.6 * Math.cos(a), 11.6 * Math.sin(a), 1.5, 0, 7); cx.fillStyle = 'rgba(255,255,255,.55)'; cx.fill(); }
+    cx.save(); cx.scale(0.78, 0.78); cx.translate(-12, -12);
+    if (ICON_FILL[c]) { cx.fillStyle = '#fff'; cx.fill(ICON[c]); } else { cx.strokeStyle = '#fff'; cx.lineWidth = 2.6; cx.lineCap = 'round'; cx.stroke(ICON[c]); }
+    cx.restore(); cx.restore();
+  }
+  function drawGear(u, ang, c, sc, lift, part) {  // ang: the gear's full angle (rest phase included); part as gearBody
+    part = part || 3;
+    if (HUGE[u]) {
+      const p = hugePath(u, ang);
+      if (part & 1) { cx.save(); cx.translate(2 + lift * 3, 3 + lift * 5); cx.fillStyle = 'rgba(0,0,0,.45)'; cx.fill(p); cx.restore(); }
+      if (!(part & 2)) return;
+      cx.fillStyle = COL[c]; cx.fill(p);
+      const [bx, by] = BADGE[u] || [W / 2, H / 2], gr = cx.createRadialGradient(bx - 30, by - 40, 10, bx, by, Math.max(W, H) * 0.7);
+      gr.addColorStop(0, 'rgba(255,255,255,.28)'); gr.addColorStop(0.45, 'rgba(255,255,255,0)'); gr.addColorStop(1, 'rgba(0,0,0,.35)'); cx.fillStyle = gr; cx.fill(p);
+      cx.lineWidth = 1.8; cx.strokeStyle = INK; cx.lineJoin = 'round'; cx.stroke(p);
+      const rr = R[u] - DED * MOD;
+      cx.lineWidth = Math.max(1, MOD * 0.5); cx.strokeStyle = 'rgba(0,0,0,.24)'; cx.stroke(hugeRing(u, rr - MOD * 0.45));
+      cx.lineWidth = 1.2; cx.strokeStyle = 'rgba(0,0,0,.2)'; cx.stroke(hugeRing(u, rr - MOD * 3.2));
+      if (BADGE[u]) badge(u, ang, c, sc);
+      return;
+    }
+    const r = R[u], k = sc * (1 + 0.025 * lift);
+    cx.save(); cx.translate(S[u][0], S[u][1] - lift * 1.5); cx.scale(k, k);
+    gearBody(gearPath[u], r, ang, c, false, lift, MOD, part);
+    if ((part & 2) && !BADGE[u]) hubCap(r, c, false);
+    cx.restore();
+    if (BADGE[u] && (part & 2)) badge(u, ang, c, sc);
+  }
+  function outline(u, ang, sc, style, w) {        // a gear's tooth outline in a highlight colour (the lit train)
+    cx.save(); cx.strokeStyle = style; cx.lineWidth = w; cx.lineJoin = 'round';
+    if (HUGE[u]) cx.stroke(hugePath(u, ang));
+    else { cx.translate(S[u][0], S[u][1]); cx.scale(sc, sc); cx.rotate(ang); cx.stroke(gearPath[u]); }
     cx.restore();
   }
   function frame() {
     raf = 0; const t = now();
     let live = t < until || anims.length || wobbles.length || glints.length || win || drag || chipDown || sel;
-    // advance gear turns
-    for (const a of anims.slice()) if (t >= a.t0 + a.dur) settle(a.u);
+    for (const a of anims.slice()) if (t >= a.t1) settle(a.u);
     wobbles = wobbles.filter(w => t < w.t0 + 600);
     glints = glints.filter(q => t < q.t0 + 420);
-    // background
-    const bg = cx.createRadialGradient(W * 0.35, H * 0.25, 10, W / 2, H / 2, Math.max(W, H) * 0.8);
-    bg.addColorStop(0, '#3a3150'); bg.addColorStop(1, '#141019');
-    cx.fillStyle = bg; cx.fillRect(0, 0, W, H);
-    // plates
-    for (let u = 0; u < n; u++) {
-      if (!CELLS) break;
-      const a = anims.find(q => q.u === u), c = a && t >= a.t0 + a.dur / 2 ? a.to : a ? a.from : shown[u];
-      cx.fillStyle = u === HOLE ? 'rgba(0,0,0,.32)' : COL[c] + '2e'; cx.fill(cellPath[u]);
-      cx.strokeStyle = 'rgba(255,255,255,.08)'; cx.lineWidth = 1; cx.stroke(cellPath[u]);
-    }
+    if (!plate) buildPlate();
+    cx.drawImage(plate, 0, 0, W, H);
     const litSet = lit ? lit.set : null;
-    // contacts of the lit chain (only there: the board stays clean)
-    if (litSet) {
-      cx.lineCap = 'round';
-      for (const u of lit.vs) for (const w of g.adj[u]) if (w > u && litSet.has(w)) {
-        cx.beginPath(); cx.moveTo(S[u][0], S[u][1]); cx.lineTo(S[w][0], S[w][1]);
-        cx.strokeStyle = 'rgba(255,240,180,.55)'; cx.lineWidth = 5; cx.stroke();
-      }
+    // every gear's angle, face, lift and scale now
+    const A = new Array(n), Cf = new Array(n), LIFT = new Array(n).fill(0), SC = new Array(n).fill(1);
+    const wv = win && t > win.t0 + 450 ? win : null;
+    for (let u = 0; u < n; u++) {
+      if (u === HOLE) continue;
+      const a = anims.find(q => q.u === u);
+      let ang = PH[u] + base[u], c = shown[u];
+      if (a) { if (t >= a.t0) { const k = clamp((t - a.t0) / (a.t1 - a.t0), 0, 1); ang += a.ang * inout(k); LIFT[u] = Math.sin(Math.PI * k); } c = t >= a.flip ? a.to : a.from; }
+      const w = wobbles.find(q => q.u === u); if (w) { const k = (t - w.t0) / 600; ang += Math.sin(k * Math.PI * 3) * w.amp * tooth(u) * (1 - k); }
+      if (hintT && t - hintT < 900 && hintU === u) { const k = (t - hintT) / 900; ang += Math.sin(k * Math.PI * 4) * 0.5 * tooth(u) * (1 - k); SC[u] *= 1 + 0.04 * Math.sin(k * Math.PI); }
+      if (wv) { const k = (t - wv.t0 - 450 - wdist[u] * 150) / 700; if (k > 0 && k < 1) { ang += (wdist[u] % 2 ? -1 : 1) * Math.min(NT[u], 24) * tooth(u) * inout(k); LIFT[u] = Math.max(LIFT[u], 0.7 * Math.sin(Math.PI * k)); } }
+      if (drag && drag.u === u) { SC[u] *= 1.06; LIFT[u] = Math.max(LIFT[u], 0.5); }
+      if (sel && sel.u === u) SC[u] *= 1.06;
+      A[u] = ang; Cf[u] = c;
     }
+    // glows under the gears: the lit train, the gear in hand
+    for (let u = 0; u < n; u++) {
+      if (u === HOLE) continue;
+      const on = litSet && litSet.has(u), hand = (drag && drag.u === u) || (sel && sel.u === u);
+      if (!on && !hand) continue;
+      const al = on ? 0.32 + 0.12 * Math.sin(t / 120) : 0.2;
+      if (HUGE[u]) outline(u, A[u], 1, 'rgba(255,236,150,' + al.toFixed(3) + ')', 14);
+      else { cx.beginPath(); cx.arc(S[u][0], S[u][1], R[u] * SC[u] + MOD * 2 + 6, 0, 7); cx.fillStyle = on ? 'rgba(255,236,150,' + al.toFixed(3) + ')' : 'rgba(255,255,255,.2)'; cx.fill(); }
+    }
+    // gears: every resting gear's shadow, the hub, the resting bodies, then the turning (lifted) ones over them
+    const order = []; for (let u = 0; u < n; u++) if (u !== HOLE) order.push(u);
+    order.sort((a, b) => LIFT[a] - LIFT[b] || (SC[a] - SC[b]));
+    const rest = order.filter(u => LIFT[u] < 0.02 && SC[u] === 1), up = order.filter(u => !(LIFT[u] < 0.02 && SC[u] === 1));
+    for (const u of rest) drawGear(u, A[u], Cf[u], SC[u], LIFT[u], 1);
     // the hub socket and gear
     {
       const r = R[HOLE], [x, y] = S[HOLE];
-      cx.beginPath(); cx.arc(x, y, r * 1.02, 0, 7); cx.fillStyle = '#0c0a12'; cx.fill();
-      cx.setLineDash([4, 5]); cx.strokeStyle = 'rgba(255,255,255,.22)'; cx.lineWidth = 1.5; cx.stroke(); cx.setLineDash([]);
+      cx.beginPath(); cx.arc(x, y, r + MOD, 0, 7); cx.fillStyle = 'rgba(5,6,9,.75)'; cx.fill();
       let ang = hub.ang;
       if (t < hub.t1 || (hub.jam && t < hub.jamT + 700)) live = true;
       if (t <= hub.t0) ang = hub.from;
       else if (t < hub.t1) ang = hub.from + (hub.to - hub.from) * inout((t - hub.t0) / (hub.t1 - hub.t0));
-      else if (hub.jam && t < hub.jamT + 700) { const k = (t - hub.jamT) / 700; ang = hub.to + (hub.from - hub.to) * ease(k) + Math.sin(k * 40) * 0.09 * (1 - k); }
+      else if (hub.jam && t < hub.jamT + 700) { const k = (t - hub.jamT) / 700; ang = hub.to + (hub.from - hub.to) * ease(k) + Math.sin(k * 40) * 0.25 * tooth(HOLE) * (1 - k); }
       else ang = hub.jam ? hub.from : hub.to;
       if (!(t < hub.t1) && !(hub.jam && t < hub.jamT + 700)) hub.ang = ang;
       let jx = 0, jy = 0;
       if (hub.jam && t > hub.jamT && t < hub.jamT + 650) { const k = 1 - (t - hub.jamT) / 650; jx = Math.sin(t * 0.09) * 3 * k; jy = Math.cos(t * 0.11) * 2 * k; }
-      let sc = 0.86, hc = -1;
+      let sc = 1, hc = -1;
       if (win && t >= win.t0) { hc = win.free; const k = (t - win.t0) / 520; sc = k < 1 ? 1.6 - 0.6 * back(k) : 1; ang = (t - win.t0) / 260; }
       // the hub's verdict ring: red while it jams (odd ring through the hole), gold while the rim drives it
       if (hub.jam && t > hub.jamT && t < hub.jamT + 800) {
@@ -470,29 +618,23 @@
         cx.beginPath(); cx.arc(x, y, r * (1.15 + 0.5 * ease(k)), 0, 7); cx.strokeStyle = 'rgba(255,70,50,' + (0.9 * (1 - k)) + ')'; cx.lineWidth = 5 * (1 - k) + 1.5; cx.stroke();
       } else if (!hub.jam && hub.t1 > hub.t0 && t > hub.t0 && t < hub.t1 + 250) {
         const k = clamp((t - hub.t0) / (hub.t1 + 250 - hub.t0), 0, 1);
-        cx.beginPath(); cx.arc(x, y, r * 1.18, 0, 7); cx.strokeStyle = 'rgba(255,214,90,' + (0.75 * Math.sin(Math.PI * k)) + ')'; cx.lineWidth = 3; cx.stroke();
+        cx.beginPath(); cx.arc(x, y, r + MOD + 3, 0, 7); cx.strokeStyle = 'rgba(255,214,90,' + (0.75 * Math.sin(Math.PI * k)) + ')'; cx.lineWidth = 3; cx.stroke();
       }
       cx.save(); cx.translate(x + jx, y + jy); cx.scale(sc, sc);
-      cx.save(); cx.rotate(ang); gearBody(gearPath[HOLE], r, hc, hc < 0); cx.restore();
+      gearBody(gearPath[HOLE], r, PH[HOLE] + ang, hc, hc < 0, 0, MOD);
       hubCap(r, hc, hc < 0);
       cx.restore();
     }
-    // gears
-    const wv = win && t > win.t0 + 450 ? win : null;
-    for (let u = 0; u < n; u++) {
-      if (u === HOLE) continue;
-      const a = anims.find(q => q.u === u);
-      let ang = base[u], c = shown[u], sc = 1;
-      if (a && t >= a.t0) { const k = (t - a.t0) / a.dur; ang += a.dir * Math.PI * a.turns * inout(k); c = k >= 0.5 ? a.to : a.from; sc = 1 + 0.12 * Math.sin(Math.PI * clamp(k, 0, 1)); }
-      else if (a) c = a.from;
-      const w = wobbles.find(q => q.u === u); if (w) { const k = (t - w.t0) / 600; ang += Math.sin(k * Math.PI * 3) * w.amp * (1 - k); }
-      if (hintT && t - hintT < 900 && hintU === u) { const k = (t - hintT) / 900; ang += Math.sin(k * Math.PI * 4) * 0.22 * (1 - k); sc *= 1 + 0.06 * Math.sin(k * Math.PI); }
-      if (wv) { const k = (t - wv.t0 - 450 - wdist[u] * 150) / 700; if (k > 0 && k < 1) { ang += (wdist[u] % 2 ? -1 : 1) * 2 * Math.PI * inout(k); sc = 1 + 0.15 * Math.sin(Math.PI * k); } }
-      let glow = null;
-      if (litSet && litSet.has(u)) glow = 'rgba(255,236,150,' + (0.35 + 0.15 * Math.sin(t / 120)) + ')';
-      if (drag && drag.u === u) { sc *= 1.1; glow = glow || 'rgba(255,255,255,.18)'; }
-      if (sel && sel.u === u) { sc *= 1.1; glow = 'rgba(255,255,255,.22)'; }
-      drawGear(u, S[u][0], S[u][1] - (sc > 1.05 && !a ? 2 : 0), ang, c, sc, 1, glow);
+    for (const u of rest) drawGear(u, A[u], Cf[u], SC[u], LIFT[u], 2);
+    for (const u of up) drawGear(u, A[u], Cf[u], SC[u], LIFT[u], 1);
+    for (const u of up) drawGear(u, A[u], Cf[u], SC[u], LIFT[u], 2);
+    // the lit train: a gold outline on every gear of it and a spark at each of its contacts
+    if (litSet) {
+      const al = 0.6 + 0.3 * Math.sin(t / 120);
+      for (const u of lit.vs) outline(u, A[u], SC[u], 'rgba(255,226,120,' + al.toFixed(3) + ')', 2.4);
+      for (const u of lit.vs) for (const w of g.adj[u]) if (w > u && litSet.has(w)) {
+        const [px, py] = contact(u, w); cx.beginPath(); cx.arc(px, py, 3.2, 0, 7); cx.fillStyle = '#fff6c8'; cx.fill(); cx.lineWidth = 1.2; cx.strokeStyle = INK; cx.stroke();
+      }
     }
     // glints (contacts as the wave crosses; red = the jam at the hub)
     for (const q of glints) {
@@ -503,20 +645,21 @@
     }
     // drag line
     if (drag && drag.moved && drag.px != null) {
-      cx.beginPath(); cx.moveTo(S[drag.u][0], S[drag.u][1]); cx.lineTo(drag.px, drag.py);
-      cx.strokeStyle = 'rgba(255,255,255,.5)'; cx.lineWidth = 3; cx.setLineDash([5, 6]); cx.stroke(); cx.setLineDash([]);
+      const [ax, ay] = anchor(drag.u); cx.beginPath(); cx.moveTo(ax, ay); cx.lineTo(drag.px, drag.py);
+      cx.strokeStyle = 'rgba(255,255,255,.6)'; cx.lineWidth = 3; cx.setLineDash([5, 6]); cx.stroke(); cx.setLineDash([]);
     }
     // partner chips
     if (sel) {
-      const k = clamp((t - sel.t0) / 220, 0, 1), [sx0, sy0] = S[sel.u];
-      cx.save(); cx.globalAlpha = 0.72 * k; cx.beginPath(); cx.arc(sx0, sy0, (R[sel.u] + 2 * chipR + 12) * back(k), 0, 7);
-      cx.fillStyle = '#0d0a14'; cx.fill(); cx.lineWidth = 2; cx.strokeStyle = 'rgba(255,255,255,.25)'; cx.stroke(); cx.restore();
-      drawGear(sel.u, sx0, sy0, base[sel.u], shown[sel.u], 1.1, 1, 'rgba(255,255,255,.22)');
+      const k = clamp((t - sel.t0) / 220, 0, 1), [sx0, sy0] = anchor(sel.u), u = sel.u;
+      cx.save(); cx.globalAlpha = 0.72 * k; cx.beginPath(); cx.arc(sx0, sy0, (Math.min(anchorR(u), 34) + 2 * chipR + 12) * back(k), 0, 7);
+      cx.fillStyle = '#0b0c10'; cx.fill(); cx.lineWidth = 2; cx.strokeStyle = 'rgba(255,255,255,.25)'; cx.stroke(); cx.restore();
+      if (HUGE[u]) badge(u, A[u], shown[u], 1.12); else drawGear(u, A[u], shown[u], 1.06, 0.5);
       for (const c of sel.chips) {
-        const x = S[sel.u][0] + (c.x - S[sel.u][0]) * back(k), y = S[sel.u][1] + (c.y - S[sel.u][1]) * back(k);
+        const x = sx0 + (c.x - sx0) * back(k), y = sy0 + (c.y - sy0) * back(k);
         cx.save(); cx.translate(x, y); const pressed = chipDown === c; cx.scale(pressed ? 1.15 : 1, pressed ? 1.15 : 1);
+        cx.beginPath(); cx.arc(0, 0, chipR * 1.3, 0, 7); cx.fillStyle = 'rgba(11,12,16,.82)'; cx.fill(); cx.lineWidth = 1.5; cx.strokeStyle = 'rgba(255,255,255,.3)'; cx.stroke();
         cx.globalAlpha = c.K.web ? 0.35 : 1;
-        cx.save(); cx.rotate(t / 900); gearBody(chipPath, chipR, c.K.web ? 0 : c.b, c.K.web); cx.restore();
+        gearBody(chipPath, chipR, t / 900, c.K.web ? 0 : c.b, c.K.web, 0, chipR * 0.2);
         hubCap(chipR, c.b, c.K.web);
         cx.restore();
       }
@@ -525,11 +668,11 @@
     if (HUD !== 'full') {
       const rs = rimShown(), m = RIM.length, x0 = W / 2 - (m - 1) * 13, y = 27;
       cx.save(); cx.beginPath(); cx.roundRect ? cx.roundRect(x0 - 20, y - 17, (m - 1) * 26 + 40, 34, 17) : cx.rect(x0 - 20, y - 17, (m - 1) * 26 + 40, 34);
-      cx.fillStyle = 'rgba(0,0,0,.35)'; cx.fill(); cx.restore();
+      cx.fillStyle = 'rgba(0,0,0,.4)'; cx.fill(); cx.restore();
       for (let i = 0; i < m; i++) {
         const k = (t - rimBounce[i]) / 380, b = k > 0 && k < 1 ? 1 + 0.35 * Math.sin(Math.PI * k) : 1; if (k > 0 && k < 1) live = true;
         cx.save(); cx.translate(x0 + i * 26, y); cx.scale(b * 0.62, b * 0.62);
-        cx.save(); cx.rotate(i * 0.4); gearBody(chipPath, chipR, rs[i], false); cx.restore(); hubCap(chipR, rs[i], false); cx.restore();
+        gearBody(chipPath, chipR, i * 0.4, rs[i], false, 0, chipR * 0.2); hubCap(chipR, rs[i], false); cx.restore();
       }
     }
     // controls (the skin's --sk-ctl tokens when embedded)
@@ -577,7 +720,8 @@
 
   addEventListener('resize', resize);
   resize(); DIE.place(); DIE.init();
-  window.GEARS = { g, S: () => S.map(p => p.slice()), R: () => R.slice(), busy: () => now() < busyUntil, hub: () => Object.assign({}, hub), die: () => ({ ok: DIE.ok, N: DIE.N, m: DIE.M }) };
+  window.GEARS = { g, S: () => S.map(p => p.slice()), R: () => R.slice(), teeth: () => NT.slice(), phase: () => PH.slice(), frame: () => FRAME.slice(), pitch: () => PITCH,
+    angle: u => PH[u] + base[u], anims: () => anims.map(a => Object.assign({}, a)), busy: () => now() < busyUntil, hub: () => Object.assign({}, hub), die: () => ({ ok: DIE.ok, N: DIE.N, m: DIE.M }) };
 })();
 </script>
 </body>

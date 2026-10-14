@@ -7,7 +7,7 @@ const CORE = ['./', 'index.html', 'levels.js', 'layout.js', 'telemetry.js', 'man
   'lab/core.js', 'lab/dots.html', 'lab/doodle.html', 'lab/blank.html',
   'skins/registry.js', 'skins/islands.js', 'skins/dots.js', 'skins/doodle.js', 'skins/blank.js',
   'skins/map.js', 'skins/swipe.js', 'skins/ions.js', 'skins/tables.js', 'skins/maze.js', 'skins/crush.js', 'skins/rimword.js', 'skins/spheres.js', 'skins/gears.js',
-  'lab/map.html', 'lab/swipe.html', 'lab/ions.html', 'lab/tables.html', 'lab/maze.html', 'lab/crush.html', 'lab/rimword.html', 'lab/rimword-data.js', 'lab/spheres.html', 'lab/gears.html', 'degree.js',
+  'lab/map.html', 'lab/swipe.html', 'lab/ions.html', 'lab/tables.html', 'lab/maze.html', 'lab/crush.html', 'lab/rimword.html', 'lab/rimword-data.js', 'lab/spheres.html', 'lab/gears.html', 'lab/gearpack.js', 'degree.js',
   'board/island.js', 'sfx.js', 'bonus/games.js', 'skins/islands-free.js', 'skins/islands-3d.js', 'lab/islands3d.html', 'lab/islands3d-plans.js',
   'tickets.js', 'maps.js', 'rim.js', 'rimstar.js', 'eggs.js', 'cloud.js', 'reel.js', 'deli.js', 'economy.js', 'verify.js', 'integrity.js', 'account-config.js', 'account.js', 'leaderboard.js',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png'];

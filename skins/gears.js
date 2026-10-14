@@ -1,6 +1,6 @@
-// Gears: a workshop plate cut into the map's regions, one chunky gear per region in its element's colour, and in the
-// middle the hole as an empty steel drive hub with the die counter (degree.js) in it. Play page lab/gears.html; design
-// note lab/GEARS-DESIGN.md. Every gear here is drawn the Islands way: offset shadow, deep base, lit body, highlight, outline.
+// Gears: a machined steel backplate, one gear per region in its element's colour, every pair of neighbours meshing (a
+// circle packing, lab/gearpack.js), and in the middle the hole as an empty steel drive hub with the die counter
+// (degree.js) in it. Play page lab/gears.html; design note lab/GEARS-DESIGN.md. Every gear here is drawn the Islands way: offset shadow, deep base, lit body, highlight, outline.
 (function () {
   const COL = ['#ef5a3c', '#3d8fe8', '#e8c547', '#4caf50'], DK = ['#8e1c17', '#1b4f91', '#8a6510', '#1a6b2a'];
   const LT = ['#f6a08a', '#9cc6f4', '#f4e09a', '#a6d9a1'], NEON = ['#ff7a52', '#5ab4ff', '#ffe066', '#5cff8a'];
@@ -75,7 +75,7 @@
     const path = 'M' + P(p0[0], p0[1]) + 'A' + r + ' ' + r + ' 0 0 ' + (cw ? 1 : 0) + ' ' + P(p1[0], p1[1]);
     return '<path d="' + path + '" fill="none" stroke="' + INK + '" stroke-width="7" stroke-linecap="round"/><path d="' + head + '" fill="' + INK + '" stroke="' + INK + '" stroke-width="4" stroke-linejoin="round"/>' +
       '<path d="' + path + '" fill="none" stroke="' + c + '" stroke-width="3.4" stroke-linecap="round"/><path d="' + head + '" fill="' + c + '"/>'; };
-  const plate = '<rect width="300" height="250" fill="#17121f"/><circle cx="150" cy="118" r="170" fill="#3a3150" opacity=".55"/><circle cx="110" cy="80" r="90" fill="#4a3f63" opacity=".35"/>' +
+  const plate = '<rect width="300" height="250" fill="#16191f"/><circle cx="150" cy="118" r="170" fill="#3a404c" opacity=".55"/><circle cx="110" cy="80" r="90" fill="#4c5462" opacity=".35"/>' +   // the steel backplate
     [[14, 14], [286, 14], [14, 236], [286, 236]].map(([x, y]) => '<circle cx="' + x + '" cy="' + y + '" r="5" fill="' + STEEL + '" stroke="' + INK + '" stroke-width="2"/><path d="M' + (x - 3) + ' ' + y + 'h6" stroke="' + INK + '" stroke-width="1.6"/>').join('');
   const SPIN = '.cw,.ccw{transform-box:fill-box;transform-origin:50% 50%}.cw{animation:gsp 6s linear infinite}.ccw{animation:gsp 6s linear infinite reverse}@keyframes gsp{to{transform:rotate(360deg)}}' +
     '.tap{animation:tp 2.8s ease-out infinite;transform-box:fill-box;transform-origin:50% 50%}@keyframes tp{0%{transform:scale(.4);opacity:.6}20%{transform:scale(1.6);opacity:0}100%{opacity:0}}';
@@ -150,20 +150,45 @@
     gear(-1, 60, 60, 40, { rot: 6, sw: .07 }) + die(60, 62, 17, 3, 2) +
     '<path d="M20 34A44 44 0 0 1 40 14" fill="none" stroke="#fff" stroke-opacity=".5" stroke-width="4" stroke-linecap="round"/></svg>';
 
-  // the card: a still of play (cell plates, a lit fire/water train turning, the hub with its die), the wordmark below
-  const CG = [[46, 52, 0, 22], [98, 40, 1, 20], [150, 54, 2, 21], [200, 44, 3, 20], [36, 108, 2, 20], [194, 104, 0, 22], [60, 166, 3, 21], [118, 178, 1, 20], [180, 162, 2, 21]];
-  const cardTrain = [[46, 52], [98, 40], [118, 178]];
+  // the card: a still of play on the machined steel backplate: the hub with its die, five rim gears tangent to it and to
+  // each other (as the play page's circle packing lays them), one tooth pitch for all, a lit fire/water train; the wordmark below
+  function meshD(r, N) {          // the play page's tooth (lab/gears.html toothPts): pitch radius r, N teeth, addendum .9 m, dedendum 1.12 m
+    const m = 2 * r / N, rr = r - 1.12 * m, ra = r + .9 * m, t = 2 * Math.PI / N, W = [.285, .21, .13], at = (q, a) => P(q * Math.cos(a), q * Math.sin(a));
+    let d = '';
+    for (let i = 0; i < N; i++) { const a = i * t; d += (i ? 'L' : 'M') + at(rr, a - .5 * t) + 'L' + at(rr, a - W[0] * t) + 'L' + at(r, a - W[1] * t) + 'L' + at(ra, a - W[2] * t) + 'L' + at(ra, a + W[2] * t) + 'L' + at(r, a + W[1] * t) + 'L' + at(rr, a + W[0] * t); }
+    return d + 'Z';
+  }
+  function mgear(e, x, y, r, N, deg, glow) {
+    const d = meshD(r, N), steel = e < 0, lit = steel ? STEEL : COL[e], dk = steel ? STEEL_D : DK[e], id = 'gears-cd-g' + (steel ? 's' : e);
+    return '<g transform="translate(' + P(x, y) + ')">' + (glow ? '<circle r="' + f1(r * 1.3) + '" fill="#fff3b0" opacity="' + glow + '"/>' : '') +
+      '<path d="' + d + '" transform="translate(2 3) rotate(' + f1(deg) + ')" fill="#000" opacity=".45"/>' +
+      '<path d="' + d + '" transform="rotate(' + f1(deg) + ')" fill="url(#' + id + ')" stroke="' + INK + '" stroke-width="1.5" stroke-linejoin="round"/>' +
+      '<circle r="' + f1(r * .72) + '" fill="none" stroke="#000" stroke-opacity=".22" stroke-width="2"/>' +
+      '<circle r="' + f1(r * .4) + '" fill="' + (steel ? '#5d6577' : dk) + '" stroke="' + INK + '" stroke-width="1.4"/>' + (steel ? '' : icon24(e, r * .6 / 12, '#fff')) +
+      '<circle cx="' + f1(-r * .3) + '" cy="' + f1(-r * .34) + '" r="' + f1(r * .14) + '" fill="#fff" opacity=".35"/></g>';
+  }
+  const cardG = (() => {          // the hub, then each rim gear phased to mesh with it (x_u + x_hub = t N_hub / 2pi + (t + pi) N_u / 2pi - 1/2)
+    const hx = 120, hy = 110, hr = 25, rr = hr * Math.sin(Math.PI / 5) / (1 - Math.sin(Math.PI / 5)), pitch = 2 * Math.PI * hr / 12, Nr = Math.round(2 * Math.PI * rr / pitch);
+    const out = [[-1, hx, hy, hr, 12, 0]], fr = v => v - Math.floor(v);
+    for (let i = 0; i < 5; i++) {
+      const a = -Math.PI / 2 + i * 2 * Math.PI / 5, x = hx + (hr + rr) * Math.cos(a), y = hy + (hr + rr) * Math.sin(a);
+      const xu = fr(a * 12 / (2 * Math.PI) + (a + Math.PI) * Nr / (2 * Math.PI) - .5);
+      out.push([RIM[i], x, y, rr, Nr, xu * 360 / Nr]);
+    }
+    return out;
+  })();
+  const grad = (id, a, b, c) => '<linearGradient id="' + id + '" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="' + a + '"/><stop offset=".48" stop-color="' + b + '"/><stop offset="1" stop-color="' + c + '"/></linearGradient>';
+  const brushed = Array.from({ length: 46 }, (_, i) => { const y = f1((i * 53) % 320 + (i % 7) * .6), x = (i * 37) % 160 - 20; return '<path d="M' + x + ' ' + y + 'h' + (60 + (i * 29) % 140) + '" stroke="' + (i % 2 ? '#fff' : '#000') + '" stroke-opacity="' + (i % 2 ? .04 : .12) + '" stroke-width="1"/>'; }).join('');
   const card = '<svg viewBox="0 0 240 320" xmlns="http://www.w3.org/2000/svg"><defs>' +
-    '<radialGradient id="gears-cd-bg" cx=".35" cy=".25" r=".9"><stop offset="0" stop-color="#4a3f63"/><stop offset="1" stop-color="#120e1a"/></radialGradient>' +
-    '<linearGradient id="gears-cd-f" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#120e1a" stop-opacity="0"/><stop offset=".35" stop-color="#120e1a" stop-opacity=".9"/><stop offset="1" stop-color="#0a0810"/></linearGradient></defs>' +
-    '<rect width="240" height="320" fill="url(#gears-cd-bg)"/>' +
-    [[0, 0, 74, 0, 70, 80, 0, 84], [74, 0, 126, 0, 124, 76, 70, 80], [126, 0, 176, 0, 172, 82, 124, 76], [176, 0, 240, 0, 240, 78, 172, 82], [0, 84, 70, 80, 80, 136, 0, 140], [172, 82, 240, 78, 240, 140, 160, 134],
-      [0, 140, 80, 136, 92, 210, 0, 214], [92, 210, 80, 136, 160, 134, 150, 212], [150, 212, 160, 134, 240, 140, 240, 214]].map((q, i) => '<path d="M' + q.slice(0, 2).join(' ') + 'L' + q.slice(2, 4).join(' ') + 'L' + q.slice(4, 6).join(' ') + 'L' + q.slice(6, 8).join(' ') + 'Z" fill="' + COL[CG[i][2]] + '" fill-opacity=".18" stroke="#fff" stroke-opacity=".1"/>').join('') +
-    '<path d="M46 52L98 40M98 40L118 112M118 112L118 178" stroke="#fff0b4" stroke-opacity=".5" stroke-width="8" stroke-linecap="round"/>' +
-    socket(118, 112, 30) + die(118, 114, 15, 0, 1) +
-    CG.map((g, i) => gear(g[2], g[0], g[1], g[3], { rot: i * 17, glow: cardTrain.some(t => t[0] === g[0] && t[1] === g[1]) ? .3 : 0 })).join('') +
-    arc(46, 52, 32, true, '#fff0b4') + arc(98, 40, 30, false, '#fff0b4') + spark(74, 46, 7) + spark(108, 146, 6, '#fff0b4') +
-    '<g transform="translate(128 196)">' + finger + '</g>' +
+    '<linearGradient id="gears-cd-bg" x1="0" y1="0" x2=".35" y2="1"><stop offset="0" stop-color="#343a46"/><stop offset="1" stop-color="#14161b"/></linearGradient>' +
+    [0, 1, 2, 3].map(e => grad('gears-cd-g' + e, LT[e], COL[e], DK[e])).join('') + grad('gears-cd-gs', '#d5dbe5', STEEL, STEEL_D) +
+    '<linearGradient id="gears-cd-f" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#14161b" stop-opacity="0"/><stop offset=".35" stop-color="#14161b" stop-opacity=".9"/><stop offset="1" stop-color="#0b0c10"/></linearGradient></defs>' +
+    '<rect width="240" height="320" fill="url(#gears-cd-bg)"/>' + brushed +
+    [40, 52, 64, 76, 88, 100, 112, 124].map((r, i) => '<circle cx="120" cy="110" r="' + r + '" fill="none" stroke="' + (i % 2 ? '#fff' : '#000') + '" stroke-opacity="' + (i % 2 ? .035 : .1) + '"/>').join('') +
+    [[12, 12], [228, 12], [12, 208], [228, 208]].map(([x, y]) => '<circle cx="' + x + '" cy="' + y + '" r="5" fill="' + STEEL + '" stroke="' + INK + '" stroke-width="1.6"/><path d="M' + (x - 3) + ' ' + y + 'h6" stroke="' + INK + '" stroke-width="1.4"/>').join('') +
+    cardG.map(([e, x, y, r, N, deg], i) => mgear(e, x, y, r, N, deg, i === 1 || i === 2 ? .28 : 0)).join('') + die(120, 112, 15, 0, 1) +
+    arc(cardG[1][1], cardG[1][2], 46, true, '#fff0b4') + arc(cardG[2][1], cardG[2][2], 46, false, '#fff0b4') + spark(cardG[2][1] - 30, cardG[2][2] - 28, 7) +
+    '<g transform="translate(' + P(cardG[2][1] + 6, cardG[2][2] + 10) + ')">' + finger + '</g>' +
     '<rect y="214" width="240" height="106" fill="url(#gears-cd-f)"/><path d="M0 226H240" stroke="' + BRASS + '" stroke-opacity=".45" stroke-width="2"/>' +
     '<g transform="translate(0 232)">' + logoArt('gears-cd-lg', 0) + '</g></svg>';
 
