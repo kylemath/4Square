@@ -3,9 +3,13 @@
  *   FTH_DELI.open(ctx, { onBought(), onClose() })      ctx: the shop's ticket ctx (tickets.js), plus blip / sfx for sound
  *
  * A counter scene with far too many hanging price signs, swinging on their strings: each sign is the price of ONE ticket
- * in one skin's coin (FTH_TICKETS.next(ctx).pay, and coinsFor for a wallet the player does not hold yet). A sign the
- * player cannot pay is dimmed and still; when the level gate is not met yet the counter hangs a padlock with the level
- * count. Tap a sign: it zooms forward with a PURCHASE button (🎟️ × 1 for that price). Tap it: FTH_TICKETS.buy, then coins
+ * in one skin's coin (FTH_TICKETS.next(ctx).pay, and coinsFor for a wallet the player does not hold yet). Every skin has
+ * its own sign, in the skin's reel order, so each currency keeps its place, shape and paint from one ticket to the next.
+ * A sign the player cannot pay is dimmed and still; the coin of a skin the player has no ticket for yet is grey; a
+ * currency that already bought its one ticket wears a SOLD OUT stamp. Under the awning a string of light bulbs, one per
+ * ticket, each labelled with the levels beaten that ticket needs: a bulb lights once you have beaten that many, and the
+ * next ticket's bulb blinks until it does; when no ticket is for sale (every locked skin has one waiting) the signs still
+ * hang, none for sale. Tap a sign: it zooms forward with a PURCHASE button (🎟️ × 1 for that price). Tap it: FTH_TICKETS.buy, then coins
  * fly out of the wallet into the dispenser, a paper ticket prints and swoops into the wallet, the wallet bumps.
  * No sentences: coins, numbers, glyphs.
  */
@@ -70,12 +74,10 @@
       '<path ' + P + ' fill="none" stroke="#1c1640" stroke-width="3.4" stroke-linejoin="round"/>' +
       (s === 3 ? '<circle cx="18" cy="36" r="5.5" fill="url(#dlst)" stroke="#1c1640" stroke-width="2.4"/><circle cx="18" cy="36" r="2.4" fill="#5a4d3a"/>' : '') + '</svg>';
   }
-  const LOCK = '<svg viewBox="0 0 80 100" aria-hidden="true"><path d="M20 46V30a20 20 0 0 1 40 0v16" fill="none" stroke="#1c1640" stroke-width="14"/><path d="M20 46V30a20 20 0 0 1 40 0v16" fill="none" stroke="url(#dlsth)" stroke-width="7.5"/>' +
-    '<path d="M22.5 40V30a17.5 17.5 0 0 1 9-15.3" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" opacity=".85"/>' +
-    '<rect x="6" y="42" width="68" height="52" rx="13" fill="#1c1640" transform="translate(0 5)"/><rect x="6" y="42" width="68" height="52" rx="13" fill="url(#dlgd)" stroke="#1c1640" stroke-width="4"/>' +
-    '<rect x="11" y="47" width="58" height="42" rx="9" fill="none" stroke="#fff" stroke-width="2.5" opacity=".5"/><path d="M14 50h34" stroke="#fff" stroke-width="5" stroke-linecap="round" opacity=".75"/>' +
-    '<circle cx="15" cy="84" r="2.6" fill="#b87a08"/><circle cx="65" cy="84" r="2.6" fill="#b87a08"/><circle cx="15" cy="54" r="2.6" fill="#b87a08"/><circle cx="65" cy="54" r="2.6" fill="#b87a08"/>' +
-    '<circle cx="40" cy="64" r="8.5" fill="#1c1640"/><path d="M40 66v15" stroke="#1c1640" stroke-width="8" stroke-linecap="round"/><circle cx="38" cy="62" r="2.4" fill="#fff" opacity=".35"/></svg>';
+  // a light bulb hanging from the marquee wire: brass screw cap on top, glass globe below, a filament that glows when lit
+  const BULB = '<svg viewBox="0 0 20 30" aria-hidden="true"><rect x="6.5" y="0" width="7" height="8" rx="1.5" fill="url(#dlst)" stroke="#1c1640" stroke-width="1.6"/>' +
+    '<path d="M6.5 3h7M6.5 5.5h7" stroke="#8d94a8" stroke-width="1"/><circle class="gl" cx="10" cy="17.5" r="8" stroke="#1c1640" stroke-width="1.8"/>' +
+    '<path class="fil" d="M8 9.5v5l1-1.5 1 1.5 1-1.5 1 1.5v-5" fill="none" stroke-width="1.1" stroke-linejoin="round"/><ellipse cx="7.2" cy="15" rx="2" ry="3" fill="#fff" opacity=".7"/></svg>';
   const WALLET = '<svg viewBox="0 0 120 96" aria-hidden="true"><ellipse cx="60" cy="95" rx="54" ry="5" fill="#3a1e05" opacity=".3"/><rect x="8" y="22" width="104" height="70" rx="16" fill="#1c1640" transform="translate(0 5)"/>' +
     '<path d="M22 26l50-19 11 24z" fill="#ff5a7a" stroke="#1c1640" stroke-width="3.5" stroke-linejoin="round"/><path d="M28 18l40-15" stroke="#fff" stroke-width="2.5" stroke-linecap="round" opacity=".6"/>' +
     '<path d="M36 24l44-13 6 15z" fill="#ffd84a" stroke="#1c1640" stroke-width="3.5" stroke-linejoin="round"/><path d="M60 16l3 10" stroke="#1c1640" stroke-width="1.6" stroke-dasharray="2.5 2.5"/>' +
@@ -128,11 +130,23 @@
   background:linear-gradient(#3a3f52,#14161e);box-shadow:0 4px 0 #1c1640,inset 0 2px 0 rgba(255,255,255,.18),inset 0 0 0 2px #5b6075;overflow:hidden}
 .dl-led::after{content:'';position:absolute;left:0;right:0;top:0;height:45%;background:linear-gradient(rgba(255,255,255,.2),rgba(255,255,255,0));pointer-events:none}
 .dl-led b{font:900 26px/1 ui-monospace,'SF Mono',Menlo,monospace;color:#ff5a66;text-shadow:0 0 6px rgba(255,77,94,.95),0 0 16px rgba(255,77,94,.6);letter-spacing:.06em}
-.dl-rail{position:absolute;left:0;right:0;top:calc(66px + env(safe-area-inset-top));height:12px;z-index:3;border-top:2.5px solid #1c1640;border-bottom:2.5px solid #1c1640;
+.dl-lamps{position:absolute;left:0;right:0;top:calc(80px + env(safe-area-inset-top));height:46px;z-index:4;display:flex;justify-content:space-between;padding:0 6px;pointer-events:none}
+.dl-lamps::before{content:'';position:absolute;left:0;right:0;top:4px;height:2.5px;background:#3a3550;box-shadow:0 2px 2px rgba(70,30,0,.2)}
+.dl-b{position:relative;flex:0 1 20px;min-width:0;display:flex;flex-direction:column;align-items:center;padding-top:4px}
+.dl-b svg{width:100%;max-width:20px;height:auto;display:block;overflow:visible}
+.dl-b .gl{fill:#d5d9e3;fill-opacity:.85}.dl-b .fil{stroke:#8d94a8}
+.dl-b i{font:900 11px/1 system-ui,sans-serif;font-style:normal;color:#5b6075;margin-top:2px}
+.dl-b.on .gl{fill:#ffe36b;fill-opacity:1}.dl-b.on .fil{stroke:#ff8a1c}
+.dl-b.on svg{filter:drop-shadow(0 0 4px rgba(255,220,90,.95)) drop-shadow(0 0 10px rgba(255,180,40,.7))}
+.dl-b.on i{color:#1c1640}
+.dl-b.nx i{color:#fff;background:#ff4d5e;border-radius:6px;padding:1px 3px;box-shadow:0 0 0 2px #1c1640}
+@media (prefers-reduced-motion:no-preference){.dl-b.nx:not(.on) .gl{animation:dlblink 1.1s steps(2,jump-none) infinite}}
+@keyframes dlblink{50%{fill:#fff3b0}}
+.dl-rail{position:absolute;left:0;right:0;top:calc(136px + env(safe-area-inset-top));height:12px;z-index:3;border-top:2.5px solid #1c1640;border-bottom:2.5px solid #1c1640;
   background:linear-gradient(#ffffff 0,#d3d8e4 30%,#8d94a8 62%,#5b6075 82%,#aab1c4 100%);box-shadow:0 7px 9px rgba(70,30,0,.28)}
 .dl-rail::before,.dl-rail::after{content:'';position:absolute;top:-9px;width:12px;height:26px;border-radius:4px;border:2.5px solid #1c1640;background:linear-gradient(90deg,#8d94a8,#fff 45%,#8d94a8)}
 .dl-rail::before{left:14%}.dl-rail::after{right:14%}
-.dl-signs{position:absolute;left:0;right:0;top:calc(74px + env(safe-area-inset-top));bottom:196px;z-index:2}
+.dl-signs{position:absolute;left:0;right:0;top:calc(144px + env(safe-area-inset-top));bottom:196px;z-index:2}
 .dl-sign{position:absolute;top:0;width:var(--w);margin-left:calc(var(--w) * -.5);transform-origin:50% 0;pointer-events:none}
 .dl-sign::before,.dl-sign::after{content:'';position:absolute;top:0;width:2.5px;height:calc(var(--hang) + 8px);background:linear-gradient(90deg,#4a3e2c,#b09a76 50%,#4a3e2c);box-shadow:3px 4px 2px rgba(70,30,0,.16)}
 .dl-sign::before{left:28%}.dl-sign::after{right:28%}
@@ -145,8 +159,11 @@
 .dl-pr .cn{display:flex;-webkit-text-stroke:0;filter:drop-shadow(0 2px 0 rgba(28,22,64,.5))}.dl-pr .cn svg{width:calc(var(--w) * .26);height:auto}
 .dl-bar{width:62%;height:7px;border-radius:9px;background:linear-gradient(rgba(28,22,64,.55),rgba(28,22,64,.3));overflow:hidden;border:1.5px solid #1c1640}
 .dl-bar i{display:block;height:100%;background:linear-gradient(#b4f7a6,#4fcf4f 55%,#2b9439);box-shadow:inset 0 1px 0 rgba(255,255,255,.6)}
-.dl-used{font-size:15px;line-height:1;opacity:.9}
 .dl-sign.no .dl-face{filter:saturate(.3) brightness(.8);opacity:.88}
+.dl-sign.grey .dl-face{filter:grayscale(1) brightness(.82);opacity:.8}
+.dl-sign.sold .dl-face{filter:saturate(.5) brightness(.88);opacity:.95}
+.dl-sold{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%) rotate(-14deg);padding:.18em .4em;border-radius:.3em;border:max(2px,calc(var(--w) * .03)) solid #d1162c;
+  background:rgba(255,255,255,.9);color:#d1162c;font:900 calc(var(--w) * .14)/1 system-ui,sans-serif;letter-spacing:.04em;white-space:nowrap;box-shadow:0 2px 0 rgba(28,22,64,.45);pointer-events:none}
 .dl-sign.ok{z-index:25 !important}   /* in front of its neighbours (the rows set z-index inline) */
 .dl-sign.ok .dl-face{filter:drop-shadow(0 0 7px rgba(255,236,140,.95)) drop-shadow(0 0 16px rgba(255,190,40,.7))}
 .dl-sheen{transform:translateX(-30px)}
@@ -154,20 +171,12 @@
 @media (prefers-reduced-motion:no-preference){
   .dl-sign.ok{animation:dlswing var(--sp) ease-in-out infinite alternate;animation-delay:var(--dl)}
   .dl-sign.no{animation:dlswing calc(var(--sp) * 1.6) ease-in-out infinite alternate;animation-delay:var(--dl)}
-  .dl-lock{animation:dlswing 3.4s ease-in-out infinite alternate}
   .dl-sheen{animation:dlsheen 3.2s ease-in-out infinite}
   .dl-sign.ok .dl-face::after{animation:dltwinkle 1.6s ease-in-out infinite}
 }
 @keyframes dlswing{from{transform:rotate(calc(-1 * var(--amp,2.6deg)))}to{transform:rotate(var(--amp,2.6deg))}}
 @keyframes dltwinkle{0%,100%{transform:scale(.35) rotate(0);opacity:.4}50%{transform:scale(1.05) rotate(45deg);opacity:1}}
 @keyframes dlsheen{0%,55%{transform:translateX(-30px)}85%,100%{transform:translateX(190px)}}
-.dl-lock{position:absolute;left:50%;top:0;width:150px;margin-left:-75px;z-index:40;transform-origin:50% 0;--tilt:0deg;--amp:2deg;pointer-events:none}
-.dl-lock::before{content:'';position:absolute;left:calc(50% - 3px);top:0;width:6px;height:var(--hang);border-radius:3px;border:1.5px solid #1c1640;
-  background:repeating-linear-gradient(180deg,#eef1f7 0 3px,#8d94a8 3px 7px,#3a3f52 7px 9px)}
-.dl-lock .pad{margin-top:var(--hang);width:150px;filter:drop-shadow(0 10px 8px rgba(70,30,0,.3))}
-.dl-lock .pad svg{width:100%;height:auto;display:block}
-.dl-lock .cnt{position:relative;margin:8px auto 0;width:max-content;padding:6px 14px;border-radius:14px;background:linear-gradient(#fff,#e6e9f2);border:4px solid #1c1640;box-shadow:0 4px 0 #1c1640,inset 0 -3px 0 rgba(28,22,64,.1);text-align:center;font:900 26px/1 system-ui,sans-serif;color:#1c1640}
-.dl-lock .cnt::before{content:'';position:absolute;left:50%;top:-14px;width:3px;height:12px;background:#3a3550}
 .dl-ctr{position:absolute;left:0;right:0;bottom:0;height:196px;z-index:3}
 .dl-case{position:absolute;left:0;right:0;bottom:0;height:150px;border-top:4px solid #1c1640;overflow:hidden;background:#78bde2}
 .dl-case svg{position:absolute;left:0;top:0;width:100%;height:100%;display:block}
@@ -221,13 +230,22 @@
     document.body.appendChild(root);
     root.addEventListener('keydown', e => { if (e.key === 'Escape') { e.stopPropagation(); if (root.querySelector('.dl-zoom')) unzoom(); else close(); } });
   }
-  // every currency's price for the next ticket: the wallets the rules list first (they can pay), then every other skin's coin;
-  // a wallet that already bought its one ticket (t.used) hangs last, dimmed, with a ✓ instead of a progress bar
+  // every currency's price for the next ticket, one sign per skin in a fixed order (the reel's), so a purchase never moves a
+  // sign: a wallet the rules list (t.pay) as it is, a skin the player has no ticket for yet grey, and a wallet that already
+  // bought its one ticket (t.used) stamped SOLD OUT instead of a progress bar
   function signs(t) {
-    const seen = new Set(t.pay.map(w => w.id)), out = t.pay.slice(), used = t.used || [];
-    C.skins.forEach(k => { if (!seen.has(k.id) && !used.includes(k.id)) out.push({ id: k.id, spec: k, price: T().coinsFor(t.pts, k), bal: 0, ok: false, frac: 0 }); });
-    C.skins.forEach(k => { if (used.includes(k.id)) out.push({ id: k.id, spec: k, price: T().coinsFor(t.pts, k), bal: 0, ok: false, frac: 0, used: true }); });
-    return out;
+    const pay = new Map(t.pay.map(w => [w.id, w])), used = t.used || [];
+    return (C.order || C.skins).map(k => used.includes(k.id) ? { id: k.id, spec: k, price: T().coinsFor(t.pts, k), bal: 0, ok: false, frac: 0, used: true }
+      : pay.get(k.id) || { id: k.id, spec: k, price: T().coinsFor(t.pts, k), bal: 0, ok: false, frac: 0, grey: true });
+  }
+  // the ticket the signs price: the next one, or when next() is null (every locked skin has a ticket waiting, or none is
+  // left), the one after the last bought, with nothing for sale, so the signs stay up in their places
+  function priced() {
+    const t = T().next(C); if (t) return t;
+    const s = T().state(C.save), G = T().GATE, P = T().PRICE, n = Math.min(s.bought + 1, G.length);
+    const pay = C.skins.filter(k => !s.paid.includes(k.id) && T().owns(C.save, k.id)).map(k => ({ id: k.id, spec: k, price: T().coinsFor(P[n - 1], k), bal: 0, ok: false, frac: 0 }))
+      .map(w => { w.bal = ((C.save.wallet || {})[w.id] || {}).bal || 0; w.frac = Math.min(1, w.bal / w.price); return w; });
+    return { n, gate: G[n - 1], beaten: C.beaten(), gateOk: true, pts: P[n - 1], pay, used: s.paid.slice(), idle: true };
   }
   function open(ctx, opts) {
     C = ctx; O = opts || {}; busy = false; build(); render();
@@ -242,26 +260,25 @@
   }
   const isOn = () => !!(root && root.classList.contains('on'));
   function render() {
-    const t = T().next(C), s = T().state(C.save);
-    const H = innerHeight, W = innerWidth, top = 72, bot = 300, area = Math.max(240, H - top - bot);
+    const t = T().next(C), s = T().state(C.save), v = priced();
+    const H = innerHeight, W = innerWidth, top = 142, bot = 300, area = Math.max(240, H - top - bot);
     let h = '<div class="dl-awn"></div><button class="dl-x" aria-label="Close">✕</button>' +
-      '<div class="dl-led" aria-label="Ticket ' + (t ? t.n : s.bought) + '">' + tk(34) + '<b>' + String(t ? t.n : s.bought).padStart(2, '0') + '</b></div><div class="dl-rail"></div><div class="dl-signs">';
-    if (t) {
-      const L = signs(t), rows = [4, 3, 4, 3, 4], rowH = Math.min(150, area / 3.9);
+      '<div class="dl-led" aria-label="Ticket ' + (t ? t.n : s.bought) + '">' + tk(34) + '<b>' + String(t ? t.n : s.bought).padStart(2, '0') + '</b></div>' + lamps(t) + '<div class="dl-rail"></div><div class="dl-signs">';
+    {
+      const L = signs(v), rows = [4, 3, 4, 3, 4], rowH = Math.min(150, area / 3.9);
       let i = 0, r = 0;
       while (i < L.length) {
         const per = rows[r % rows.length], left = L.length - i, cnt = Math.min(per, left);
         for (let c = 0; c < cnt; c++, i++) {
-          const w = L[i], ok = t.gateOk && w.ok, wpx = Math.round(Math.min(W / 4.1, 84 + hash(i, 3) * 22)), one = [1, 7].includes(i % SHAPES.length);
+          const w = L[i], ok = v.gateOk && w.ok, wpx = Math.round(Math.min(W / 4.1, 84 + hash(i, 3) * 22)), one = [1, 7].includes(i % SHAPES.length);
           const x = Math.max(wpx / 2 + 14, Math.min(W - wpx / 2 - 14, ((c + .5) / cnt) * W + (hash(i, 1) - .5) * (cnt === 4 ? 14 : 34)));
           const hang = 10 + r * rowH + hash(i, 2) * rowH * .3, tilt = ((hash(i, 4) - .5) * (one ? 18 : 6)).toFixed(1);
           const amp = Math.min(3, Math.atan(10 / (hang + 40)) * 180 / Math.PI) * (ok ? 1 : .3);   // the same small sway at the bottom of a long string
-          h += '<div class="dl-sign ' + (ok ? 'ok' : 'no') + (one ? ' one' : '') + '" style="z-index:' + (20 - r) + ';left:' + x.toFixed(1) + 'px;--w:' + wpx + 'px;--hang:' + Math.round(hang) + 'px;--tilt:' + tilt + 'deg;--amp:' + amp.toFixed(2) + 'deg;--sp:' + (2.2 + hash(i, 5) * 1.8).toFixed(2) + 's;--dl:' + (-hash(i, 6) * 3).toFixed(2) + 's">' +
-            '<button class="dl-face" data-w="' + esc(w.id) + '" aria-label="' + esc(fmt(w.price) + ' ' + S().coinOf(w.spec).plural) + (w.used ? ', already bought a ticket' : ok ? '' : ', ' + fmt(w.bal) + ' held') + '">' + signSvg(i, ok) + face(w) + '</button></div>';
+          h += '<div class="dl-sign ' + (ok ? 'ok' : 'no') + (w.used ? ' sold' : w.grey ? ' grey' : '') + (one ? ' one' : '') + '" style="z-index:' + (20 - r) + ';left:' + x.toFixed(1) + 'px;--w:' + wpx + 'px;--hang:' + Math.round(hang) + 'px;--tilt:' + tilt + 'deg;--amp:' + amp.toFixed(2) + 'deg;--sp:' + (2.2 + hash(i, 5) * 1.8).toFixed(2) + 's;--dl:' + (-hash(i, 6) * 3).toFixed(2) + 's">' +
+            '<button class="dl-face" data-w="' + esc(w.id) + '" aria-label="' + esc(fmt(w.price) + ' ' + S().coinOf(w.spec).plural) + (w.used ? ', sold out' : w.grey ? ', locked' : ok ? '' : ', ' + fmt(w.bal) + ' held') + '">' + signSvg(i, ok) + face(w) + '</button></div>';
         }
         r++;
       }
-      if (!t.gateOk) h += '<div class="dl-lock" style="--hang:' + Math.round(area * .3) + 'px" aria-label="Beat ' + t.gate + ' levels: ' + t.beaten + ' beaten"><div class="pad">' + LOCK + '</div><div class="cnt">🏁 ' + t.beaten + '/' + t.gate + '</div></div>';
     }
     h += '</div>';
     if (!t) h += '<div class="dl-done">' + (s.tickets > 0 ? '<span class="tkbig">' + tk(150) + '</span><button class="dl-back" aria-label="Back to the skins">↩</button>' : '<span style="font-size:96px">🏆</span>') + '</div>';
@@ -272,8 +289,14 @@
     const back = root.querySelector('.dl-back'); if (back) back.onclick = close;
     root.querySelectorAll('.dl-face').forEach(b => b.onclick = () => zoom(b));
   }
+  // the marquee: a bulb per ticket, labelled with its level gate, lit once that many levels are beaten
+  function lamps(t) {
+    const G = T().GATE, b = C.beaten();
+    return '<div class="dl-lamps" role="img" aria-label="Levels beaten: ' + b + (t ? ', next ticket at ' + t.gate : '') + '">' +
+      G.map((g, j) => '<span class="dl-b' + (b >= g ? ' on' : '') + (t && j === t.n - 1 ? ' nx' : '') + '">' + BULB + '<i>' + g + '</i></span>').join('') + '</div>';
+  }
   const face = (w, big) => '<span class="dl-in"><span class="dl-pr"><span class="cn">' + S().coinOf(w.spec).svg(26) + '</span>' + fmt(w.price) + '</span>' +
-    (w.used ? '<span class="dl-used" aria-hidden="true">🎟️✓</span>' : '<span class="dl-bar" aria-hidden="true"><i style="width:' + (Math.min(1, w.bal / w.price) * 100).toFixed(1) + '%"></i></span>') + '</span>';
+    (w.used ? '<span class="dl-sold" aria-hidden="true">SOLD OUT</span>' : '<span class="dl-bar" aria-hidden="true"><i style="width:' + (Math.min(1, w.bal / w.price) * 100).toFixed(1) + '%"></i></span>') + '</span>';
   // the glass case, drawn at the screen's width: a lit cabinet of cheese, salami, pickles, olives and spare tickets on a steel
   // tray, glass glare over the front, a steel sill and a panelled wooden base with a gold trim
   function caseArt(W) {
@@ -316,7 +339,7 @@
     const w = signs(t).find(x => x.id === b.dataset.w); if (!w) return;
     const i = [...root.querySelectorAll('.dl-face')].indexOf(b), can = t.gateOk && w.ok;
     snd(can ? 740 : 330, .1, 'triangle', .05);
-    if (!t.gateOk) { fx('nope'); const lk = root.querySelector('.dl-lock'); if (lk && lk.animate && !reduced()) lk.animate([{ transform: 'rotate(0)' }, { transform: 'rotate(9deg)' }, { transform: 'rotate(-7deg)' }, { transform: 'rotate(0)' }], { duration: 500 }); }
+    if (!t.gateOk) { fx('nope'); const nx = root.querySelector('.dl-b.nx'); if (nx && nx.animate && !reduced()) nx.animate([{ transform: 'scale(1)' }, { transform: 'scale(1.6)' }, { transform: 'scale(1)' }], { duration: 500 }); }
     const z = document.createElement('div'); z.className = 'dl-zoom';
     z.innerHTML = '<div class="dl-bs">' + signSvg(i, can) + face(w) + '</div>' +
       '<button class="dl-buy" ' + (can ? '' : 'disabled') + ' aria-label="Buy one ticket for ' + esc(fmt(w.price) + ' ' + S().coinOf(w.spec).plural) + '"><span class="tk">' + tk(58) + '</span>×1<span class="cn">' + S().coinOf(w.spec).svg(34) + '</span>' + fmt(w.price) + '</button>';

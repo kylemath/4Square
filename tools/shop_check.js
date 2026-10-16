@@ -20,6 +20,10 @@ const SAVE = 'fill-the-hole-v2';
 const reel = sel => `(() => { const r = document.querySelector('${sel} .rl'); if (!r) return null; const c = [...r.querySelectorAll('.rl-card')];
   return { n: c.length, own: c.filter(x => x.classList.contains('own')).map(x => x.dataset.s), lock: c.filter(x => x.classList.contains('lock')).length,
     at: (c.find(x => x.getAttribute('aria-selected') === 'true') || {}).dataset?.s, role: r.getAttribute('role'), act: r.getAttribute('aria-activedescendant') }; })()`;
+// the deli's signs: each currency's place, shape and state
+const signsAt = `[...document.querySelectorAll('#deli .dl-sign')].map(d => { const b = d.querySelector('.dl-face'); return { w: b.dataset.w, at: d.style.left + ' ' + d.style.getPropertyValue('--hang'),
+  shape: b.querySelector('.dl-shape path:nth-child(3)').getAttribute('d') + b.querySelector('.dl-shape path:nth-child(3)').getAttribute('fill'), cls: d.className, sold: !!b.querySelector('.dl-sold') }; })`;
+const same = (a, b) => a.length === b.length && a.every((x, i) => x.w === b[i].w && x.at === b[i].at && x.shape === b[i].shape);
 const key = (sel, k) => `document.querySelector('${sel} .rl').dispatchEvent(new KeyboardEvent('keydown', { key: '${k}', bubbles: true }))`;
 (async () => {
   if (SH) fs.mkdirSync(SH, { recursive: true });
@@ -59,8 +63,12 @@ const key = (sel, k) => `document.querySelector('${sel} .rl').dispatchEvent(new 
     const words = await P.eval(`(() => { const c = document.getElementById('shop').cloneNode(true); c.querySelectorAll('.rl-art, .sh-art, iframe').forEach(x => x.remove()); document.body.appendChild(c); const t = c.innerText; c.remove(); return t.replace(/\\s+/g, ' ').trim(); })()`);
     ok('the shop has no sentences', !/[a-z]{3,} [a-z]{3,} [a-z]{3,}/i.test(words), words.slice(0, 80));
     await P.eval(`document.querySelector('#shop .sh-big.deli').click()`); await sleep(900);
-    const d1 = await P.eval(`({ on: document.getElementById('deli').classList.contains('on'), signs: document.querySelectorAll('#deli .dl-sign').length, ok: document.querySelectorAll('#deli .dl-sign.ok').length, lock: (document.querySelector('#deli .dl-lock') || {}).textContent })`);
-    ok('the deli hangs a price sign per currency, padlocked at 0/1 levels', d1.on && d1.signs === n && d1.ok === 0 && /0\/1/.test(d1.lock || ''), d1);
+    const lamps = `(() => { const b = [...document.querySelectorAll('#deli .dl-b')]; return { n: b.length, on: b.filter(x => x.classList.contains('on')).length, nx: (b.find(x => x.classList.contains('nx')) || {}).textContent, gates: b.map(x => +x.textContent).join() }; })()`;
+    const d1 = await P.eval(`({ on: document.getElementById('deli').classList.contains('on'), signs: document.querySelectorAll('#deli .dl-sign').length, ok: document.querySelectorAll('#deli .dl-sign.ok').length, lamps: ${lamps} })`);
+    ok('the deli hangs a price sign per currency, nothing for sale at 0 levels', d1.on && d1.signs === n && d1.ok === 0, d1);
+    ok('a bulb per ticket labelled with its level gate, none lit, the first one next', d1.lamps.gates === (await P.eval('FTH_TICKETS.GATE.join()')) && d1.lamps.on === 0 && d1.lamps.nx === '1', d1.lamps);
+    const L0 = await P.eval(signsAt);
+    ok('only the Islands sign is in colour; every skin without a ticket hangs grey', L0.filter(x => /grey/.test(x.cls)).length === n - 1 && !/grey/.test(L0.find(x => x.w === 'islands').cls), L0.filter(x => !/grey/.test(x.cls)).map(x => x.w));
     await shot('deli-locked');
     await P.eval(`document.querySelector('#deli .dl-x').click()`); await sleep(300);
     await P.eval(`document.querySelector('#shop .sh-x').click()`); await sleep(300);
@@ -91,6 +99,14 @@ const key = (sel, k) => `document.querySelector('${sel} .rl').dispatchEvent(new 
     ok('the ticket is paid from the Islands wallet', after.skins.tickets === 1 && after.skins.bought === 1 && after.bal === bal - 225 && after.earned >= bal, after);
     ok('the deli closes after its animation, into the shop', await until(P, `!document.getElementById('deli').classList.contains('on') && document.getElementById('shop').classList.contains('on')`, 8000));
     ok('the shop counts the ticket', await P.eval(`/×1/.test(document.querySelector('#shop .sh-tks').textContent)`));
+    // back at the deli with the ticket unspent: every sign hangs where it did, Islands' sold out, none for sale
+    await P.eval(`document.querySelector('#shop .sh-deli').click()`); await sleep(700);
+    const L1 = await P.eval(signsAt), m1 = await P.eval(lamps);
+    ok('one level beaten: the first bulb is lit, ticket 2\'s bulb (3 levels) is next', m1.on === 1 && m1.nx === '3', m1);
+    ok('after a purchase every sign keeps its place, shape and currency', same(L0, L1), L1.map(x => x.w).join());
+    ok('the currency that bought a ticket is SOLD OUT, nothing else is for sale', L1.filter(x => x.sold).map(x => x.w).join() === 'islands' && !L1.some(x => /\bok\b/.test(x.cls)), L1.filter(x => x.sold).map(x => x.w));
+    await shot('deli-sold');
+    await P.eval(`document.querySelector('#deli .dl-x').click()`); await sleep(300);
     await toCard('#shop', 'dots');
     ok('a locked skin now offers [🎟️ × 1]', await P.eval(`!!document.querySelector('#shop .sh-pv.lock .sh-big.use')`));
     // the live preview of Dots plays itself and never talks to the shell
@@ -104,6 +120,11 @@ const key = (sel, k) => `document.querySelector('${sel} .rl').dispatchEvent(new 
     ok('the ticket unlocks Dots', un.own.includes('dots') && un.t === 0, un);
     ok('Dots turns to colour on the reel and ▶ shows', await until(P, `!!document.querySelector('#shop .sh-pv.own') && document.querySelector('#shop .rl-card[data-s="dots"]').classList.contains('own') && document.body.dataset.skin === 'dots'`, 4000));
     await sleep(1500); await shot('shop-owned');
+    await P.eval(`document.querySelector('#shop .sh-deli').click()`); await sleep(700);
+    const L2 = await P.eval(signsAt), dots = L2.find(x => x.w === 'dots') || {};
+    ok('with Dots unlocked its sign is in colour, in the same place', same(L0, L2) && !/grey/.test(dots.cls) && L2.find(x => x.w === 'islands').sold, dots);
+    await shot('deli-dots');
+    await P.eval(`document.querySelector('#deli .dl-x').click()`); await sleep(300);
     await P.eval(`document.querySelector('#shop .sh-play').click()`); await sleep(600);
     ok('▶ closes the shop and plays', await P.eval(`!document.getElementById('shop').classList.contains('on') && (!!document.querySelector('.howto.on') || document.getElementById('menu').classList.contains('on'))`));
     await go('');
