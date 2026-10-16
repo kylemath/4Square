@@ -96,7 +96,11 @@ feeds plausible, human-paced timings through the real game or a patched client. 
 legal, not that a human found it. **Points are not verified**: they come from the shell's score (trace bonuses, new
 patterns, bonus-round), which cannot be reproduced from the swap list; they are only capped (6000 per level) and used as the
 last tie-break after stars and levels. Skins with their own goal (Blank Doodle, `own: true`) report only a swap count, not
-colourings, so they produce no proof and no board entry yet (the frame page would have to post its colourings). A player
+colourings, so they produce no proof (the frame page would have to post its colourings). Their levels reach the board as
+unverified **level claims** instead (`account.js` `ownPr`): the entry of an own-goal skin carries `pr[levelId] = { v, lvl,
+own: 1, claim: { stars, moves: 0, pts } }` for every level beaten in the sealed progress save (`save.byId`) that has no
+verified proof in a proof-making skin, when the player owns an own-goal skin. Readers count a claim without a replay, only
+on an own-goal skin's board; an edited save still hides the entry. Like coins, a claim is trusted, not proven. A player
 who strips the integrity signals before submitting removes that evidence. Firestore rules cannot re-run the replay.
 Next steps if it matters: a Cloud Function (Blaze plan, still pennies) triggered on `runs/*` that runs `verify.js` in node
 and writes a `verified` flag/entry totals itself, with the rules then denying client writes to `boards`; a per-level
@@ -131,7 +135,8 @@ The leaderboard screen is ONE standings table (top 10, your own row added below 
 
 **Fav** is the skin with the most levels beaten (ties: coins earned there, capped as below). Only levels whose proofs replay
 count. It reads each skin's top 100 entries, so a player far down one skin's board can miss that skin's share of the sum.
-Blank Doodle makes no proofs, so it adds no levels.
+Blank Doodle makes no proofs; its levels count through its level claims (above), so a player who only paints still
+shows the level they are on.
 
 ## The podium: coins earned in each skin (`FTH_ACCT.podium`, kept for the API; no longer on screen)
 
