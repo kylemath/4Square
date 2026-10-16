@@ -25,6 +25,10 @@ ok('one ticket per skin other than Islands', T.GATE.length === SK.length - 1 && 
 ok('gates rise', T.GATE.every((g, i) => !i || g > T.GATE[i - 1]), T.GATE.join(' '));
 ok('prices rise', T.PRICE.every((p, i) => !i || p > T.PRICE[i - 1]), T.PRICE.join(' '));
 ok('every gate is a real level count', T.GATE[T.GATE.length - 1] <= PAY.length);
+// the deli's light bulbs are the gates and end at the last one: it is the full level count (LEVEL-REQUEST.md, After --apply)
+const NLV = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'levels.json'), 'utf8')).levels.length;
+ok('PAY has one entry per level in levels.json', PAY.length === NLV, PAY.length + ' pay, ' + NLV + ' levels');
+ok('the last gate (the last deli bulb) is the full level count', T.GATE[T.GATE.length - 1] === NLV, T.GATE[T.GATE.length - 1] + ' / ' + NLV);
 ok('the first ticket costs about one level', T.GATE[0] === 1 && T.PRICE[0] <= PAY[0], T.PRICE[0] + ' <= ' + PAY[0]);
 console.log('  ticket  gate  price  spent  earned  spare');
 let spent = 0, cum = 0, li = 0;
