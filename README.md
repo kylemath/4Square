@@ -31,7 +31,7 @@ owns Islands only; every other skin is unlocked with a **skin ticket** (`tickets
 once enough levels are beaten (1, 3, 5, 7, 9, 12, 14, 16, 18, 20, 23, 26, 28, 30, 32, 35, 38, 40) and costs coins from one wallet (900 points'
 worth at first, about one level's pay, rising by 300 a ticket to 6,000): each skin comes a little further on and costs a little more. Each
 wallet buys ONE ticket: doubloons buy the first, and each later ticket is paid in the coins of a skin a ticket unlocked, so every
-new skin you play earns its way to the next (a used currency's deli sign shows 🎟️✓). The ticket then unlocks any locked skin. The title screen picks a skin on the **skin reel** (`reel.js`: swipe the ribbon of skin cards; resting on
+new skin you play earns its way to the next (every currency keeps its own deli sign in a fixed place; a used one is stamped SOLD OUT and the coin of a skin you have no ticket for yet hangs grey). The ticket then unlocks any locked skin. The title screen picks a skin on the **skin reel** (`reel.js`: swipe the ribbon of skin cards; resting on
 an owned card selects it). The shop is a full-screen showroom on the same reel, over a live preview of the centred skin playing
 itself (its page with `&demo=1`, see `lab/core.js`); tickets are bought at the **deli counter** (`deli.js`): one hanging price sign per
 currency, tap one, PURCHASE. `node tools/tickets_check.js` checks the rules and that each ticket is affordable at its gate

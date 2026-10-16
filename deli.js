@@ -3,9 +3,12 @@
  *   FTH_DELI.open(ctx, { onBought(), onClose() })      ctx: the shop's ticket ctx (tickets.js), plus blip / sfx for sound
  *
  * A counter scene with far too many hanging price signs, swinging on their strings: each sign is the price of ONE ticket
- * in one skin's coin (FTH_TICKETS.next(ctx).pay, and coinsFor for a wallet the player does not hold yet). A sign the
- * player cannot pay is dimmed and still; when the level gate is not met yet the counter hangs a padlock with the level
- * count. Tap a sign: it zooms forward with a PURCHASE button (🎟️ × 1 for that price). Tap it: FTH_TICKETS.buy, then coins
+ * in one skin's coin (FTH_TICKETS.next(ctx).pay, and coinsFor for a wallet the player does not hold yet). Every skin has
+ * its own sign, in the skin's reel order, so each currency keeps its place, shape and paint from one ticket to the next.
+ * A sign the player cannot pay is dimmed and still; the coin of a skin the player has no ticket for yet is grey; a
+ * currency that already bought its one ticket wears a SOLD OUT stamp. When the level gate is not met yet the counter
+ * hangs a padlock with the level count; when no ticket is for sale (every locked skin has one waiting) the signs still
+ * hang, none for sale. Tap a sign: it zooms forward with a PURCHASE button (🎟️ × 1 for that price). Tap it: FTH_TICKETS.buy, then coins
  * fly out of the wallet into the dispenser, a paper ticket prints and swoops into the wallet, the wallet bumps.
  * No sentences: coins, numbers, glyphs.
  */
@@ -145,8 +148,11 @@
 .dl-pr .cn{display:flex;-webkit-text-stroke:0;filter:drop-shadow(0 2px 0 rgba(28,22,64,.5))}.dl-pr .cn svg{width:calc(var(--w) * .26);height:auto}
 .dl-bar{width:62%;height:7px;border-radius:9px;background:linear-gradient(rgba(28,22,64,.55),rgba(28,22,64,.3));overflow:hidden;border:1.5px solid #1c1640}
 .dl-bar i{display:block;height:100%;background:linear-gradient(#b4f7a6,#4fcf4f 55%,#2b9439);box-shadow:inset 0 1px 0 rgba(255,255,255,.6)}
-.dl-used{font-size:15px;line-height:1;opacity:.9}
 .dl-sign.no .dl-face{filter:saturate(.3) brightness(.8);opacity:.88}
+.dl-sign.grey .dl-face{filter:grayscale(1) brightness(.82);opacity:.8}
+.dl-sign.sold .dl-face{filter:saturate(.5) brightness(.88);opacity:.95}
+.dl-sold{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%) rotate(-14deg);padding:.18em .4em;border-radius:.3em;border:max(2px,calc(var(--w) * .03)) solid #d1162c;
+  background:rgba(255,255,255,.9);color:#d1162c;font:900 calc(var(--w) * .14)/1 system-ui,sans-serif;letter-spacing:.04em;white-space:nowrap;box-shadow:0 2px 0 rgba(28,22,64,.45);pointer-events:none}
 .dl-sign.ok{z-index:25 !important}   /* in front of its neighbours (the rows set z-index inline) */
 .dl-sign.ok .dl-face{filter:drop-shadow(0 0 7px rgba(255,236,140,.95)) drop-shadow(0 0 16px rgba(255,190,40,.7))}
 .dl-sheen{transform:translateX(-30px)}
@@ -221,13 +227,22 @@
     document.body.appendChild(root);
     root.addEventListener('keydown', e => { if (e.key === 'Escape') { e.stopPropagation(); if (root.querySelector('.dl-zoom')) unzoom(); else close(); } });
   }
-  // every currency's price for the next ticket: the wallets the rules list first (they can pay), then every other skin's coin;
-  // a wallet that already bought its one ticket (t.used) hangs last, dimmed, with a ✓ instead of a progress bar
+  // every currency's price for the next ticket, one sign per skin in a fixed order (the reel's), so a purchase never moves a
+  // sign: a wallet the rules list (t.pay) as it is, a skin the player has no ticket for yet grey, and a wallet that already
+  // bought its one ticket (t.used) stamped SOLD OUT instead of a progress bar
   function signs(t) {
-    const seen = new Set(t.pay.map(w => w.id)), out = t.pay.slice(), used = t.used || [];
-    C.skins.forEach(k => { if (!seen.has(k.id) && !used.includes(k.id)) out.push({ id: k.id, spec: k, price: T().coinsFor(t.pts, k), bal: 0, ok: false, frac: 0 }); });
-    C.skins.forEach(k => { if (used.includes(k.id)) out.push({ id: k.id, spec: k, price: T().coinsFor(t.pts, k), bal: 0, ok: false, frac: 0, used: true }); });
-    return out;
+    const pay = new Map(t.pay.map(w => [w.id, w])), used = t.used || [];
+    return (C.order || C.skins).map(k => used.includes(k.id) ? { id: k.id, spec: k, price: T().coinsFor(t.pts, k), bal: 0, ok: false, frac: 0, used: true }
+      : pay.get(k.id) || { id: k.id, spec: k, price: T().coinsFor(t.pts, k), bal: 0, ok: false, frac: 0, grey: true });
+  }
+  // the ticket the signs price: the next one, or when next() is null (every locked skin has a ticket waiting, or none is
+  // left), the one after the last bought, with nothing for sale, so the signs stay up in their places
+  function priced() {
+    const t = T().next(C); if (t) return t;
+    const s = T().state(C.save), G = T().GATE, P = T().PRICE, n = Math.min(s.bought + 1, G.length);
+    const pay = C.skins.filter(k => !s.paid.includes(k.id) && T().owns(C.save, k.id)).map(k => ({ id: k.id, spec: k, price: T().coinsFor(P[n - 1], k), bal: 0, ok: false, frac: 0 }))
+      .map(w => { w.bal = ((C.save.wallet || {})[w.id] || {}).bal || 0; w.frac = Math.min(1, w.bal / w.price); return w; });
+    return { n, gate: G[n - 1], beaten: C.beaten(), gateOk: true, pts: P[n - 1], pay, used: s.paid.slice(), idle: true };
   }
   function open(ctx, opts) {
     C = ctx; O = opts || {}; busy = false; build(); render();
@@ -242,26 +257,26 @@
   }
   const isOn = () => !!(root && root.classList.contains('on'));
   function render() {
-    const t = T().next(C), s = T().state(C.save);
+    const t = T().next(C), s = T().state(C.save), v = priced();
     const H = innerHeight, W = innerWidth, top = 72, bot = 300, area = Math.max(240, H - top - bot);
     let h = '<div class="dl-awn"></div><button class="dl-x" aria-label="Close">✕</button>' +
       '<div class="dl-led" aria-label="Ticket ' + (t ? t.n : s.bought) + '">' + tk(34) + '<b>' + String(t ? t.n : s.bought).padStart(2, '0') + '</b></div><div class="dl-rail"></div><div class="dl-signs">';
-    if (t) {
-      const L = signs(t), rows = [4, 3, 4, 3, 4], rowH = Math.min(150, area / 3.9);
+    {
+      const L = signs(v), rows = [4, 3, 4, 3, 4], rowH = Math.min(150, area / 3.9);
       let i = 0, r = 0;
       while (i < L.length) {
         const per = rows[r % rows.length], left = L.length - i, cnt = Math.min(per, left);
         for (let c = 0; c < cnt; c++, i++) {
-          const w = L[i], ok = t.gateOk && w.ok, wpx = Math.round(Math.min(W / 4.1, 84 + hash(i, 3) * 22)), one = [1, 7].includes(i % SHAPES.length);
+          const w = L[i], ok = v.gateOk && w.ok, wpx = Math.round(Math.min(W / 4.1, 84 + hash(i, 3) * 22)), one = [1, 7].includes(i % SHAPES.length);
           const x = Math.max(wpx / 2 + 14, Math.min(W - wpx / 2 - 14, ((c + .5) / cnt) * W + (hash(i, 1) - .5) * (cnt === 4 ? 14 : 34)));
           const hang = 10 + r * rowH + hash(i, 2) * rowH * .3, tilt = ((hash(i, 4) - .5) * (one ? 18 : 6)).toFixed(1);
           const amp = Math.min(3, Math.atan(10 / (hang + 40)) * 180 / Math.PI) * (ok ? 1 : .3);   // the same small sway at the bottom of a long string
-          h += '<div class="dl-sign ' + (ok ? 'ok' : 'no') + (one ? ' one' : '') + '" style="z-index:' + (20 - r) + ';left:' + x.toFixed(1) + 'px;--w:' + wpx + 'px;--hang:' + Math.round(hang) + 'px;--tilt:' + tilt + 'deg;--amp:' + amp.toFixed(2) + 'deg;--sp:' + (2.2 + hash(i, 5) * 1.8).toFixed(2) + 's;--dl:' + (-hash(i, 6) * 3).toFixed(2) + 's">' +
-            '<button class="dl-face" data-w="' + esc(w.id) + '" aria-label="' + esc(fmt(w.price) + ' ' + S().coinOf(w.spec).plural) + (w.used ? ', already bought a ticket' : ok ? '' : ', ' + fmt(w.bal) + ' held') + '">' + signSvg(i, ok) + face(w) + '</button></div>';
+          h += '<div class="dl-sign ' + (ok ? 'ok' : 'no') + (w.used ? ' sold' : w.grey ? ' grey' : '') + (one ? ' one' : '') + '" style="z-index:' + (20 - r) + ';left:' + x.toFixed(1) + 'px;--w:' + wpx + 'px;--hang:' + Math.round(hang) + 'px;--tilt:' + tilt + 'deg;--amp:' + amp.toFixed(2) + 'deg;--sp:' + (2.2 + hash(i, 5) * 1.8).toFixed(2) + 's;--dl:' + (-hash(i, 6) * 3).toFixed(2) + 's">' +
+            '<button class="dl-face" data-w="' + esc(w.id) + '" aria-label="' + esc(fmt(w.price) + ' ' + S().coinOf(w.spec).plural) + (w.used ? ', sold out' : w.grey ? ', locked' : ok ? '' : ', ' + fmt(w.bal) + ' held') + '">' + signSvg(i, ok) + face(w) + '</button></div>';
         }
         r++;
       }
-      if (!t.gateOk) h += '<div class="dl-lock" style="--hang:' + Math.round(area * .3) + 'px" aria-label="Beat ' + t.gate + ' levels: ' + t.beaten + ' beaten"><div class="pad">' + LOCK + '</div><div class="cnt">🏁 ' + t.beaten + '/' + t.gate + '</div></div>';
+      if (t && !t.gateOk) h += '<div class="dl-lock" style="--hang:' + Math.round(area * .3) + 'px" aria-label="Beat ' + t.gate + ' levels: ' + t.beaten + ' beaten"><div class="pad">' + LOCK + '</div><div class="cnt">🏁 ' + t.beaten + '/' + t.gate + '</div></div>';
     }
     h += '</div>';
     if (!t) h += '<div class="dl-done">' + (s.tickets > 0 ? '<span class="tkbig">' + tk(150) + '</span><button class="dl-back" aria-label="Back to the skins">↩</button>' : '<span style="font-size:96px">🏆</span>') + '</div>';
@@ -273,7 +288,7 @@
     root.querySelectorAll('.dl-face').forEach(b => b.onclick = () => zoom(b));
   }
   const face = (w, big) => '<span class="dl-in"><span class="dl-pr"><span class="cn">' + S().coinOf(w.spec).svg(26) + '</span>' + fmt(w.price) + '</span>' +
-    (w.used ? '<span class="dl-used" aria-hidden="true">🎟️✓</span>' : '<span class="dl-bar" aria-hidden="true"><i style="width:' + (Math.min(1, w.bal / w.price) * 100).toFixed(1) + '%"></i></span>') + '</span>';
+    (w.used ? '<span class="dl-sold" aria-hidden="true">SOLD OUT</span>' : '<span class="dl-bar" aria-hidden="true"><i style="width:' + (Math.min(1, w.bal / w.price) * 100).toFixed(1) + '%"></i></span>') + '</span>';
   // the glass case, drawn at the screen's width: a lit cabinet of cheese, salami, pickles, olives and spare tickets on a steel
   // tray, glass glare over the front, a steel sill and a panelled wooden base with a gold trim
   function caseArt(W) {
