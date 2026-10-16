@@ -63,8 +63,10 @@ const key = (sel, k) => `document.querySelector('${sel} .rl').dispatchEvent(new 
     const words = await P.eval(`(() => { const c = document.getElementById('shop').cloneNode(true); c.querySelectorAll('.rl-art, .sh-art, iframe').forEach(x => x.remove()); document.body.appendChild(c); const t = c.innerText; c.remove(); return t.replace(/\\s+/g, ' ').trim(); })()`);
     ok('the shop has no sentences', !/[a-z]{3,} [a-z]{3,} [a-z]{3,}/i.test(words), words.slice(0, 80));
     await P.eval(`document.querySelector('#shop .sh-big.deli').click()`); await sleep(900);
-    const d1 = await P.eval(`({ on: document.getElementById('deli').classList.contains('on'), signs: document.querySelectorAll('#deli .dl-sign').length, ok: document.querySelectorAll('#deli .dl-sign.ok').length, lock: (document.querySelector('#deli .dl-lock') || {}).textContent })`);
-    ok('the deli hangs a price sign per currency, padlocked at 0/1 levels', d1.on && d1.signs === n && d1.ok === 0 && /0\/1/.test(d1.lock || ''), d1);
+    const lamps = `(() => { const b = [...document.querySelectorAll('#deli .dl-b')]; return { n: b.length, on: b.filter(x => x.classList.contains('on')).length, nx: (b.find(x => x.classList.contains('nx')) || {}).textContent, gates: b.map(x => +x.textContent).join() }; })()`;
+    const d1 = await P.eval(`({ on: document.getElementById('deli').classList.contains('on'), signs: document.querySelectorAll('#deli .dl-sign').length, ok: document.querySelectorAll('#deli .dl-sign.ok').length, lamps: ${lamps} })`);
+    ok('the deli hangs a price sign per currency, nothing for sale at 0 levels', d1.on && d1.signs === n && d1.ok === 0, d1);
+    ok('a bulb per ticket labelled with its level gate, none lit, the first one next', d1.lamps.gates === (await P.eval('FTH_TICKETS.GATE.join()')) && d1.lamps.on === 0 && d1.lamps.nx === '1', d1.lamps);
     const L0 = await P.eval(signsAt);
     ok('only the Islands sign is in colour; every skin without a ticket hangs grey', L0.filter(x => /grey/.test(x.cls)).length === n - 1 && !/grey/.test(L0.find(x => x.w === 'islands').cls), L0.filter(x => !/grey/.test(x.cls)).map(x => x.w));
     await shot('deli-locked');
@@ -99,7 +101,8 @@ const key = (sel, k) => `document.querySelector('${sel} .rl').dispatchEvent(new 
     ok('the shop counts the ticket', await P.eval(`/×1/.test(document.querySelector('#shop .sh-tks').textContent)`));
     // back at the deli with the ticket unspent: every sign hangs where it did, Islands' sold out, none for sale
     await P.eval(`document.querySelector('#shop .sh-deli').click()`); await sleep(700);
-    const L1 = await P.eval(signsAt);
+    const L1 = await P.eval(signsAt), m1 = await P.eval(lamps);
+    ok('one level beaten: the first bulb is lit, ticket 2\'s bulb (3 levels) is next', m1.on === 1 && m1.nx === '3', m1);
     ok('after a purchase every sign keeps its place, shape and currency', same(L0, L1), L1.map(x => x.w).join());
     ok('the currency that bought a ticket is SOLD OUT, nothing else is for sale', L1.filter(x => x.sold).map(x => x.w).join() === 'islands' && !L1.some(x => /\bok\b/.test(x.cls)), L1.filter(x => x.sold).map(x => x.w));
     await shot('deli-sold');
