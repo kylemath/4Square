@@ -1,5 +1,6 @@
 /* ads.js: Google AdSense for 4square. Two placements, each with its own switch:
- *   banner   a 320 x 50 display unit at the foot of the level map (#menu), never over the board or a win card.
+ *   banner   a 320 x 50 display unit at the foot of the level map (#adBar) and under the play screen's button bar (#adGame),
+ *            never over the board or a win card. Each is filled the first time its screen is on (a hidden slot has no size).
  *   between  an H5 Games Ads interstitial when the player taps NEXT on the win card (adBreak type 'next'). Google decides
  *            whether an ad actually shows and caps how often (frequencyHint); the next level starts when it closes.
  *            Needs H5 Games Ads approval on the AdSense account (https://adsense.google.com/start/h5-beta/).
@@ -13,7 +14,8 @@
  */
 window.FTH_ADS = {
   client: 'ca-pub-7680225514669783',
-  slot: '5167792035',                  // display unit "4square level map", fixed 320 x 50; '' switches the banner off
+  slot: '5167792035',                  // display unit "4square level map", fixed 320 x 50; '' switches the banners off
+  gameSlot: '',                        // a separate unit for the play screen, for its own reporting; '' reuses slot
   between: false,                      // true once H5 Games Ads is approved: an interstitial between levels
   frequencyHint: '120s',               // at most about one interstitial every two minutes
 };
@@ -40,20 +42,24 @@ window.FTH_ADS = {
   if (between) load();                 // before the banner's push, so the script tag carries the H5 attributes
 
   if (banner) {
-    const bar = document.getElementById('adBar');
-    if (bar) {
-      bar.hidden = false; document.body.classList.add('ads');
-      if (!cfg.slot || mode === 'test') bar.innerHTML = '<div class="adph">ad · 320 × 50</div>';
-      else {
-        const ins = document.createElement('ins');
-        ins.className = 'adsbygoogle';
-        ins.style.cssText = 'display:inline-block;width:320px;height:50px';
-        ins.dataset.adClient = cfg.client; ins.dataset.adSlot = cfg.slot;
-        if (testFlags) ins.dataset.adtest = 'on';
-        bar.appendChild(ins);
-        load(); window.adsbygoogle.push({});
-      }
-    }
+    document.body.classList.add('ads');
+    const gm = document.getElementById('game'); if (gm) gm.classList.add('adson');
+    [['adBar', cfg.slot], ['adGame', cfg.gameSlot || cfg.slot]].forEach(([id, slot]) => {
+      const bar = document.getElementById(id); if (!bar) return;
+      bar.hidden = false;
+      if (!slot || mode === 'test') { bar.innerHTML = '<div class="adph">ad · 320 × 50</div>'; return; }
+      const ins = document.createElement('ins');
+      ins.className = 'adsbygoogle';
+      ins.style.cssText = 'display:inline-block;width:320px;height:50px';
+      ins.dataset.adClient = cfg.client; ins.dataset.adSlot = slot;
+      if (testFlags) ins.dataset.adtest = 'on';
+      bar.appendChild(ins);
+      load();
+      const fill = () => window.adsbygoogle.push({});
+      if (!window.IntersectionObserver) { fill(); return; }
+      const io = new IntersectionObserver(es => { if (es.some(e => e.isIntersecting)) { io.disconnect(); fill(); } });
+      io.observe(bar);
+    });
   }
 
   if (between) {
