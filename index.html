@@ -120,6 +120,9 @@
   .mnode .me { position: absolute; left: 50%; bottom: 74%; width: 46px; height: 56px; margin-left: -23px; animation: mbob .8s ease-in-out infinite alternate; pointer-events: auto; cursor: pointer; }
   .mnode .me svg { width: 100%; height: 100%; overflow: visible; }
   @keyframes mbob { to { transform: translateY(-9px); } }
+  #adBar { position: sticky; bottom: 0; z-index: 3; margin-top: auto; flex: none; display: flex; justify-content: center; align-items: center; min-height: 50px; padding: 4px 0 max(4px, env(safe-area-inset-bottom)); background: rgba(14,52,110,.85); }
+  #adBar[hidden] { display: none; }
+  #adBar .adph { width: 320px; height: 50px; display: grid; place-items: center; background: #d9dde3; color: #5b6470; border: 1px dashed #8a929c; font: 700 .8rem system-ui, sans-serif; letter-spacing: .5px; }
   .mnode.boss > svg { filter: drop-shadow(0 0 10px #ff7a2a); }
 
   /* ---------- how to play ---------- */
@@ -598,6 +601,7 @@
     <button class="btn3d yellow rbtn" id="btnHowMap" aria-label="How to play">?</button>
   </div>
   <div id="saga"></div>
+  <div id="adBar" hidden aria-label="Advertisement"></div><!-- ads.js: optional banner, off by default -->
 </section>
 
 <section id="game" class="screen" aria-label="Game">
@@ -673,6 +677,7 @@
 </div>
 <canvas id="confetti"></canvas>
 
+<script src="ads.js"></script>
 <script src="telemetry.js"></script>
 <script src="levels.js"></script>
 <script src="verify.js"></script>
