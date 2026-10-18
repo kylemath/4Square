@@ -2170,7 +2170,14 @@
     });
   }
   $('winRetry').onclick = () => startLevel(levelIdx, false);
-  $('winNext').onclick = () => { if (fadeT) { fadeT.next(); return; } if (levelIdx + 1 < G.levels.length) startLevel(levelIdx + 1, true); else showMenu(); };
+  $('winNext').onclick = () => {
+    if (fadeT) { fadeT.next(); return; }
+    const go = () => { if (levelIdx + 1 < G.levels.length) startLevel(levelIdx + 1, true); else showMenu(); };
+    if (window.FTH_ADS && FTH_ADS.adBreak) {        // ads.js: maybe an interstitial first (off unless switched on), game sound paused
+      $('winNext').disabled = true;
+      FTH_ADS.adBreak(() => { $('winNext').disabled = false; go(); }, { pause: () => { if (AC) AC.suspend(); }, resume: () => { if (AC) AC.resume(); } });
+    } else go();
+  };
 
   // ---------------- bonus round ----------------
   // The win card's mini-game: one of the five games in bonus/games.js (window.FTH_BONUS: chain, snake, hop, stack, pop; their rules,
