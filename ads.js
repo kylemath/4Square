@@ -15,7 +15,10 @@
  * AdSense also needs ads.txt at the site root and, for visitors in the EEA, UK and Switzerland, a Google-certified
  * consent message (AdSense > Privacy & messaging). Neither lives here.
  */
-window.FTH_ADS = null;
+window.FTH_ADS = {
+  client: 'ca-pub-7680225514669783',   // public: it is in every ad the page shows (and ads.txt)
+  slot: '',                            // the 320 x 50 display unit's slot; empty keeps the banner off
+};
 (function () {
   const q = new URLSearchParams(location.search);
   const test = q.get('ads') === 'test', cfg = window.FTH_ADS;
@@ -23,7 +26,7 @@ window.FTH_ADS = null;
   const live = /(^|\.)4square\.studio$|^kylemath\.github\.io$/.test(location.hostname);
   const bar = document.getElementById('adBar'); if (!bar) return;
   bar.hidden = false; document.body.classList.add('ads');
-  if (!cfg || !cfg.client) { bar.innerHTML = '<div class="adph">ad · 320 × 50</div>'; return; }
+  if (!cfg || !cfg.client || !cfg.slot) { bar.innerHTML = '<div class="adph">ad · 320 × 50</div>'; return; }
   const ins = document.createElement('ins');
   ins.className = 'adsbygoogle';
   ins.style.cssText = 'display:inline-block;width:320px;height:50px';
