@@ -17,7 +17,7 @@
  */
 window.FTH_ADS = {
   client: 'ca-pub-7680225514669783',   // public: it is in every ad the page shows (and ads.txt)
-  slot: '',                            // the 320 x 50 display unit's slot; empty keeps the banner off
+  slot: '5167792035',                  // display unit "4square level map", fixed 320 x 50; '' switches the banner off
 };
 (function () {
   const q = new URLSearchParams(location.search);
