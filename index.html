@@ -122,8 +122,11 @@
   .mnode .me svg { width: 100%; height: 100%; overflow: visible; }
   @keyframes mbob { to { transform: translateY(-9px); } }
   #adBar { position: sticky; bottom: 0; z-index: 3; margin-top: auto; flex: none; display: flex; justify-content: center; align-items: center; min-height: 50px; padding: 4px 0 max(4px, env(safe-area-inset-bottom)); background: rgba(14,52,110,.85); }
-  #adBar[hidden] { display: none; }
-  #adBar .adph { width: 320px; height: 50px; display: grid; place-items: center; background: #d9dde3; color: #5b6470; border: 1px dashed #8a929c; font: 700 .8rem system-ui, sans-serif; letter-spacing: .5px; }
+  #adBar[hidden], #adGame[hidden] { display: none; }
+  /* the play screen's banner: under everything, with a clear gap from the button bar so a tap meant for a button never lands on the ad */
+  #adGame { flex: none; display: flex; justify-content: center; align-items: center; min-height: 50px; margin-top: 10px; padding: 0 0 max(4px, env(safe-area-inset-bottom)); background: rgba(14,52,110,.85); }
+  #game.adson .bar { padding-bottom: 10px; }
+  #adBar .adph, #adGame .adph { width: 320px; height: 50px; display: grid; place-items: center; background: #d9dde3; color: #5b6470; border: 1px dashed #8a929c; font: 700 .8rem system-ui, sans-serif; letter-spacing: .5px; }
   .mnode.boss > svg { filter: drop-shadow(0 0 10px #ff7a2a); }
 
   /* ---------- how to play ---------- */
@@ -637,6 +640,7 @@
     <button class="btn3d yellow rb muted" id="btnHint" aria-label="Hint" title="Hint">💡</button>
     <button class="btn3d blue rb" id="btnRestart" aria-label="Restart level" title="Restart"><svg viewBox="0 0 28 28" aria-hidden="true"><g fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 10.5A8.5 8.5 0 1 0 22.5 16M22 4.5v6h-6" stroke="#1c1640" stroke-width="7"/><path d="M21.5 10.5A8.5 8.5 0 1 0 22.5 16M22 4.5v6h-6" stroke="#fff" stroke-width="3.6"/></g></svg></button>
   </div>
+  <div id="adGame" hidden aria-label="Advertisement"></div><!-- ads.js: play-screen banner -->
 </section>
 
 <div class="overlay" id="installSheet" role="dialog" aria-label="Install the game"><div class="card">
