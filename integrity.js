@@ -152,7 +152,11 @@
     const r = cur; if (!r || !V) { if (!cur) log('win-without-run', {}); return Promise.resolve(null); }
     if (r.done || r.skip) return Promise.resolve(null);
     r.done = true;
-    if (r.own) { log('own-skin-no-proof', {}); return Promise.resolve(null); }       // the skin's own goal cannot be replayed (ACCOUNTS.md)
+    if (r.own) {                                             // the skin's own goal cannot be replayed (ACCOUNTS.md): no proof; the
+      log('own-skin-no-proof', {});                          // level reaches the board as a claim from the save (account.js ownPr)
+      const a = jget(ACCK, null); if (a && a.on && a.submit) setTimeout(() => loadAccount().then(A => A.flush()).catch(() => {}), 0);   // after the game saves the win
+      return Promise.resolve(null);
+    }
     const key = r.skin + '/' + r.lvl, farm = wins[key] = (wins[key] || 0) + 1;
     if (farm >= 3) log('level-farm', { n: farm });
     if (rimCount(r.Gr, r.last) > (r.Gr.goal || 3) || !r.ops.length) sig('win-without-path', {});

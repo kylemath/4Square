@@ -12,7 +12,8 @@
  *             board(skin, n): Promise<[{uid, ...entry}]>, deleteMine(uid, skins): Promise<void> }
  *
  * What a player has is derived from the verified proofs FTH_RUN keeps on the device ('fth-runs'), never from the
- * progress save: entry totals are recomputed from the proofs by anyone who reads them (see verifyEntry).
+ * progress save: entry totals are recomputed from the proofs by anyone who reads them (see verifyEntry). The one
+ * exception is an own-goal skin (Blank Doodle), which cannot make proofs: its entry carries level claims (ownPr below).
  */
 (function () {
   'use strict';
@@ -78,7 +79,7 @@
   // ---------------------------------------------------------------- firebase adapter (sdk injected so it can be mocked)
   const FB_VER = '10.12.2';
   // Firestore cannot hold arrays inside arrays: ops [['s',t,col]] and int [[kind,n,ms]] travel as strings
-  const packP = p => Object.assign({}, p, { ops: p.ops.map(o => o.join('|')), int: (p.int || []).map(x => x.join(':')) });
+  const packP = p => Object.assign({}, p, { ops: (p.ops || []).map(o => o.join('|')), int: (p.int || []).map(x => x.join(':')) });
   const unpackP = p => Object.assign({}, p, { ops: (p.ops || []).map(o => { const [t, d, c] = String(o).split('|'); return [t, +d, c]; }), int: (p.int || []).map(x => { const a = String(x).split(':'); return [a[0], ...a.slice(1).map(Number)]; }) });
   const mapP = (pr, f) => { const o = {}; Object.keys(pr || {}).forEach(l => { o[l] = f(pr[l]); }); return o; };
   const unpackEntry = e => e && Object.assign({}, e, { pr: mapP(e.pr, unpackP) });
@@ -240,6 +241,35 @@
     Object.keys(pr).forEach(l => { const c = pr[l].claim; levels++; stars += c.stars; if (c.stars === 3) pars++; points += Math.min(c.pts || 0, MAX_POINTS_PER_LEVEL); });
     return { stars, levels, pars, points };
   }
+  // this device's pr for a skin: its stored proofs (claim.pts = the best points), plus the level claims of an own-goal skin
+  function localPr(skin) {
+    const st = R.store()[skin] || {}, pr = ownPr(skin);
+    Object.keys(st).forEach(l => { pr[l] = JSON.parse(JSON.stringify(st[l].p)); pr[l].claim.pts = st[l].pts; });
+    return pr;
+  }
+  const tagOf = p => (p.fp || 'own' + p.claim.stars) + ':' + p.claim.pts;     // what was last sent for a level (SENTK)
+
+  // ---------------------------------------------------------------- own-goal skins (Blank Doodle, own: true)
+  // Their goal (paint the whole map) cannot be replayed, so a win there makes no proof (integrity.js), and the player's
+  // levels never reached the board: someone who played only Blank Doodle stayed "on level 2". So the entry of such a skin
+  // carries one claim per level, { v, lvl, own: 1, claim: { stars, moves: 0, pts } }, read from the sealed progress save
+  // (save.byId): every level beaten that has no verified proof in a proof-making skin, when the player owns an own-goal
+  // skin (the first one they own gets them). The save records levels, not the skin they were won in, hence that rule.
+  // Readers count claims without a replay, only in an own-goal skin's entry; an edited save hides the entry as before.
+  const ownSkins = () => (window.FTH_SKINS && FTH_SKINS.list || []).filter(k => k.own).map(k => k.id);
+  function ownPr(skin) {
+    const save = window.FTH_SAVE && FTH_SAVE.raw(), own = ownSkins(), pr = {};
+    if (!save || !save.byId || !own.includes(skin)) return pr;
+    if (((save.skins && save.skins.own) || []).find(id => own.includes(id)) !== skin) return pr;
+    const st = R.store(), proven = new Set(), ids = new Set(((window.GAME && GAME.levels) || []).map(l => l.id));
+    Object.keys(st).forEach(s => { if (!own.includes(s)) Object.keys(st[s] || {}).forEach(l => proven.add(l)); });
+    Object.keys(save.byId).forEach(l => {
+      const b = save.byId[l], stars = Math.min(3, (b && b.stars) | 0);
+      if (ids.has(l) && stars >= 1 && !proven.has(l)) pr[l] = { v: 1, lvl: l, own: 1, claim: { stars, moves: 0, pts: Math.max(0, Math.min((b.score | 0), MAX_POINTS_PER_LEVEL)) } };
+    });
+    return pr;
+  }
+  const isOwn = skin => ownSkins().includes(skin);
   function mergePr(local, remote) {
     const out = Object.assign({}, remote || {});
     Object.keys(local).forEach(l => { const a = local[l], b = out[l];
@@ -253,24 +283,24 @@
     flushing = (async () => {
       await init(); const p = prefs();
       if (!user || !p.submit) return { sent: 0 };
-      const q = dirty(), st = R.store(), done = [];
+      const q = dirty(), done = [];
       // anything in the device store that was never sent is dirty
       const sent = jget(SENTK, {});
-      Object.keys(st).forEach(s => Object.keys(st[s]).forEach(l => { if (sent[user.uid + '/' + s + '/' + l] !== st[s][l].p.fp + ':' + st[s][l].pts) q[s] = q[s] || { tries: 0 }; }));
+      skinIds().forEach(s => { const pr = localPr(s); Object.keys(pr).forEach(l => { if (sent[user.uid + '/' + s + '/' + l] !== tagOf(pr[l])) q[s] = q[s] || { tries: 0 }; }); });
       skinIds().forEach(s => { if (earned(s) > 0 && sent[user.uid + '/' + s + '/#coins'] !== earned(s)) q[s] = q[s] || { tries: 0 }; });
       let fail = 0;
       for (const skin of Object.keys(q)) {
-        const local = {}; Object.keys(st[skin] || {}).forEach(l => { local[l] = JSON.parse(JSON.stringify(st[skin][l].p)); local[l].claim.pts = st[skin][l].pts; });
+        const local = localPr(skin);
         if (!Object.keys(local).length && !earned(skin)) { done.push(skin); continue; }
         if (!online()) { fail++; continue; }
         try {
           const old = await AD.store.getEntry(skin, user.uid);
           const pr = mergePr(local, old && old.pr), t = totals(pr), changedRuns = {};
-          Object.keys(pr).forEach(l => { if (sent[user.uid + '/' + skin + '/' + l] !== pr[l].fp + ':' + pr[l].claim.pts) changedRuns[l] = pr[l]; });
+          Object.keys(pr).forEach(l => { if (!pr[l].own && sent[user.uid + '/' + skin + '/' + l] !== tagOf(pr[l])) changedRuns[l] = pr[l]; });   // claims have no run doc
           await AD.store.putPlayer(user.uid, { nick: nick(), linked: !!user.linked });
           const coins = Math.max(earned(skin), (old && old.coins) || 0);              // lifetime coins earned in this skin (never goes down)
           await AD.store.putEntry(skin, user.uid, Object.assign({ nick: nick(), v: 1, app: R.APP, pr, int: intSummary(), coins }, t), changedRuns);
-          Object.keys(pr).forEach(l => { sent[user.uid + '/' + skin + '/' + l] = pr[l].fp + ':' + pr[l].claim.pts; });
+          Object.keys(pr).forEach(l => { sent[user.uid + '/' + skin + '/' + l] = tagOf(pr[l]); });
           sent[user.uid + '/' + skin + '/#coins'] = earned(skin);
           done.push(skin);
         } catch (e) { fail++; q[skin].tries = (q[skin].tries || 0) + 1; q[skin].err = String(e && (e.code || e.message)).slice(0, 60); lastErr = 'Could not send your score yet (' + q[skin].err + '). It will retry.'; }
@@ -289,11 +319,17 @@
   // ---------------------------------------------------------------- reading boards (everything re-verified)
   async function ensureCore() { if (window.LAB) return; await R.loadScripts(['lab/core.js']); }
   // verifyEntry(e): recompute stars/levels/pars/points from the proofs; returns { ok, why, stars, levels, pars, points }
-  async function verifyEntry(e, seenFp) {
-    await ensureCore(); const env = { GAME: window.GAME, LAB: window.LAB }, pr = e.pr || {}, good = {}, why = [];
+  // skin: the board it is on; an own-goal skin's level claims (ownPr) count without a replay
+  async function verifyEntry(e, seenFp, skin) {
+    await ensureCore(); const env = { GAME: window.GAME, LAB: window.LAB }, pr = e.pr || {}, good = {}, why = [], own = isOwn(skin);
     if (e.int && e.int.tamper > 0) why.push('flagged: edited save');
     for (const l of Object.keys(pr)) {
       const p = pr[l]; if (!p || p.lvl !== l) { why.push('bad proof ' + l); continue; }
+      if (p.own) {
+        const c = p.claim || {};
+        if (!own || !GAME.levels.some(x => x.id === l) || !(c.stars >= 1 && c.stars <= 3)) { why.push(l + ': bad claim'); continue; }
+        good[l] = { claim: { stars: c.stars | 0, moves: 0, pts: c.pts } }; continue;
+      }
       const r = V.verifyProof(p, env);
       if (!r.ok) { why.push(l + ': ' + r.hard.join(',')); continue; }
       const bad = (p.int || []).find(x => /^(illegal-swap|win-without-path|msg-untrusted-event|msg-state-inconsistent|score-display-mismatch)$/.test(x[0]));
@@ -310,14 +346,14 @@
     await init(); await ensureCore();
     let entries = [];
     if (scope === 'device' && AD.kind !== 'local') {          // online mode: this device's own best runs, as one row
-      const st = R.store(), pr = {}; Object.keys(st[skin] || {}).forEach(l => { pr[l] = JSON.parse(JSON.stringify(st[skin][l].p)); pr[l].claim.pts = st[skin][l].pts; });
+      const pr = localPr(skin);
       entries = Object.keys(pr).length ? [Object.assign({ uid: user ? user.uid : 'device', nick: nick() || 'You', pr, int: intSummary() }, totals(pr))] : [];
     } else entries = scope === 'device' ? await AD.store.board(skin, 200) : await AD.store.board(skin, TOP_N * 2);
     // copied proofs: the earliest entry holding a fingerprint owns it
     const owner = new Map(); entries.slice().sort((a, b) => (a.updatedAt || 0) - (b.updatedAt || 0)).forEach(e => Object.values(e.pr || {}).forEach(p => { if (p && p.fp && !owner.has(p.fp)) owner.set(p.fp, e.uid); }));
     const rows = []; let hidden = 0;
     for (const e of entries) {
-      const v = await verifyEntry(e, owner);
+      const v = await verifyEntry(e, owner, skin);
       if (!v.ok) { hidden++; continue; }
       const me = !!user && e.uid === user.uid;
       rows.push({ uid: e.uid, nick: e.nick, stars: v.stars, levels: v.levels, pars: v.pars, points: v.points, coins: e.coins || 0, updatedAt: e.updatedAt, me, entry: e });
@@ -346,7 +382,7 @@
       const spec = FTH_SKINS.list.find(k => k.id === skin);
       let entries;
       if (scope === 'device' && AD.kind !== 'local') {          // online mode: this device's own row
-        const st = R.store(), pr = {}; Object.keys(st[skin] || {}).forEach(l => { pr[l] = JSON.parse(JSON.stringify(st[skin][l].p)); pr[l].claim.pts = st[skin][l].pts; });
+        const pr = localPr(skin);
         entries = earned(skin) > 0 ? [Object.assign({ uid: user ? user.uid : 'device', nick: nick() || 'You', pr, int: intSummary(), coins: earned(skin) }, totals(pr))] : [];
       } else entries = await AD.store.top(skin, scope === 'device' ? 200 : 12);
       const owner = new Map(); entries.slice().sort((a, b) => (a.updatedAt || 0) - (b.updatedAt || 0)).forEach(e => Object.values(e.pr || {}).forEach(p => { if (p && p.fp && !owner.has(p.fp)) owner.set(p.fp, e.uid); }));
@@ -354,7 +390,7 @@
       for (const e of entries) {
         let levels = 0;
         if (spec && spec.own && !Object.keys(e.pr || {}).length) { if (e.int && e.int.tamper > 0) { hidden++; continue; } }
-        else { const v = await verifyEntry(e, owner); if (!v.ok) { hidden++; continue; } levels = v.levels; }
+        else { const v = await verifyEntry(e, owner, skin); if (!v.ok) { hidden++; continue; } levels = v.levels; }
         const coins = Math.min(e.coins || 0, coinCap(skin, levels));
         if (coins > 0) rows.push({ uid: e.uid, nick: e.nick, coins, capped: coins < (e.coins || 0), me: !!user && e.uid === user.uid, updatedAt: e.updatedAt });
       }
@@ -380,8 +416,8 @@
   }
   const byProgress = (a, b) => (b.far - a.far) || (b.sum - a.sum) || (b.distinct - a.distinct) || ((a.updatedAt || 0) - (b.updatedAt || 0));
   function deviceRow() {                                       // this device's own progress, every skin, from the proof store
-    const st = R.store(), row = { uid: user ? user.uid : 'device', nick: nick() || 'You', me: true, lv: new Set(), per: {}, coins: {} };
-    (window.FTH_SKINS && FTH_SKINS.list || []).forEach(k => { const ids = Object.keys(st[k.id] || {}); if (ids.length) { row.per[k.id] = ids.length; ids.forEach(id => row.lv.add(id)); } if (earned(k.id) > 0) row.coins[k.id] = earned(k.id); });
+    const row = { uid: user ? user.uid : 'device', nick: nick() || 'You', me: true, lv: new Set(), per: {}, coins: {} };
+    (window.FTH_SKINS && FTH_SKINS.list || []).forEach(k => { const ids = Object.keys(localPr(k.id)); if (ids.length) { row.per[k.id] = ids.length; ids.forEach(id => row.lv.add(id)); } if (earned(k.id) > 0) row.coins[k.id] = earned(k.id); });
     return progress(row);
   }
   async function standings(scope) {
@@ -392,8 +428,8 @@
       const entries = await AD.store.board(k.id, scope === 'device' ? 200 : TOP_N * 2);
       const owner = new Map(); entries.slice().sort((a, b) => (a.updatedAt || 0) - (b.updatedAt || 0)).forEach(e => Object.values(e.pr || {}).forEach(p => { if (p && p.fp && !owner.has(p.fp)) owner.set(p.fp, e.uid); }));
       for (const e of entries) {
-        if (!Object.keys(e.pr || {}).length) continue;          // Blank Doodle makes no proofs: no levels to count
-        const v = await verifyEntry(e, owner); if (!v.ok) { hidden++; continue; }
+        if (!Object.keys(e.pr || {}).length) continue;          // coins only (an own-goal skin with no level claims yet)
+        const v = await verifyEntry(e, owner, k.id); if (!v.ok) { hidden++; continue; }
         let r = by.get(e.uid);
         if (!r) by.set(e.uid, r = { uid: e.uid, nick: e.nick, me: !!user && e.uid === user.uid, lv: new Set(), per: {}, coins: {}, updatedAt: e.updatedAt || 0 });
         if ((e.updatedAt || 0) > r.updatedAt) { r.nick = e.nick; r.updatedAt = e.updatedAt; }

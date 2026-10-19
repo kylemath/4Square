@@ -63,10 +63,11 @@ const key = (sel, k) => `document.querySelector('${sel} .rl').dispatchEvent(new 
     const words = await P.eval(`(() => { const c = document.getElementById('shop').cloneNode(true); c.querySelectorAll('.rl-art, .sh-art, iframe').forEach(x => x.remove()); document.body.appendChild(c); const t = c.innerText; c.remove(); return t.replace(/\\s+/g, ' ').trim(); })()`);
     ok('the shop has no sentences', !/[a-z]{3,} [a-z]{3,} [a-z]{3,}/i.test(words), words.slice(0, 80));
     await P.eval(`document.querySelector('#shop .sh-big.deli').click()`); await sleep(900);
-    const lamps = `(() => { const b = [...document.querySelectorAll('#deli .dl-b')]; return { n: b.length, on: b.filter(x => x.classList.contains('on')).length, nx: (b.find(x => x.classList.contains('nx')) || {}).textContent, gates: b.map(x => +x.textContent).join() }; })()`;
+    const lamps = `(() => { const b = [...document.querySelectorAll('#deli .dl-b:not(.all)')]; return { n: b.length, on: b.filter(x => x.classList.contains('on')).length, nx: (b.find(x => x.classList.contains('nx')) || {}).textContent, gates: b.map(x => +x.textContent).join(), all: (document.querySelector('#deli .dl-b.all') || {}).textContent }; })()`;
     const d1 = await P.eval(`({ on: document.getElementById('deli').classList.contains('on'), signs: document.querySelectorAll('#deli .dl-sign').length, ok: document.querySelectorAll('#deli .dl-sign.ok').length, lamps: ${lamps} })`);
     ok('the deli hangs a price sign per currency, nothing for sale at 0 levels', d1.on && d1.signs === n && d1.ok === 0, d1);
     ok('a bulb per ticket labelled with its level gate, none lit, the first one next', d1.lamps.gates === (await P.eval('FTH_TICKETS.GATE.join()')) && d1.lamps.on === 0 && d1.lamps.nx === '1', d1.lamps);
+    ok('a last bulb counts every level in the game', d1.lamps.all === String(await P.eval('GAME.levels.length')), d1.lamps.all);
     const L0 = await P.eval(signsAt);
     ok('only the Islands sign is in colour; every skin without a ticket hangs grey', L0.filter(x => /grey/.test(x.cls)).length === n - 1 && !/grey/.test(L0.find(x => x.w === 'islands').cls), L0.filter(x => !/grey/.test(x.cls)).map(x => x.w));
     await shot('deli-locked');

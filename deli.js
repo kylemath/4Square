@@ -1,6 +1,7 @@
 /* deli.js: the ticket deli counter, opened from the 🎟️ shop (tickets.js). Buying a skin ticket, as a deli counter.
  *
- *   FTH_DELI.open(ctx, { onBought(), onClose() })      ctx: the shop's ticket ctx (tickets.js), plus blip / sfx for sound
+ *   FTH_DELI.open(ctx, { onBought(), onClose() })      ctx: the shop's ticket ctx (tickets.js), plus blip / sfx for sound and
+ *                                                        levels() -> how many levels the game has
  *
  * A counter scene with far too many hanging price signs, swinging on their strings: each sign is the price of ONE ticket
  * in one skin's coin (FTH_TICKETS.next(ctx).pay, and coinsFor for a wallet the player does not hold yet). Every skin has
@@ -8,7 +9,7 @@
  * A sign the player cannot pay is dimmed and still; the coin of a skin the player has no ticket for yet is grey; a
  * currency that already bought its one ticket wears a SOLD OUT stamp. Under the awning a string of light bulbs, one per
  * ticket, each labelled with the levels beaten that ticket needs: a bulb lights once you have beaten that many, and the
- * next ticket's bulb blinks until it does; when no ticket is for sale (every locked skin has one waiting) the signs still
+ * next ticket's bulb blinks until it does, and a last bulb stands for every level in the game (ctx.levels()); when no ticket is for sale (every locked skin has one waiting) the signs still
  * hang, none for sale. Tap a sign: it zooms forward with a PURCHASE button (🎟️ × 1 for that price). Tap it: FTH_TICKETS.buy, then coins
  * fly out of the wallet into the dispenser, a paper ticket prints and swoops into the wallet, the wallet bumps.
  * No sentences: coins, numbers, glyphs.
@@ -139,6 +140,7 @@
 .dl-b.on .gl{fill:#ffe36b;fill-opacity:1}.dl-b.on .fil{stroke:#ff8a1c}
 .dl-b.on svg{filter:drop-shadow(0 0 4px rgba(255,220,90,.95)) drop-shadow(0 0 10px rgba(255,180,40,.7))}
 .dl-b.on i{color:#1c1640}
+.dl-b.all{margin-left:6px}.dl-b.all i{border-bottom:2px solid currentColor}
 .dl-b.nx i{color:#fff;background:#ff4d5e;border-radius:6px;padding:1px 3px;box-shadow:0 0 0 2px #1c1640}
 @media (prefers-reduced-motion:no-preference){.dl-b.nx:not(.on) .gl{animation:dlblink 1.1s steps(2,jump-none) infinite}}
 @keyframes dlblink{50%{fill:#fff3b0}}
@@ -289,11 +291,13 @@
     const back = root.querySelector('.dl-back'); if (back) back.onclick = close;
     root.querySelectorAll('.dl-face').forEach(b => b.onclick = () => zoom(b));
   }
-  // the marquee: a bulb per ticket, labelled with its level gate, lit once that many levels are beaten
+  // the marquee: a bulb per ticket, labelled with its level gate, lit once that many levels are beaten, and a last bulb for
+  // every level in the game (ctx.levels(), so it follows levels added later) when that is past the last gate
   function lamps(t) {
-    const G = T().GATE, b = C.beaten();
-    return '<div class="dl-lamps" role="img" aria-label="Levels beaten: ' + b + (t ? ', next ticket at ' + t.gate : '') + '">' +
-      G.map((g, j) => '<span class="dl-b' + (b >= g ? ' on' : '') + (t && j === t.n - 1 ? ' nx' : '') + '">' + BULB + '<i>' + g + '</i></span>').join('') + '</div>';
+    const G = T().GATE, b = C.beaten(), N = C.levels ? C.levels() : 0;
+    return '<div class="dl-lamps" role="img" aria-label="Levels beaten: ' + b + (t ? ', next ticket at ' + t.gate : '') + (N ? ', ' + N + ' levels in all' : '') + '">' +
+      G.map((g, j) => '<span class="dl-b' + (b >= g ? ' on' : '') + (t && j === t.n - 1 ? ' nx' : '') + '">' + BULB + '<i>' + g + '</i></span>').join('') +
+      (N > G[G.length - 1] ? '<span class="dl-b all' + (b >= N ? ' on' : '') + '">' + BULB + '<i>' + N + '</i></span>' : '') + '</div>';
   }
   const face = (w, big) => '<span class="dl-in"><span class="dl-pr"><span class="cn">' + S().coinOf(w.spec).svg(26) + '</span>' + fmt(w.price) + '</span>' +
     (w.used ? '<span class="dl-sold" aria-hidden="true">SOLD OUT</span>' : '<span class="dl-bar" aria-hidden="true"><i style="width:' + (Math.min(1, w.bal / w.price) * 100).toFixed(1) + '%"></i></span>') + '</span>';

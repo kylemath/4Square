@@ -218,5 +218,25 @@ const sigs = w => w.FTH_INT.counts();
     ok('no identity yet: the first finished attempt signs the device in silently and is sent', F.state().signedIn && F.state().anon && logs('anon-1').length === before + 1);
     ok('the silent identity turns on the cloud save of level progress, not the leaderboard', !!JSON.parse(w.store['fth-acct']).on && !F.state().submit); }
 
+  // ------------------------------------------------------------------ own-goal skin (Blank Doodle): levels from the save
+  console.log('own-goal skin: Blank Doodle levels reach the standings');
+  { const w = sandbox(), Ls = w.GAME.levels, save = { byId: {}, skins: { own: ['islands', 'blank'] } };
+    w.FTH_SKINS = { list: [{ id: 'islands' }, { id: 'dots' }, { id: 'blank', own: true }] };
+    w.FTH_SAVE = { raw: () => JSON.parse(JSON.stringify(save)) };
+    const { g, n } = solve(w, 'kempes-double', 'dots'); w.tick(500); await win(w, g, n);
+    Ls.slice(0, 16).forEach(l => { save.byId[l.id] = { stars: 2, score: 900 }; });
+    w.FTH_RUN.begin({ id: Ls[15].id, skin: 'blank', cnt: 'net', own: true }); w.tick(4000); await w.FTH_RUN.win({ stars: 2, flips: 3, hints: 0, score: 900, pending: 0, shown: 900, points: 900, own: true });
+    const A = w.FTH_ACCT; await A.ensureIdentity(); A.setSubmit(true); await A.flush();
+    const e = JSON.parse(w.store['fth-board-local']).blank[A.state().uid], proved = Ls.slice(0, 16).some(l => l.id === 'kempes-double') ? 1 : 0;
+    ok('the Blank Doodle entry carries a claim per level beaten there', e && Object.keys(e.pr).length === 16 - proved && e.levels === 16 - proved, e && e.levels);
+    ok('its numbers fit the board rules (pr size = levels, stars in [levels, 3 levels])', e && e.stars >= e.levels && e.stars <= 3 * e.levels && e.points <= 6000 * e.levels);
+    const T = await A.standings('device'), me = T.me;
+    ok('standings: on the level after the furthest one beaten, not level 2', me && me.far === 15 && me.on === (Ls[16] && Ls[16].id), me && me.far + ' ' + me.on);
+    ok('standings: Blank Doodle is the favourite, levels summed', me && me.fav === 'blank' && me.per.blank === 16 - proved && me.per.dots === 1);
+    const bad = Object.assign({}, e, { uid: 'x' }); ok('a level claim on a proof-making skin is rejected', !(await A.verifyEntry(bad, null, 'dots')).ok);
+    save.skins.own = ['islands']; const m2 = (await A.standings('device')).mine;
+    ok('no claims for a player who does not own an own-goal skin', !m2.per.blank && m2.per.dots === 1, JSON.stringify(m2.per));
+  }
+
   console.log(fails ? '\n' + fails + ' FAILED' : '\nall passed'); process.exit(fails ? 1 : 0);
 })().catch(e => { console.error(e); process.exit(2); });
