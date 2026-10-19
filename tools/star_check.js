@@ -6,7 +6,7 @@
 //   - a level is won by TAPPING children along an optimal path (par swaps), the star breaks open, the trail holds the path;
 //   - undo (the button) and backtrack (a trail star) walk back; stepping back onto a star on the path marks the cycle
 //     (loop ring, visit count, the ↻ chip);
-//   - the heuristic lab: a rule tested on all 40 levels logs a heuristic_test event with its full definition and scores,
+//   - the heuristic lab: a rule tested on every level logs a heuristic_test event with its full definition and scores,
 //     its JSON export parses; watching Kempe-else-π on 7.1 ends stuck in its π loop with the revisits marked;
 //   - in the app (index.html?skin=star) the frame plays, the shell's star rim chip is hidden, no script errors anywhere.
 const fs = require('fs'), path = require('path'), { serve, launch, sleep } = require('./cdp');
@@ -86,9 +86,10 @@ async function agree(P, where) {
     await P.eval('STAR.openLab()');
     ok('the baselines fill the board', await until(P, 'document.querySelectorAll("#lbBoard tr").length === FTH_STAR.BUILTIN.length + 1', 60000));
     const res = await P.eval('(STAR.setRule(FTH_STAR.BUILTIN.find(r => r.id === "few-locks-new")), STAR.test(null, "start").then(r => ({ rate: r.rate, n: r.n })))');
-    ok('"Fewest locks, new stars" solves all 40 levels', res.rate === 1 && res.n === 40, res);
+    const NL = await P.eval('GAME.levels.length');
+    ok('"Fewest locks, new stars" solves all ' + NL + ' levels', res.rate === 1 && res.n === NL, res);
     const ev = await P.eval('window.__starLog[window.__starLog.length - 1]');
-    ok('heuristic_test logged with the full rule and its scores', ev && ev.rule && ev.rule.cards.length === 3 && ev.scope === 'start' && ev.n === 40 && ev.solved === 40 && typeof ev.excess === 'number' && ev.sink === 'local', ev && { cards: ev.rule.cards.length, sink: ev.sink });
+    ok('heuristic_test logged with the full rule and its scores', ev && ev.rule && ev.rule.cards.length === 3 && ev.scope === 'start' && ev.n === NL && ev.solved === NL && typeof ev.excess === 'number' && ev.sink === 'local', ev && { cards: ev.rule.cards.length, sink: ev.sink });
     const exp = await P.eval('(document.getElementById("lbCopy").click(), JSON.parse(window.__starCopied))');
     ok('the rule exports as JSON', exp.kind === 'fth-star-rule' && exp.rule.cards.length === 3 && exp.scores.start.rate === 1);
     await P.eval('(STAR.setRule(FTH_STAR.BUILTIN[0]), STAR.test(null, "start"))');
