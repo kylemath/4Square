@@ -10,7 +10,10 @@ It is a progressive web app: the **📲 Install** button on the title screen add
 where it runs full screen and offline (`manifest.webmanifest`, `sw.js`; icons from `tools/make_icons.py`).
 
 The levels come from real research data: maps from an exhaustive census of sphere triangulations, with locked
-"π loops", 66666 six-rings and the deepest known start (6 swaps). The game grew out of
+"π loops", 66666 six-rings and the deepest known start (6 swaps). Levels 19.1-21.3 add the four-colour proof
+search's own hard pieces (the degree-7 arrangement R* and the degree-8 binder of October 2026) grown into full maps,
+padded maps (classic pits wrapped in outer bands that add decoy chains but never shorten the way out), and the two
+combined (see "Hurdle and padded maps" below). The game grew out of
 [GraphColourDeductiveSolver](https://github.com/kylemath/GraphColourDeductiveSolver)
 ([site](https://kylemath.github.io/GraphColourDeductiveSolver/)). The Four Colour Theorem is already proved; this
 game explores the Kempe-swap dynamics behind Kempe's 1879 attempt and Heawood's 1890 objection.
@@ -35,7 +38,7 @@ new skin you play earns its way to the next (a used currency's deli sign shows �
 an owned card selects it). The shop is a full-screen showroom on the same reel, over a live preview of the centred skin playing
 itself (its page with `&demo=1`, see `lab/core.js`); tickets are bought at the **deli counter** (`deli.js`): one hanging price sign per
 currency, tap one, PURCHASE. `node tools/tickets_check.js` checks the rules and that each ticket is affordable at its gate
-on clean play (17-29% to spare, before bonus rounds; level pay measured on all 40 levels); `node tools/shop_check.js` plays it end to end. SKIN-SPEC.md section 12.
+on clean play (17-29% to spare, before bonus rounds; level pay measured on the first 40 levels; later levels only add room); `node tools/shop_check.js` plays it end to end. SKIN-SPEC.md section 12.
 
 **Maps.** The 🗺️ button (title screen and level map) opens `maps.js`: every map as a thumbnail of how much of its
 colouring space you have charted (drawn by the shell's own exploration-map renderer, `window.FTH_MAPVIEW.render`), most
@@ -129,6 +132,19 @@ levels.json      ─┴─ build_game.py ──> levels.js  (graphs, distances, 
 3. Pick starts: `--suggest <key>` ranks start states by difficulty for each par; `--ladder <key>` prints one
    ready-to-paste level entry per par (easiest at par 1, hardest at each larger par).
 
+### Hurdle and padded maps
+
+`tools/proof_maps.py` makes the maps of levels 19.1-21.3.
+
+- `anneal PIECE CENSUS N SEED --extra K` searches for maps holding a proof piece (`rstar`: degree 7, link 5675765,
+  second ring 6577575; `binder8`: degree 8, link 85556565, second ring 65866655). It starts from census
+  triangulations, subdivides K faces, and walks by edge flips until one vertex has exactly the piece's 2-ball, with
+  every degree at least 5 and no separating triangle. `write ...` writes one result as a map; its `source` field is
+  the exact command, so every hurdle map can be regenerated from the GraphColourDeductiveSolver census file.
+- `pad BASE K KEY` wraps a map in K outer bands on the face farthest from the hole (the padding of the proof repo's
+  large-map study). Band swaps never unlock the hole, so the pars stay the same and the colouring count grows
+  exactly 4x per band. One band on a 34-region map is about 30,000 colourings, the most the page should carry.
+
 For quick warm-up islands: `python3 docs/game/gen_map.py w16 16 --maxpar 1` writes a random 16-region map with a
 playable hole.
 
@@ -172,6 +188,7 @@ quiet chains help). Use it to order levels within an island and to pick warm-ups
 | `build_layout.py` | region shapes (numpy, scipy, torch), called by the build |
 | `world_map.py` | the colouring-space mini-map (scikit-learn), called by the build |
 | `gen_map.py` | random warm-up maps |
+| `tools/proof_maps.py` | hurdle maps from the proof's hard pieces, and padded maps |
 | `tools/level_request.py` | checks and applies a level request ([LEVEL-REQUEST.md](LEVEL-REQUEST.md)) |
 | `maps/`, `levels.json` | the content |
 | `levels.js`, `layout.js` | generated; do not edit |
