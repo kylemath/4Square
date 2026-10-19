@@ -134,6 +134,11 @@ only with `--apply`.
    order. Insert the new levels' pay at their positions, then run `node tools/tickets_check.js`. Levels added at the
    end only add room to spare. Levels inserted before a gate mean re-tuning `GATE`/`PRICE` in `tickets.js` (the check
    prints the table).
+   **The deli's light bulbs** (`deli.js`) are drawn from `GATE`: one bulb per ticket, labelled with its level count,
+   lit once the player has beaten that many, then one last bulb labelled with the total number of levels. That total
+   is read from the game (`levels()` in the shop's ctx, `G.levels.length`), so it updates by itself when levels are
+   added; nothing to edit. Only if you move gates (to spread tickets over the new levels) do the ticket bulbs change;
+   `tickets_check` fails if a gate is past the last level. Re-run `shop_check` to see the bulbs.
 4. Optional: add the new ids to the case lists in `tools/embed_win_check.js` and `tools/maze_check.js`.
 5. Run at least `skin_check`, `tickets_check`, `shop_check`, `embed_win_check` and `free_check`, then commit the
    request file together with the map and the levels.

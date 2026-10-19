@@ -25,6 +25,10 @@ ok('one ticket per skin other than Islands', T.GATE.length === SK.length - 1 && 
 ok('gates rise', T.GATE.every((g, i) => !i || g > T.GATE[i - 1]), T.GATE.join(' '));
 ok('prices rise', T.PRICE.every((p, i) => !i || p > T.PRICE[i - 1]), T.PRICE.join(' '));
 ok('every gate is a real level count', T.GATE[T.GATE.length - 1] <= PAY.length);
+// the deli's light bulbs are the gates plus a last one for all levels (deli.js reads that count from the game); a gate
+// past the last level would hang a bulb no player can light (LEVEL-REQUEST.md, After --apply)
+const NLV = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'levels.json'), 'utf8')).levels.length;
+ok('every deli bulb can be lit: the last gate is within the ' + NLV + ' levels', T.GATE[T.GATE.length - 1] <= NLV, T.GATE[T.GATE.length - 1] + ' / ' + NLV);
 ok('the first ticket costs about one level', T.GATE[0] === 1 && T.PRICE[0] <= PAY[0], T.PRICE[0] + ' <= ' + PAY[0]);
 console.log('  ticket  gate  price  spent  earned  spare');
 let spent = 0, cum = 0, li = 0;

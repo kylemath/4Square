@@ -1949,7 +1949,7 @@
   const beaten = () => G.levels.filter(l => save.byId[l.id] && save.byId[l.id].stars > 0).length;
   // the level the shop's live preview plays: the one last played this session, else the furthest open level
   const shopLvl = () => L ? L.id : (G.levels.find((l, i) => isOpen(i) && !save.best[i]) || G.levels[0]).id;
-  const shopCtx = () => ({ save, skins: SKINS, order: REEL_ORDER, beaten, persist, lvl: shopLvl, current: () => SKIN.id,
+  const shopCtx = () => ({ save, skins: SKINS, order: REEL_ORDER, beaten, levels: () => G.levels.length, persist, lvl: shopLvl, current: () => SKIN.id,
     onSelect: id => { if (owns(id) && id !== SKIN.id) selectSkin(id); },
     onPlay: id => { selectSkin(id); FTH_TICKETS.close(); $('btnPlay').click(); },
     onUnlock: id => selectSkin(id), onClose: () => { renderSkinPick(SKIN.id); ticketDots(); trayRefresh(); },
