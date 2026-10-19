@@ -2,6 +2,7 @@
   "name": "R* 5675765/6577575",
   "source": "tools/proof_maps.py write rstar frame-33.txt 8 22 2 5 22 rstar_a: piece rstar at vertex 2, census start p33.r242#151258",
   "layoutSeed": 2,
+  "drawSeed": 3,
   "hole": 22,
   "world": true,
   "rot": [

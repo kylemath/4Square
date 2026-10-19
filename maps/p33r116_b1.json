@@ -2,6 +2,7 @@
   "name": "p33.r116#1021256 + 1 band",
   "source": "tools/proof_maps.py pad p33r116 1 p33r116_b1: maps/p33r116.json with 1 outer band on the face farthest from the hole",
   "layoutSeed": 4,
+  "drawSeed": 21,
   "hole": 10,
   "rot": [
     [1, 2, 3, 4, 5, 6],

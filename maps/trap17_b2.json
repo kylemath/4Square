@@ -1,6 +1,7 @@
 {
   "name": "Tidy Trap, order 17 + 2 bands",
   "source": "tools/proof_maps.py pad trap17 2 trap17_b2 --face 15: maps/trap17.json with 2 bands on face 15 (0 = farthest from the hole)",
+  "drawSeed": 8,
   "hole": 9,
   "rot": [
     [1, 2, 3, 4, 5],

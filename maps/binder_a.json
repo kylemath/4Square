@@ -2,6 +2,7 @@
   "name": "binder 85556565/65866655",
   "source": "tools/proof_maps.py write binder8 frame-33.txt 6 14 0 3 19 binder_a: piece binder8 at vertex 26, census start p33.r214#414490",
   "layoutSeed": 5,
+  "drawSeed": 8,
   "hole": 19,
   "world": true,
   "rot": [

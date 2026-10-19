@@ -2,6 +2,7 @@
   "name": "six-ring 66666, order 28 + 1 band",
   "source": "tools/proof_maps.py pad six 1 six_b1: maps/six.json with 1 outer band on the face farthest from the hole",
   "layoutSeed": 3,
+  "drawSeed": 4,
   "hole": 0,
   "rot": [
     [1, 2, 3, 4, 5],

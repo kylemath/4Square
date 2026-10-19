@@ -1,6 +1,7 @@
 {
   "name": "binder 85556565/65866655 + 1 band",
   "source": "tools/proof_maps.py pad binder_a 1 binder_a_b1 --face 8: maps/binder_a.json with 1 band on face 8 (0 = farthest from the hole)",
+  "drawSeed": 22,
   "hole": 19,
   "rot": [
     [3, 7, 19, 13, 29, 25, 27, 15],
