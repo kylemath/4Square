@@ -1,6 +1,7 @@
 {
   "name": "R* 5675765/6577575 + 1 band",
   "source": "tools/proof_maps.py pad rstar_a 1 rstar_a_b1 --face 15: maps/rstar_a.json with 1 band on face 15 (0 = farthest from the hole)",
+  "layoutSeed": 2,
   "hole": 22,
   "rot": [
     [3, 11, 14, 5, 20, 23, 31],
