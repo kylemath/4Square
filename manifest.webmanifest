@@ -1,7 +1,7 @@
 {
   "name": "4square",
   "short_name": "4square",
-  "description": "4square: a Kempe-swap puzzle game about the Four Colour Theorem, in four styles.",
+  "description": "4square: a Kempe-swap puzzle game about the Four Colour Theorem, in nineteen styles.",
   "id": "./",
   "start_url": "./",
   "scope": "./",

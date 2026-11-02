@@ -3,9 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
-<title>4square</title>
-<meta name="description" content="A Kempe-chain puzzle game: trace two-colour chains of tiles to capture them, flip captured chains, and work outward-in until the rim of a degree-five hole uses only three colours. Twelve levels, from the icosahedron to the deepest colouring at the order-34 census record hole.">
+<title>4square: a Four Colour Theorem puzzle game</title>
+<meta name="description" content="A free puzzle game about the Four Colour Theorem. Trace two-element Kempe chains, swap them, and empty one element from the rim so the hole can be filled. 52 levels from real research, from the icosahedron to the deepest known pits, in nineteen styles.">
+<link rel="canonical" href="https://4square.studio/">
 <meta name="theme-color" content="#2a7fdc">
+<meta name="google-site-verification" content="Z2Sskf6IUTBqGGXoHw0ekbP_aPP8PKJZxwgLILDXy-4"><!-- Search Console ownership (URL-prefix property https://4square.studio/) -->
 <meta name="google-adsense-account" content="ca-pub-7680225514669783"><!-- AdSense site verification; the ad script itself loads only from ads.js -->
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
@@ -99,7 +101,7 @@
     border-radius: 7px; background: #fff; color: #1c6fe0; font-weight: 900; vertical-align: -.25em; }
   #installSheet .note { color: var(--dim); font-size: .85rem; margin: 0 0 12px; }
   #installSheet .row { display: flex; justify-content: center; }
-  .tfoot { font-size: .72rem; color: rgba(255,255,255,.8); } .tfoot a { color: #fff; }
+  .tfoot { font-size: .72rem; color: rgba(255,255,255,.8); text-align: center; line-height: 1.7; } .tfoot a { color: #fff; white-space: nowrap; }
 
   /* ---------- level map (saga) ---------- */
   #menu { overflow-y: auto; overflow-x: hidden; background: #2a9fd8; padding: 0; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
@@ -559,6 +561,11 @@
 </style>
 </head>
 <body>
+<noscript><div style="max-width:680px;margin:0 auto;padding:24px 16px;font:17px/1.6 system-ui,sans-serif;color:#e6edf3;overflow:auto;height:100%">
+<h1>4square: a Four Colour Theorem puzzle game</h1>
+<p>4square is a free puzzle game about the Four Colour Theorem. Each level is a map coloured with four elements where one region, the hole, is blank because its five neighbours use all four. Swap two-element Kempe chains until the rim uses only three, and the hole can be filled. The game needs JavaScript to play.</p>
+<p><a href="how-to-play.html">How to play</a> · <a href="levels.html">Level guide</a> · <a href="four-colour-theorem.html">The maths</a> · <a href="about.html">About</a> · <a href="contact.html">Contact</a> · <a href="privacy.html">Privacy</a> · <a href="terms.html">Terms</a></p>
+</div></noscript>
 
 <section id="title" class="screen on" aria-label="4square: title screen">
   <div class="sky" aria-hidden="true">
@@ -587,7 +594,7 @@
         <button class="btn3d blue" id="btnInstall" aria-label="Install the game on this phone" hidden><b class="ti">📲</b>Install</button>
       </div>
       <div id="skinPick"></div><!-- the skin reel (reel.js): a listbox of skin cards -->
-      <div class="tfoot"><a href="privacy.html">Privacy</a></div>
+      <nav class="tfoot" aria-label="About the game"><a href="how-to-play.html">How to play</a> · <a href="levels.html">Levels</a> · <a href="four-colour-theorem.html">The maths</a> · <a href="about.html">About</a> · <a href="contact.html">Contact</a> · <a href="privacy.html">Privacy</a> · <a href="terms.html">Terms</a></nav>
       <div class="consent" id="consent" hidden><!-- research request: no longer shown -->
         <p>🔬 Can we save your moves to help scientists learn how people solve puzzles? No names, just taps and timing.</p>
         <div><button id="consentYes">OK!</button><button id="consentNo">No thanks</button></div>
