@@ -192,3 +192,7 @@ quiet chains help). Use it to order levels within an island and to pick warm-ups
 | `tools/level_request.py` | checks and applies a level request ([LEVEL-REQUEST.md](LEVEL-REQUEST.md)) |
 | `maps/`, `levels.json` | the content |
 | `levels.js`, `layout.js` | generated; do not edit |
+
+## Licence
+
+Copyright (c) 2026 Kyle Mathewson. All rights reserved. The source is public to read, not to reuse: see [LICENSE.md](LICENSE.md).
